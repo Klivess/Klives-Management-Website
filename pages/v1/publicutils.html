@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="../images/klivebot.png" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../styles/styles.css" />
+    <link rel="stylesheet" href="../styles/backgrounds.scss" />
+    <title>KliveBot Management: Public Utilities</title>
+</head>
+<script>
+    function Uncomplete() {
+        alert("I didn't make this yet.");
+        document.getElementById('smhwbutton').remove();
+    }
+    function Trust(){
+        window.location.replace("https://90.255.227.194:80/")
+    }
+</script>
+<a href="../index.html" id='loginbutton'
+    style="display: grid; left: 50px; margin-top: 20px; position: absolute; overflow: auto;">
+    Go Back
+</a>
+
+<body style="background-color: #161A1D; align-items: center;">
+    <div class="fadein" style="align-items: center; width: auto; display: flex; justify-content: center; align-items: center;">
+        <a style="color: red; align-self: center; display: block; align-content: center; display: flex; justify-content: center; align-items: center; white-space: nowrap;                "
+         onclick="Trust()" id='loginbutton'>
+            Trust API >
+         </a>
+    </div>
+    <div class="fadein"
+        style="align-items: center; width: auto; display: flex; justify-content: center; align-items: center;">
+        <a style="color: cyan; align-self: center; display: block; width: 30%; align-content: center; display: flex; justify-content: center; align-items: center; white-space: nowrap;                "
+            onclick="window.location.replace('PublicUtilities/mathswatchtoanswer.html')" id='loginbutton'>
+            Mathswatch To Answers >
+        </a>
+    </div>
+    <div class="fadein" id="smhwbutton"
+        style="align-items: center; width: auto; display: flex; justify-content: center; align-items: center;">
+        <a style="color: cyan; align-self: center; display: block; width: 30%; align-content: center; display: flex; justify-content: center; align-items: center; white-space: nowrap;                "
+            onclick="Uncomplete()" id='loginbutton'>
+            SHMW Quiz To Answers >
+        </a>
+    </div>
+</body>
+
+</html>

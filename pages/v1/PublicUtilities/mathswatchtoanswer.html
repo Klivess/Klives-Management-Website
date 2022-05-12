@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/png" href="../../images/klivebot.png"/>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../../styles/styles.css"/>
+    <link rel="stylesheet" href="../../styles/backgrounds.scss"/>
+    <script src="mathswatch.js"></script>
+    <title>KliveBot Management: MathsWatch Answers</title>
+</head>
+<body>
+    <a href="../publicutils.html" id='loginbutton' style="display: grid; left: 50px; margin-top: 20px; position: absolute; overflow: auto;">
+        Go Back
+    </a>
+    <div>
+        <div style="display: 100px; text-align: center; display: flex; justify-content: center; align-items: center;" class="loglabel fadein" id="please" >
+            Enter JSON to be converted.
+        </div>
+    </div>
+    <input class="classicinput fadein" style="margin-top: 10%; width: 99.5%; height: 150px;" name="text" id="jsontext" autocomplete="off"></input>
+    <div class="fadein" style="align-items: center; width: auto; display: flex; justify-content: center; align-items: center;">
+        <a style="color: yellow; align-self: center; display: block; width: 30%; align-content: center; display: flex; justify-content: center; align-items: center; white-space: nowrap;                "
+         onclick="TranslateText()" id='loginbutton'>
+            Translate >
+         </a>
+    </div>
+    <div style="margin-top: 50px; display: 100px; text-align: left; font-size: 15px; display: flex; justify-content: center; align-items: center; cursor: text;" class="loglabel fadein" id="translated">
+        
+    </div>
+</body>

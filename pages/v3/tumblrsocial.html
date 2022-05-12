@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles/main.css">
+    <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js" integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
+    <script src="scripts/managementcode.js"></script>
+    <script src="scripts/tumblrsocials.js"></script>
+    <script src="../../scripts/saved.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.esm.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.esm.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/helpers.esm.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/helpers.esm.min.js"></script>
+    <link rel="shortcut icon" href="../../images/klivebot2.png" type="image/x-icon">
+    <title>KliveBot Management: Tumblr Bots</title>
+</head>
+<script>
+    SetPerformance();
+    window.onload = LoadTumblrSocialPage();
+</script>
+<nav>
+    <horizontal-nav style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr;">
+        <span id="cpuPerf" style="margin-top: 0.2vw;">CPU Usage: </span>
+        <span id="ramPerf" style="margin-top: 0.2vw;">RAM Usage: </span>
+        <div style="float: right; z-index: 99;">
+            <div class="kbuttonContainer" onclick="LogOut();" style="margin-left: 200px; height: 25px; width: 20%;">
+                <div class="kbutton" style="height: 1px; padding: 12px;">
+                    <a style="font-size: 0.8vw;">
+                        Logout
+                    </a>
+                </div>
+            </div>
+        </div>
+    </horizontal-nav>
+    <vertical-nav>
+        <div style="display: flex; justify-content: center;">
+            <img onmouseenter="ImageSwitch()" id="logo" src="../../images/favicon.ico" alt="" style="width: 7vw">
+        </div>
+        <div class="verticalgrid">
+            <div class="kbuttonContainer" onclick="window.location.href = 'main.html'" style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1.2vw; letter-spacing: 0.1vw;">
+                        Home
+                        <img src="images/home.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+            <div class="kbuttonContainer" onclick="window.location.href = 'botpower.html'" style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1.2vw; letter-spacing: 0.1vw;">Bot Power
+                        <img src="images/power.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+            <div class="kbuttonContainer" onclick="window.location.href = 'statistics.html'" style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1.2vw; letter-spacing: 0.1vw;">Statistics
+                        <img src="images/pie-chart.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+            <div class="kbuttonContainer" onclick="window.location.href = 'socials.html'" style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1.2vw; letter-spacing: 0.1vw;">Socials
+                        <img src="images/social-media.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+            <div class="kbuttonContainer" onclick="window.location.href = 'speaker.html'" style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1.2vw; letter-spacing: 0.1vw;">Speaker
+                        <img src="images/megaphone.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+            <div class="kbuttonContainer" onclick="window.location.href = 'storage.html'" style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1.2vw; letter-spacing: 0.1vw;">Storage
+                        <img src="images/big-data.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+            <div class="kbuttonContainer" onclick="window.location.href = 'logs.html'" style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1.2vw; letter-spacing: 0.1vw;">Logs
+                        <img src="images/document.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+            <div class="kbuttonContainer" onclick="window.location.href = 'omniscience.html'" style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1.2vw; letter-spacing: 0.1vw;">Omniscience
+                        <img src="images/eye.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+            <div class="kbuttonContainer" onclick="window.location.href = 'school.html'" style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1.2vw; letter-spacing: 0.1vw;">School
+                        <img src="images/graduation-cap.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+            <div class="kbuttonContainer" onclick="window.location.href = 'klivemanagementsettings.html'"
+                style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1vw;">Management
+                    </a>
+                </div>
+            </div>
+        </div>
+    </vertical-nav>
+</nav>
+
+<body style="visibility: hidden;">
+    <div style="padding-top: 40px; padding-left: 13%; padding-right: 2%; display: block;">
+        <div class="infobox"
+            style="display: grid; grid-template-columns: 1fr 1fr; background-color: #011b33; border: 7px solid #141414; height: 800px;">
+            <h1>Tumblr Accounts</h1>
+            <div style="display: grid;">
+                <div class="verticalgrid" style="overflow-y: scroll; height: 700px; background-color: #000814;" id="allAccounts">
+                </div>
+                <button class="kbutton" style="height: 100px; border: 2px solid rgb(0, 77, 0);" onclick="window.location.replace('makenewtumblr.html')">
+                    <a style="color: rgb(2, 255, 2);">+</a>
+                </button>
+            </div>
+            <div class="verticalgrid"
+                style="display: grid; background-color: #000814; padding: 20px; margin: 10px;
+            border-radius: 25px; grid-gap: 10px; grid-template-rows: 1fr 1fr; overflow-y: scroll; z-index: 0; grid-template-columns: 1fr;"
+                id="accountBox">
+                <div style="display: inline-grid; grid-template-rows: 1fr 3fr;">
+                    <div style="display: inline-grid; grid-template-columns: 1fr 1fr 1fr 1fr;">
+                        <div>
+                            <span id="accountName">Name: Loading...</span>
+                            <span id="accountFollowers">Followers: Loading...</span>
+                        </div>
+                        <div>
+                            <span id="accountNextPost">Next Post: Loading...</span>
+                        </div>
+                        <div>
+                            <span id="accountLink">Account Blogs Link: Loading...</span>
+                        </div>
+                    </div>
+                    <div style="height: 400px; width: 690px;">
+                        <canvas id="accountFollowerGraph">
+
+                        </canvas>
+                    </div>
+                </div>
+                <button class="kbutton" onclick="ManageAccount()" id="accountManageButton">
+                    <a>Manage Account</a>
+                </button>
+            </div>
+        </div>
+        <div class="infobox" style="height: 800px; grid-template-columns: 1fr 1fr;">
+            <h1 style="top: 890px;">Tumblr Posts Data</h1>
+            <div class="verticalgrid" style="display: grid; background-color: #000814; padding-top: 25px; padding-bottom: 25px; margin-top: 10px; margin-bottom: 10px; margin-right: 5px;
+            grid-gap: 10px; grid-template-rows: 1fr 1fr 1fr 1fr 1fr; border-radius: 25px;">
+                <button class="kbutton" onclick="LoadData('contenttext', 'caption')" style="height: 120px;" id="loadCaptions">
+                    <a>Captions</a>
+                </button>
+                <button class="kbutton" onclick="LoadData('contenttext', 'hashtags')" style="height: 120px;" id="loadHashtags">
+                    <a>Hashtags</a>
+                </button>
+                <button class="kbutton" onclick="LoadData('contenttext', 'plugs')" style="height: 120px;" id="loadPlugsButton">
+                    <a>Plugs</a>
+                </button>
+                <button class="kbutton" onclick="LoadData('contenttext', 'extrawords')" style="height: 120px;"  id="loadExtraWordsButton">
+                    <a>Extra Words</a>
+                </button>
+            </div>
+            <div style="background-color: #000308; border-radius: 25px; margin-top: 10px; margin-bottom: 10px; margin-left: 5px; padding: 10px; color: white;
+            font-family: 'Roboto'; font-size: 20px;" id="dataContentBox">
+                <textarea name="" id="contenttext" style="background-color: #000814; border: none; color: white; font-family: 'Roboto'; border: none; border-radius: 10px;
+                overflow-y: scroll; outline: none; height: 500px; width: 100%; font-size: 10px;">
+
+                </textarea>
+                <button class="kbutton" style="width: 100%; height: 240px;" id="saveButton" name="caption"
+                    onclick="SaveData()">
+                    <a>Save</a>
+                </button>
+            </div>
+        </div>
+        <div class="dualbox">
+            <div class="infobox" style="height: 600px;">
+                <h1 style="margin-top: 1675px;">Tumblr Posts Log</h1>
+                <div class="verticalgrid" style="overflow-y: scroll;" id="tumblrpostlogs">
+                </div>
+            </div>
+            <div class="infobox" style="height: 600px;">
+                <h1 style="margin-top: 1675px; transform: translateX(0%);">Tumblr Behaviour Settings</h1>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; padding: 30px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                        <span style="font-size: 16px;">Min Hours Before Posting</span>
+                        <input id="minhoursbeforepost" type="number" class="kinput" onchange="UpdateBehaviourSettings()" style="width:100px; height:10px;">
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                        <span style="font-size: 16px;">Max Hours Before Posting</span>
+                        <input id="maxhoursbeforepost" type="number" class="kinput" onchange="UpdateBehaviourSettings()" style="width:100px; height:10px;">
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                        <span style="font-size: 16px;">Min Hours Before Reposting</span>
+                        <input id="minreposts" type="number" class="kinput" onchange="UpdateBehaviourSettings()" style="width:100px; height:10px;">
+                    </div>
+                    <div></div>
+                    <div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                            <span style="font-size: 16px;">Min Hashtags In A Post</span>
+                            <input id="minhashtags" type="number" class="kinput" onchange="UpdateBehaviourSettings()" style="width:100px; height:10px;">
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                        <span style="font-size: 16px;">Max Hashtags In A Post</span>
+                        <input id="maxhashtags" type="number" class="kinput" onchange="UpdateBehaviourSettings()" style="width:100px; height:10px;">
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                        <span style="font-size: 16px;">Message Klives On Post/Repost</span>
+                        <input type="checkbox" id="messageklives" onclick="UpdateBehaviourSettings()" class="toggle">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

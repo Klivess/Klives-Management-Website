@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KliveBot Management</title>
+    <link rel="stylesheet" href="../styles/managementstyles.css" />
+    <link rel="stylesheet" href="styles/styles.css">
+    <link rel="icon" type="image/png" href="../images/klivebot.png" />
+    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+    <script src="../scripts/managementcode.js"></script>
+</head>
+<script>
+    UpdateStatistics();
+
+</script>
+<nav>
+    <a href="managementpage.html" id='loginbutton'
+        style="display: grid; left: 50px; margin-top: 20px; position: absolute; overflow: auto;">
+        Go Back
+    </a>
+    <img src="../images/klivebot.png" alt="" class="logo">
+</nav>
+<script>
+</script>
+<style>
+    ::-webkit-scrollbar {
+        width: 10px;
+        background-color: transparent;
+        transition: 0.5s;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background-color: #2e2e2e;
+        transition: 0.5s;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background-color: #494848;
+        transition: 0.5s;
+    }
+</style>
+
+<body class="fadein">
+    <div class="grid fadein">
+        <div style="display: flex; justify-content: center;">
+            <div class="filelist">
+                <div id="filelist" name="filelist"
+                    style=" grid-template-rows: 1fr 1fr; width: 100%; overflow-y: scroll;">
+                </div>
+                <div id="total"
+                    style="display: grid; grid-template-columns: 1fr; overflow-y: scroll; visibility: hidden;">
+                    <div id="content" style="font-family: 'Roboto';">
+                        <div id="contenttext" class="select" style="text-align: center; word-wrap: break-word;">
+
+                        </div>
+                    </div>
+                    <div id="contentbuttons" style="display: grid; grid-template-columns: 1fr 1fr; padding: 4px;">
+                        <a id="deletebutton" onclick="DeleteFile(this.name)"
+                            style="word-wrap: break-word; text-align: center; justify-content: center; display: flex; align-items: center;">Delete</a>
+                        <a id="downloadbutton" onclick="DownloadFile(this.name)"
+                            style="text-align: center; justify-content: center; display: flex; align-items: center;">Download</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KliveBot Management</title>
+    <link rel="icon" type="image/png" href="images/klivebot.png"/>
+    <link rel="stylesheet" href="pages/v1/styles/styles.css"/>
+    <link rel="stylesheet" href="styles/backgrounds.scss"/>
+    <script src="scripts/index.js"></script>
+    <script src="scripts/libs/require.js"></script>
+    <script src="scripts/authentication.js"></script>
+</head>
+<script>
+    autoInputPasswordFromCookie('passwordbox');
+</script>
+<body>
+    <div class="container" id="loginpage">
+        <div style="width: max(426px); height: max(323px);">
+            <div style="display: 100px; text-align: center; display: flex; justify-content: center; align-items: center;" class="loglabel fadein" id="please">
+                Private Admin Console
+            </div>
+            <div class="form__group field fadein">
+                <input autocomplete="off" type="password" class="form__field" placeholder="Name" name="name" id='passwordbox' required />
+                <label for="name" class="form__label">Password</label>
+            </div>
+            <div class="fadein" style="align-items: center; width: auto; display: flex; justify-content: center; align-items: center;">
+                <a style="align-self: center; display: block; align-content: center; display: flex; justify-content: center; align-items: center; white-space: nowrap;                "
+                 onclick="LoginPassword()" id='loginbutton'>
+                    SUBMIT >
+                 </a>
+            </div>
+            <div class="fadein" style="align-items: center; width: auto; display: flex; justify-content: center; align-items: center;">
+                <a style="align-self: center; display: block; align-content: center; display: flex; font-size: 15px; justify-content: center; align-items: center; white-space: nowrap;                "
+                 onclick="window.location.replace('pages/v1/publicutils.html')">
+                    Public Utilities >
+                 </a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

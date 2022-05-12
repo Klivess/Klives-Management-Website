@@ -1,0 +1,463 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300&display=swap');
+
+::-webkit-scrollbar {
+    width: 5px;
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: #5C5C5C;
+}
+
+.dualbox{
+    display: grid; grid-template-columns: 1fr 1fr; column-gap: 38px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+    --main: #0b090a;
+    --body: #161a1d;
+    --secondary: #39489e;
+    --objectcolours: #0b090a;
+    --primaryfont: 'Roboto';
+    font-family: var(--primaryfont);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;   
+}
+
+body {
+    background-color: var(--body);
+}
+
+vertical-nav {
+    margin: 0;
+    padding: 0;
+    width: 12%;
+    background-color: var(--main);
+    position: fixed;
+    height: 100%;
+    overflow: auto;
+    display: -ms-inline-grid;
+    grid-template-rows: auto 1fr;
+    grid-template-columns: 1fr;
+    z-index: 30;
+}
+
+horizontal-nav {
+    z-index: 20;
+    background-color: var(--main);
+    position: fixed;
+    height: 30px;
+    padding-left: 15%;
+    top: 0;
+    width: 100%;
+    overflow: auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
+.navbutton {
+    height: 5vw;
+    vertical-align: middle;
+    align-content: center;
+    font-size: 1.5vw;
+    transition: 0.3s;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+}
+
+/* Now it's just buttons. */
+
+.button {
+    background-color: transparent;
+    border: 2px solid #2e2e2e;
+    cursor: pointer;
+    letter-spacing: 0.2125rem;
+    line-height: 1;
+    overflow: hidden;
+    padding: 20px 30px;
+    text-align: center;
+    text-transform: uppercase;
+    position: relative;
+    transition: background-color 0.2s cubic-bezier(0.19, 1, 0.22, 1),
+        border 1s cubic-bezier(0.19, 1, 0.22, 1),
+        color 0.6s cubic-bezier(0.19, 1, 0.22, 1);
+    user-select: none;
+    display: flex;
+    justify-content: center;
+    margin: 5px;
+}
+
+.button a {
+    position: absolute;
+    color: #969696;
+    font-size: 1.3vw;
+    width: 100%;
+    font-family: 'Roboto';
+    text-decoration: none;
+    white-space: nowrap;
+    height: 100%;
+    justify-content: center;
+    display: flex;
+    font-family: 'Roboto';
+}
+
+.button .mask {
+    background-color: #fff;
+    background-color: rgba(255, 255, 255, 0.5);
+    height: 100px;
+    position: absolute;
+    transform: translate3d(-120%, -50px, 0) rotate3d(0, 0, 1, 45deg);
+    transition: all 1.1s cubic-bezier(0.19, 1, 0.22, 1);
+    width: 200px;
+}
+
+.button .shift {
+    display: inline-block;
+    transition: all 1.1s cubic-bezier(0.19, 1, 0.22, 1);
+    vertical-align: text-top;
+}
+
+.button:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-color: #fff;
+    box-shadow: 0 0 5px rgba(255, 245, 245, 0.8);
+}
+
+.button:hover a {
+    color: #fff;
+}
+
+.button:hover .mask {
+    background-color: #fff;
+    transform: translate3d(120%, -100px, 0) rotate3d(0, 0, 1, 90deg);
+}
+
+.button:hover .shift {
+    transform: translateX(5px);
+}
+
+.button:active {
+    background-color: #fff;
+}
+
+.button:active a {
+    color: #202020;
+}
+
+/* Now it's just other things. */
+.verticalgrid {
+    /*Vertical grid*/
+    display: grid;
+}
+
+.special {
+    color: yellow;
+}
+
+span {
+    font-size: 15px;
+    font-family: var(--primaryfont);
+    color: #dadada;
+    animation-name: fadingup;
+    animation-duration: 0.5s;
+}
+
+.navicon {
+    width: 30px;
+    filter: invert();
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active{
+    box-shadow: 0 0 0 30px white inset !important;
+}
+
+.driveinfo {
+    border-radius: 15px;
+    height: 50px; background-color: #1C2121; padding: 10px; display: grid;
+    margin-top: 10px;
+}
+
+.infobox {
+    background-color: var(--objectcolours);
+    width: 100%;
+    height: 40%;
+    display: grid;
+    grid-template-columns: 1fr;
+    border-radius: 25px;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+.infobox h1 {
+    position: absolute;
+    top: 30px;
+    color: white;
+    font-family: 'Roboto';
+    font-size: 17px;
+    animation-name: fadingup;
+    animation-duration: 0.5s;
+}
+
+.kinput {
+    background-color: #1d1d1d;
+    border: none;
+    border-radius: 25px;
+    color: white;
+    font-family: 'Roboto';
+    font-size: 20px;
+    padding: 10px;
+    width: 100%;
+    word-wrap: break-word;
+    word-break: break-all;
+    transition: 0.2s;
+    z-index: 55;
+    animation-name: fadingup;
+    animation-duration: 0.5s;
+}
+
+.kinput:focus {
+    outline: none;
+}
+
+.kinput:hover {
+    border-bottom: 4px solid #2e2e2e;
+}
+
+.kbuttonContainer {
+    display: flex;
+    justify-content: center;
+}
+
+.kbutton {
+    border-radius: 5px;
+    letter-spacing: 00.2125rem;
+    font-family: 'Roboto';
+    font-size: 2vw;
+    animation-name: fadingup;
+    animation-duration: 0.5s;
+    align-content: center;
+    color: var(--secondary);
+    text-transform: uppercase;
+    text-decoration: none;
+    background-color: transparent;
+    border: 2px solid var(--secondary);
+    transition: 0.1s;
+    align-items: center;
+    cursor: pointer;
+    width: 100%;
+    user-select: none;
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+    overflow: hidden;
+}
+
+.kbutton a {
+    position: absolute;
+    align-self: center;
+    text-decoration: none;
+    color: var(--secondary);
+}
+
+.kbutton img {
+    background-color: var(--secondary);
+    opacity: 0.5;
+    width: 30px;
+    height: 30px;
+    filter: invert();
+    display: none;
+}
+
+.kbutton:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-color: #fff;
+    box-shadow: 0 0 3px rgba(255, 245, 245, 0.8);
+}
+
+.kbutton:active {
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.8);
+    background-color: rgb(255, 255, 255);
+}
+
+.form__group {
+    position: relative;
+    padding: 15px 0 0;
+    margin-top: 10px;
+    width: 50%;
+    display: flex;
+    justify-self: center;
+    left: 25%;
+}
+
+.form__field {
+    font-family: 'Roboto';
+    width: 100%;
+    border: 0;
+    border-bottom: 2px solid #9b9b9b;
+    outline: 0;
+    font-size: 1.3rem;
+    color: #fff;
+    padding: 7px 0;
+    background: transparent;
+    transition: border-color 0.2s;
+}
+
+.form__field::placeholder {
+    color: transparent;
+}
+
+.form__field:placeholder-shown~.form__label {
+    font-size: 1.3rem;
+    cursor: text;
+    top: -20px;
+}
+
+.form__label {
+    position: absolute;
+    top: -20px;
+    display: block;
+    transition: 0.2s;
+    font-size: 1rem;
+    color: #9b9b9b;
+    font-family: 'Roboto';
+}
+
+.form__field:focus {
+    padding-bottom: 6px;
+    font-weight: 700;
+    border-width: 3px;
+    border-image: linear-gradient(to right, #1C2121, #9b9b9b);
+    border-image-slice: 1;
+}
+
+.form__field:focus~.form__label {
+    position: absolute;
+    top: 0;
+    display: block;
+    transition: 0.2s;
+    font-size: 1rem;
+    color: #11998e;
+    font-weight: 700;
+}
+
+/* reset input */
+.form__field:required, .form__field:invalid {
+    box-shadow: none;
+}
+
+
+
+input[type=checkbox] {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    -webkit-tap-highlight-color: transparent;
+    cursor: pointer;
+}
+
+input[type=checkbox]:focus {
+    outline: 0;
+}
+
+.toggle {
+    height: 32px;
+    width: 52px;
+    border-radius: 16px;
+    display: inline-block;
+    position: relative;
+    margin: 0;
+    border: 2px solid #474755;
+    background: linear-gradient(180deg, #2D2F39 0%, #1F2027 100%);
+    transition: all 0.2s ease;
+}
+
+.toggle:after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: white;
+    box-shadow: 0 1px 2px rgba(44, 44, 44, 0.2);
+    transition: all 0.2s cubic-bezier(0.5, 0.1, 0.75, 1.35);
+}
+
+.toggle:checked {
+    border-color: #654FEC;
+}
+
+.toggle:checked:after {
+    transform: translatex(20px);
+}
+
+.fadein {
+    animation-name: fadingup;
+    animation-duration: 0.5s;
+}
+@keyframes fadingup{
+    from{
+        opacity: 0;
+        background-color: var(--secondary);
+        border-radius: 50px;
+        transform: translateY(-50%);
+    }
+    to{
+    }
+}
+
+
+
+.example {
+    padding: 20px;
+  }
+  
+  input[type=button] {
+    padding: 5px 10px;
+    margin: 10px 5px;
+    border-radius: 5px;
+    cursor: pointer;
+    background: #ddd;
+    border: 1px solid #ccc;
+  }
+  input[type=button]:hover {
+    background: #ccc;
+  }
+  
+  .confirm {
+    display: none;
+  }
+  .confirm > div:first-of-type {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    top: 0px;
+    left: 0px;
+  }
+  .confirm > div:last-of-type {
+    padding: 10px 20px;
+    background: white;
+    position: absolute;
+    width: auto;
+    height: auto;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 5px;
+    border: 1px solid #333;
+  }
+  .confirm > div:last-of-type div:first-of-type {
+    min-width: 150px;
+    padding: 10px;
+  }
+  .confirm > div:last-of-type div:last-of-type {
+    text-align: right;
+  }

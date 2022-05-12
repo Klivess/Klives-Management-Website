@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KliveBot Management: API</title>
+    <link rel="stylesheet" href="../styles/managementstyles.css"/>
+    <link rel="icon" type="image/png" href="../images/klivebot.png"/>
+    <script src="../scripts/manageapi.js"></script>
+    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests"> 
+
+</head>
+<body>
+    <nav>
+        <a href="managementpage.html" id='loginbutton' style="display: grid; left: 50px; margin-top: 20px; position: absolute; overflow: auto;">
+            Go Back
+        </a>
+        <img src="../images/klivebot.png" alt="" class="logo">
+    </nav>
+    <a onclick="GetRoutes()" id='loginbutton' style="display: grid;
+    margin-top: 20px; margin-left: 50px; width: 400px; text-align: center; height: 50px;">
+    Get All Routes
+    </a>
+    <a onclick="UpdateAPI()" id='loginbutton' style="display: grid;
+     margin-top: 20px; margin-left: 50px; width: 400px; text-align: center; height: 50px;">
+        Update API from Github
+    </a>
+    <div id="output" style="background-color: black; float: right; margin-left: 90px; font-family: 'Poppins'; left: 50%; width: 500px; height: 500px; position: absolute; top:160px; z-index: 2;">
+        <div class="grid" id="gridd">
+
+        </div>
+    </div>
+</body>
+</html>

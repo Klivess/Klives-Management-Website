@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KliveBot Management</title>
+    <link rel="stylesheet" href="../styles/managementstyles.css" />
+    <link rel="stylesheet" href="styles/styles.css">
+    <link rel="icon" type="image/png" href="../images/klivebot.png" />
+    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+    <script src="../scripts/managementcode.js"></script>
+    <script src="../scripts/authentication.js"></script>
+</head>
+<script>
+    UpdateStatistics();
+
+</script>
+<nav>
+    <a onclick="LogOut()" id='LogOutButton'
+        style="display: grid; left: 50px; margin-top: 20px; position: absolute; overflow: auto;">
+        Log Out
+    </a>
+    <img src="../images/klivebot.png" alt="" class="logo">
+</nav>
+
+<body class="fadein">
+    <div class="grid fadein">
+        <div class="optionmenu fadein">
+            Bot Power
+            <a onclick="TurnOffBot()" id='shutdownbutton' style="display: grid; margin-top: 20px;">
+                Shutdown Bot
+            </a>
+            <a onclick="RestartBot()" id='restartbotbutton' style="display: grid; margin-top: 20px;">
+                Restart Bot
+            </a>
+            <a onclick="RestartServer()" id='restartserverbutton' style="display: grid; margin-top: 20px;">
+                Restart Server
+            </a>
+            <a onclick="ShutdownServer()" id='shutdownserverbutton' style="display: grid; margin-top: 20px;">
+                Shutdown Server
+            </a>
+        </div>
+        <div class="optionmenu">
+            Server
+            <a onclick="window.location.replace('manageserver.html')" id='updatebotbutton'
+                style="display: grid; margin: 20px; height: 200px; text-align: center; vertical-align: middle; line-height: 200px; font-size: 50px;">
+                Manage Server
+            </a>
+        </div>
+        <div class="optionmenu statbutton" onclick="UpdateStatistics();">
+            <div style="height: 45px; width: 100%; text-align: center;">
+                Statistics
+            </div>
+            <label for="" class="displaytext" id="CPU">
+                CPU Usage: %
+            </label>
+            <label for="" class="displaytext" id="RAM">
+                RAM Usage: %
+            </label>
+        </div>
+        <div class="optionmenu">
+            Speaker
+            <div class="form__group field">
+                <input autocomplete="off" class="form__field" placeholder="Name" name="name" id='speakerfield'
+                    required />
+                <label for="name" class="form__label">What to stream to speakers</label>
+            </div>
+            <a onclick="SpeakerStream()" id='speakerbutton'
+                style="display: grid; margin: 20px; height: 200px; text-align: center; vertical-align: middle; line-height: 200px; font-size: 79px;">
+                Send
+            </a>
+        </div>
+        <div class="optionmenu">
+            KliveBot
+            <a onclick="UpdateBot()" id='updatebotbutton'
+                style="display: grid; margin: 20px; height: 200px; text-align: center; vertical-align: middle; line-height: 200px; font-size: 50px;">
+                Update Bot
+            </a>
+        </div>
+        <div class="optionmenu">
+            Tools
+            <a onclick="window.location.replace('manageutilities.html')" id='updatebotbutton'
+                style="display: grid; margin: 20px; height: 200px; text-align: center; vertical-align: middle; line-height: 200px; font-size: 50px;">
+                Manage Bot
+            </a>
+        </div>
+        <div class="optionmenu">
+            About
+            <a onclick="window.location.replace('managementabout.html')" id='updatebotbutton'
+                style="display: grid; margin: 20px; height: 200px; text-align: center; vertical-align: middle; line-height: 200px; font-size: 50px;">
+                About
+            </a>
+        </div>
+    </div>
+</body>
+
+</html>

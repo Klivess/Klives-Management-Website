@@ -1,0 +1,120 @@
+
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@200;300;400;500;600;700;800;900&display=swap");
+
+h1 {
+    position: relative;
+    text-align: center;
+    color: transparent#660708;
+    font-size: 50px;
+    font-family: "Cormorant Garamond", serif;
+  }
+  
+  p {
+    font-family: 'Poppins', sans-serif;
+    font-weight: 300;
+    text-align: center;
+    font-size: 18px;
+    color: #676767;
+  }
+  .frame {
+    width: 90%;
+    margin: 40px auto;
+    text-align: center;
+  }
+  button {
+    margin: 20px;
+    outline: none;
+  }
+  .custom-btn {
+    width: 130px;
+    height: 40px;
+    padding: 10px 25px;
+    border: 2px transparent #B1A7A6;
+    font-family: 'Poppins', sans-serif;
+    font-weight: 500;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    display: inline-block;
+  }
+  
+  /* 6 */
+  .btn-6 {
+     background: #BA181B;
+    color: #FFFFFF;
+    font-size: 20px;
+    line-height: 42px;
+    padding: 0;
+    border: none;
+    width: 200px;
+    height: 55px;
+    text-align: center;
+    padding: 5px;
+  }
+  .btn-6 span {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .btn-6:before,
+  .btn-6:after {
+    position: absolute;
+    content: "";
+    height: 0%;
+    width: 2px;
+    background: #E5383B;
+  }
+  .btn-6:active {
+      transition: 0.5s;
+      color: #FFFFFF;
+  }
+  .btn-6:before {
+    right: 0;
+    top: 0;
+    transition: all 500ms ease;
+  }
+  .btn-6:after {
+    left: 0;
+    bottom: 0;
+    transition: all 500ms ease;
+  }
+  .btn-6:hover{
+    color: #E5383B;
+    background: transparent;
+  }
+  .btn-6:hover:before {
+    transition: all 500ms ease;
+    height: 100%;
+  }
+  .btn-6:hover:after {
+    transition: all 500ms ease;
+    height: 100%;
+  }
+  .btn-6 span:before,
+  .btn-6 span:after {
+    position: absolute;
+    content: "";
+    background: #c90003;
+  }
+  .btn-6 span:before {
+    left: 0;
+    top: 0;
+    width: 0%;
+    height: 2px;
+    transition: all 500ms ease;
+  }
+  .btn-6 span:after {
+    right: 0;
+    bottom: 0;
+    width: 0%;
+    height: 2px;
+    transition: all 500ms ease;
+  }
+  .btn-6 span:hover:before {
+    width: 100%;
+  }
+  .btn-6 span:hover:after {
+    width: 100%;
+  }

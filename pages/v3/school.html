@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles/main.css">
+    <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js" integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
+    <script src="scripts/managementcode.js"></script>
+    <script src="scripts/tumblrsocials.js"></script>
+    <script src="../../scripts/saved.js"></script>
+    <link rel="shortcut icon" href="../../images/klivebot2.png" type="image/x-icon">
+    <title>KliveBot Management: School</title>
+</head>
+<script>
+    SetPerformance();
+</script>
+<nav>
+    <horizontal-nav style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr;">
+        <span id="cpuPerf" style="margin-top: 0.2vw;">CPU Usage: </span>
+        <span id="ramPerf" style="margin-top: 0.2vw;">RAM Usage: </span>
+        <div style="float: right; z-index: 99;">
+            <div class="kbuttonContainer" onclick="LogOut();" style="margin-left: 200px; height: 25px; width: 20%;">
+                <div class="kbutton" style="height: 1px; padding: 12px;">
+                    <a style="font-size: 0.8vw;">
+                        Logout
+                    </a>
+                </div>
+            </div>
+        </div>
+    </horizontal-nav>
+    <vertical-nav>
+        <div style="display: flex; justify-content: center;">
+            <img onmouseenter="ImageSwitch()" id="logo" src="../../images/favicon.ico" alt="" style="width: 7vw">
+        </div>
+        <div class="verticalgrid">
+            <div class="kbuttonContainer" onclick="window.location.href = 'main.html'" style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1.2vw; letter-spacing: 0.1vw;">
+                        Home
+                        <img src="images/home.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+            <div class="kbuttonContainer" onclick="window.location.href = 'botpower.html'" style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1.2vw; letter-spacing: 0.1vw;">Bot Power
+                        <img src="images/power.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+            <div class="kbuttonContainer" onclick="window.location.href = 'statistics.html'" style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1.2vw; letter-spacing: 0.1vw;">Statistics
+                        <img src="images/pie-chart.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+            <div class="kbuttonContainer" onclick="window.location.href = 'socials.html'" style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1.2vw; letter-spacing: 0.1vw;">Socials
+                        <img src="images/social-media.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+            <div class="kbuttonContainer" onclick="window.location.href = 'speaker.html'" style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1.2vw; letter-spacing: 0.1vw;">Speaker
+                        <img src="images/megaphone.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+            <div class="kbuttonContainer" onclick="window.location.href = 'storage.html'" style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1.2vw; letter-spacing: 0.1vw;">Storage
+                        <img src="images/big-data.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+            <div class="kbuttonContainer" onclick="window.location.href = 'logs.html'" style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1.2vw; letter-spacing: 0.1vw;">Logs
+                        <img src="images/document.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+            <div class="kbuttonContainer" onclick="window.location.href = 'omniscience.html'" style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1.2vw; letter-spacing: 0.1vw;">Omniscience
+                        <img src="images/eye.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+            <div class="kbuttonContainer" onclick="window.location.href = 'school.html'" style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1.2vw; letter-spacing: 0.1vw;">School
+                        <img src="images/graduation-cap.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+            <div class="kbuttonContainer" onclick="window.location.href = 'klivemanagementsettings.html'"
+                style="height: 5vw;">
+                <div class="kbutton">
+                    <a style="font-size: 1vw;">Management
+                    </a>
+                </div>
+            </div>
+        </div>
+    </vertical-nav>
+</nav>
+
+<body style="visibility: hidden;">
+    <div style="padding-top: 40px; padding-left: 13%; padding-right: 2%; display: block;">
+        <div class="infobox">
+            <div id="quickactions">
+                <span>I didn't start working on this yet</span>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

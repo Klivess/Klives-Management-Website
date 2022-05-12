@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KliveBot Management</title>
+    <link rel="stylesheet" href="../styles/managementstyles.css" />
+    <link rel="stylesheet" href="styles/styles.css">
+    <link rel="icon" type="image/png" href="../images/klivebot.png" />
+    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+    <script src="../scripts/managementcode.js"></script>
+    <script src="../scripts/index.js"></script>
+</head>
+<script>
+    ReceiveScreenshot('screenshot');
+</script>
+<nav>
+    <a href="managementpage.html" id='loginbutton' style="display: grid; left: 50px; margin-top: 20px; position: absolute; overflow: auto;">
+        Go Back
+    </a>
+    <img src="../images/klivebot.png" alt="" class="logo">
+</nav>
+
+<body class="fadein">
+    <div class="grid fadein">
+        <div class="optionmenu">
+            <img id="screenshot" src="https://90.255.227.194:80/v1/ReceiveScreenshot" alt="" style="width: 200px; height: 200px;" srcset="">
+        </div>
+        <div class="optionmenu">
+            <a onclick="window.location.replace('')" id='updatebotbutton'
+                style="display: grid; margin: 20px; height: 200px; text-align: center; vertical-align: middle; line-height: 200px; font-size: 50px;">
+                Utilities
+            </a>
+        </div>
+        <div class="optionmenu">
+            <a onclick="window.location.replace('')" id='updatebotbutton'
+                style="display: grid; margin: 20px; height: 200px; text-align: center; vertical-align: middle; line-height: 200px; font-size: 50px;">
+                Utilities
+            </a>
+        </div>
+    </div>
+</body>
+
+</html>

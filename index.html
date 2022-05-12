@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="pages/v3/styles/main.css">
+    <link rel="shortcut icon" href="images/favicon.ico" type="image/x-icon">
+    <script src="scripts/authentication.js"></script>
+    <title>Klives Management: Login</title>
+</head>
+<style>
+    .fadein {
+        animation-name: fadein;
+        animation-duration: 0.5s;
+    }
+
+    @keyframes fadein {
+        0% {
+            transform: translateY(200px);
+            opacity: 0;
+        }
+
+        100% {
+            transform: translateY(0);
+        }
+    }
+</style>
+<script>
+    let apistatus = true;
+    GetStatusOfAPI();
+    function IndexLogin(passwordbox, button) {
+        try {
+            let passwordbox = document.getElementById('password');
+            let noticebox = document.getElementById('noticebox');
+            if (passwordbox.value == "") {
+                noticebox.innerHTML = "Please enter a password.";
+            }
+            if (passwordbox.value != "") {
+                if (apistatus) {
+                    MakeRequest('/v1/CheckPassword?p=' + passwordbox.value).then(response => {
+                        if (response == "PASS") {
+                            noticebox.innerHTML = "Logging In...";
+                            createCookie("password", passwordbox.value, 1);
+                            window.location.replace("pages/v3/main.html");
+                        }
+                        else if (response == "DISABLED") {
+                            noticebox.innerHTML = "The owner of this website has disabled logins.";
+                        }
+                        else {
+                            noticebox.innerHTML = "Incorrect password.";
+                        }
+                    });
+                }
+                else {
+                    noticebox.innerHTML = "The KliveAPI is down.";
+                }
+            }
+        } catch (err) {
+            alert(err);
+        }
+    }
+    function GetStatusOfAPI() {
+        setTimeout(function () {
+            setInterval(function () {
+                let noticebox = document.getElementById('apistatus');
+                let resp = "";
+                let error;
+                MakeRequest('/v1/Ping').then(response => {
+                        resp = response;
+                });
+                setTimeout(function () {
+                    if (resp == "") {
+                        noticebox.innerHTML = "KliveAPI Status: Offline";
+                        noticebox.setAttribute("style", "color: red;");
+                        apistatus = false;
+                    }
+                    else {
+                        apistatus = true;
+                        noticebox.innerHTML = "KliveAPI Status: Online";
+                        noticebox.setAttribute("style", "color: greenyellow;");
+                    }
+                }, 100);
+            }, 600);
+        }, 250);
+    }
+    async function MakeRequest(endpoint) {
+        let response = await fetch("https://90.255.227.194:80" + endpoint);
+        let json = await response.text();
+        return json;
+    }
+    function createCookie(name, value, days) {
+        var expires;
+        if (days) {
+            var date = new Date();
+            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+            expires = "; expires=" + date.toGMTString();
+        }
+        else {
+            expires = "";
+        }
+        document.cookie = name + "=" + value + expires + "; path=/";
+    }
+</script>
+
+<body style="display: flex; justify-content: center;">
+    <div id="loginbox" class="fadein" style="position: absolute; top: 40%;">
+        <div class="form__group field" style="user-select: none; display: flex; justify-content: center;">
+            <input type="password" class="form__field" placeholder="Name" name="name" id='password' autocomplete="off"
+                style="width: 600px;" required />
+            <label for="name" class="form__label" id="noticebox">Password</label>
+        </div>
+        <div class="kbuttonContainer">
+            <div class="kbutton" style="margin-top: 20px; height: 20px; width: 240px;" onclick="IndexLogin()">
+                <a id="restartserverbutton" style="font-size: 1vw;">
+                    Login
+                </a>
+            </div>
+        </div>
+    </div>
+</body>
+<div style="position: absolute; display: grid; justify-content: left; margin-top: 20px;">
+    <span onclick="window.location.replace('https://90.255.227.194:80/')" id="apistatus">KliveAPI Status:
+        Pinging...</span>
+</div>
+
+</html>

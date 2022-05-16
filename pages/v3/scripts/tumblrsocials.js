@@ -1,6 +1,6 @@
 let accountBeingMade = false;
 
-function LoadTumblrSocialPage(){
+function LoadTumblrSocialPage() {
     LoadData('contenttext', 'caption');
     LoadAllAccounts('allAccounts');
     LoadPostLog();
@@ -48,10 +48,11 @@ function OnSocialsLoad() {
                 postsmadealltime.innerHTML = "Couldn't get posts made all time.";
             };
         });
+        LoadTumblrTotalFollowerChart('tumblrTotalFollowerChart');
     }, 10);
 }
 function LoadBehaviourSettings() {
-    setTimeout(function (){
+    setTimeout(function () {
         let minhourspost = document.getElementById("minhoursbeforepost");
         let maxhourspost = document.getElementById('maxhoursbeforepost');
         let minhoursrepost = document.getElementById('minreposts');
@@ -85,8 +86,8 @@ function UpdateBehaviourSettings() {
         json.MinHoursBetweenReposts = minhoursrepost.value;
         json.AmountOfHashtagsMin = minhashtags.value;
         json.AmountOfHashtagsMax = maxhashtags.value;
-        json.MessageKlivesOnAction=messageklivescheckbox.checked;
-        MakeRequest("/tumblr/SetTumblrBehaviorSettings?json="+JSON.stringify(json)).then(response2 => {
+        json.MessageKlivesOnAction = messageklivescheckbox.checked;
+        MakeRequest("/tumblr/SetTumblrBehaviorSettings?json=" + JSON.stringify(json)).then(response2 => {
             console.log("Updated Settings");
         });
     });
@@ -188,6 +189,39 @@ function LoadTumblrFollowerChart(canvas, accountStatisticJson) {
                 }
             }
         }
+    });
+}
+function LoadTumblrTotalFollowerChart(canvas) {
+    MakeRequest("/tumblr/TumblrTotalFollowersAnalytics").then(response => {
+        let json = JSON.parse(response);
+        let followers = [];
+        let dates = [];
+        let time = new Date();
+        for (let i = 0; i < json.length; i++) {
+            followers.push(json[i].Value);
+            time = new Date(json[i].Key);
+            dates.push(time.toLocaleString());
+        }
+        const ctx = document.getElementById(canvas).getContext('2d');
+        const myChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: dates,
+                datasets: [{
+                    label: "Total Followers",
+                    data: followers,
+                    backgroundColor: [
+                        'rgba(72, 202, 228, 0.2)',
+                    ],
+                    borderColor: [
+                        'rgba(72, 202, 228, 1)',
+                    ],
+                }]
+            },
+            options: {
+                maintainAspectRatio: false,
+            }
+        });
     });
 }
 

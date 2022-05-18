@@ -29,6 +29,20 @@
 </style>
 <script>
     let apistatus = true;
+    fetch(kliveAPI + "/v1/CheckPassword?p=" + getCookie("password"))
+        .then(res => res.text())
+        .then((data) => {
+            responsetext = data;
+            console.log(responsetext);
+            if (responsetext == "PASS") {
+                window.location.replace('pages/v3/main.html');
+            }
+            else if (responsetext == "NOENTRY") {
+                console.log('Password refused.')
+                return false;
+            }
+        })
+        .catch(err => { throw err });
     GetStatusOfAPI();
     function IndexLogin(passwordbox, button) {
         try {

@@ -316,6 +316,7 @@ function LoadMainPage() {
 //blahaj
 
 function LogOut() {
+    createCookie('password', '');
     window.location.replace('../../index.html');
 }
 

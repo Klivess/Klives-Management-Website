@@ -208,7 +208,7 @@ function LoadTumblrTotalFollowerChart(canvas) {
             data: {
                 labels: dates,
                 datasets: [{
-                    label: "Total Followers",
+                    label: "Tumblr Total Followers",
                     data: followers,
                     backgroundColor: [
                         'rgba(72, 202, 228, 0.2)',

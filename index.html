@@ -56,7 +56,7 @@
                     MakeRequest('/v1/CheckPassword?p=' + passwordbox.value).then(response => {
                         if (response == "PASS") {
                             noticebox.innerHTML = "Logging In...";
-                            createCookie("password", passwordbox.value, 1);
+                            createCookie("password", passwordbox.value, 365);
                             window.location.replace("pages/v3/main.html");
                         }
                         else if (response == "DISABLED") {

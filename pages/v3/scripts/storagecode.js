@@ -145,11 +145,11 @@ function OpenCloudFile(file, filename) {
                         }
                     },
                 }).then((value) => {
-                    switch (value) {
-                        case "download":
-                            DownloadFile(file, filename);
-                        case "delete":
-                            DeleteFile(file);
+                    if(value=="download"){
+                        DownloadFile(file, filename);
+                    }
+                    else if(value=="delete"){
+                        DeleteFile(file);
                     }
                 })
             });
@@ -168,11 +168,11 @@ function OpenCloudFile(file, filename) {
                     }
                 },
             }).then((value) => {
-                switch (value) {
-                    case "download":
-                        DownloadFile(file, filename);
-                    case "delete":
-                        DeleteFile(file);
+                if(value=="download"){
+                    DownloadFile(file, filename);
+                }
+                else if(value=="delete"){
+                    DeleteFile(file);
                 }
             });
         }

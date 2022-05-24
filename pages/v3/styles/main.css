@@ -9,8 +9,10 @@
     background-color: #5C5C5C;
 }
 
-.dualbox{
-    display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px;
+.dualbox {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 28px;
 }
 
 * {
@@ -24,7 +26,7 @@
     --primaryfont: 'Roboto';
     font-family: var(--primaryfont);
     -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;   
+    -moz-osx-font-smoothing: grayscale;
 }
 
 body {
@@ -172,15 +174,18 @@ span {
 }
 
 input:-webkit-autofill,
-input:-webkit-autofill:hover, 
-input:-webkit-autofill:focus, 
-input:-webkit-autofill:active{
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
     box-shadow: 0 0 0 30px white inset !important;
 }
 
 .driveinfo {
     border-radius: 15px;
-    height: 50px; background-color: #1C2121; padding: 10px; display: grid;
+    height: 50px;
+    background-color: #1C2121;
+    padding: 10px;
+    display: grid;
     margin-top: 10px;
 }
 
@@ -194,6 +199,7 @@ input:-webkit-autofill:active{
     padding: 10px;
     margin-bottom: 10px;
 }
+
 .infobox h1 {
     position: absolute;
     top: 30px;
@@ -328,6 +334,16 @@ input:-webkit-autofill:active{
     font-family: 'Roboto';
 }
 
+.filesgrid {
+    width: 100%;
+    height: 100%;
+    background-color: transparent;
+    border: 2px solid var(--secondary);
+    border-radius: 5px;
+    display: grid;
+    overflow-y: scroll;
+}
+
 .form__field:focus {
     padding-bottom: 6px;
     font-weight: 700;
@@ -347,7 +363,8 @@ input:-webkit-autofill:active{
 }
 
 /* reset input */
-.form__field:required, .form__field:invalid {
+.form__field:required,
+.form__field:invalid {
     box-shadow: none;
 }
 
@@ -402,47 +419,51 @@ input[type=checkbox]:focus {
     animation-name: fadingup;
     animation-duration: 0.5s;
 }
-@keyframes fadingup{
-    from{
+
+@keyframes fadingup {
+    from {
         opacity: 0;
         background-color: var(--secondary);
         border-radius: 50px;
         transform: translateY(-50%);
     }
-    to{
-    }
+
+    to {}
 }
 
 
 
 .example {
     padding: 20px;
-  }
-  
-  input[type=button] {
+}
+
+input[type=button] {
     padding: 5px 10px;
     margin: 10px 5px;
     border-radius: 5px;
     cursor: pointer;
     background: #ddd;
     border: 1px solid #ccc;
-  }
-  input[type=button]:hover {
+}
+
+input[type=button]:hover {
     background: #ccc;
-  }
-  
-  .confirm {
+}
+
+.confirm {
     display: none;
-  }
-  .confirm > div:first-of-type {
+}
+
+.confirm>div:first-of-type {
     position: fixed;
     width: 100%;
     height: 100%;
     background: rgba(0, 0, 0, 0.5);
     top: 0px;
     left: 0px;
-  }
-  .confirm > div:last-of-type {
+}
+
+.confirm>div:last-of-type {
     padding: 10px 20px;
     background: white;
     position: absolute;
@@ -453,11 +474,13 @@ input[type=checkbox]:focus {
     transform: translate(-50%, -50%);
     border-radius: 5px;
     border: 1px solid #333;
-  }
-  .confirm > div:last-of-type div:first-of-type {
+}
+
+.confirm>div:last-of-type div:first-of-type {
     min-width: 150px;
     padding: 10px;
-  }
-  .confirm > div:last-of-type div:last-of-type {
+}
+
+.confirm>div:last-of-type div:last-of-type {
     text-align: right;
-  }
+}

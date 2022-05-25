@@ -340,7 +340,7 @@ input:-webkit-autofill:active {
     background-color: transparent;
     border: 2px solid var(--secondary);
     border-radius: 5px;
-    display: grid;
+    display: -ms-inline-grid;
     overflow-y: scroll;
 }
 

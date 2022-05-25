@@ -1,6 +1,7 @@
 let uploadingFile = false;
 let selectedpreviousborder = "";
 let selected = "";
+let selectedFolder="";
 
 function GetStorageData() {
     MakeRequest("/storage/GetStorageMetrics").then(response => {
@@ -74,46 +75,90 @@ function UploadFile(uploadbuttonid) {
     file.setAttribute("multiple", "multiple");
     let buttontext = document.getElementById(uploadbuttonid);
     file.click();
+    let flavour = "KliveCloud";
+    if(selectedFolder!="")
+        flavour=selectedFolder;
     file.onchange = function () {
         uploadingFile = true;
-        for (let i = 0; i < file.files.length; i++) {
-            let formData = new FormData;
-            formData.append("files", file.files[i]);
-            var url = api + "/storage/UploadFileToCloudStorage";
-            var xhr = new XMLHttpRequest();
-            //xhr upload 
-            xhr.open("POST", url, true);
-            xhr.upload.addEventListener("progress", e => {
-                var p = Math.floor(e.loaded / e.total * 100);
-                buttontext.innerHTML = "Uploading " + p + "%<br>Uploading " + i + " of " + file.files.length;
-                if (p == 100) {
-                    buttontext.innerHTML = "Finalizing..";
-                }
-            })
-            //xhr.setRequestHeader("Content-Type","multipart/form-data");
-            xhr.send(formData);
-            xhr.onreadystatechange = function () {
-                if (this.readyState == 4 && this.status == 200) {
-                    buttontext.innerHTML = "Upload File";
-                    let grid = document.getElementById("files");
-                    while (grid.firstChild) {
-                        grid.removeChild(grid.firstChild);
+        swal("Confirmation", {
+            text: "You are uploading "+file.files.length+" files to folder '"+flavour+"'",
+            buttons: {
+                cancel: "No.",
+                gopost: {
+                    text: "Yes.",
+                    value: "YES",
+                },
+            },
+        }).then((value) => {
+            if (value == "YES") {
+                for (let i = 0; i < file.files.length; i++) {
+                    let formData = new FormData;
+                    formData.append("files", file.files[i]);
+                    var url = api + "/storage/UploadFileToCloudStorage?p="+selectedFolder;
+                    var xhr = new XMLHttpRequest();
+                    //xhr upload 
+                    xhr.open("POST", url, true);
+                    xhr.upload.addEventListener("progress", e => {
+                        var p = Math.floor(e.loaded / e.total * 100);
+                        buttontext.innerHTML = "Uploading " + p + "%<br>Uploading " + i + " of " + file.files.length;
+                        if (p == 100) {
+                            buttontext.innerHTML = "Finalizing..";
+                        }
+                    })
+                    //xhr.setRequestHeader("Content-Type","multipart/form-data");
+                    xhr.send(formData);
+                    xhr.onreadystatechange = function () {
+                        if (this.readyState == 4 && this.status == 200) {
+                            buttontext.innerHTML = "Upload File";
+                            let grid = document.getElementById("files");
+                            while (grid.firstChild) {
+                                grid.removeChild(grid.firstChild);
+                            }
+                            LoadAllCloudFiles();
+                        }
                     }
-                    LoadAllCloudFiles();
                 }
+                file.value = "";
+                uploadingFile = false;
+                file.remove();
             }
-        }
-        file.value = "";
-        uploadingFile = false;
-        file.remove();
+        })
     }
 }
 
 function OpenCloudFile(file, filename) {
     let foldergrid = document.getElementById('foldergrid');
     foldergrid.style.gridTemplateColumns = "1fr";
+    selectedFolder="";
     if (file.includes('.') != true) {
+        var hasChild = foldergrid.querySelector("#filegridpathed") != null;
+        if (hasChild)
+            foldergrid.removeChild(document.getElementById('filegridpathed'));
         foldergrid.style.gridTemplateColumns = foldergrid.style.gridTemplateColumns.replace('2fr', '1fr') + " 2fr";
+        let newfilegrid = document.createElement('div');
+        newfilegrid.className = "filesgrid";
+        newfilegrid.id = "filegridpathed";
+        foldergrid.appendChild(newfilegrid);
+        selectedFolder=file;
+        MakeRequest('/storage/GetAllFilesInCloudStorage?p=' + file).then(response => {
+            let json = JSON.parse(response);
+            for (let i = 0; i < json.length; i++) {
+                let box = document.createElement('button');
+                box.className = "kbutton";
+                box.style = "height: 50px; width: 100%; font-size: 15px; margin-bottom: 3px; color: #ffffff; font-size: 1vw;  text-transform: none;";
+                if (json[i].filename.endsWith(".txt")) {
+                    box.style.border = "2px solid yellow";
+                }
+                if (json[i].filename.includes('.') != true) {
+                    box.style.border = "2px solid aqua";
+                }
+                box.id = json[i].filepath;
+                box.setAttribute("filename", json[i].filename);
+                box.innerHTML = json[i].filename;
+                box.setAttribute("onclick", "OpenCloudFile(this.id, this.getAttribute('filename'))");
+                newfilegrid.appendChild(box);
+            }
+        })
     }
     else {
         MakeRequest('/storage/GetFileInfo?p=' + file).then(response3 => {
@@ -198,8 +243,8 @@ function NewFolder() {
             closeModal: false,
         },
     }).then(result => {
-        MakeRequest('/storage/CreateNewCloudFolder?name='+result).then(response => {
-            if(response=="OK"){
+        MakeRequest('/storage/CreateNewCloudFolder?name=' + result).then(response => {
+            if (response == "OK") {
                 let grid = document.getElementById("files");
                 while (grid.firstChild) {
                     grid.removeChild(grid.firstChild);
@@ -207,7 +252,7 @@ function NewFolder() {
                 swal("Created!");
                 LoadAllCloudFiles();
             }
-            if(response.includes("ERROR")){
+            if (response.includes("ERROR")) {
                 swal(response);
             }
         })
@@ -216,7 +261,7 @@ function NewFolder() {
 function ClearFolder(path) {
     swal({
         text: 'Delete and clear all contents of folder?',
-        buttons:{
+        buttons: {
             cancel: "No.",
             button: {
                 text: "Yes.",
@@ -225,9 +270,9 @@ function ClearFolder(path) {
             },
         }
     }).then(result => {
-        if(result=="YES"){
-            MakeRequest('/storage/ClearCloudFolder?path='+path).then(response => {
-                if(response=="OK"){
+        if (result == "YES") {
+            MakeRequest('/storage/ClearCloudFolder?path=' + path).then(response => {
+                if (response == "OK") {
                     swal("Deleted.");
                     let grid = document.getElementById("files");
                     while (grid.firstChild) {
@@ -235,7 +280,7 @@ function ClearFolder(path) {
                     }
                     LoadAllCloudFiles();
                 }
-                if(response.includes("ERROR")){
+                if (response.includes("ERROR")) {
                     swal(response);
                     let grid = document.getElementById("files");
                     while (grid.firstChild) {

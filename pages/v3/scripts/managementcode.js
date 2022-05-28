@@ -232,7 +232,24 @@ function SendToSpeaker(speaker, textToUpdate) {
             ele.innerHTML = "Sent.";
         }
         setTimeout(function () {
-            ele.innerHTML = eleprev;
+            ele.innerHTML = "Send";
+        }, 1000);
+    });
+}
+function SendToKlives(speaker, textToUpdate){
+    let ele = document.getElementById(textToUpdate);
+    let eleprev = ele.innerHTML;
+    let ele2 = document.getElementById(speaker).value;
+    ele.innerHTML = "Sending...";
+    MakeRequest("/v1/SendMessageToKlive?message=" + ele2).then(response => {
+        if (response == "DISABLED") {
+            ele.innerHTML = "Messaging Is Disabled.";
+        }
+        else {
+            ele.innerHTML = "Sent.";
+        }
+        setTimeout(function () {
+            ele.innerHTML = "Send";
         }, 1000);
     });
 }

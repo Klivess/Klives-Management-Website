@@ -113,11 +113,22 @@
 
 <body style="visibility: hidden;">
     <div style="padding-top: 40px; padding-left: 13%; padding-right: 2%; display: block;">
-        <div class="infobox" style="height: 40vw">
+        <div class="infobox" style="height: 15vw">
             <input class="kinput" type="text" id="speakertext" style="width: 99%;" placeholder="What to send to speakers.">
             <div class="kbuttonContainer" onclick="SendToSpeaker('speakertext', 'Send')" >
                 <div class="kbutton">
                     <a id="Send">
+                        Send
+                        <img src="images/power.png" class="navicon" alt="">
+                    </a>
+                </div>
+            </div>
+        </div>
+        <div class="infobox" style="height: 15vw">
+            <input class="kinput" type="text" id="messagetext" style="width: 99%;" placeholder="What to send to Klives.">
+            <div class="kbuttonContainer" onclick="SendToKlives('messagetext', 'Sendmessage')" >
+                <div class="kbutton">
+                    <a id="Sendmessage">
                         Send
                         <img src="images/power.png" class="navicon" alt="">
                     </a>

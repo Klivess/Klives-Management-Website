@@ -49,8 +49,7 @@ function OnSocialsLoad() {
                 postsmadealltime.innerHTML = "Couldn't get posts made all time.";
             };
             MakeRequest("/tumblr/TumblrTotalFollowersAverageDifference").then(response3 => {
-                //tumblrtotalFollowersAverageDifference.innerHTML = response3 + " average total follower gain.";
-                tumblrtotalFollowersAverageDifference.innerHTML = "Couldn't get average total follower gain.";
+                tumblrtotalFollowersAverageDifference.innerHTML = response3 + " average total follower gain.";
             }), (error) => {
                 tumblrtotalFollowersAverageDifference.innerHTML = "Couldn't get average total follower gain.";
             };

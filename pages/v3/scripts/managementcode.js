@@ -236,6 +236,18 @@ function SendToSpeaker(speaker, textToUpdate) {
         }, 1000);
     });
 }
+
+function IsKliveAdmin(){    
+    MakeRequest('/v1/IsKliveAdmin?password='+getCookie('password')).then(response =>{
+        if(response=="PASS"){
+            return true;
+        }
+        else{
+            return false;
+        }
+    })
+}
+
 function SendToKlives(speaker, textToUpdate){
     let ele = document.getElementById(textToUpdate);
     let eleprev = ele.innerHTML;

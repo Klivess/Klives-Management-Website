@@ -7,7 +7,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="styles/main.css">
     <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js" integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"
+        integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
     <script src="scripts/managementcode.js"></script>
     <script src="scripts/tumblrsocials.js"></script>
     <script src="../../scripts/saved.js"></script>
@@ -18,12 +19,12 @@
 <script>
     SetPerformance();
     document.onload = GetTumblrManagementData();
-    function removeTumblrAccount(name){
+    function removeTumblrAccount(name) {
         MakeRequest("/tumblr/RemoveTumblrAccount?name=" + name).then(response => {
-            if(response=="OK"){
+            if (response == "OK") {
                 window.location.replace("tumblrsocial.html");
             }
-            else{
+            else {
                 alert("Error: " + response);
             }
         });
@@ -125,7 +126,8 @@
 
 <body style="visibility: hidden;">
     <div style="padding-top: 40px; padding-left: 13%; padding-right: 2%; display: block;">
-        <button class="kbutton" style="position: absolute; width: 200px; font-size: 20px; right: 50px;" onclick="window.location.replace('tumblrsocial.html')">
+        <button class="kbutton" style="position: absolute; width: 200px; font-size: 20px; right: 50px;"
+            onclick="window.location.replace('tumblrsocial.html')">
             <a>Go Back</a>
         </button>
         <div class="infobox" style="height: 500px;">
@@ -135,11 +137,14 @@
                     <span id="playername">Name: Loading...</span><br>
                     <span id="playerdatadirectory">Data Directory: Loading...</span><br>
                     <span id="playernextpost">Next Post Time: Loading...</span><br>
-                    <span id="playerimagelikelihood">AI Image Post Likelihood: Loading%... | AI Text Post Likelihood: Loading%...</span><br>
+                    <span id="playerimagelikelihood">AI Image Post Likelihood: Loading%... | AI Text Post Likelihood:
+                        Loading%...</span><br>
                     <span id="playerbotmadeposts">Amount of Bot Made Posts: Loading...</span><br>
                     <span id="playerregistrationdate">Klives Management Registration Date: Loading...</span><br>
                     <span id="playerfollowers">Followers: Loading...</span><br>
-                    <span id="playeramountofimages">Amount Of Images: Loading...</span>
+                    <span id="playeramountofimages">Amount Of Images: Loading...</span><br>
+                    <span id="playeremail:">Email: ******</span><br>
+                    <span id="playeramountofimages">Password: ******</span>
                 </div>
                 <div style="display: grid; grid-template-rows: 1fr 1fr;">
                     <div style="height: 220px; width: 100%;">
@@ -151,17 +156,22 @@
         <div class="infobox" style="height: 350px;">
             <h1 style="margin-top: 530px;">Tumblr Bot Functions</h1>
             <div style="display: grid; grid-template-rows: auto; grid-template-columns: 1fr 1fr 1fr; padding: 40px;">
-                <button class="kbutton" id="removeTumblrAccount" onclick="RemoveTumblrAccount(this.getAttribute('name'), 'tumblrmanagement')" style="width: 400px; height: 100px; font-size: larger; color: darkred; border: 3px solid darkred;"><a style="color: darkred;">Remove Tumblr Bot</a></button>
+                <button class="kbutton" id="removeTumblrAccount"
+                    onclick="RemoveTumblrAccount(this.getAttribute('name'), 'tumblrmanagement')"
+                    style="width: 400px; height: 100px; font-size: larger; color: darkred; border: 3px solid darkred;"><a
+                        style="color: darkred;">Remove Tumblr Bot</a></button>
             </div>
         </div>
         <div class="infobox" style="height: 800px; display: none;">
             <h1 style="margin-top: 710px;">Construct Post</h1>
             <div style="padding: 40px;">
-                <input type="checkbox" class="toggle" onchange="FlipPhotoAndImage()"><span style="font-size: 40px;" id="imageorphoto">Text Post</span>
+                <input type="checkbox" class="toggle" onchange="FlipPhotoAndImage()"><span style="font-size: 40px;"
+                    id="imageorphoto">Text Post</span>
             </div>
             <div>
             </div>
         </div>
     </div>
 </body>
+
 </html>

@@ -72,25 +72,32 @@ function LoadBehaviourSettings() {
     }, 3);
 }
 function UpdateBehaviourSettings() {
-    let minhourspost = document.getElementById('minhoursbeforepost');
-    let maxhourspost = document.getElementById('maxhoursbeforepost');
-    let minhoursrepost = document.getElementById('minreposts');
-    let minhashtags = document.getElementById('minhashtags');
-    let maxhashtags = document.getElementById('maxhashtags');
-    let messageklivescheckbox = document.getElementById('messageklives');
-    MakeRequest("/tumblr/GetTumblrBehaviorSettings").then(response => {
-        console.log(response);
-        let json = JSON.parse(response);
-        minhourspost.setAttribute("value", json.MinHoursAfterPost);
-        json.MinHoursAfterPost = minhourspost.value;
-        json.MinHoursBetweenReposts = minhoursrepost.value;
-        json.AmountOfHashtagsMin = minhashtags.value;
-        json.AmountOfHashtagsMax = maxhashtags.value;
-        json.MessageKlivesOnAction = messageklivescheckbox.checked;
-        MakeRequest("/tumblr/SetTumblrBehaviorSettings?json=" + JSON.stringify(json)).then(response2 => {
-            console.log("Updated Settings");
+    try {
+        let minhourspost = document.getElementById('minhoursbeforepost');
+        let maxhourspost = document.getElementById('maxhoursbeforepost');
+        let minhoursrepost = document.getElementById('minreposts');
+        let minhashtags = document.getElementById('minhashtags');
+        let maxhashtags = document.getElementById('maxhashtags');
+        let messageklivescheckbox = document.getElementById('messageklives');
+        MakeRequest("/tumblr/GetTumblrBehaviorSettings").then(response => {
+            console.log(response);
+            let json = JSON.parse(response);
+            minhourspost.setAttribute("value", json.MinHoursAfterPost);
+            json.MinHoursAfterPost = minhourspost.value;
+            json.MinHoursBetweenReposts = minhoursrepost.value;
+            json.MaxHoursAfterPost = maxhourspost.value;
+            json.AmountOfHashtagsMin = minhashtags.value;
+            json.AmountOfHashtagsMax = maxhashtags.value;
+            json.MessageKlivesOnAction = messageklivescheckbox.checked;
+            MakeRequest("/tumblr/SetTumblrBehaviorSettings?json=" + JSON.stringify(json)).then(response2 => {
+                console.log("Updated Settings");
+            });
         });
-    });
+    }
+    catch (err) {
+        swal("Error!", err);
+        console.log(err);
+    }
 }
 
 function LoadTumblrReachChart(canvas, allaccountsJson) {

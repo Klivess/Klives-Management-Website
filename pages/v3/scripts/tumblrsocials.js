@@ -14,6 +14,7 @@ function OnSocialsLoad() {
         let postsMadeInLastHour = document.getElementById("tumblrpostsMadeInLastHour");
         let postsmadealltime = document.getElementById("tumblrpostsAllTime");
         let totalFollowers = document.getElementById("tumblrtotalFollowers");
+        let tumblrtotalFollowersAverageDifference = document.getElementById("tumblrtotalFollowersAverageDifference");
         MakeRequest("/tumblr/GetAllTumblrAccountInformation").then(response => {
             let json = JSON.parse(response);
             LoadTumblrReachChart('tumblrFollowerChart', json);
@@ -46,6 +47,12 @@ function OnSocialsLoad() {
                 postsmadealltime.innerHTML = json2.length + " posts made all time.";
             }), (error) => {
                 postsmadealltime.innerHTML = "Couldn't get posts made all time.";
+            };
+            MakeRequest("/tumblr/TumblrTotalFollowersAverageDifference").then(response3 => {
+                //tumblrtotalFollowersAverageDifference.innerHTML = response3 + " average total follower gain.";
+                tumblrtotalFollowersAverageDifference.innerHTML = "Couldn't get average total follower gain.";
+            }), (error) => {
+                tumblrtotalFollowersAverageDifference.innerHTML = "Couldn't get average total follower gain.";
             };
         });
         LoadTumblrTotalFollowerChart('tumblrTotalFollowerChart');

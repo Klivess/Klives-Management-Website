@@ -1,7 +1,7 @@
 let uploadingFile = false;
 let selectedpreviousborder = "";
 let selected = "";
-let selectedFolder="";
+let selectedFolder = "";
 
 function GetStorageData() {
     MakeRequest("/storage/GetStorageMetrics").then(response => {
@@ -76,12 +76,12 @@ function UploadFile(uploadbuttonid) {
     let buttontext = document.getElementById(uploadbuttonid);
     file.click();
     let flavour = "KliveCloud";
-    if(selectedFolder!="")
-        flavour=selectedFolder;
+    if (selectedFolder != "")
+        flavour = selectedFolder;
     file.onchange = function () {
         uploadingFile = true;
         swal("Confirmation", {
-            text: "You are uploading "+file.files.length+" files to folder '"+flavour+"'",
+            text: "You are uploading " + file.files.length + " files to folder '" + flavour + "'",
             buttons: {
                 cancel: "No.",
                 gopost: {
@@ -94,7 +94,7 @@ function UploadFile(uploadbuttonid) {
                 for (let i = 0; i < file.files.length; i++) {
                     let formData = new FormData;
                     formData.append("files", file.files[i]);
-                    var url = api + "/storage/UploadFileToCloudStorage?p="+selectedFolder;
+                    var url = api + "/storage/UploadFileToCloudStorage?p=" + selectedFolder;
                     var xhr = new XMLHttpRequest();
                     //xhr upload 
                     xhr.open("POST", url, true);
@@ -129,7 +129,7 @@ function UploadFile(uploadbuttonid) {
 function OpenCloudFile(file, filename) {
     let foldergrid = document.getElementById('foldergrid');
     foldergrid.style.gridTemplateColumns = "1fr";
-    selectedFolder="";
+    selectedFolder = "";
     if (file.includes('.') != true) {
         var hasChild = foldergrid.querySelector("#filegridpathed") != null;
         if (hasChild)
@@ -139,7 +139,7 @@ function OpenCloudFile(file, filename) {
         newfilegrid.className = "filesgrid";
         newfilegrid.id = "filegridpathed";
         foldergrid.appendChild(newfilegrid);
-        selectedFolder=file;
+        selectedFolder = file;
         MakeRequest('/storage/GetAllFilesInCloudStorage?p=' + file).then(response => {
             let json = JSON.parse(response);
             for (let i = 0; i < json.length; i++) {
@@ -291,6 +291,48 @@ function ClearFolder(path) {
             })
         }
     })
+}
+
+function DownloadScreenshot(filename) {
+    //make post request 
+    var url = api + "/storage/DownloadScreenshot";
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", url, true);
+    xhr.responseType = 'blob';
+    xhr.onload = function (res) {
+        if (this.status === 200) {
+            var type = xhr.getResponseHeader('Content-Type');
+            var blob = new Blob([this.response], { type: type });
+            if (typeof window.navigator.msSaveBlob !== 'undefined') {
+                /*
+                 * For IE
+                 * >=IE10
+                 */
+                window.navigator.msSaveBlob(blob, filename);
+            } else {
+                /*
+                 * For Non-IE (chrome, firefox)
+                 */
+                var URL = window.URL || window.webkitURL;
+                var objectUrl = URL.createObjectURL(blob);
+                if (filename) {
+                    var a = document.createElement('a');
+                    if (typeof a.download === 'undefined') {
+                        window.location = objectUrl;
+                    } else {
+                        a.href = objectUrl;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                    }
+                } else {
+                    window.location = objectUrl;
+                }
+            }
+        }
+    }
+    xhr.send();
 }
 
 function DownloadFile(file, filename) {

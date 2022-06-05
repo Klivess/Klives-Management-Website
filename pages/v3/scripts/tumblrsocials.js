@@ -537,6 +537,8 @@ function GetTumblrManagementData() {
         document.getElementById('playerfollowers').innerHTML = "Followers: " + json.Followers;
         document.getElementById('playeramountofimages').innerHTML = "Amount Of Images: " + json.AmountOfImages;
         document.getElementById('removeTumblrAccount').setAttribute("name", name);
+        document.getElementById('playeremail').innerHTML = "Email: " + json.account.email;
+        document.getElementById('playerpassword').innerHTML = "Password: " + json.account.password;
         LoadTumblrFollowerChart('followergraph', response);
     });
 }

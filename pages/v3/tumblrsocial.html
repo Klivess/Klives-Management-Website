@@ -124,7 +124,7 @@
             style="display: grid; grid-template-columns: 1fr 1fr; background-color: #011b33; border: 7px solid #141414; height: 800px;">
             <h1>Tumblr Accounts</h1>
             <div style="display: grid;">
-                <div class="verticalgrid" style="overflow-y: scroll; height: 700px; background-color: #000814;" id="allAccounts">
+                <div class="verticalgrid" style="border-radius: 25px; overflow-y: scroll; height: 700px; background-color: #000814;" id="allAccounts">
                 </div>
                 <button class="kbutton" style="height: 100px; border: 2px solid rgb(0, 77, 0);" onclick="window.location.replace('makenewtumblr.html')">
                     <a style="color: rgb(2, 255, 2);">+</a>
@@ -134,28 +134,22 @@
                 style="display: grid; background-color: #000814; padding: 20px; margin: 10px;
             border-radius: 25px; grid-gap: 10px; grid-template-rows: 1fr 1fr; overflow-y: scroll; z-index: 0; grid-template-columns: 1fr;"
                 id="accountBox">
-                <div style="display: inline-grid; grid-template-rows: 1fr 3fr;">
-                    <div style="display: inline-grid; grid-template-columns: 1fr 1fr 1fr 1fr;">
-                        <div>
-                            <span id="accountName">Name: Loading...</span>
-                            <span id="accountFollowers">Followers: Loading...</span>
-                        </div>
-                        <div>
-                            <span id="accountNextPost">Next Post: Loading...</span>
-                        </div>
-                        <div>
-                            <span id="accountLink">Account Blogs Link: Loading...</span>
+                <div style="display: inline-grid; grid-template-rows: 1fr 2fr 1fr; height: 660px;">
+                    <div style="display: inline-grid; height: 100px; justify-content: center;">
+                        <span id="accountName">Name: Loading...</span>
+                        <span id="accountFollowers">Followers: Loading...</span>
+                        <span id="accountNextPost">Next Post: Loading...</span>
+                        <a id="accountLink" style="font-size: 1vw; width: 200px;" class="kbutton">Loading..</a>
+                    </div>
+                    <div style="display: flex; justify-content: center;">
+                        <div style="height: 400px; width: 500px;">
+                            <canvas id="accountFollowerGraph"></canvas>
                         </div>
                     </div>
-                    <div style="height: 400px; width: 690px;">
-                        <canvas id="accountFollowerGraph">
-
-                        </canvas>
-                    </div>
+                    <button class="kbutton" style="height: 230px;" onclick="ManageAccount()" id="accountManageButton">
+                        Manage Account
+                    </button>
                 </div>
-                <button class="kbutton" onclick="ManageAccount()" id="accountManageButton">
-                    <a>Manage Account</a>
-                </button>
             </div>
         </div>
         <div class="infobox" style="height: 800px; grid-template-columns: 1fr 1fr;">

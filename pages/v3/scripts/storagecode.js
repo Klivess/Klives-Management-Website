@@ -36,7 +36,6 @@ function GetStorageData() {
                 Array.from(storbox.children).forEach((child, index) => {
                     totalheight += parseInt(child.clientHeight) + 10;
                 });
-                console.log(totalheight);
                 storbox.style.height = totalheight + "px";
             }
         }
@@ -46,6 +45,11 @@ function GetStorageData() {
 
 function LoadAllCloudFiles() {
     //Loading cloud storage
+    try{
+        let foldergrid = document.getElementById('foldergrid');
+        foldergrid.style.gridTemplateColumns = "1fr";
+        foldergrid.removeChild(document.getElementById('filegridpathed'));
+    } catch(err){console.log(err);}
     MakeRequest("/storage/GetAllFilesInCloudStorage").then(response => {
         let cloudboxx = document.getElementById('files');
         let json = JSON.parse(response);
@@ -57,9 +61,10 @@ function LoadAllCloudFiles() {
             if (json[i].filename.endsWith(".txt")) {
                 box.style.border = "2px solid yellow";
             }
-            if (json[i].filename.includes('.') != true) {
+            if (json[i].isDirectory == true) {
                 box.style.border = "2px solid aqua";
             }
+            box.setAttribute("isdirectory", json[i].isDirectory)
             box.id = json[i].filepath;
             box.setAttribute("filename", json[i].filename);
             box.innerHTML = json[i].filename;
@@ -129,63 +134,100 @@ function UploadFile(uploadbuttonid) {
 function OpenCloudFile(file, filename) {
     let foldergrid = document.getElementById('foldergrid');
     foldergrid.style.gridTemplateColumns = "1fr";
+    let clickedbox = document.getElementById(file);
     selectedFolder = "";
-    if (file.includes('.') != true) {
-        var hasChild = foldergrid.querySelector("#filegridpathed") != null;
-        if (hasChild)
-            foldergrid.removeChild(document.getElementById('filegridpathed'));
-        foldergrid.style.gridTemplateColumns = foldergrid.style.gridTemplateColumns.replace('2fr', '1fr') + " 2fr";
-        let newfilegrid = document.createElement('div');
-        newfilegrid.className = "filesgrid";
-        newfilegrid.id = "filegridpathed";
-        foldergrid.appendChild(newfilegrid);
-        selectedFolder = file;
-        MakeRequest('/storage/GetAllFilesInCloudStorage?p=' + file).then(response => {
-            let json = JSON.parse(response);
-            for (let i = 0; i < json.length; i++) {
-                let box = document.createElement('button');
-                box.className = "kbutton";
-                box.style = "height: 50px; width: 100%; font-size: 15px; margin-bottom: 3px; color: #ffffff; font-size: 1vw;  text-transform: none;";
-                if (json[i].filename.endsWith(".txt")) {
-                    box.style.border = "2px solid yellow";
+    try{
+        foldergrid.removeChild(document.getElementById('filegridpathed'));
+    } 
+    catch(err){
+        if (clickedbox.getAttribute('isdirectory') == "true") {
+            foldergrid.style.gridTemplateColumns = foldergrid.style.gridTemplateColumns.replace('2fr', '1fr') + " 2fr";
+            let newfilegrid = document.createElement('div');
+            newfilegrid.className="filesgrid";
+            newfilegrid.style="display: grid; grid-template-rows: 5fr 1fr;"
+            newfilegrid.id = "filegridpathed";
+            foldergrid.appendChild(newfilegrid);
+            let actualfilegrid = document.createElement('div');
+            actualfilegrid.className = "filesgrid";
+            actualfilegrid.id = "filegridpathed";
+            newfilegrid.appendChild(actualfilegrid);
+            let deletefolder = document.createElement("button");
+            deletefolder.className="kbutton";
+            deletefolder.name=file;
+            deletefolder.style="border: 2px solid red; color: red;"
+            deletefolder.innerHTML="Delete Folder: "+filename;
+            deletefolder.setAttribute("onclick", "ClearFolder(this.getAttribute('name'))");
+            newfilegrid.appendChild(deletefolder);
+            selectedFolder = file;
+            MakeRequest('/storage/GetAllFilesInCloudStorage?p=' + file).then(response => {
+                let json = JSON.parse(response);
+                for (let i = 0; i < json.length; i++) {
+                    let box = document.createElement('button');
+                    box.className = "kbutton";
+                    box.style = "height: 50px; width: 100%; font-size: 15px; margin-bottom: 3px; color: #ffffff; font-size: 1vw;  text-transform: none;";
+                    if (json[i].filename.endsWith(".txt")) {
+                        box.style.border = "2px solid yellow";
+                    }
+                    if (json[i].filename.includes('.') != true) {
+                        box.style.border = "2px solid aqua";
+                    }
+                    box.id = json[i].filepath;
+                    box.setAttribute("filename", json[i].filename);
+                    box.innerHTML = json[i].filename;
+                    box.setAttribute("onclick", "OpenCloudFile(this.id, this.getAttribute('filename'))");
+                    actualfilegrid.appendChild(box);
                 }
-                if (json[i].filename.includes('.') != true) {
-                    box.style.border = "2px solid aqua";
+            })
+        }
+        else {
+            MakeRequest('/storage/GetFileInfo?p=' + file).then(response3 => {
+                let json = JSON.parse(response3);
+                let contenttext = "File Name: " + filename + "\nFilepath: " + filename + "\n\n";
+                //If Kilobyte
+                if (json.FilesizeB > 1024 && json.FilesizeKB < 1024) {
+                    contenttext += "Filesize: " + Math.round(json.FilesizeKB) + "KB";
                 }
-                box.id = json[i].filepath;
-                box.setAttribute("filename", json[i].filename);
-                box.innerHTML = json[i].filename;
-                box.setAttribute("onclick", "OpenCloudFile(this.id, this.getAttribute('filename'))");
-                newfilegrid.appendChild(box);
-            }
-        })
-    }
-    else {
-        MakeRequest('/storage/GetFileInfo?p=' + file).then(response3 => {
-            let json = JSON.parse(response3);
-            let contenttext = "File Name: " + filename + "\nFilepath: " + filename + "\n\n";
-            //If Kilobyte
-            if (json.FilesizeB > 1024 && json.FilesizeKB < 1024) {
-                contenttext += "Filesize: " + Math.round(json.FilesizeKB) + "KB";
-            }
-            //If Megabyte
-            else if (json.FilesizeKB >= 1024 && json.FilesizeMB < 1024) {
-                contenttext += "Filesize: " + Math.round(json.FilesizeMB) + "MB";
-            }
-            //If Gigabyte
-            else if (json.FilesizeMB >= 1024) {
-                contenttext += "Filesize: " + Math.round(json.FilesizeGB) + "GB";
-            }
-            //If Bytes
-            else {
-                contenttext += "Filesize: " + Math.round(json.FilesizeB) + "B";
-            }
-            let uploaded = new Date(json.ModifiedDate);
-            let created = new Date(json.CreationDate);
-            contenttext += "\nUploaded: " + uploaded.toLocaleString() + "\nFile Created: " + created.toLocaleString();
-            if (filename.endsWith(".txt")) {
-                MakeRequest("/storage/ReadFile?p=" + file).then(response => {
-                    contenttext = contenttext + "\n\nContent:\n" + response;
+                //If Megabyte
+                else if (json.FilesizeKB >= 1024 && json.FilesizeMB < 1024) {
+                    contenttext += "Filesize: " + Math.round(json.FilesizeMB) + "MB";
+                }
+                //If Gigabyte
+                else if (json.FilesizeMB >= 1024) {
+                    contenttext += "Filesize: " + Math.round(json.FilesizeGB) + "GB";
+                }
+                //If Bytes
+                else {
+                    contenttext += "Filesize: " + Math.round(json.FilesizeB) + "B";
+                }
+                let uploaded = new Date(json.ModifiedDate);
+                let created = new Date(json.CreationDate);
+                contenttext += "\nUploaded: " + uploaded.toLocaleString() + "\nFile Created: " + created.toLocaleString();
+                if (filename.endsWith(".txt")) {
+                    MakeRequest("/storage/ReadFile?p=" + file).then(response => {
+                        contenttext = contenttext + "\n\nContent:\n" + response;
+                        swal(contenttext, {
+                            buttons: {
+                                cancel: "OK",
+                                gopost: {
+                                    text: "Download File",
+                                    value: "download",
+                                },
+                                delpost: {
+                                    text: "Delete File",
+                                    value: "delete",
+                                }
+                            },
+                        }).then((value) => {
+                            if (value == "download") {
+                                DownloadFile(file, filename);
+                            }
+                            else if (value == "delete") {
+                                DeleteFile(file);
+                            }
+                        })
+                    });
+                }
+                else {
                     swal(contenttext, {
                         buttons: {
                             cancel: "OK",
@@ -205,32 +247,10 @@ function OpenCloudFile(file, filename) {
                         else if (value == "delete") {
                             DeleteFile(file);
                         }
-                    })
-                });
-            }
-            else {
-                swal(contenttext, {
-                    buttons: {
-                        cancel: "OK",
-                        gopost: {
-                            text: "Download File",
-                            value: "download",
-                        },
-                        delpost: {
-                            text: "Delete File",
-                            value: "delete",
-                        }
-                    },
-                }).then((value) => {
-                    if (value == "download") {
-                        DownloadFile(file, filename);
-                    }
-                    else if (value == "delete") {
-                        DeleteFile(file);
-                    }
-                });
-            }
-        });
+                    });
+                }
+            });
+        }
     }
 }
 
@@ -239,7 +259,7 @@ function NewFolder() {
         text: 'Folder Name',
         content: "input",
         button: {
-            text: "Search!",
+            text: "Create!",
             closeModal: false,
         },
     }).then(result => {
@@ -266,14 +286,12 @@ function ClearFolder(path) {
             button: {
                 text: "Yes.",
                 value: "YES",
-                closeModal: false,
             },
         }
     }).then(result => {
         if (result == "YES") {
             MakeRequest('/storage/ClearCloudFolder?path=' + path).then(response => {
                 if (response == "OK") {
-                    swal("Deleted.");
                     let grid = document.getElementById("files");
                     while (grid.firstChild) {
                         grid.removeChild(grid.firstChild);
@@ -337,6 +355,9 @@ function DownloadScreenshot(filename) {
 
 function DownloadFile(file, filename) {
     //make post request 
+    if(window.location.href.endsWith("storage.html")){
+        document.getElementById(file).innerHTML="Downloading..."
+    }
     let formData = new FormData;
     formData.append("filename", file);
     var url = api + "/storage/DownloadFile";
@@ -374,6 +395,9 @@ function DownloadFile(file, filename) {
                     window.location = objectUrl;
                 }
             }
+        }
+        if(window.location.href.endsWith("storage.html")){
+            document.getElementById(file).innerHTML=filename;
         }
     }
     xhr.send(formData);

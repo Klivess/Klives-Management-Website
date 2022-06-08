@@ -232,7 +232,7 @@ function SendToSpeaker(speaker, textToUpdate) {
             ele.innerHTML = "Sent.";
         }
         setTimeout(function () {
-            ele.innerHTML = "Send";
+            ele.innerHTML = "Send To Speaker";
         }, 1000);
     });
 }
@@ -261,7 +261,7 @@ function SendToKlives(speaker, textToUpdate){
             ele.innerHTML = "Sent.";
         }
         setTimeout(function () {
-            ele.innerHTML = "Send";
+            ele.innerHTML = "Send To Klives";
         }, 1000);
     });
 }

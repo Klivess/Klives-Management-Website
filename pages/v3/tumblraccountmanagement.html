@@ -147,7 +147,7 @@
                     <span id="playerpassword">Password: ******</span>
                 </div>
                 <div style="display: grid; grid-template-rows: 1fr 1fr;">
-                    <div style="height: 220px; width: 100%;">
+                    <div style="height: 25vw; width: 100%;">
                         <canvas id="followergraph"></canvas>
                     </div>
                 </div>
@@ -155,11 +155,12 @@
         </div>
         <div class="infobox" style="height: 350px;">
             <h1 style="margin-top: 530px;">Tumblr Bot Functions</h1>
-            <div style="display: grid; grid-template-rows: auto; grid-template-columns: 1fr 1fr 1fr; padding: 40px;">
+            <div style="display: grid; grid-template-rows: 1fr 1fr 1fr; gap: 100px; grid-template-columns: 1fr 1fr 1fr; padding: 40px;">
                 <button class="kbutton" id="removeTumblrAccount"
                     onclick="RemoveTumblrAccount(this.getAttribute('name'), 'tumblrmanagement')"
-                    style="width: 400px; height: 100px; font-size: larger; color: darkred; border: 3px solid darkred;"><a
+                    style="font-size: 30px; color: darkred; border: 3px solid darkred;"><a
                         style="color: darkred;">Remove Tumblr Bot</a></button>
+                <button onclick="DownloadTumblrAccountImagePack('downloadpack')" id="downloadpack" class="kbutton" style="font-size: 30px; color: green; border: 3px solid green;">Download Image Pack</button>
             </div>
         </div>
         <div class="infobox" style="height: 800px; display: none;">

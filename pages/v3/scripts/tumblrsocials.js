@@ -1,4 +1,5 @@
 let accountBeingMade = false;
+let currentAccountID="";
 
 function LoadTumblrSocialPage() {
     LoadData('contenttext', 'caption');
@@ -342,17 +343,18 @@ function LoadAccount(name) {
     let button = document.getElementById("accountManageButton");
     accountName.innerHTML = "Name: " + "Downloading data...";
     accountFollowers.innerHTML = "Followers: Downloading data...";
-    accountLink.innerHTML = "Account Blogs Link: Downloading data...";
+    accountLink.innerHTML = "Downloading data...";
     accountNextPost.innerHTML = "Next Post: Downloading data...";
     button.innerHTML = "<a>Downloading data for" + name + "</a>";
     if (document.getElementsByName(name)[0].getAttribute("isvalid") == "true") {
         let json = JSON.parse(document.getElementsByName(name)[0].getAttribute("data"));
         accountName.innerHTML = "Name: " + json.account.playerName;
         accountFollowers.innerHTML = "Followers: " + json.Followers;
-        accountLink.innerHTML = "Account Blogs Link: " + "<a target='_blank' rel='noopener' href='" + json.BlogLinks[0] + "'>" + json.BlogLinks[0] + "</a>";
+        accountLink.href = json.BlogLinks[0];
+        accountLink.innerHTML = "Go to Tumblr Page"
         var d = new Date(json.account.TimeUntilNextPost);
         accountNextPost.innerHTML = "Next Post: " + d.toLocaleString();
-        button.innerHTML = "<a>Manage " + name + "</a>";
+        button.innerHTML = "Manage " + name;
         button.setAttribute("onclick", "GoToAccountManagementPage('" + name + "')");
         LoadTumblrFollowerChart('accountFollowerGraph', document.getElementsByName(name)[0].getAttribute("data"));
     }
@@ -361,8 +363,8 @@ function LoadAccount(name) {
         accountName.innerHTML = "This is an invalid account, please make sure you have the correct key and secret.";
         accountImages.innerHTML = "";
         accountBlogMessages.innerHTML = "";
-        button.innerHTML = "<a style='color: rgb(200, 0, 0);'>Delete " + name + "</a>";
-        button.style = "border: 2px solid rgb(200, 0, 0);'>";
+        button.innerHTML = "Delete " + name;
+        button.style = "border: 2px solid rgb(200, 0, 0); color: rgb(200, 0, 0);'>";
         button.setAttribute("onclick", "RemoveTumblrAccount('" + name + "')");
     }
 }
@@ -372,26 +374,36 @@ function GoToAccountManagementPage(name) {
 }
 
 function RemoveTumblrAccount(name, page) {
-    if (confirm("Are you sure you want to delete this account?") == true) {
-        try {
-            MakeRequest("/tumblr/RemoveTumblrAccount?name=" + name).then(response => {
-                if (response != "OK") {
-                    alert("An error occurred while trying to remove the account.");
-                }
-                else {
-                    if (page == undefined) {
-                        LoadAllAccounts();
+    swal("Are you sure you want to delete this tumblr account?", {
+        buttons: {
+            cancel: "No, what am I doing!!",
+            gopost: {
+                text: "Delete Account",
+                value: "delete",
+            },
+        },
+    }).then((value) => {
+        if (value == "delete") {
+            try {
+                MakeRequest("/tumblr/RemoveTumblrAccount?name=" + name).then(response => {
+                    if (response != "OK") {
+                        alert("An error occurred while trying to remove the account.");
                     }
-                    else if (page == "tumblrmanagement") {
-                        window.location.replace("tumblrsocial.html");
+                    else {
+                        if (page == undefined) {
+                            LoadAllAccounts();
+                        }
+                        else if (page == "tumblrmanagement") {
+                            window.location.replace("tumblrsocial.html");
+                        }
                     }
-                }
-            })
+                })
+            }
+            catch (err) {
+                alert(err.message);
+            }
         }
-        catch (err) {
-            alert(err.message);
-        }
-    }
+    });
 }
 
 function LoadPostLog() {
@@ -439,8 +451,10 @@ function LoadPostLogDetails(details) {
         switch (value) {
             case "gotopost":
                 window.location.href = "https://" + item.PostURL;
+                break;
             case "delpost":
                 DeleteTumblrPost(details);
+                break;
         }
     })
 }
@@ -539,6 +553,7 @@ function GetTumblrManagementData() {
         document.getElementById('removeTumblrAccount').setAttribute("name", name);
         document.getElementById('playeremail').innerHTML = "Email: " + json.account.email;
         document.getElementById('playerpassword').innerHTML = "Password: " + json.account.password;
+        currentAccountID=json.account.playerID;
         LoadTumblrFollowerChart('followergraph', response);
     });
 }
@@ -552,4 +567,58 @@ function FlipPhotoAndImage() {
     else {
         item.innerHTML = "Text Post";
     }
+}
+
+function DownloadTumblrAccountImagePack(buttonID, accountid) {
+    if(accountid==""||accountid=="undefined"){
+        accountid=currentAccountID;
+    }
+    if(buttonID!="undefined"&&buttonID!=""){
+        document.getElementById(buttonID).innerHTML="Downloading... This could take a while."
+    }
+    let filename=accountid+"imagePack.zip"
+    //make post request 
+    let formData = new FormData;
+    formData.append("accountID", currentAccountID);
+    var url = api + "/tumblr/DownloadImagePack";
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", url, true);
+    xhr.responseType = 'blob';
+    xhr.onload = function (res) {
+        if (this.status === 200) {
+            var type = xhr.getResponseHeader('Content-Type');
+            var blob = new Blob([this.response], { type: type });
+            if (typeof window.navigator.msSaveBlob !== 'undefined') {
+                /*
+                 * For IE
+                 * >=IE10
+                 */
+                window.navigator.msSaveBlob(blob, filename);
+            } else {
+                /*
+                 * For Non-IE (chrome, firefox)
+                 */
+                var URL = window.URL || window.webkitURL;
+                var objectUrl = URL.createObjectURL(blob);
+                if (filename) {
+                    var a = document.createElement('a');
+                    if (typeof a.download === 'undefined') {
+                        window.location = objectUrl;
+                    } else {
+                        a.href = objectUrl;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                    }
+                } else {
+                    window.location = objectUrl;
+                }
+            }
+        }
+        if(buttonID!="undefined"&&buttonID!=""){
+            document.getElementById(buttonID).innerHTML="Download Image Pack"
+        }
+    }
+    xhr.send(formData);
 }

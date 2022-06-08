@@ -137,9 +137,18 @@ function OpenCloudFile(file, filename) {
     let clickedbox = document.getElementById(file);
     selectedFolder = "";
     try{
-        foldergrid.removeChild(document.getElementById('filegridpathed'));
+        //uhhh, what the fuck?? I know these if statements seem useless but selecting files in
+        //folders embedded in KliveCloud doesn't work without these if statements. I'm really confused.
+        if(!clickedbox.parentElement.id=="filegridpathed"){
+            foldergrid.removeChild(document.getElementById('filegridpathed'));
+        }
+        else{
+            foldergrid.removeChild(document.getElementById('filegridpathed'));
+            throw("clicked file in another folder.");
+        }
     } 
     catch(err){
+        console.log(err);
         if (clickedbox.getAttribute('isdirectory') == "true") {
             foldergrid.style.gridTemplateColumns = foldergrid.style.gridTemplateColumns.replace('2fr', '1fr') + " 2fr";
             let newfilegrid = document.createElement('div');

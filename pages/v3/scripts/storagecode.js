@@ -364,7 +364,7 @@ function DownloadScreenshot(filename) {
 
 function DownloadFile(file, filename) {
     //make post request 
-    if(window.location.href.endsWith("storage.html")){
+    if(document.getElementById(file)){
         document.getElementById(file).innerHTML="Downloading..."
     }
     let formData = new FormData;
@@ -405,7 +405,7 @@ function DownloadFile(file, filename) {
                 }
             }
         }
-        if(window.location.href.endsWith("storage.html")){
+        if(document.getElementById(file)){
             document.getElementById(file).innerHTML=filename;
         }
     }

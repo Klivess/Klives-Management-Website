@@ -45,11 +45,11 @@ function GetStorageData() {
 
 function LoadAllCloudFiles() {
     //Loading cloud storage
-    try{
+    try {
         let foldergrid = document.getElementById('foldergrid');
         foldergrid.style.gridTemplateColumns = "1fr";
         foldergrid.removeChild(document.getElementById('filegridpathed'));
-    } catch(err){console.log(err);}
+    } catch (err) { console.log(err); }
     MakeRequest("/storage/GetAllFilesInCloudStorage").then(response => {
         let cloudboxx = document.getElementById('files');
         let json = JSON.parse(response);
@@ -136,24 +136,24 @@ function OpenCloudFile(file, filename) {
     foldergrid.style.gridTemplateColumns = "1fr";
     let clickedbox = document.getElementById(file);
     selectedFolder = "";
-    try{
+    try {
         //uhhh, what the fuck?? I know these if statements seem useless but selecting files in
         //folders embedded in KliveCloud doesn't work without these if statements. I'm really confused.
-        if(!clickedbox.parentElement.id=="filegridpathed"){
+        if (!clickedbox.parentElement.id == "filegridpathed") {
             foldergrid.removeChild(document.getElementById('filegridpathed'));
         }
-        else{
+        else {
             foldergrid.removeChild(document.getElementById('filegridpathed'));
-            throw("clicked file in another folder.");
+            throw ("clicked file in another folder.");
         }
-    } 
-    catch(err){
+    }
+    catch (err) {
         console.log(err);
         if (clickedbox.getAttribute('isdirectory') == "true") {
             foldergrid.style.gridTemplateColumns = foldergrid.style.gridTemplateColumns.replace('2fr', '1fr') + " 2fr";
             let newfilegrid = document.createElement('div');
-            newfilegrid.className="filesgrid";
-            newfilegrid.style="display: grid; grid-template-rows: 5fr 1fr;"
+            newfilegrid.className = "filesgrid";
+            newfilegrid.style = "display: grid; grid-template-rows: 5fr 1fr;"
             newfilegrid.id = "filegridpathed";
             foldergrid.appendChild(newfilegrid);
             let actualfilegrid = document.createElement('div');
@@ -161,10 +161,10 @@ function OpenCloudFile(file, filename) {
             actualfilegrid.id = "filegridpathed";
             newfilegrid.appendChild(actualfilegrid);
             let deletefolder = document.createElement("button");
-            deletefolder.className="kbutton";
-            deletefolder.name=file;
-            deletefolder.style="border: 2px solid red; color: red;"
-            deletefolder.innerHTML="Delete Folder: "+filename;
+            deletefolder.className = "kbutton";
+            deletefolder.name = file;
+            deletefolder.style = "border: 2px solid red; color: red;"
+            deletefolder.innerHTML = "Delete Folder: " + filename;
             deletefolder.setAttribute("onclick", "ClearFolder(this.getAttribute('name'))");
             newfilegrid.appendChild(deletefolder);
             selectedFolder = file;
@@ -320,6 +320,7 @@ function ClearFolder(path) {
     })
 }
 
+
 function DownloadScreenshot(filename) {
     //make post request 
     var url = api + "/storage/DownloadScreenshot";
@@ -364,8 +365,8 @@ function DownloadScreenshot(filename) {
 
 function DownloadFile(file, filename) {
     //make post request 
-    if(document.getElementById(file)){
-        document.getElementById(file).innerHTML="Downloading..."
+    if (document.getElementById(file)) {
+        document.getElementById(file).innerHTML = "Downloading..."
     }
     let formData = new FormData;
     formData.append("filename", file);
@@ -405,9 +406,24 @@ function DownloadFile(file, filename) {
                 }
             }
         }
-        if(document.getElementById(file)){
-            document.getElementById(file).innerHTML=filename;
+        if (document.getElementById(file)) {
+            document.getElementById(file).innerHTML = filename;
         }
+        if(document.getElementById('uploadbutton')){
+            let ele = document.getElementById('uploadbutton');
+            ele.innerHTML="Upload File";
+        }
+    }
+    xhr.onprogress=function(eve){
+        var p = Math.floor(eve.loaded / eve.total * 100);
+        if(document.getElementById('uploadbutton')){
+            let ele = document.getElementById('uploadbutton');
+            ele.innerHTML="Downloading "+filename+": "+p+"%";
+            if(p==100){
+                ele.innerHTML="Finalizing...";
+            }
+        }
+        console.log(p);
     }
     xhr.send(formData);
 }

@@ -1,5 +1,5 @@
 let accountBeingMade = false;
-let currentAccountID="";
+let currentAccountID = "";
 
 function LoadTumblrSocialPage() {
     LoadData('contenttext', 'caption');
@@ -553,7 +553,7 @@ function GetTumblrManagementData() {
         document.getElementById('removeTumblrAccount').setAttribute("name", name);
         document.getElementById('playeremail').innerHTML = "Email: " + json.account.email;
         document.getElementById('playerpassword').innerHTML = "Password: " + json.account.password;
-        currentAccountID=json.account.playerID;
+        currentAccountID = json.account.playerID;
         LoadTumblrFollowerChart('followergraph', response);
     });
 }
@@ -570,13 +570,13 @@ function FlipPhotoAndImage() {
 }
 
 function DownloadTumblrAccountImagePack(buttonID, accountid) {
-    if(accountid==""||accountid=="undefined"){
-        accountid=currentAccountID;
+    if (accountid == "" || accountid == "undefined") {
+        accountid = currentAccountID;
     }
-    if(buttonID!="undefined"&&buttonID!=""){
-        document.getElementById(buttonID).innerHTML="Downloading... This could take a while."
+    if (buttonID != "undefined" && buttonID != "") {
+        document.getElementById(buttonID).innerHTML = "Downloading... This could take a while."
     }
-    let filename=accountid+"imagePack.zip"
+    let filename = accountid + "imagePack.zip"
     //make post request 
     let formData = new FormData;
     formData.append("accountID", currentAccountID);
@@ -616,9 +616,19 @@ function DownloadTumblrAccountImagePack(buttonID, accountid) {
                 }
             }
         }
-        if(buttonID!="undefined"&&buttonID!=""){
-            document.getElementById(buttonID).innerHTML="Download Image Pack"
+        if (buttonID != "undefined" && buttonID != "") {
+            document.getElementById(buttonID).innerHTML = "Download Image Pack"
         }
     }
     xhr.send(formData);
+}
+
+function ScanAccountForNSFW() {
+    let ele = document.getElementById('nsfwscan');
+    ele.innerHTML = "Scanning...";
+    MakeRequest("/tumblr/ScanAccountForNSFW?accountID=" + currentAccountID).then(response => {
+        let json = JSON.parse(response);
+        ele.innerHTML="Scan Account Images for NSFW";
+        swal("NSFW Scan Complete", "Account Name: " + json.accountName + "\nAmount of NSFW Images: " + json.amountNSFW + "\nAmount Remaining: " + json.amountRemaining);
+    });
 }

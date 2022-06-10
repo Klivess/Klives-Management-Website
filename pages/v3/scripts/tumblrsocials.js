@@ -23,19 +23,20 @@ function OnSocialsLoad() {
             let accountsLoadedAmount = 0;
             accountsRunning.innerHTML = accountsRunningAmount + " accounts running. " + accountsLoadedAmount + " accounts loaded.";
             //foreach account in response
-            for (let i = 0; i < json.length; i++) {
-                let account = json[i];
-                if (json[i].IsValid == true) {
+            for (let i = 0; i < json.accountsAnalytics.length; i++) {
+                let account = json.accountsAnalytics[i];
+                if (account.IsValid == true) {
                     console.log("Account " + account.playerName + " is valid");
                     accountsRunningAmount = accountsRunningAmount + 1;
                     accountsLoadedAmount = accountsLoadedAmount + 1;
                 }
-                else if (json[i].IsValid == false) {
+                else if (account.IsValid == false) {
                     console.log("Account " + account.playerName + " is not valid");
                     accountsLoadedAmount = accountsLoadedAmount + 1;
                 }
                 accountsRunning.innerHTML = accountsRunningAmount + " accounts running. " + accountsLoadedAmount + " accounts loaded.";
             }
+            tumblrtotalFollowersAverageDifference.innerHTML = json.AverageTotalFollowerGain + " average total follower gain.";
             postsMadeInLastHour.innerHTML = "Couldn't get posts made in last hour.";
             MakeRequest("/tumblr/GetAllTumblrPostsMadeInHourRange?hours=12").then(response2 => {
                 let json2 = JSON.parse(response2);
@@ -48,11 +49,6 @@ function OnSocialsLoad() {
                 postsmadealltime.innerHTML = json2.length + " posts made all time.";
             }), (error) => {
                 postsmadealltime.innerHTML = "Couldn't get posts made all time.";
-            };
-            MakeRequest("/tumblr/TumblrTotalFollowersAverageDifference").then(response3 => {
-                tumblrtotalFollowersAverageDifference.innerHTML = response3 + " average total follower gain.";
-            }), (error) => {
-                tumblrtotalFollowersAverageDifference.innerHTML = "Couldn't get average total follower gain.";
             };
         });
         LoadTumblrTotalFollowerChart('tumblrTotalFollowerChart');
@@ -114,8 +110,8 @@ function LoadTumblrReachChart(canvas, allaccountsJson) {
     let totalFollowers = document.getElementById("tumblrtotalFollowers");
     let totalamountoffollowers = 0;
     //foreach account in response, get total followers
-    for (let i = 0; i < allaccountsJson.length; i++) {
-        let playerAccount = allaccountsJson[i];
+    for (let i = 0; i < allaccountsJson.accountsAnalytics.length; i++) {
+        let playerAccount = allaccountsJson.accountsAnalytics[i];
         playerFollowers.push(playerAccount.Followers);
         totalamountoffollowers = totalamountoffollowers + parseInt(playerAccount.Followers);
         playerNames.push(playerAccount.account.playerName);

@@ -246,14 +246,14 @@ function LoadAllAccounts(element) {
         MakeRequest("/tumblr/GetAllTumblrAccountInformation").then(response => {
             let json = JSON.parse(response);
             //create new element for each account in json array
-            for (let i = 0; i < json.length; i++) {
-                let account = json[i].account;
-                if (json[i].IsValid == true) {
+            for (let i = 0; i < json.accountsAnalytics.length; i++) {
+                let account = json.accountsAnalytics[i].account;
+                if (json.accountsAnalytics[i].IsValid == true) {
                     let newElement = document.createElement("button");
                     newElement.className = "kbutton";
                     newElement.name = account.playerName;
                     newElement.setAttribute("isvalid", "true");
-                    newElement.setAttribute("data", JSON.stringify(json[i]));
+                    newElement.setAttribute("data", JSON.stringify(json.accountsAnalytics[i]));
                     newElement.id = "ACCOUNT" + account.playerName;
                     newElement.style = "height: 86px;"
                     newElement.innerHTML = account.playerName;
@@ -265,7 +265,7 @@ function LoadAllAccounts(element) {
                     newElement.className = "kbutton";
                     newElement.name = account.playerName;
                     newElement.setAttribute("isvalid", "false");
-                    newElement.setAttribute("data", JSON.stringify(json[i]));
+                    newElement.setAttribute("data", JSON.stringify(json.accountsAnalytics[i]));
                     newElement.style = "border: 2px solid rgb(200, 0, 0); height: 130px;";
                     newElement.id = "ACCOUNT" + account.playerName;
                     newElement.innerHTML = account.playerName;

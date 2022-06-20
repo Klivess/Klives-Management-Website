@@ -237,28 +237,28 @@ function LoadTumblrTotalFollowerChart(canvas) {
 
 function RemakeDiscordChannels() {
     let ele = document.getElementById('remakechannels');
-    if(ele){
-        ele.innerHTML="Recreating...";
+    if (ele) {
+        ele.innerHTML = "Recreating...";
     }
-    MakeRequest("/tumblr/RemakeDiscordChannels?accountID="+currentAccountID.toString()).then(response => {
-        if(response=="OK"){
-            if(ele){
-                ele.innerHTML="Recreating...";
-            }            
+    MakeRequest("/tumblr/RemakeDiscordChannels?accountID=" + currentAccountID.toString()).then(response => {
+        if (response == "OK") {
+            if (ele) {
+                ele.innerHTML = "Recreating...";
+            }
         }
-        else{
-            if(ele){
-                ele.innerHTML="Error!";
+        else {
+            if (ele) {
+                ele.innerHTML = "Error!";
             }
             swal("Error!", response);
         }
+        // 3 second timeout
+        setTimeout(function () {
+            if (ele) {
+                ele.innerHTML = "Remake Discord Channels";
+            }
+        }, 1500);
     });
-    // 3 second timeout
-    setTimeout(function () {
-        if(ele){
-            ele.innerHTML="Remake Discord Channels";
-        }
-    }, 1500);
 }
 
 function LoadAllAccounts(element) {

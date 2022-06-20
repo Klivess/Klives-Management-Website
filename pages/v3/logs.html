@@ -16,11 +16,7 @@
 </head>
 <script>
     SetPerformance();
-    LoadLogs();
-    let div = document.getElementById("logs");
-    let divCurrentUserScrollPosition = div.scrollTop + div.offsetHeight;
-    let divScrollHeight = div.scrollHeight;
-    div.scrollTo({ left: 0, top: div.scrollHeight });
+    document.onload = LoadLogs();
 </script>
 <nav>
     <horizontal-nav style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr;">
@@ -58,10 +54,11 @@
 
 <body style="visibility: hidden;">
     <div style="padding-top: 40px; padding-left: 13%; padding-right: 2%; display: block;">
-        <div class="infobox" style="height: 1000px;">
+        <div class="infobox" style="height: 810px;">
             <div id="quickactions">
+                <h1>Logs</h1>
                 <textarea name="logbox" id="logs" style="background-color: #000814; border: none; color: white; font-family: 'Roboto'; border: none; border-radius: 10px;
-                overflow-y: scroll; outline: none; height: 1000px; width: 100%; font-size: 13px; padding: 10px;" readonly>
+                overflow-y: scroll; outline: none; height: 790px; width: 100%; font-size: 13px; padding: 10px;" readonly>
                 </textarea>
             </div>
         </div>

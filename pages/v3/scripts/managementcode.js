@@ -90,20 +90,22 @@ function getCookie(c_name) {
     return "";
 }
 
-function LoadLogs() {
+function LoadLogs() {    
     setTimeout(() => {
         let ele = document.getElementById('logs');
         ele.value = "Loading...";
         MakeRequest("/v1/GetLogs").then(response => {
             ele.value = response;
         });
-    }, 100);
-    setInterval(function () {
-        let ele = document.getElementById('logs');
-        MakeRequest("/v1/GetLogs").then(response => {
-            ele.value = response;
-        });
-    }, 5000);
+        ele.scrollTop = ele.scrollHeight;
+        setInterval(function () {
+            let ele = document.getElementById('logs');
+            MakeRequest("/v1/GetLogs").then(response => {
+                ele.value = response;
+            });
+            ele.scrollTop = ele.scrollHeight;
+        }, 1750);
+    }, 500);
 }
 
 function ClearLogs() {

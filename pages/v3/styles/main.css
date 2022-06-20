@@ -40,11 +40,20 @@ vertical-nav {
     background-color: var(--main);
     position: fixed;
     height: 100%;
-    overflow: auto;
-    display: -ms-inline-grid;
-    grid-template-rows: auto 1fr;
+    overflow-y: scroll;
+    overflow-x: hidden;
     grid-template-columns: 1fr;
     z-index: 30;
+}
+
+vertical-nav .kbutton {
+    word-break: break-all;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    -webkit-hyphens: auto;
+    -moz-hyphens: auto;
+    -ms-hyphens: auto;
+    hyphens: auto;
 }
 
 horizontal-nav {
@@ -151,10 +160,6 @@ horizontal-nav {
 }
 
 /* Now it's just other things. */
-.verticalgrid {
-    /*Vertical grid*/
-    display: grid;
-}
 
 .special {
     color: yellow;

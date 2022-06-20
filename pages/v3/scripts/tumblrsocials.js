@@ -235,6 +235,32 @@ function LoadTumblrTotalFollowerChart(canvas) {
     });
 }
 
+function RemakeDiscordChannels() {
+    let ele = document.getElementById('remakechannels');
+    if(ele){
+        ele.innerHTML="Recreating...";
+    }
+    MakeRequest("/tumblr/RemakeDiscordChannels?accountID="+currentAccountID.toString()).then(response => {
+        if(response=="OK"){
+            if(ele){
+                ele.innerHTML="Recreating...";
+            }            
+        }
+        else{
+            if(ele){
+                ele.innerHTML="Error!";
+            }
+            swal("Error!", response);
+        }
+    });
+    // 3 second timeout
+    setTimeout(function () {
+        if(ele){
+            ele.innerHTML="Remake Discord Channels";
+        }
+    }, 1500);
+}
+
 function LoadAllAccounts(element) {
     //have to set timeout otherwise this shitty garbage fucking code refuses to work for some reason
     setTimeout(function () {
@@ -624,7 +650,7 @@ function ScanAccountForNSFW() {
     ele.innerHTML = "Scanning...";
     MakeRequest("/tumblr/ScanAccountForNSFW?accountID=" + currentAccountID).then(response => {
         let json = JSON.parse(response);
-        ele.innerHTML="Scan Account Images for NSFW";
+        ele.innerHTML = "Scan Account Images for NSFW";
         swal("NSFW Scan Complete", "Account Name: " + json.accountName + "\nAmount of NSFW Images: " + json.amountNSFW + "\nAmount Remaining: " + json.amountRemaining);
     });
 }

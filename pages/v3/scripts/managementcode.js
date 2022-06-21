@@ -153,7 +153,6 @@ function Authentication() {
             else if (response == "NOENTRY") {
                 apistatus = false;
                 console.log('Not logged in >:(');
-                alert("Not logged in, get out!!")
                 LogOut();
             }
         }).catch(error => {

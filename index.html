@@ -27,6 +27,29 @@
         }
     }
 </style>
+
+<body style="display: flex; justify-content: center;" onkeypress="keypress(event)" onkeydown="enterKeyPressed(event)">
+    <div id="loginbox" class="fadein" style="position: absolute; top: 40%;">
+        <div class="form__group field" style="user-select: none; display: flex; justify-content: center;">
+            <input type="password" class="form__field" readonly placeholder="Name" name="name" id='password' autocomplete="off"
+                style="width: 600px;" required />
+            <label for="name" class="form__label" id="noticebox">Password</label>
+        </div>
+        <div class="kbuttonContainer">
+            <div class="kbutton" style="margin-top: 20px; border-radius: 50px; height: 20px; width: 240px;"
+                onclick="IndexLogin()">
+                <a id="restartserverbutton" style="font-size: 1vw;">
+                    Login
+                </a>
+            </div>
+        </div>
+    </div>
+</body>
+<div style="position: absolute; display: grid; justify-content: left; margin-top: 20px;">
+    <a href="https://90.255.227.194:80/" id="apistatus" style="text-decoration: none;">KliveAPI Status:
+        Pinging...</a>
+</div>
+
 <script>
     let apistatus = true;
     fetch(kliveAPI + "/v1/CheckPassword?p=" + getCookie("password"))
@@ -43,7 +66,13 @@
             }
         })
         .catch(err => { throw err });
-    GetStatusOfAPI();
+    document.onload = GetStatusOfAPI();
+    function keypress(event) {
+        let str = String.fromCharCode(event.keyCode);
+        let box = document.getElementById('password');
+        box.click();
+        box.value = box.value + str;
+    }
     function IndexLogin(passwordbox, button) {
         try {
             let passwordbox = document.getElementById('password');
@@ -76,28 +105,26 @@
         }
     }
     function GetStatusOfAPI() {
-        setTimeout(function () {
-            setInterval(function () {
-                let noticebox = document.getElementById('apistatus');
-                let resp = "";
-                let error;
-                MakeRequest('/v1/Ping').then(response => {
-                    resp = response;
-                });
-                setTimeout(function () {
-                    if (resp == "") {
-                        noticebox.innerHTML = "KliveAPI Status: Offline";
-                        noticebox.setAttribute("style", "color: red;");
-                        apistatus = false;
-                    }
-                    else {
-                        apistatus = true;
-                        noticebox.innerHTML = "KliveAPI Status: Online";
-                        noticebox.setAttribute("style", "color: greenyellow;");
-                    }
-                }, 100);
-            }, 600);
-        }, 250);
+        setInterval(function () {
+            let noticebox = document.getElementById('apistatus');
+            let resp = "";
+            let error;
+            MakeRequest('/v1/Ping').then(response => {
+                resp = response;
+            });
+            setTimeout(function () {
+                if (resp == "") {
+                    noticebox.innerHTML = "KliveAPI Status: Offline";
+                    noticebox.setAttribute("style", "color: red;");
+                    apistatus = false;
+                }
+                else {
+                    apistatus = true;
+                    noticebox.innerHTML = "KliveAPI Status: Online";
+                    noticebox.setAttribute("style", "color: greenyellow;");
+                }
+            }, 100);
+        }, 800);
     }
     async function MakeRequest(endpoint) {
         let response = await fetch("https://90.255.227.194:80" + endpoint);
@@ -107,6 +134,11 @@
     function enterKeyPressed(event) {
         if (event.keyCode == 13) {
             IndexLogin();
+        }
+        else if (event.keyCode == 8) {
+            let box = document.getElementById('password');
+            box.click();
+            box.value = box.value.substring(0, box.value.length - 1);
         }
     }
     function createCookie(name, value, days) {
@@ -122,29 +154,5 @@
         document.cookie = name + "=" + value + expires + "; path=/";
     }
 </script>
-
-<body style="display: flex; justify-content: center;">
-    <div id="loginbox" class="fadein" style="position: absolute; top: 40%;">
-        <span style="top: 500px;">
-            ALERT: My Discord Account has been banned, add me at my new discord: Klives#8505
-        </span>
-        <div class="form__group field" style="user-select: none; display: flex; justify-content: center;">
-            <input type="password" class="form__field" placeholder="Name" name="name" id='password' autocomplete="off" onkeypress="enterKeyPressed(event)"
-                style="width: 600px;" required />
-            <label for="name" class="form__label" id="noticebox">Password</label>
-        </div>
-        <div class="kbuttonContainer">
-            <div class="kbutton" style="margin-top: 20px; height: 20px; width: 240px;" onclick="IndexLogin()">
-                <a id="restartserverbutton" style="font-size: 1vw;">
-                    Login
-                </a>
-            </div>
-        </div>
-    </div>
-</body>
-<div style="position: absolute; display: grid; justify-content: left; margin-top: 20px;">
-    <span onclick="window.location.replace('https://90.255.227.194:80/')" id="apistatus">KliveAPI Status:
-        Pinging...</span>
-</div>
 
 </html>

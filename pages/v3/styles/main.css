@@ -1,5 +1,11 @@
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300&display=swap');
 
+@media screen {
+    vertical-nav {
+        width: 12%;
+    }
+}
+
 ::-webkit-scrollbar {
     width: 5px;
     background: transparent;
@@ -47,13 +53,9 @@ vertical-nav {
 }
 
 vertical-nav .kbutton {
-    word-break: break-all;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    -webkit-hyphens: auto;
-    -moz-hyphens: auto;
-    -ms-hyphens: auto;
-    hyphens: auto;
+    align-content: center;
+    align-items: center;
+    text-align: center;
 }
 
 horizontal-nav {
@@ -215,6 +217,23 @@ input:-webkit-autofill:active {
     animation-duration: 0.5s;
 }
 
+.movieImage {
+    width: 150px;
+    height: 225px;
+    display: flex;
+    justify-content: center;
+    display: grid;
+    grid-template-rows: 1fr 1fr;
+    text-align: center;
+    transition: 0.5s;
+    cursor: pointer;
+}
+.movieImage:hover{
+    filter: brightness(2);
+    transform: scale(1.1);
+    box-shadow: 5px 10px var(--secondary);
+}
+
 .kinput {
     background-color: #1d1d1d;
     border: none;
@@ -222,7 +241,7 @@ input:-webkit-autofill:active {
     color: white;
     font-family: 'Roboto';
     font-size: 20px;
-    padding: 10px;
+    padding: 7px;
     width: 100%;
     word-wrap: break-word;
     word-break: break-all;

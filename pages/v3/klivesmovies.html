@@ -11,13 +11,12 @@
     <script src="scripts/managementcode.js"></script>
     <script src="scripts/tumblrsocials.js"></script>
     <script src="../../scripts/saved.js"></script>
-    <script src="scripts/omnisciencecode.js"></script>
+    <script src="scripts/klivesmovies.js"></script>
     <link rel="shortcut icon" href="../../images/klivebot2.png" type="image/x-icon">
-    <title>KliveBot Management: Omniscience</title>
+    <title>KliveBot Management: Klives Movies</title>
 </head>
 <script>
     SetPerformance();
-    window.onload=LoadOmniscience();
 </script>
 <nav>
     <horizontal-nav style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr;">
@@ -52,14 +51,19 @@
     </vertical-nav>
 </nav>
 
+
 <body style="visibility: hidden;">
     <div style="padding-top: 40px; padding-left: 13%; padding-right: 2%; display: block;">
-        <div class="infobox" style="height: 700px; padding: 10px;">
-            <div style="background-color: #1C2121; border-radius: 10px; display: grid; overflow-y: scroll;">
-                <h1>Discord Klives Mentions</h1>
-                <div style="padding: 5px;">
-                    <div style="overflow-y: scroll; display: grid;" id="omnisciencementions">
+        <div class="infobox" style="height: 1300px;">
+            <div style="display: grid; grid-template-rows: 1fr 2fr;">
+                <div style="display: grid; grid-template-rows: 1fr 2fr 2fr;">
+                    <div style="display: flex; justify-content: center;">
+                        <span style="font-size: 1.7vw;">Download Movie To KliveCloud</span>
                     </div>
+                    <input type="text" id="moviename" class="kinput" placeholder="Movie Name" style="width: 97%;">
+                    <button class="kbutton" id="moviebutton" onclick="SearchMovie()">Search</button>
+                </div>
+                <div id="movies" style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 20px; padding: 20px;">
                 </div>
             </div>
         </div>

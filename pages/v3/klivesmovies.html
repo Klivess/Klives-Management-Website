@@ -7,16 +7,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="styles/main.css">
     <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js" integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"
+        integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
     <script src="scripts/managementcode.js"></script>
     <script src="scripts/tumblrsocials.js"></script>
     <script src="../../scripts/saved.js"></script>
     <script src="scripts/klivesmovies.js"></script>
+    <link rel="stylesheet" href="styles/klivemovie.css">
     <link rel="shortcut icon" href="../../images/klivebot2.png" type="image/x-icon">
     <title>KliveBot Management: Klives Movies</title>
 </head>
 <script>
     SetPerformance();
+    document.onload = LoadMoviesPage();
 </script>
 <nav>
     <horizontal-nav style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr;">
@@ -39,14 +42,17 @@
         <div class="verticalgrid">
             <a class="kbutton" href="main.html" style="width: 80%; font-size: 1.2vw; height: 75px;">Home</a>
             <a class="kbutton" href="botpower.html" style="width: 80%; font-size: 1.1vw; height: 50px;">Bot Power</a>
-            <a class="kbutton" href="klivesmovies.html" style="width: 80%; font-size: 1.1vw; height: 50px;">Klives Movies</a>
+            <a class="kbutton" href="klivesmovies.html" style="width: 80%; font-size: 1.1vw; height: 50px;">Klives
+                Movies</a>
             <a class="kbutton" href="socials.html" style="width: 80%; font-size: 1.1vw; height: 50px;">Socials</a>
             <a class="kbutton" href="speaker.html" style="width: 80%; font-size: 1.1vw; height: 50px;">Speaker</a>
             <a class="kbutton" href="storage.html" style="width: 80%; font-size: 1.1vw; height: 50px;">Storage</a>
             <a class="kbutton" href="logs.html" style="width: 80%; font-size: 1.1vw; height: 50px;">Logs</a>
-            <a class="kbutton" href="omniscience.html" style="width: 80%; font-size: 1.1vw; height: 50px;">Omniscience</a>
+            <a class="kbutton" href="omniscience.html"
+                style="width: 80%; font-size: 1.1vw; height: 50px;">Omniscience</a>
             <a class="kbutton" href="school.html" style="width: 80%; font-size: 1.1vw; height: 50px;">School</a>
-            <a class="kbutton" href="klivemanagementsettings.html" style="width: 80%; font-size: 1.1vw; height: 50px;">Management</a>
+            <a class="kbutton" href="klivemanagementsettings.html"
+                style="width: 80%; font-size: 1.1vw; height: 50px;">Management</a>
         </div>
     </vertical-nav>
 </nav>
@@ -54,16 +60,37 @@
 
 <body style="visibility: hidden;">
     <div style="padding-top: 40px; padding-left: 13%; padding-right: 2%; display: block;">
-        <div class="infobox" style="height: 1300px;">
-            <div style="display: grid; grid-template-rows: 1fr 2fr;">
-                <div style="display: grid; grid-template-rows: 1fr 2fr 2fr;">
-                    <div style="display: flex; justify-content: center;">
-                        <span style="font-size: 1.7vw;">Download Movie To KliveCloud</span>
+        <div class="infobox" style="height: 300px;">
+            <h1>KliveCloud Movies</h1>
+            <div id="downloadedmovies"
+                style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 20px; padding: 20px;">
+
+            </div>
+        </div>
+        <div class="dualbox" style="grid-template-columns: 2fr 1fr;">
+            <div class="infobox" style="height: 700px;">
+                <h1 style="margin-top: 330px;">Search And Download Movie</h1>
+                <div style="display: grid; grid-template-rows: 1fr 2fr; gap: 10px;">
+                    <div style="display: grid; grid-template-rows: 1fr 2fr 2fr;">
+                        <div style="display: flex; justify-content: center;">
+                            <span style="font-size: 1.7vw;">Download Movie To KliveCloud</span>
+                        </div>
+                        <input type="text" id="moviename" class="kinput" placeholder="Movie Name" style="width: 97%;">
+                        <button class="kbutton" id="moviebutton" onclick="SearchMovie()">Search</button>
                     </div>
-                    <input type="text" id="moviename" class="kinput" placeholder="Movie Name" style="width: 97%;">
-                    <button class="kbutton" id="moviebutton" onclick="SearchMovie()">Search</button>
+                    <div style="overflow-y: scroll; height: 400px; border: 3px solid var(--secondary);">
+                        <div id="movies"
+                            style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 20px; padding: 20px;">
+                        </div>
+                    </div>
                 </div>
-                <div id="movies" style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 20px; padding: 20px;">
+            </div>
+            <div class="infobox" style="height: 700px;">
+                <div>
+                    <h1 style="margin-top: 330px;">Current Downloads</h1>
+                    <div id="currentdownloads" class="verticalgrid" style="overflow-y: scroll; height: 700px; gap: 10px;">
+
+                    </div>
                 </div>
             </div>
         </div>

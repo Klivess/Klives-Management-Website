@@ -88,7 +88,7 @@ function ConstructMovieIntoGrid(gridID, movieJSON) {
     divvy.appendChild(image);
     movie.appendChild(divvy);
     let text = document.createElement('span');
-    text.style = "font-weight: bold; align-self: center;";
+    text.style = "font-weight: bold; align-self: center; word-wrap: break-word; z-index: 3;";
     text.innerHTML = json2.Title;
     movie.appendChild(text);
     return movie;
@@ -111,7 +111,7 @@ function ConstructCardIntoDiv(caption, imageURL, box){
     divvy.appendChild(image);
     movie.appendChild(divvy);
     let text = document.createElement('span');
-    text.style = "font-weight: bold; align-self: center; width: 200px; word-wrap: break-word;";
+    text.style = "font-weight: bold; align-self: center; width: 200px; word-wrap: break-word; z-index: 3;";
     text.innerHTML = caption;
     movie.appendChild(text);
     let moviegrid = document.getElementById(box);

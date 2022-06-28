@@ -1,7 +1,6 @@
 .ongoingdownload{
     background-color: var(--main);
     max-height: 130px;
-    width: 90%;
     padding: 10px;
     display: grid;
     grid-template-rows: 1fr 1fr;

@@ -76,6 +76,7 @@ function ConstructMovieIntoGrid(gridID, movieJSON) {
     movie.setAttribute("name", JSON.stringify(json2));
     moviegrid.appendChild(movie);
     let image = document.createElement("img");
+    let divvy = document.createElement("div");
     if (json2.ImageURL == "") {
         image.src = "images/noimage.png";
         image.style = "width: 150px; height: 175px; filter: invert();";
@@ -84,7 +85,8 @@ function ConstructMovieIntoGrid(gridID, movieJSON) {
         image.src = json2.ImageURL;
         image.style = "width: 150px; height: 175px;";
     }
-    movie.appendChild(image);
+    divvy.appendChild(image);
+    movie.appendChild(divvy);
     let text = document.createElement('span');
     text.style = "font-weight: bold; align-self: center;";
     text.innerHTML = json2.Title;
@@ -105,9 +107,11 @@ function ConstructCardIntoDiv(caption, imageURL, box){
         image.src = imageURL;
         image.style = "width: 150px; height: 175px;";
     }
-    movie.appendChild(image);
+    let divvy = document.createElement("div");
+    divvy.appendChild(image);
+    movie.appendChild(divvy);
     let text = document.createElement('span');
-    text.style = "font-weight: bold; align-self: center;";
+    text.style = "font-weight: bold; align-self: center; width: 200px; word-wrap: break-word;";
     text.innerHTML = caption;
     movie.appendChild(text);
     let moviegrid = document.getElementById(box);

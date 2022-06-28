@@ -15,7 +15,8 @@ function LoadMoviesPage() {
     MakeRequest("/KliveMovie/GetAllDownloadedMovies").then(response => {
         let json = JSON.parse(response);
         for (let i = 0; i < json.length; i++) {
-            ConstructMovieIntoGrid('downloadedmovies', JSON.stringify(json[i]));
+            let element = ConstructMovieIntoGrid('downloadedmovies', JSON.stringify(json[i]));
+            element.setAttribute("onclick", "LoadMovie(this.getAttribute('name'))")
         }
     });
     MakeRequest("/KliveMovie/GetOngoingMovieDownloads").then(response => {
@@ -43,6 +44,30 @@ function LoadMoviesPage() {
     });
 }
 
+function LoadWatchMoviePage(){
+    const queryString = window.location.search;
+    const urlParams = new URLSearchParams(queryString);
+    let name = urlParams.get('movieName');
+    MakeRequest("/KliveMovie/GetAllVideos?movieName=" + name).then(response => {
+        let json = JSON.parse(response);
+        for(let i = 0; i<json.length; i++){
+            var leafname= json[i].split('\\').pop().split('/').pop();
+            let ele = ConstructCardIntoDiv(leafname, '', 'episodesbox')
+            ele.setAttribute('name', json[i]);
+            ele.setAttribute('onclick', 'ViewEpisode(this.getAttribute("name"))');
+            document.getElementById('episodeName').innerHTML=leafname;
+        }
+        let movieViewer = document.getElementById('movie');
+        movieViewer.setAttribute('name', json[0]);
+        movieViewer.setAttribute('src', api+"/klivemovie/streamvideo?videoPath="+json[0]);
+    });
+}
+
+function LoadMovie(movieJson){
+    let json = JSON.parse(movieJson);
+    window.location.href="klivemovieviewer.html?movieName="+json.Title;
+}
+
 function ConstructMovieIntoGrid(gridID, movieJSON) {
     let moviegrid = document.getElementById(gridID);
     let json2 = JSON.parse(movieJSON);
@@ -64,6 +89,29 @@ function ConstructMovieIntoGrid(gridID, movieJSON) {
     text.style = "font-weight: bold; align-self: center;";
     text.innerHTML = json2.Title;
     movie.appendChild(text);
+    return movie;
+}
+
+function ConstructCardIntoDiv(caption, imageURL, box){
+    console.log(box);
+    let movie = document.createElement('div');
+    movie.className = "movieImage";
+    let image = document.createElement("img");
+    if (imageURL == "") {
+        image.src = "images/noimage.png";
+        image.style = "width: 150px; height: 175px; filter: invert();";
+    }
+    else {
+        image.src = imageURL;
+        image.style = "width: 150px; height: 175px;";
+    }
+    movie.appendChild(image);
+    let text = document.createElement('span');
+    text.style = "font-weight: bold; align-self: center;";
+    text.innerHTML = caption;
+    movie.appendChild(text);
+    let moviegrid = document.getElementById(box);
+    moviegrid.appendChild(movie);
     return movie;
 }
 

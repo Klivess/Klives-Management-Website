@@ -238,15 +238,14 @@ function SendToSpeaker(speaker, textToUpdate) {
     });
 }
 
-function IsKliveAdmin(){    
+function IsKliveAdmin(){   
+    let res = false; 
     MakeRequest('/v1/IsKliveAdmin?password='+getCookie('password')).then(response =>{
         if(response=="PASS"){
-            return true;
+            res= true;
+            return res;
         }
-        else{
-            return false;
-        }
-    })
+    });
 }
 
 function SendToKlives(speaker, textToUpdate){

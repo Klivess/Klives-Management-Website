@@ -6,4 +6,5 @@
     display: grid;
     grid-template-rows: 1fr 1fr;
     border: 2px solid var(--body);
+    user-select: none;
 }

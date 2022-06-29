@@ -55,11 +55,12 @@ function LoadWatchMoviePage(){
             let ele = ConstructCardIntoDiv(leafname, '', 'episodesbox')
             ele.setAttribute('name', json[i]);
             ele.setAttribute('onclick', 'ViewEpisode(this.getAttribute("name"))');
-            document.getElementById('episodeName').innerHTML=leafname;
         }
         let movieViewer = document.getElementById('movie');
         movieViewer.setAttribute('name', json[0]);
         movieViewer.setAttribute('src', api+"/klivemovie/streamvideo?videoPath="+json[0]);
+        var leafname= json[i].split('\\').pop().split('/').pop();
+        document.getElementById('episodeName').innerHTML=leafname;
     });
 }
 

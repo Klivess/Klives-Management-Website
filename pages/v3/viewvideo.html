@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles/main.css">
+    <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js" integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
+    <script src="scripts/managementcode.js"></script>
+    <script src="scripts/tumblrsocials.js"></script>
+    <script src="../scripts/saved.js"></script>
+    <link rel="shortcut icon" href="../../images/klivebot2.png" type="image/x-icon">
+    <title id="documentName">KliveBot Management: Movie Viewer</title>
+</head>
+<nav>
+    <horizontal-nav style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr;">
+        <span id="cpuPerf" style="margin-top: 0.2vw;">CPU Usage: </span>
+        <span id="ramPerf" style="margin-top: 0.2vw;">RAM Usage: </span>
+        <div style="float: right; z-index: 99;">
+            <div class="kbuttonContainer" onclick="LogOut();" style="margin-left: 200px; height: 25px; width: 20%;">
+                <div class="kbutton" style="height: 1px; padding: 12px;">
+                    <a style="font-size: 0.8vw;">
+                        Logout
+                    </a>
+                </div>
+            </div>
+        </div>
+    </horizontal-nav>
+    <vertical-nav>
+        <div style="display: flex; justify-content: center;">
+            <img onmouseenter="ImageSwitch()" id="logo" src="../../images/favicon.ico" alt="" style="width: 7vw">
+        </div>
+        <div class="verticalgrid">
+            <a class="kbutton" href="main.html" style="width: 80%; font-size: 1.2vw; height: 75px;">Home</a>
+            <a class="kbutton" href="botpower.html" style="width: 80%; font-size: 1.1vw; height: 50px;">Bot Power</a>
+            <a class="kbutton" href="klivesmovies.html" style="width: 80%; font-size: 1.1vw; height: 50px;">Klives Movies</a>
+            <a class="kbutton" href="socials.html" style="width: 80%; font-size: 1.1vw; height: 50px;">Socials</a>
+            <a class="kbutton" href="speaker.html" style="width: 80%; font-size: 1.1vw; height: 50px;">Speaker</a>
+            <a class="kbutton" href="storage.html" style="width: 80%; font-size: 1.1vw; height: 50px;">Storage</a>
+            <a class="kbutton" href="logs.html" style="width: 80%; font-size: 1.1vw; height: 50px;">Logs</a>
+            <a class="kbutton" href="omniscience.html" style="width: 80%; font-size: 1.1vw; height: 50px;">Omniscience</a>
+            <a class="kbutton" href="school.html" style="width: 80%; font-size: 1.1vw; height: 50px;">School</a>
+            <a class="kbutton" href="klivemanagementsettings.html" style="width: 80%; font-size: 1.1vw; height: 50px;">Management</a>
+        </div>
+    </vertical-nav>
+</nav>
+
+
+<body style="visibility: hidden;">
+    <div style="padding-top: 40px; padding-left: 13%; padding-right: 2%; display: block;">
+        <div class="infobox" style="height: 850px;">
+            <h1 id="videoname">Video: </h1>
+            <video src="" id="video" autoplay controls width="100%" height="800px"></video>
+        </div>
+    </div>
+</body>
+<script>
+    SetPerformance();
+    const queryString = window.location.search;
+    const urlParams = new URLSearchParams(queryString);
+    let name = urlParams.get('videoPath');
+    var leafname= name.split('\\').pop().split('/').pop();
+    document.getElementById('videoname').innerHTML=leafname;
+    document.getElementById('video').setAttribute('src', api+"/klivemovie/streamvideo?videoPath="+name);
+    document.getElementById('documentName').innerHTML="KliveBot Management: "+leafname;
+</script>
+</html>

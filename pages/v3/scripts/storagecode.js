@@ -236,6 +236,35 @@ function OpenCloudFile(file, filename) {
                         })
                     });
                 }
+                else if (filename.endsWith(".mp4")) {
+                    swal(contenttext, {
+                        buttons: {
+                            cancel: "OK",
+                            gopost: {
+                                text: "Download File",
+                                value: "download",
+                            },
+                            delpost: {
+                                text: "Delete File",
+                                value: "delete",
+                            },
+                            watchvideo: {
+                                text: "Watch Video",
+                                value: "watch",
+                            }
+                        },
+                    }).then((value) => {
+                        if (value == "download") {
+                            DownloadFile(file, filename);
+                        }
+                        else if (value == "delete") {
+                            DeleteFile(file);
+                        }
+                        else if(value=="watch"){
+                            window.open("viewvideo.html?videoPath="+file);
+                        }
+                    });
+                }
                 else {
                     swal(contenttext, {
                         buttons: {

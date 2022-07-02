@@ -27,6 +27,7 @@
 <script>
     SetPerformance();
     document.onload = OnSocialsLoadTumblr();
+    document.onload = OnSocialsLoadMScrape();
 </script>
 <nav>
     <horizontal-nav style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr;">
@@ -80,18 +81,22 @@
 
                 </canvas>
             </div>
-            <div>
-                <button class="kbutton" style="height: 100%;" onclick="window.location.href = 'tumblrsocial.html'">
-                    <a> Go To Tumblr Management </a>
-                </button>
-            </div>
+            <a class="kbutton" href="tumblrsocial.html" style="width: 95%;">Go To Tumblr Management</a>
             <div>
                 <canvas id="tumblrTotalFollowerChart"></canvas>
             </div>
         </div>
-        <div class="infobox" style="height: 450px;">
+        <div class="infobox" style="height: 450px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;">
             <h1>Meme Scraper</h1>
-            <span id="mscrapeTotalMemes" style="font-size: 2vw;">Loading...</span>
+            <div style="display: grid; grid-template-rows: 1fr 1fr 1fr 1fr;">
+                <span id="mscrapeTotalMemes" style="font-size: 2vw;">Loading...</span>
+                <span id="mscrapeTotalVideoMemes" style="font-size: 2vw;">Loading...</span>
+                <span id="mscrapeTotalImageMemes" style="font-size: 2vw;">Loading...</span>
+                <span id="mscrapeMemesDownloadedLastScrape" style="font-size: 2vw;">Loading...</span>
+                <span id="mscrapeScrapesInLifetime" style="font-size: 2vw;">Loading...</span>
+            </div>
+            <div></div>
+            <a href="mscrape.html" class="kbutton">Go To Meme Scrape Management</a>
         </div>
     </div>
 </body>

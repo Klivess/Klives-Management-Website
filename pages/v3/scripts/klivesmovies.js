@@ -1,3 +1,5 @@
+let movieName = "";
+
 function ReloadData(){
     let downloadedMovies = document.getElementById('downloadedmovies');
     while (downloadedMovies.firstChild) {
@@ -61,6 +63,7 @@ function LoadWatchMoviePage(){
         movieViewer.setAttribute('src', api+"/klivemovie/streamvideo?videoPath="+json[0]);
         var leafname= json[i].split('\\').pop().split('/').pop();
         document.getElementById('episodeName').innerHTML=leafname;
+        movieName=name;
     });
 }
 

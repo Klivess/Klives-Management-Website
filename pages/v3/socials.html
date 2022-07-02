@@ -7,6 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="styles/main.css">
     <script src="scripts/tumblrsocials.js"></script>
+    <script src="scripts/memescraper.js"></script>
     <script src="scripts/managementcode.js"></script>
     <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"
@@ -25,7 +26,7 @@
 </head>
 <script>
     SetPerformance();
-    document.onload = OnSocialsLoad();
+    document.onload = OnSocialsLoadTumblr();
 </script>
 <nav>
     <horizontal-nav style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr;">
@@ -87,6 +88,10 @@
             <div>
                 <canvas id="tumblrTotalFollowerChart"></canvas>
             </div>
+        </div>
+        <div class="infobox" style="height: 450px;">
+            <h1>Meme Scraper</h1>
+            <span id="mscrapeTotalMemes" style="font-size: 2vw;">Loading...</span>
         </div>
     </div>
 </body>

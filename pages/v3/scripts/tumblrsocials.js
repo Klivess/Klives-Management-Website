@@ -8,7 +8,7 @@ function LoadTumblrSocialPage() {
     LoadBehaviourSettings();
 }
 
-function OnSocialsLoad() {
+function OnSocialsLoadTumblr() {
     console.log("Loaded");
     setTimeout(function () {
         let accountsRunning = document.getElementById("tumblramountOfAccounts");

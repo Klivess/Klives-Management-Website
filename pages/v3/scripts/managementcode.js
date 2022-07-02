@@ -2,10 +2,6 @@ let api = "https://90.255.227.194:80";
 let apistatus = true;
 
 
-document.onload = function () {
-    console.log("Document loaded");
-    document.body.style.visibility = "visible";
-};
 Authentication();
 setInterval(function () {
     Authentication();

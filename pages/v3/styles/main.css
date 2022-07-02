@@ -209,7 +209,8 @@ input:-webkit-autofill:active {
 
 .infobox h1 {
     position: absolute;
-    top: 30px;
+    transform: translateY(100%);
+    margin-top: -40px;
     color: white;
     font-family: 'Roboto';
     font-size: 17px;

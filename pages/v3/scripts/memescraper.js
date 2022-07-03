@@ -5,7 +5,7 @@ function OnSocialsLoadMScrape(){
         document.getElementById('mscrapeTotalVideoMemes').innerHTML=json.VideoMemes.length+" total video memes.";
         document.getElementById('mscrapeTotalImageMemes').innerHTML=json.ImageMemes.length+" total image memes.";
         if(json.scrapes.length!=0){
-            document.getElementById('mscrapeMemesDownloadedLastScrape').innerHTML="";
+            document.getElementById('mscrapeMemesDownloadedLastScrape').innerHTML=json.scrapes[json.scrapes.length].memesDownloaded+" memes downloaded last scrape.";
             document.getElementById('mscrapeScrapesInLifetime').innerHTML=json.scrapes.length+" scrapes completed in lifetime.";
         }
         else{

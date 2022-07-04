@@ -15,6 +15,13 @@ function OnSocialsLoadMScrape(){
     });
 }
 
+function ViewRandomImageMeme(){
+    let meme = api+"/mscrape/RandomImageMeme";
+    swal("Your Random Meme", {
+        icon: meme
+    })
+}
+
 function OnManagementPageLoad(){
     MakeRequest("/mscrape/GetSources").then(response => {
         document.getElementById("mscrapeSources").value=response;

@@ -30,14 +30,14 @@ function OnManagementPageLoad(){
         let json = JSON.parse(response);
         let logs = document.getElementById('mscrapelogs');
         console.log(json.scrapes);
-        for(let i = 0; i<json.scrapes; i++){
-            let scrape = json[i];
+        for(let i = 0; i<json.scrapes.length; i++){
+            let scrape = json.scrapes[i];
             console.log(scrape);
             let box = document.createElement('button');
             box.className="kbutton";
-            box.style="height: 100px; font-size: 1vw;";
+            box.style="height: 60px; font-size: 1vw; color: cyan;";
             let date = new Date(scrape.Date);
-            box.innerHTML=scrape.memesDownloaded +" downloaded on "+date.toLocaleString();
+            box.innerHTML=scrape.memesDownloaded +" memes downloaded on "+date.toLocaleString();
             logs.append(box);
         }
         document.getElementById('mscrapeTotalMemes').innerHTML=json.TotalAmountOfMemes+" total memes. ("+Math.round(parseFloat(json.VideoMemesInfo.FilesizeGB)+parseFloat(json.ImageMemesInfo.FilesizeGB))+"GB)";

@@ -329,9 +329,9 @@ function LoadMainPage() {
                 let ele = document.getElementById('alltasks');
                 let ele2 = document.createElement('button');
                 ele2.className = "kbutton fadein";
-                ele2.style = "height: 50px; font-size: 20px; text-transform: none;";
+                ele2.style = "height: 50px; font-size: 20px; text-transform: none; display: grid; grid-template-columns: 1fr 1fr 4fr;";
                 let date = new Date(json[i].time);
-                ele2.innerHTML = "<p class='special'>" + date.toLocaleString() + "|  </p>" + json[i].reason;
+                ele2.innerHTML = "<p class='special'>" + date.toLocaleString() + "|</p><p class ='special' style='color: cyan;'>"+json[i].topic+"</p> <div>" + json[i].reason+"</div>";
                 ele.appendChild(ele2);
             }
         });

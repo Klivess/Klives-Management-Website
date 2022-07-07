@@ -41,6 +41,45 @@ function GetStorageData() {
         }
     });
     LoadAllCloudFiles();
+    let fileInput = document.getElementById('filebox');
+    let dropContainer = document.getElementById('foldergrid');
+    dropContainer.ondragover = dropContainer.ondragenter = function (evt) {
+        evt.preventDefault();
+    };
+
+    dropContainer.ondrop = function (evt) {
+        let buttontext = document.getElementById('uploadbutton');
+        let files = evt.dataTransfer.files;
+        for (let i = 0; i < files.length; i++) {
+            let formData = new FormData;
+            formData.append("files", files[i]);
+            var url = api + "/storage/UploadFileToCloudStorage?p=" + selectedFolder;
+            var xhr = new XMLHttpRequest();
+            //xhr upload 
+            xhr.open("POST", url, true);
+            xhr.upload.addEventListener("progress", e => {
+                var p = Math.floor(e.loaded / e.total * 100);
+                buttontext.innerHTML = "Uploading " + p + "%<br>Uploading " + i + " of " + files.length;
+                if (p == 100) {
+                    buttontext.innerHTML = "Finalizing..";
+                }
+            })
+            //xhr.setRequestHeader("Content-Type","multipart/form-data");
+            xhr.send(formData);
+            xhr.onreadystatechange = function () {
+                if (this.readyState == 4 && this.status == 200) {
+                    buttontext.innerHTML = "Upload File";
+                    let grid = document.getElementById("files");
+                    while (grid.firstChild) {
+                        grid.removeChild(grid.firstChild);
+                    }
+                    LoadAllCloudFiles();
+                }
+            }
+        }
+        evt.preventDefault();
+
+    };
 }
 
 function LoadAllCloudFiles() {
@@ -75,9 +114,7 @@ function LoadAllCloudFiles() {
 }
 
 function UploadFile(uploadbuttonid) {
-    let file = document.createElement("input");
-    file.type = "file";
-    file.setAttribute("multiple", "multiple");
+    let file = document.getElementById('filebox');
     let buttontext = document.getElementById(uploadbuttonid);
     file.click();
     let flavour = "KliveCloud";
@@ -126,6 +163,7 @@ function UploadFile(uploadbuttonid) {
                 file.value = "";
                 uploadingFile = false;
                 file.remove();
+                file.files=[];
             }
         })
     }
@@ -260,8 +298,8 @@ function OpenCloudFile(file, filename) {
                         else if (value == "delete") {
                             DeleteFile(file);
                         }
-                        else if(value=="watch"){
-                            window.open("viewvideo.html?videoPath="+file);
+                        else if (value == "watch") {
+                            window.open("viewvideo.html?videoPath=" + file);
                         }
                     });
                 }
@@ -438,18 +476,18 @@ function DownloadFile(file, filename) {
         if (document.getElementById(file)) {
             document.getElementById(file).innerHTML = filename;
         }
-        if(document.getElementById('uploadbutton')){
+        if (document.getElementById('uploadbutton')) {
             let ele = document.getElementById('uploadbutton');
-            ele.innerHTML="Upload File";
+            ele.innerHTML = "Upload File";
         }
     }
-    xhr.onprogress=function(eve){
+    xhr.onprogress = function (eve) {
         var p = Math.floor(eve.loaded / eve.total * 100);
-        if(document.getElementById('uploadbutton')){
+        if (document.getElementById('uploadbutton')) {
             let ele = document.getElementById('uploadbutton');
-            ele.innerHTML="Downloading "+filename+": "+p+"%";
-            if(p==100){
-                ele.innerHTML="Finalizing...";
+            ele.innerHTML = "Downloading " + filename + ": " + p + "%";
+            if (p == 100) {
+                ele.innerHTML = "Finalizing...";
             }
         }
         console.log(p);

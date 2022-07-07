@@ -15,10 +15,6 @@
     <link rel="shortcut icon" href="../../images/klivebot2.png" type="image/x-icon">
     <title>KliveBot Management: Storage</title>
 </head>
-<script>
-    SetPerformance();
-    window.onload = GetStorageData();
-</script>
 <nav>
     <horizontal-nav style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr;">
         <span id="cpuPerf" style="margin-top: 0.2vw;">CPU Usage: </span>
@@ -66,7 +62,7 @@
                 </div>
             </div>
             <h1>Klive Cloud</h1>
-            <input type="file" multiple name="" id="filebox" style="display: none;">
+            <input type="file" multiple name="" id="filebox" style="display: none;" ondrop="DropFiles(eve)">
             <div id="foldergrid" style="display: grid; grid-template-columns: 1fr; height: 600px;">
                 <div id="filesgrid" class="filesgrid">
                     <div id="files" multiple="multiple" style="border: 5px solid #1C2121; padding: 5px;">
@@ -76,5 +72,8 @@
         </div>
     </div>
 </body>
-
+<script>
+    SetPerformance();
+    window.onload = GetStorageData();
+</script>
 </html>

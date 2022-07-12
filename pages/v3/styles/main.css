@@ -42,7 +42,7 @@ body {
 vertical-nav {
     margin: 0;
     padding: 0;
-    width: 12%;
+    width: 5%;
     background-color: var(--main);
     position: fixed;
     height: 100%;
@@ -202,7 +202,7 @@ input:-webkit-autofill:active {
     height: 40%;
     display: grid;
     grid-template-columns: 1fr;
-    border-radius: 25px;
+    border-radius: 10px;
     padding: 10px;
     margin-bottom: 10px;
 }
@@ -229,7 +229,8 @@ input:-webkit-autofill:active {
     transition: 0.5s;
     cursor: pointer;
 }
-.movieImage:hover{
+
+.movieImage:hover {
     filter: brightness(2);
     transform: scale(1.1);
     box-shadow: 5px 10px var(--secondary);
@@ -265,6 +266,13 @@ input:-webkit-autofill:active {
     justify-content: center;
 }
 
+.appContainer {
+    padding-top: 40px;
+    padding-left: 12%;
+    padding-right: 2%;
+    display: block;
+}
+
 .kbutton {
     border-radius: 5px;
     letter-spacing: 00.2125rem;
@@ -285,7 +293,6 @@ input:-webkit-autofill:active {
     user-select: none;
     display: flex;
     justify-content: center;
-    padding: 20px;
     overflow: hidden;
 }
 

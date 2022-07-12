@@ -335,6 +335,18 @@ function LoadMainPage() {
                 ele.appendChild(ele2);
             }
         });
+        MakeRequest("/mscrape/MemeAnalytics").then(response => {
+            let json = JSON.parse(response);
+            document.getElementById('mscrapeMemesDownloaded').innerHTML=json.TotalAmountOfMemes+" total memes. ("+Math.round(parseFloat(json.VideoMemesInfo.FilesizeGB)+parseFloat(json.ImageMemesInfo.FilesizeGB))+"GB)";
+            document.getElementById('mscrapeTotalVideoMemes').innerHTML=json.VideoMemes.length+" total video memes. ("+Math.round(json.VideoMemesInfo.FilesizeGB)+"GB)";
+            document.getElementById('mscrapeTotalImageMemes').innerHTML=json.ImageMemes.length+" total image memes. ("+Math.round(json.ImageMemesInfo.FilesizeMB)+"MB)";
+            if(json.scrapes.length!=0){
+                document.getElementById('mscrapeMemesDownloadedLastScrape').innerHTML=json.scrapes[json.scrapes.length-1].memesDownloaded+" memes downloaded last scrape.";
+            }
+            else{
+                document.getElementById('mscrapeMemesDownloadedLastScrape').innerHTML="Couldn't get memes downloaded last scrape.";
+            }
+        });
     })
 }
 

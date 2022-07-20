@@ -77,7 +77,7 @@ function ConstructMovieIntoGrid(gridID, movieJSON) {
     let json2 = JSON.parse(movieJSON);
     let movie = document.createElement('div');
     movie.className = "movieImage";
-    movie.setAttribute("name", JSON.stringify(json2));
+    movie.setAttribute("movieInfo", JSON.stringify(json2));
     moviegrid.appendChild(movie);
     let image = document.createElement("img");
     let divvy = document.createElement("div");
@@ -136,7 +136,9 @@ function SearchMovie() {
             let json = JSON.parse(response);
             for (let i = 0; i < json.length; i++) {
                 let element = ConstructMovieIntoGrid('movies', JSON.stringify(json[i]));
-                element.setAttribute("onclick", "DownloadMovie(this.getAttribute('name'))");
+                element.setAttribute("moviePage", String(json[i].TorrentPage));
+                element.setAttribute("movieName", String(json[i].Title));
+                element.setAttribute("onclick", "DownloadMovie(this.getAttribute('moviePage'), this.getAttribute('movieName'))");
             }
             button.innerHTML = "Search";
         });
@@ -149,9 +151,8 @@ function SearchMovie() {
     }
 }
 
-function DownloadMovie(json) {
-    let info = JSON.parse(json);
-    swal("Do you want to download " + info.Title + "?", {
+function DownloadMovie(movieURL, movieName) {
+    swal("Do you want to download " + movieName + "?", {
         buttons: {
             cancel: "No",
             gopost: {
@@ -164,7 +165,7 @@ function DownloadMovie(json) {
         button.innerHTML = "Requesting...";
         if (value == "download") {
             let formdata = new FormData();
-            formdata.append("kliveMovieJson", json);
+            formdata.append("kliveMovieURL", movieURL);
             var xhr = new XMLHttpRequest();
             xhr.open("POST", api + "/klivemovie/downloadmovie", true);
             xhr.send(formdata);

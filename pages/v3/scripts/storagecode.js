@@ -198,13 +198,24 @@ function OpenCloudFile(file, filename) {
             actualfilegrid.className = "filesgrid";
             actualfilegrid.id = "filegridpathed";
             newfilegrid.appendChild(actualfilegrid);
+            let divSplit = document.createElement("div");
+            divSplit.style="display: grid; grid-template-columns: 1fr 1fr; padding: 10px; gap: 5px;";
+            newfilegrid.appendChild(divSplit);
             let deletefolder = document.createElement("button");
             deletefolder.className = "kbutton";
             deletefolder.name = file;
             deletefolder.style = "border: 2px solid red; color: red;"
             deletefolder.innerHTML = "Delete Folder: " + filename;
             deletefolder.setAttribute("onclick", "ClearFolder(this.getAttribute('name'))");
-            newfilegrid.appendChild(deletefolder);
+            divSplit.appendChild(deletefolder);
+            let downloadFolder = document.createElement("button");
+            downloadFolder.className = "kbutton";
+            downloadFolder.style = "border: 2px solid green; color: red;"
+            downloadFolder.innerHTML = "Download Folder: " + filename;
+            downloadFolder.setAttribute("filename", filename);
+            downloadFolder.setAttribute("filepath", file);
+            downloadFolder.setAttribute("onclick", "DownloadFile(this.getAttribute('filename'), this.getAttribute('filepath'))");
+            divSplit.appendChild(downloadFolder);
             selectedFolder = file;
             MakeRequest('/storage/GetAllFilesInCloudStorage?p=' + file).then(response => {
                 let json = JSON.parse(response);

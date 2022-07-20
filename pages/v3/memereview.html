@@ -7,17 +7,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="styles/main.css">
     <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"
-        integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js" integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
     <script src="scripts/managementcode.js"></script>
-    <script src="scripts/memescraper.js"></script>
+    <script src="scripts/tumblrsocials.js"></script>
     <script src="../../scripts/saved.js"></script>
     <link rel="shortcut icon" href="../../images/klivebot2.png" type="image/x-icon">
     <title>KliveBot Management: Dashboard</title>
 </head>
 <script>
     SetPerformance();
-    document.onload = OnManagementPageLoad();
 </script>
 <nav>
     <horizontal-nav style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr;">
@@ -52,43 +50,40 @@
     </vertical-nav>
 </nav>
 
-
 <body style="visibility: hidden;">
     <div class="appContainer">
-        <div class="infobox" style="height: 600px;">
-            <h1>Information</h1>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;">
-                <div style="display: grid;">
-                    <span id="mscrapeTotalMemes" style="font-size: 2vw;">Loading...</span>
-                    <span id="mscrapeTotalVideoMemes" style="font-size: 2vw;">Loading...</span>
-                    <span id="mscrapeTotalImageMemes" style="font-size: 2vw;">Loading...</span>
-                    <span id="mscrapeMemesDownloadedLastScrape" style="font-size: 2vw;">Loading...</span>
-                    <span id="mscrapeScrapesInLifetime" style="font-size: 2vw;">Loading...</span>
-                </div>
-                <div></div>
-                <div></div>
-                <div><a href="memereview.html" class="kbutton" style="height: 100%; border: 2px solid cyan; color: cyan;">Go To Meme Review</a></div>
+        <div class="infobox" style="height: 800px;">
+            <h1>Video Memes</h1>
+            <div style="display: grid; grid-template-rows: 2fr 2fr; height: 800px;">
+                <video src="" id="video" controls width="100%" height="700px;"></video>
+                <button class="kbutton" onclick="NextVideo()" style="height: 100%;">Next Video</button>
             </div>
         </div>
-        <div class="dualbox">
-            <div class="infobox" style="height: 600px;">
-                <h1>Sources To Download From (Instagram Accounts)</h1>
-                <div style="display: grid; grid-template-rows: 2fr 1fr; gap: 30px;">
-                    <textarea id="mscrapeSources" class="kinput" style="height: 100%; width: 90%;"></textarea>
-                    <button id="saveSourcesButton" style="width: 90%;" onclick="SaveSourcesToAPI()" class="kbutton">Save</button>
+        <div class="infobox" style="height: 800px;"> 
+            <div style="display: grid; grid-template-rows: 2fr 2fr; height: 800px;">
+                <div style="display: flex; justify-content: center;">
+                    <img src="" id="image" alt="" style="height: 650px;">
                 </div>
-            </div>
-            <div class="infobox" style="height: 600px;">
-                <h1>Meme Scrape Logs</h1>
-                <div style="z-index: 5;">
-                    <div class="verticalgrid"
-                        style="overflow-y: scroll; gap: 10px; border: 3px solid var(--secondary); border-radius: 10px; padding: 5px; height: 590px;"
-                        id="mscrapelogs">
-                    </div>
-                </div>
+                <button class="kbutton" onclick="NextImage()" style="height: 100%;">Next Image</button>
             </div>
         </div>
     </div>
 </body>
+<script>
+    document.getElementById('video').setAttribute('src', api+"/mscrape/RandomVideoMeme?rr="+Math.random(10));
+    document.getElementById('image').setAttribute('src', api+"/mscrape/RandomImageMeme?rr="+Math.random(10));
+    videos = [];
+    function NextVideo(){
+        document.getElementById('video').setAttribute('src', api+"/mscrape/RandomVideoMeme?rr="+Math.random(10));
+    }
+    function DeleteVideo(){
 
+    }
+    function NextImage(){
+        document.getElementById('image').setAttribute('src', api+"/mscrape/RandomImageMeme?rr="+Math.random(10));
+    }
+    function DeleteImage(){
+        document.getElementById('video').setAttribute('src', api+"/mscrape/RandomVideoMeme?rr="+Math.random(10));
+    }
+</script>
 </html>

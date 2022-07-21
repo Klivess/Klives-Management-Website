@@ -189,7 +189,7 @@ function RestartBot(textToUpdate) {
     ele.innerHTML = "Restarting...";
     MakeRequest("/v1/RestartBot").then(response => {
         ele.innerHTML = "Restarted.";
-        LogOut();
+        window.location.replace('../../index.html');
     });
 }
 function ShutdownServer(textToUpdate) {
@@ -198,7 +198,7 @@ function ShutdownServer(textToUpdate) {
     MakeRequest("/v1/ShutdownServer").then(response => {
         ele.innerHTML = "Shutdown.";
     });
-    LogOut();
+    window.location.replace('../../index.html');
 }
 function ShutdownBot(textToUpdate) {
     let ele = document.getElementById(textToUpdate);
@@ -206,7 +206,7 @@ function ShutdownBot(textToUpdate) {
     MakeRequest("/v1/TurnOffBot").then(response => {
         ele.innerHTML = "Shutdown.";
     });
-    LogOut();
+    window.location.replace('../../index.html');
 }
 function UpdateBot(textToUpdate) {
     let ele = document.getElementById(textToUpdate);
@@ -214,7 +214,7 @@ function UpdateBot(textToUpdate) {
     MakeRequest("/v1/UpdateBot").then(response => {
     });
     ele.innerHTML = "Done.";
-    LogOut();
+    window.location.replace('../../index.html');
 }
 function SendToSpeaker(speaker, textToUpdate) {
     let ele = document.getElementById(textToUpdate);

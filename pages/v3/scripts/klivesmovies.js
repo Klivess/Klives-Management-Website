@@ -18,7 +18,9 @@ function LoadMoviesPage() {
         let json = JSON.parse(response);
         for (let i = 0; i < json.length; i++) {
             let element = ConstructMovieIntoGrid('downloadedmovies', JSON.stringify(json[i]));
-            element.setAttribute("onclick", "LoadMovie(this.getAttribute('name'))")
+            element.setAttribute("moviePage", String(json[i].TorrentPage));
+            element.setAttribute("movieName", String(json[i].Title));
+            element.setAttribute("onclick", "LoadMovie(this.getAttribute('movieName'))")
         }
     });
     MakeRequest("/KliveMovie/GetOngoingMovieDownloads").then(response => {
@@ -67,9 +69,8 @@ function LoadWatchMoviePage(){
     });
 }
 
-function LoadMovie(movieJson){
-    let json = JSON.parse(movieJson);
-    window.location.href="klivemovieviewer.html?movieName="+json.Title;
+function LoadMovie(movieTitle){
+    window.location.href="klivemovieviewer.html?movieName="+movieTitle;
 }
 
 function ConstructMovieIntoGrid(gridID, movieJSON) {

@@ -1,11 +1,14 @@
 let api = "https://90.255.227.194:80";
 let apistatus = true;
 
-
-Authentication();
-setInterval(function () {
-    Authentication();
-}, 2000);
+window.addEventListener('load', function () {
+    // on website load
+    let allInfoBoxes = document.getElementsByClassName("infobox");
+    for (let i = 0; i < allInfoBoxes.length; i++) {
+    }
+    SetPerformance();
+    AutomaticAuthentication();
+})
 function createCookie(name, value, days) {
     var expires;
     if (days) {
@@ -23,7 +26,14 @@ function SetPerformance() {
     UpdatePerformance();
     setInterval(function () {
         UpdatePerformance();
-    }, 1000);
+    }, 1500);
+}
+
+function AutomaticAuthentication(){
+    Authentication();
+    setInterval(() => {
+        Authentication();
+    }, 2000);
 }
 
 function DownloadFileFromServer(file, filename) {
@@ -86,7 +96,7 @@ function getCookie(c_name) {
     return "";
 }
 
-function LoadLogs() {    
+function LoadLogs() {
     setTimeout(() => {
         let ele = document.getElementById('logs');
         ele.value = "Loading...";
@@ -121,40 +131,46 @@ function RemoveAllElementsInGrid(gridID) {
 
 function Authentication() {
     try {
-        MakeRequest('/v1/CheckPassword?p=' + getCookie("password")).then(response => {
-            if (CheckAPIStatus() == false) {
-                alert("The API could not be reached.");
-                apistatus = false;
-                LogOut();
-            }
-            else {
-                console.log("API Online");
-            }
-            if (response == "PASS") {
-                apistatus = true;
-                if (document.readyState == "complete") {
-                    document.body.style.visibility = "visible";
+        let formData = new FormData;
+        formData.append("p", getCookie("password"));
+        var url = api + "/v1/CheckPassword";
+        var xhr = new XMLHttpRequest();
+        xhr.onreadystatechange= function() {
+            if(xhr.status==200&&xhr.readyState==4){
+                if (xhr.response==""||xhr.response==null||xhr.response==undefined) {
+                    console.log(xhr.responseText);
+                    alert("The API could not be reached.");
+                    apistatus = false;
+                    LogOut();
                 }
                 else {
-                    window.onload = function () {
+                    console.log("API Online");
+                }
+                if (xhr.response == "PASS") {
+                    apistatus = true;
+                    if (document.readyState == "complete") {
                         document.body.style.visibility = "visible";
-                    };
+                    }
+                    else {
+                        window.onload = function () {
+                            document.body.style.visibility = "visible";
+                        };
+                    }
+                }
+                else if (xhr.response == "DISABLED") {
+                    alert("The owner of this website has disabled logins.");
+                    apistatus = false;
+                    LogOut();
+                }
+                else if (xhr.response == "NOENTRY") {
+                    apistatus = false;
+                    console.log('Not logged in >:(');
+                    LogOut();
                 }
             }
-            else if (response == "DISABLED") {
-                alert("The owner of this website has disabled logins.");
-                apistatus = false;
-                LogOut();
-            }
-            else if (response == "NOENTRY") {
-                apistatus = false;
-                console.log('Not logged in >:(');
-                LogOut();
-            }
-        }).catch(error => {
-            apistatus = false;
-            //LogOut();
-        });
+        };
+        xhr.open("POST", url, true);
+        xhr.send(formData);
     }
     catch (err) {
         alert(err);
@@ -234,17 +250,17 @@ function SendToSpeaker(speaker, textToUpdate) {
     });
 }
 
-function IsKliveAdmin(){   
-    let res = false; 
-    MakeRequest('/v1/IsKliveAdmin?password='+getCookie('password')).then(response =>{
-        if(response=="PASS"){
-            res= true;
+function IsKliveAdmin() {
+    let res = false;
+    MakeRequest('/v1/IsKliveAdmin?password=' + getCookie('password')).then(response => {
+        if (response == "PASS") {
+            res = true;
             return res;
         }
     });
 }
 
-function SendToKlives(speaker, textToUpdate){
+function SendToKlives(speaker, textToUpdate) {
     let ele = document.getElementById(textToUpdate);
     let eleprev = ele.innerHTML;
     let ele2 = document.getElementById(speaker).value;
@@ -315,13 +331,6 @@ function LoadMainPage() {
                 document.getElementById("botuptime").innerHTML = hours + " hours " + minutes + " minutes.";
             }
         }, 1000);
-        setInterval(() => {
-            MakeRequest("/v1/GetKliveBotHealthInfo").then(response3 => {
-                let json3 = JSON.parse(response3);
-                document.getElementById("logactions").innerHTML = (json3.AmountOfTotalActions - json3.AmountOfErrors) + " actions.";
-                document.getElementById("logerrors").innerHTML = "<br>" + json3.AmountOfErrors + " errors.";
-            });
-        }, 2500);
         MakeRequest('/timemanagement/GetUndoneTasks').then(response => {
             let json = JSON.parse(response);
             json.reverse();
@@ -331,20 +340,20 @@ function LoadMainPage() {
                 ele2.className = "kbutton fadein";
                 ele2.style = "height: 50px; font-size: 20px; text-transform: none; display: grid; grid-template-columns: 1fr 1fr 4fr;";
                 let date = new Date(json[i].time);
-                ele2.innerHTML = "<p class='special'>" + date.toLocaleString() + "|</p><p class ='special' style='color: cyan;'>"+json[i].topic+"</p> <div>" + json[i].reason+"</div>";
+                ele2.innerHTML = "<p class='special'>" + date.toLocaleString() + "|</p><p class ='special' style='color: cyan;'>" + json[i].topic + "</p> <div>" + json[i].reason + "</div>";
                 ele.appendChild(ele2);
             }
         });
         MakeRequest("/mscrape/MemeAnalytics").then(response => {
             let json = JSON.parse(response);
-            document.getElementById('mscrapeMemesDownloaded').innerHTML=json.TotalAmountOfMemes+" total memes. ("+Math.round(parseFloat(json.VideoMemesInfo.FilesizeGB)+parseFloat(json.ImageMemesInfo.FilesizeGB))+"GB)";
-            document.getElementById('mscrapeTotalVideoMemes').innerHTML=json.VideoMemes.length+" total video memes. ("+Math.round(json.VideoMemesInfo.FilesizeGB)+"GB)";
-            document.getElementById('mscrapeTotalImageMemes').innerHTML=json.ImageMemes.length+" total image memes. ("+Math.round(json.ImageMemesInfo.FilesizeMB)+"MB)";
-            if(json.scrapes.length!=0){
-                document.getElementById('mscrapeMemesDownloadedLastScrape').innerHTML=json.scrapes[json.scrapes.length-1].memesDownloaded+" memes downloaded last scrape.";
+            document.getElementById('mscrapeMemesDownloaded').innerHTML = json.TotalAmountOfMemes + " total memes. (" + Math.round(parseFloat(json.VideoMemesInfo.FilesizeGB) + parseFloat(json.ImageMemesInfo.FilesizeGB)) + "GB)";
+            document.getElementById('mscrapeTotalVideoMemes').innerHTML = json.VideoMemes.length + " total video memes. (" + Math.round(json.VideoMemesInfo.FilesizeGB) + "GB)";
+            document.getElementById('mscrapeTotalImageMemes').innerHTML = json.ImageMemes.length + " total image memes. (" + Math.round(json.ImageMemesInfo.FilesizeMB) + "MB)";
+            if (json.scrapes.length != 0) {
+                document.getElementById('mscrapeMemesDownloadedLastScrape').innerHTML = json.scrapes[json.scrapes.length - 1].memesDownloaded + " memes downloaded last scrape.";
             }
-            else{
-                document.getElementById('mscrapeMemesDownloadedLastScrape').innerHTML="Couldn't get memes downloaded last scrape.";
+            else {
+                document.getElementById('mscrapeMemesDownloadedLastScrape').innerHTML = "Couldn't get memes downloaded last scrape.";
             }
         });
     })
@@ -367,21 +376,6 @@ async function MakeRequest(endpoint) {
     }
     catch (ex) {
         throw ex;
-    }
-}
-
-function CheckAPIStatus() {
-    let status = false;
-    //try catch
-    try {
-        let response = fetch(api + "/v1/Ping").then(response => {
-            status = response.status == 200;
-            return status;
-        });
-    }
-    catch (ex) {
-        status = false;
-        return status;
     }
 }
 

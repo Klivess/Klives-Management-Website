@@ -18,7 +18,6 @@
     <title>KliveBot Management: Dashboard</title>
 </head>
 <script>
-    SetPerformance();
     document.onload = LoadMainPage();
     document.onload = LoadTumblrTotalFollowerChart('TumblrTotalFollowers');
 </script>
@@ -112,22 +111,27 @@
         </div>
         <div class="dualbox">
             <div class="quadbox" style="width: 100%; height: 500px;">
-                <div class="infobox"></div>
-                <div>
-                    <h1 class="fadein">Analytics</h1>
-                    <div
-                        style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; padding: 10px;">
-                        <div>
-                            <span id="mscrapeMemesDownloaded" style="font-size: 1.2vw;">Loading memes
-                                downloaded...</span><br>
-                            <span id="mscrapeTotalVideoMemes" style="font-size: 1vw;">Loading memes
-                                downloaded...</span><br>
-                            <span id="mscrapeTotalImageMemes" style="font-size: 1vw;">Loading memes
-                                downloaded...</span><br>
-                            <span id="mscrapeMemesDownloadedLastScrape" style="font-size: 1vw;">Loading memes
-                                downloaded...</span>
-                        </div>
+                <div class="infobox">
+                    <h1 class="fadein">Meme Scraper Analytics</h1>
+                    <div>
+                        <span id="mscrapeMemesDownloaded" style="font-size: 1.2vw;">Loading memes
+                            downloaded...</span><br>
+                        <span id="mscrapeTotalVideoMemes" style="font-size: 1vw;">Loading memes
+                            downloaded...</span><br>
+                        <span id="mscrapeTotalImageMemes" style="font-size: 1vw;">Loading memes
+                            downloaded...</span><br>
+                        <span id="mscrapeMemesDownloadedLastScrape" style="font-size: 1vw;">Loading memes
+                            downloaded...</span>
                     </div>
+                </div>
+                <div class="infobox">
+                    <h1 class="fadein">Analytics</h1>
+                </div>
+                <div class="infobox">
+                    <h1 class="fadein">Analytics</h1>
+                </div>
+                <div class="infobox">
+                    <h1 class="fadein">Analytics</h1>
                 </div>
             </div>
             <div class="infobox" style="width: 100%; height: 500px;">

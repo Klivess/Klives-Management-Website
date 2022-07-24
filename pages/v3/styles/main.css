@@ -25,7 +25,13 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
-    gap: 28px;
+    column-gap: 4%;
+    row-gap: 6%;
+}
+
+.quadbox .infobox{
+    height: 100%;
+    margin: 0;
 }
 
 

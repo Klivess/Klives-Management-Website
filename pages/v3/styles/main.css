@@ -297,6 +297,7 @@ input:-webkit-autofill:active {
     align-content: center;
     color: var(--secondary);
     text-transform: uppercase;
+    border-radius: 10px;
     text-decoration: none;
     background-color: transparent;
     border: 2px solid var(--secondary);

@@ -21,6 +21,14 @@
     column-gap: 28px;
 }
 
+.quadbox {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 28px;
+}
+
+
 * {
     margin: 0;
     padding: 0;

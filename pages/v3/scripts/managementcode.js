@@ -96,24 +96,6 @@ function getCookie(c_name) {
     return "";
 }
 
-function LoadLogs() {
-    setTimeout(() => {
-        let ele = document.getElementById('logs');
-        ele.value = "Loading...";
-        MakeRequest("/v1/GetLogs").then(response => {
-            ele.value = response;
-        });
-        ele.scrollTop = ele.scrollHeight;
-        setInterval(function () {
-            let ele = document.getElementById('logs');
-            MakeRequest("/v1/GetLogs").then(response => {
-                ele.value = response;
-            });
-            ele.scrollTop = ele.scrollHeight;
-        }, 1750);
-    }, 500);
-}
-
 function ClearLogs() {
     MakeRequest("/v1/ClearLogs").then(response => {
         console.log(response);

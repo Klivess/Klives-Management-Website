@@ -7,7 +7,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="styles/main.css">
     <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js" integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"
+        integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
     <script src="scripts/managementcode.js"></script>
     <script src="scripts/tumblrsocials.js"></script>
     <script src="../../scripts/saved.js"></script>
@@ -16,7 +17,6 @@
 </head>
 <script>
     SetPerformance();
-    document.onload = LoadLogs();
 </script>
 <nav>
     <horizontal-nav style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr;">
@@ -47,7 +47,8 @@
             <a class="kbutton" href="logs.html" style="font-size: medium; height: 75px;">Logs</a>
             <a class="kbutton" href="omniscience.html" style="font-size: medium; height: 75px;">Omni</a>
             <a class="kbutton" href="school.html" style="font-size: medium; height: 75px;">School</a>
-            <a class="kbutton" href="klivemanagementsettings.html" style="font-size: medium; height: 75px;">Management</a>
+            <a class="kbutton" href="klivemanagementsettings.html"
+                style="font-size: medium; height: 75px;">Management</a>
         </div>
     </vertical-nav>
 </nav>
@@ -58,11 +59,27 @@
             <div id="quickactions">
                 <h1>Logs</h1>
                 <textarea name="logbox" id="logs" style="background-color: #000814; border: none; color: white; font-family: 'Roboto'; border: none; border-radius: 10px;
-                overflow-y: scroll; outline: none; height: 790px; width: 100%; font-size: 13px; padding: 10px;" readonly>
+                overflow-y: scroll; outline: none; height: 790px; width: 100%; font-size: 13px; padding: 10px;"
+                    readonly>
                 </textarea>
             </div>
         </div>
     </div>
 </body>
+<script>
+    let ele = document.getElementById('logs');
+    ele.value = "Loading...";
+    MakeRequest("/v1/GetLogs").then(response => {
+        ele.value = response;
+    }).then(fin => {
+        ele.scrollTop = ele.scrollHeight;
+    });
+    setInterval(function () {
+        let ele = document.getElementById('logs');
+        MakeRequest("/v1/GetLogs").then(response => {
+            ele.value = response;
+        });
+    }, 2750);
+</script>
 
 </html>

@@ -24,11 +24,6 @@
     <link rel="shortcut icon" href="../../images/klivebot2.png" type="image/x-icon">
     <title>KliveBot Management: Socials</title>
 </head>
-<script>
-    SetPerformance();
-    document.onload = OnSocialsLoadTumblr();
-    document.onload = OnSocialsLoadMScrape();
-</script>
 <nav>
     <horizontal-nav style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr;">
         <span id="cpuPerf" style="margin-top: 0.2vw;">CPU Usage: </span>
@@ -102,5 +97,8 @@
         </div>
     </div>
 </body>
-
+<script>
+    document.onload = OnSocialsLoadTumblr();
+    document.onload = OnSocialsLoadMScrape();
+</script>
 </html>

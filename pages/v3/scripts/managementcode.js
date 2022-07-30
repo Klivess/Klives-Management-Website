@@ -188,31 +188,34 @@ function RestartBot(textToUpdate) {
     MakeRequest("/v1/RestartBot").then(response => {
         ele.innerHTML = "Restarted.";
         window.location.replace('../../index.html');
-    });
-}
+    }).then(r => {
+        window.location.replace('../../index.html');
+    });}
 function ShutdownServer(textToUpdate) {
     let ele = document.getElementById(textToUpdate);
     ele.innerHTML = "Shutting Down...";
     MakeRequest("/v1/ShutdownServer").then(response => {
         ele.innerHTML = "Shutdown.";
+    }).then(r => {
+        window.location.replace('../../index.html');
     });
-    window.location.replace('../../index.html');
 }
 function ShutdownBot(textToUpdate) {
     let ele = document.getElementById(textToUpdate);
     ele.innerHTML = "Shutting Down...";
     MakeRequest("/v1/TurnOffBot").then(response => {
         ele.innerHTML = "Shutdown.";
+    }).then(r => {
+        window.location.replace('../../index.html');
     });
-    window.location.replace('../../index.html');
 }
 function UpdateBot(textToUpdate) {
     let ele = document.getElementById(textToUpdate);
     ele.innerHTML = "Updating...";
     MakeRequest("/v1/UpdateBot").then(response => {
+    }).then(r => {
+        window.location.replace('../../index.html');
     });
-    ele.innerHTML = "Done.";
-    window.location.replace('../../index.html');
 }
 function SendToSpeaker(speaker, textToUpdate) {
     let ele = document.getElementById(textToUpdate);
@@ -286,7 +289,7 @@ function ColorLuminance(lum) {
 }
 
 function LoadMainPage() {
-    MakeRequest("/v1/GetKliveBotHealthInfo").then(response => {
+    MakeRequest("/v1/GetKliveBotHealthInfo?logsAdded=false").then(response => {
         let json = JSON.parse(response);
         document.getElementById("botuptime").innerHTML = json.BotUptime.Hours + " hours " + json.BotUptime.Minutes + " minutes.";
         document.getElementById("botuptimeSeconds").innerHTML = "<br>" + json.BotUptime.Seconds + " seconds.";

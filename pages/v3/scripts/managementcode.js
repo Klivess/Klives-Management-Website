@@ -313,32 +313,32 @@ function LoadMainPage() {
                 document.getElementById("botuptime").innerHTML = hours + " hours " + minutes + " minutes.";
             }
         }, 1000);
-        MakeRequest('/timemanagement/GetUndoneTasks').then(response => {
-            let json = JSON.parse(response);
-            json.reverse();
-            for (let i = 0; i < json.length; i++) {
-                let ele = document.getElementById('alltasks');
-                let ele2 = document.createElement('button');
-                ele2.className = "kbutton fadein";
-                ele2.style = "height: 50px; font-size: 20px; text-transform: none; display: grid; grid-template-columns: 1fr 1fr 4fr;";
-                let date = new Date(json[i].time);
-                ele2.innerHTML = "<p class='special'>" + date.toLocaleString() + "|</p><p class ='special' style='color: cyan;'>" + json[i].topic + "</p> <div>" + json[i].reason + "</div>";
-                ele.appendChild(ele2);
-            }
-        });
-        MakeRequest("/mscrape/MemeAnalytics").then(response => {
-            let json = JSON.parse(response);
-            document.getElementById('mscrapeMemesDownloaded').innerHTML = json.TotalAmountOfMemes + " total memes. (" + Math.round(parseFloat(json.VideoMemesInfo.FilesizeGB) + parseFloat(json.ImageMemesInfo.FilesizeGB)) + "GB)";
-            document.getElementById('mscrapeTotalVideoMemes').innerHTML = json.VideoMemes.length + " total video memes. (" + Math.round(json.VideoMemesInfo.FilesizeGB) + "GB)";
-            document.getElementById('mscrapeTotalImageMemes').innerHTML = json.ImageMemes.length + " total image memes. (" + Math.round(json.ImageMemesInfo.FilesizeMB) + "MB)";
-            if (json.scrapes.length != 0) {
-                document.getElementById('mscrapeMemesDownloadedLastScrape').innerHTML = json.scrapes[json.scrapes.length - 1].memesDownloaded + " memes downloaded last scrape.";
-            }
-            else {
-                document.getElementById('mscrapeMemesDownloadedLastScrape').innerHTML = "Couldn't get memes downloaded last scrape.";
-            }
-        });
     })
+    MakeRequest('/timemanagement/GetUndoneTasks').then(response => {
+        let json = JSON.parse(response);
+        json.reverse();
+        for (let i = 0; i < json.length; i++) {
+            let ele = document.getElementById('alltasks');
+            let ele2 = document.createElement('button');
+            ele2.className = "kbutton fadein";
+            ele2.style = "height: 50px; font-size: 20px; text-transform: none; display: grid; grid-template-columns: 1fr 1fr 4fr;";
+            let date = new Date(json[i].time);
+            ele2.innerHTML = "<p class='special'>" + date.toLocaleString() + "|</p><p class ='special' style='color: cyan;'>" + json[i].topic + "</p> <div>" + json[i].reason + "</div>";
+            ele.appendChild(ele2);
+        }
+    });
+    MakeRequest("/mscrape/MemeAnalytics").then(response => {
+        let json = JSON.parse(response);
+        document.getElementById('mscrapeMemesDownloaded').innerHTML = json.TotalAmountOfMemes + " total memes. (" + Math.round(parseFloat(json.VideoMemesInfo.FilesizeGB) + parseFloat(json.ImageMemesInfo.FilesizeGB)) + "GB)";
+        document.getElementById('mscrapeTotalVideoMemes').innerHTML = json.VideoMemes.length + " total video memes. (" + Math.round(json.VideoMemesInfo.FilesizeGB) + "GB)";
+        document.getElementById('mscrapeTotalImageMemes').innerHTML = json.ImageMemes.length + " total image memes. (" + Math.round(json.ImageMemesInfo.FilesizeMB) + "MB)";
+        if (json.scrapes.length != 0) {
+            document.getElementById('mscrapeMemesDownloadedLastScrape').innerHTML = json.scrapes[json.scrapes.length - 1].memesDownloaded + " memes downloaded last scrape.";
+        }
+        else {
+            document.getElementById('mscrapeMemesDownloadedLastScrape').innerHTML = "Couldn't get memes downloaded last scrape.";
+        }
+    });
 }
 
 //blahaj

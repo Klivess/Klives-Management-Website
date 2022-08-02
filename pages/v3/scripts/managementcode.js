@@ -29,7 +29,7 @@ function SetPerformance() {
     }, 1500);
 }
 
-function AutomaticAuthentication(){
+function AutomaticAuthentication() {
     Authentication();
     setInterval(() => {
         Authentication();
@@ -117,9 +117,9 @@ function Authentication() {
         formData.append("p", getCookie("password"));
         var url = api + "/v1/CheckPassword";
         var xhr = new XMLHttpRequest();
-        xhr.onreadystatechange= function() {
-            if(xhr.status==200&&xhr.readyState==4){
-                if (xhr.response==""||xhr.response==null||xhr.response==undefined) {
+        xhr.onreadystatechange = function () {
+            if (xhr.status == 200 && xhr.readyState == 4) {
+                if (xhr.response == "" || xhr.response == null || xhr.response == undefined) {
                     console.log(xhr.responseText);
                     alert("The API could not be reached.");
                     apistatus = false;
@@ -190,7 +190,8 @@ function RestartBot(textToUpdate) {
         window.location.replace('../../index.html');
     }).then(r => {
         window.location.replace('../../index.html');
-    });}
+    });
+}
 function ShutdownServer(textToUpdate) {
     let ele = document.getElementById(textToUpdate);
     ele.innerHTML = "Shutting Down...";
@@ -326,7 +327,7 @@ function LoadMainPage() {
             ele2.className = "kbutton fadein";
             ele2.style = "height: 50px; font-size: 20px; text-transform: none; display: grid; grid-template-columns: 1fr 1fr 4fr;";
             let date = new Date(json[i].time);
-            ele2.innerHTML = "<p class='special'>" + date.toLocaleString() + "|</p><p class ='special' style='color: cyan;'>" + json[i].topic + "</p> <div>" + json[i].reason + "</div>";
+            ele2.innerHTML = "<p class='special' style='font-size: small;'>" + date.toLocaleString() + "|</p><p class ='special' style='color: cyan;'>" + json[i].topic + "</p> <div>" + json[i].reason + "</div>";
             ele.appendChild(ele2);
         }
     });
@@ -341,6 +342,70 @@ function LoadMainPage() {
         else {
             document.getElementById('mscrapeMemesDownloadedLastScrape').innerHTML = "Couldn't get memes downloaded last scrape.";
         }
+    });
+    MakeRequest("/KliveMovie/GetAllDownloadedMovies").then(response => {
+        let json = JSON.parse(response);
+        document.getElementById('klivesmoviesMovies').innerHTML = json.length + " movies in Klives Movies";
+    });
+    MakeRequest("/KliveMovie/GetOngoingMovieDownloads").then(response => {
+        let json = JSON.parse(response);
+        document.getElementById('klivesmoviesOngoingDownloads').innerHTML = json.length + " movies being downloaded.";
+    });
+    MakeRequest("/omniscience/GetOmniscienceAnalytics").then(response => {
+        let json = JSON.parse(response);
+        const ctx = document.getElementById('omniscienceMessageDistribution').getContext('2d');
+        guildNames=[];
+        guildValues=[];
+        for (let index = 0; index < json.GuildMessageDistribution.length; index++) {
+            const element = json.GuildMessageDistribution[index];
+            guildNames.push(element.Key);
+            guildValues.push(element.Value);
+        }
+        const graph = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: guildNames,
+                datasets: [{
+                    label: 'Guild Messages Distribution',
+                    data: guildValues,
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.2)',
+                        'rgba(54, 162, 235, 0.2)',
+                        'rgba(255, 206, 86, 0.2)',
+                        'rgba(75, 192, 192, 0.2)',
+                        'rgba(153, 102, 255, 0.2)',
+                        'rgba(255, 159, 64, 0.2)',
+                        'rgba(3, 29, 68, 0.2)',
+                        'rgba(4, 57, 94, 0.2)',
+                        'rgba(112, 162, 136, 0.2)',
+                        'rgba(218, 183, 133, 0.2)',
+                    ],
+                    borderColor: [
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(255, 206, 86, 1)',
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(153, 102, 255, 1)',
+                        'rgba(255, 159, 64, 1)',
+                        'rgba(3, 29, 68, 1)',
+                        'rgba(4, 57, 94, 1)',
+                        'rgba(112, 162, 136, 1)',
+                        'rgba(218, 183, 133, 1)',
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+        document.getElementById('omniscienceMessagesLogged').innerHTML=json.TotalMessagesLogged+" total messages logged.";
+        document.getElementById('omniscienceGuildsBeingWatched').innerHTML=json.GuildsLogged.length+" guilds being watched.";
     });
 }
 

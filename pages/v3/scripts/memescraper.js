@@ -30,9 +30,9 @@ function OnManagementPageLoad(){
         let json = JSON.parse(response);
         let logs = document.getElementById('mscrapelogs');
         console.log(json.scrapes);
+        json.scrapes.reverse();
         for(let i = 0; i<json.scrapes.length; i++){
             let scrape = json.scrapes[i];
-            console.log(scrape);
             let box = document.createElement('button');
             box.className="kbutton";
             box.style="height: 60px; font-size: 1vw; color: cyan;";
@@ -44,7 +44,7 @@ function OnManagementPageLoad(){
         document.getElementById('mscrapeTotalVideoMemes').innerHTML=json.VideoMemes.length+" total video memes. ("+Math.round(json.VideoMemesInfo.FilesizeGB)+"GB)";
         document.getElementById('mscrapeTotalImageMemes').innerHTML=json.ImageMemes.length+" total image memes. ("+Math.round(json.ImageMemesInfo.FilesizeMB)+"MB)";
         if(json.scrapes.length!=0){
-            document.getElementById('mscrapeMemesDownloadedLastScrape').innerHTML=json.scrapes[json.scrapes.length-1].memesDownloaded+" memes downloaded last scrape.";
+            document.getElementById('mscrapeMemesDownloadedLastScrape').innerHTML=json.scrapes[0].memesDownloaded+" memes downloaded last scrape.";
             document.getElementById('mscrapeScrapesInLifetime').innerHTML=json.scrapes.length+" scrapes completed in lifetime.";
         }
         else{

@@ -12,6 +12,7 @@
     <script src="scripts/tumblrsocials.js"></script>
     <script src="../../scripts/saved.js"></script>
     <script src="scripts/omnisciencecode.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.js"></script>
     <link rel="shortcut icon" href="../../images/klivebot2.png" type="image/x-icon">
     <title>KliveBot Management: Omniscience</title>
 </head>
@@ -49,13 +50,46 @@
     </vertical-nav>
 </nav>
 
+<style>
+    .userBox{
+        
+    }
+    .scheduleBox {
+        background-color: #11091d;
+        border-radius: 20px;
+        overflow-y: scroll;
+        border: 2px solid #573391;
+        scrollbar-width: 1px;
+    }
+</style>
+
 <body style="visibility: hidden;">
     <div class="appContainer">
-        <div class="infobox" style="height: 700px; padding: 10px;">
-            <div style="background-color: #1C2121; border-radius: 10px; display: grid; overflow-y: scroll;">
-                <h1>Discord Klives Mentions</h1>
-                <div style="padding: 5px;">
-                    <div style="overflow-y: scroll; display: grid;" id="omnisciencementions">
+        <div class="dualbox" style="grid-template-columns: 1fr 2fr;">
+            <div class="infobox" style="height: 700px; padding: 10px;">
+                <div style="background-color: #1C2121; border-radius: 10px; display: grid; overflow-y: scroll;">
+                    <h1>Discord Klives Mentions</h1>
+                    <div style="padding: 5px;">
+                        <div style="overflow-y: scroll; display: grid;" id="omnisciencementions">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="infobox" style="height: 700px;">
+                <div style="display: grid; grid-template-columns: 2fr 1fr;">
+                    <div>
+                        <span id="omniscienceMessagesLogged" style="font-size: 2vw;">Loading...</span><br>
+                        <span id="omniscienceGuildsBeingWatched" style="font-size: 2vw;">Loading...</span><br>
+                        <span id="omniscienceKlivesMentions" style="font-size: 2vw;">Loading...</span><br><br><br>
+                        <div style="display: flex; justify-content: center;">
+                            <h1>Most Frequent Speakers</h1>
+                            <div class="scheduleBox" id="frequentspeakersbox" style="height: 500px; width: 600px;">
+
+                            </div>
+                        </div>
+                    </div>
+                    <div style="width: 300px; height: 300px; display: flex; justify-content: center;">
+                        <canvas id="omniscienceMessageDistribution"></canvas>
                     </div>
                 </div>
             </div>

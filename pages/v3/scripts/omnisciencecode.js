@@ -86,11 +86,23 @@ function LoadOmniscience() {
             ele2.innerHTML = "<p class='special' style='font-size: large;'>" + element.Key.Username + "</p><p class ='special' style='color: cyan;'>" + element.Value+" Messages sent" + "</p>";
             ele.appendChild(ele2);
         }
+        json.WordFrequency.reverse();
+        for (let index = 0; index < json.WordFrequency.length; index++) {
+            const element = json.WordFrequency[index];
+            if(element.Value>30){
+                let ele = document.getElementById("wordfrequency");
+                let ele2 = document.createElement('button');
+                ele2.className = "kbutton fadein";
+                ele2.style = "height: 50px; font-size: 20px; text-transform: none; display: grid; grid-template-columns: 1fr 1fr;";
+                ele2.innerHTML = "<p class='special' style='font-size: large;'>'" + element.Key + "'</p><p class ='special' style='color: cyan;'> Mentioned " + element.Value+" times." + "</p>";
+                ele.appendChild(ele2);
+            }
+        }
     });
 }
 
 function LoadOmniscienceMentions(name) {
-    let data = omnisciencedata[name];
+    let data = omnisciencedata.KlivesMentions[name];
     let contenttext = "Message: " + data.Message + "\n\n" + "Messager: " + data.AuthorName + "\n\n" + "Date: " + data.DateString + "\n\n"
     "Discord Server: " + data.GuildName + "\n\n" + "Discord Channel: " + data.ChannelName;
     swal(contenttext, {

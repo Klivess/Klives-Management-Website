@@ -51,9 +51,6 @@
 </nav>
 
 <style>
-    .userBox{
-        
-    }
     .scheduleBox {
         background-color: #11091d;
         border-radius: 20px;
@@ -76,6 +73,7 @@
                 </div>
             </div>
             <div class="infobox" style="height: 700px;">
+                <h1>Omniscience Data</h1>
                 <div style="display: grid; grid-template-columns: 2fr 1fr;">
                     <div>
                         <span id="omniscienceMessagesLogged" style="font-size: 2vw;">Loading...</span><br>
@@ -90,6 +88,16 @@
                     </div>
                     <div style="width: 300px; height: 300px; display: flex; justify-content: center;">
                         <canvas id="omniscienceMessageDistribution"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="infobox" style="height: 600px;">
+            <h1>Trends</h1>
+            <div style="display: grid; grid-template-columns: 1fr 2fr;">
+                <div style="padding: 25px;">
+                    <div class="scheduleBox" id="wordfrequency" style="height: 550px; width: 600px;">
+                        <h1>Word Frequency</h1>
                     </div>
                 </div>
             </div>

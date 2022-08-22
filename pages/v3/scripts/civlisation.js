@@ -8,6 +8,8 @@ function OnLoadCivPage(){
             document.getElementById('civDeaths').innerHTML="Deaths: "+json.Deaths;
             document.getElementById('civSizeX').innerHTML="World Size X: "+json.worldSizeX;
             document.getElementById('civSizeY').innerHTML="World Size Y: "+json.worldSizeY;
+            let date = new Date(json.time.CurrentDateTime);
+            document.getElementById('civTime').innerHTML="Civilisation Date: "+date.toLocaleDateString()+" "+date.toLocaleTimeString();
         });
     }, 2000);
 }

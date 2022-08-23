@@ -21,6 +21,10 @@
     column-gap: 28px;
 }
 
+video{
+    user-select: none;
+}
+
 .quadbox {
     display: grid;
     grid-template-columns: 1fr 1fr;

@@ -368,25 +368,22 @@ function NewFolder() {
         content: "input",
         button: {
             text: "Create!",
-            value: "create",
             closeModal: false,
-        },
-    }).then(result => {
-        if (result == "create") {
-            MakeRequest('/storage/CreateNewCloudFolder?name=' + result).then(response => {
-                if (response == "OK") {
-                    let grid = document.getElementById("files");
-                    while (grid.firstChild) {
-                        grid.removeChild(grid.firstChild);
-                    }
-                    swal("Created!");
-                    LoadAllCloudFiles();
-                }
-                if (response.includes("ERROR")) {
-                    swal(response);
-                }
-            })
         }
+    }).then(result => {
+        MakeRequest('/storage/CreateNewCloudFolder?name=' + result).then(response => {
+            if (response == "OK") {
+                let grid = document.getElementById("files");
+                while (grid.firstChild) {
+                    grid.removeChild(grid.firstChild);
+                }
+                swal("Created!");
+                LoadAllCloudFiles();
+            }
+            if (response.includes("ERROR")) {
+                swal(response);
+            }
+        })
     })
 }
 function ClearFolder(path) {
@@ -401,21 +398,28 @@ function ClearFolder(path) {
         }
     }).then(result => {
         if (result == "YES") {
-            MakeRequest('/storage/ClearCloudFolder?path=' + path).then(response => {
-                if (response == "OK") {
-                    let grid = document.getElementById("files");
-                    while (grid.firstChild) {
-                        grid.removeChild(grid.firstChild);
-                    }
-                    LoadAllCloudFiles();
+            IsKliveAdmin().then(resp => {
+                if(resp==true){
+                    MakeRequest('/storage/ClearCloudFolder?path=' + path).then(response => {
+                        if (response == "OK") {
+                            let grid = document.getElementById("files");
+                            while (grid.firstChild) {
+                                grid.removeChild(grid.firstChild);
+                            }
+                            LoadAllCloudFiles();
+                        }
+                        if (response.includes("ERROR")) {
+                            swal(response);
+                            let grid = document.getElementById("files");
+                            while (grid.firstChild) {
+                                grid.removeChild(grid.firstChild);
+                            }
+                            LoadAllCloudFiles();
+                        }
+                    })
                 }
-                if (response.includes("ERROR")) {
-                    swal(response);
-                    let grid = document.getElementById("files");
-                    while (grid.firstChild) {
-                        grid.removeChild(grid.firstChild);
-                    }
-                    LoadAllCloudFiles();
+                else{
+                    swal("Unauthorized!", unauthMessage);
                 }
             })
         }

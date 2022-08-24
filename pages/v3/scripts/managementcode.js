@@ -8,6 +8,7 @@ window.addEventListener('load', function () {
     }
     SetPerformance();
     AutomaticAuthentication();
+
 })
 function createCookie(name, value, days) {
     var expires;
@@ -214,7 +215,6 @@ function UpdateBot(textToUpdate) {
     let ele = document.getElementById(textToUpdate);
     ele.innerHTML = "Updating...";
     MakeRequest("/v1/UpdateBot").then(response => {
-    }).then(r => {
         window.location.replace('../../index.html');
     });
 }
@@ -236,14 +236,13 @@ function SendToSpeaker(speaker, textToUpdate) {
     });
 }
 
-function IsKliveAdmin() {
-    let res = false;
-    MakeRequest('/v1/IsKliveAdmin?password=' + getCookie('password')).then(response => {
-        if (response == "PASS") {
-            res = true;
-            return res;
-        }
+async function IsKliveAdmin() {
+    let isAdmin = false;
+    await MakeRequest('/v1/IsKliveAdmin?password=' + getCookie('password')).then(response => {
+        isAdmin=response=="PASS";
+        console.log("Is admin?: "+isAdmin.toString());
     });
+    return Promise.resolve(isAdmin);
 }
 
 function SendToKlives(speaker, textToUpdate) {

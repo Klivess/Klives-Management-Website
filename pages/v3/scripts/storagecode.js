@@ -163,7 +163,7 @@ function UploadFile(uploadbuttonid) {
                 file.value = "";
                 uploadingFile = false;
                 file.remove();
-                file.files=[];
+                file.files = [];
             }
         })
     }
@@ -199,7 +199,7 @@ function OpenCloudFile(file, filename) {
             actualfilegrid.id = "filegridpathed";
             newfilegrid.appendChild(actualfilegrid);
             let divSplit = document.createElement("div");
-            divSplit.style="display: grid; grid-template-columns: 1fr 1fr; padding: 10px; gap: 5px;";
+            divSplit.style = "display: grid; grid-template-columns: 1fr 1fr; padding: 10px; gap: 5px;";
             newfilegrid.appendChild(divSplit);
             let deletefolder = document.createElement("button");
             deletefolder.className = "kbutton";
@@ -280,7 +280,14 @@ function OpenCloudFile(file, filename) {
                                 DownloadFile(file, filename);
                             }
                             else if (value == "delete") {
-                                DeleteFile(file);
+                                IsKliveAdmin().then(resp => {
+                                    if (resp == true) {
+                                        DeleteFile(file);
+                                    }
+                                    else {
+                                        swal("Unauthorized!", unauthMessage)
+                                    }
+                                })
                             }
                         })
                     });
@@ -307,7 +314,14 @@ function OpenCloudFile(file, filename) {
                             DownloadFile(file, filename);
                         }
                         else if (value == "delete") {
-                            DeleteFile(file);
+                            IsKliveAdmin().then(resp => {
+                                if (resp == true) {
+                                    DeleteFile(file);
+                                }
+                                else {
+                                    swal("Unauthorized!", unauthMessage)
+                                }
+                            })
                         }
                         else if (value == "watch") {
                             window.open("viewvideo.html?videoPath=" + file);
@@ -332,7 +346,14 @@ function OpenCloudFile(file, filename) {
                             DownloadFile(file, filename);
                         }
                         else if (value == "delete") {
-                            DeleteFile(file);
+                            IsKliveAdmin().then(resp => {
+                                if (resp == true) {
+                                    DeleteFile(file);
+                                }
+                                else {
+                                    swal("Unauthorized!", unauthMessage)
+                                }
+                            })
                         }
                     });
                 }
@@ -347,22 +368,25 @@ function NewFolder() {
         content: "input",
         button: {
             text: "Create!",
+            value: "create",
             closeModal: false,
         },
     }).then(result => {
-        MakeRequest('/storage/CreateNewCloudFolder?name=' + result).then(response => {
-            if (response == "OK") {
-                let grid = document.getElementById("files");
-                while (grid.firstChild) {
-                    grid.removeChild(grid.firstChild);
+        if (result == "create") {
+            MakeRequest('/storage/CreateNewCloudFolder?name=' + result).then(response => {
+                if (response == "OK") {
+                    let grid = document.getElementById("files");
+                    while (grid.firstChild) {
+                        grid.removeChild(grid.firstChild);
+                    }
+                    swal("Created!");
+                    LoadAllCloudFiles();
                 }
-                swal("Created!");
-                LoadAllCloudFiles();
-            }
-            if (response.includes("ERROR")) {
-                swal(response);
-            }
-        })
+                if (response.includes("ERROR")) {
+                    swal(response);
+                }
+            })
+        }
     })
 }
 function ClearFolder(path) {
@@ -507,11 +531,15 @@ function DownloadFile(file, filename) {
 }
 
 function DeleteFile(file) {
-    MakeRequest("/storage/DeleteFileInCloudStorage?p=" + file).then(response => {
-        let grid = document.getElementById("files");
-        while (grid.firstChild) {
-            grid.removeChild(grid.firstChild);
+    IsKliveAdmin().then(resp => {
+        if (resp == true) {
+            MakeRequest("/storage/DeleteFileInCloudStorage?p=" + file).then(response => {
+                let grid = document.getElementById("files");
+                while (grid.firstChild) {
+                    grid.removeChild(grid.firstChild);
+                }
+                LoadAllCloudFiles();
+            });
         }
-        LoadAllCloudFiles();
-    });
+    })
 }

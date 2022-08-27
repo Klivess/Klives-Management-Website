@@ -399,46 +399,19 @@ function ClearFolder(path) {
 }
 
 
-function DownloadScreenshot(filename) {
-    //make post request 
-    var url = api + "/storage/DownloadScreenshot";
-    var xhr = new XMLHttpRequest();
-    xhr.open("POST", url, true);
-    xhr.responseType = 'blob';
-    xhr.onload = function (res) {
-        if (this.status === 200) {
-            var type = xhr.getResponseHeader('Content-Type');
-            var blob = new Blob([this.response], { type: type });
-            if (typeof window.navigator.msSaveBlob !== 'undefined') {
-                /*
-                 * For IE
-                 * >=IE10
-                 */
-                window.navigator.msSaveBlob(blob, filename);
-            } else {
-                /*
-                 * For Non-IE (chrome, firefox)
-                 */
-                var URL = window.URL || window.webkitURL;
-                var objectUrl = URL.createObjectURL(blob);
-                if (filename) {
-                    var a = document.createElement('a');
-                    if (typeof a.download === 'undefined') {
-                        window.location = objectUrl;
-                    } else {
-                        a.href = objectUrl;
-                        a.download = filename;
-                        document.body.appendChild(a);
-                        a.click();
-                        a.remove();
-                    }
-                } else {
-                    window.location = objectUrl;
-                }
-            }
+function DownloadScreenshot() {
+    let meme = api+"/storage/DownloadScreenshot?r="+Math.Random;
+    IsKliveAdmin().then(r=>{
+        if(r==true){
+
         }
-    }
-    xhr.send();
+        else{
+            swal("Unauthorized!", )
+        }
+    });
+    swal("Server Screenshot", {
+        icon: meme
+    });
 }
 
 function DownloadFile(file, filename) {

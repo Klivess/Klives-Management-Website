@@ -16,7 +16,7 @@ function OnSocialsLoadMScrape(){
 }
 
 function ViewRandomImageMeme(){
-    let meme = api+"/mscrape/RandomImageMeme";
+    let meme = api+"/mscrape/RandomImageMeme?r="+Math.Random;
     swal("Your Random Meme", {
         icon: meme
     })

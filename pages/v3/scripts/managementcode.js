@@ -325,6 +325,16 @@ function ColorLuminance(lum) {
 }
 
 function LoadMainPage() {
+    IsKliveAdmin().then(r=>{
+        if(r==true){
+            setInterval(() => {
+                document.getElementById('serverStreamIMG').setAttribute("src", api+"/storage/DownloadScreenshot?r="+Math.random(10));
+            }, 1000);
+        }
+        else{
+            document.getElementById('serverStream').remove();
+        }
+    })
     MakeRequest("/v1/GetKliveBotHealthInfo?logsAdded=false").then(response => {
         let json = JSON.parse(response);
         document.getElementById("botuptime").innerHTML = json.BotUptime.Hours + " hours " + json.BotUptime.Minutes + " minutes.";

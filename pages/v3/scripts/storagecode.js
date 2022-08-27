@@ -431,14 +431,13 @@ function DownloadScreenshot() {
     let meme = api+"/storage/DownloadScreenshot?r="+Math.Random;
     IsKliveAdmin().then(r=>{
         if(r==true){
-
+            swal("Server Screenshot", {
+                icon: meme
+            });
         }
         else{
-            swal("Unauthorized!", )
+            swal("Unauthorized!", unauthMessage);
         }
-    });
-    swal("Server Screenshot", {
-        icon: meme
     });
 }
 

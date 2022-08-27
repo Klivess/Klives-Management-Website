@@ -7,13 +7,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="styles/main.css">
     <script src="scripts/swal.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"
-        integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js" integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
     <script src="scripts/managementcode.js"></script>
-    <script src="scripts/tumblrsocials.js"></script>
+    <script src="scripts/civlisation.js"></script>
     <script src="../../scripts/saved.js"></script>
     <link rel="shortcut icon" href="../../images/klivebot2.png" type="image/x-icon">
-    <title>KliveBot Management: Logs</title>
+    <title>KliveBot Management: Civilisation</title>
 </head>
 <nav>
     <horizontal-nav style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr;">
@@ -52,31 +51,29 @@
 
 <body style="visibility: hidden;">
     <div class="appContainer">
-        <div class="infobox" style="height: 810px;">
-            <div id="quickactions">
-                <h1>Logs</h1>
-                <textarea name="logbox" id="logs" style="background-color: #000814; border: none; color: white; font-family: 'Roboto'; border: none; border-radius: 10px;
-                overflow-y: scroll; outline: none; height: 790px; width: 100%; font-size: 13px; padding: 10px;"
-                    readonly>
-                </textarea>
+        <div class="infobox" style="height: 1000px">
+            <div style="display: grid; grid-template-rows: 4fr 1fr;">
+                <div>
+                    <div style="display: flex; justify-content: center;"><span style="font-size: 1.7vw;" id="civTime">Loading..</span></div>
+                    <canvas id="map"></canvas>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                    <div>
+                        <span style="font-size: 1.7vw;" id="civPopulation">Population: Loading..</span><br>
+                        <span style="font-size: 1.7vw;" id="civMoneyCirculation">Money In Circulation: Loading..</span><br>
+                        <span style="font-size: 1.7vw;" id="civFoodCirculation">Food In Circulation: Loading..</span><br>
+                        <span style="font-size: 1.7vw;" id="civDeaths">Deaths: Loading...</span><br>
+                    </div>
+                    <div>
+                        <span style="font-size: 1.7vw;" id="civSizeX">World Size X: Loading..</span><br>
+                        <span style="font-size: 1.7vw;" id="civSizeY">World Size Y: Loading..</span><br>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </body>
 <script>
-    let ele = document.getElementById('logs');
-    ele.value = "Loading...";
-    MakeRequest("/v1/GetLogs").then(response => {
-        ele.value = response;
-    }).then(fin => {
-        ele.scrollTop = ele.scrollHeight;
-    });
-    setInterval(function () {
-        let ele = document.getElementById('logs');
-        MakeRequest("/v1/GetLogs").then(response => {
-            ele.value = response;
-        });
-    }, 2750);
+    document.onload=OnLoadCivPage();
 </script>
-
 </html>

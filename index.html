@@ -122,8 +122,8 @@
                     noticebox.innerHTML = "KliveAPI Status: Online";
                     noticebox.setAttribute("style", "color: greenyellow;");
                 }
-            }, 100);
-        }, 800);
+            }, 400);
+        }, 1000);
     }
     async function MakeRequest(endpoint) {
         let response = await fetch("https://90.255.227.194:80" + endpoint);

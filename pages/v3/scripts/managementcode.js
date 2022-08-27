@@ -1,5 +1,6 @@
 let api = "https://90.255.227.194:80";
 let apistatus = true;
+const unauthMessage = "Only Klives is authorized to perform this action.";
 
 window.addEventListener('load', function () {
     // on website load
@@ -8,6 +9,7 @@ window.addEventListener('load', function () {
     }
     SetPerformance();
     AutomaticAuthentication();
+
 })
 function createCookie(name, value, days) {
     var expires;
@@ -175,48 +177,82 @@ function UpdatePerformance() {
 }
 
 function RestartServer(textToUpdate) {
-    let ele = document.getElementById(textToUpdate);
-    ele.innerHTML = "Restarting...";
-    MakeRequest("/v1/RestartServer").then(response => {
-        ele.innerHTML = "Restarted.";
-        LogOut();
-    });
+    IsKliveAdmin().then(resp =>{
+        if(resp==true){
+            let ele = document.getElementById(textToUpdate);
+            ele.innerHTML = "Restarting...";
+            MakeRequest("/v1/RestartServer").then(response => {
+                ele.innerHTML = "Restarted.";
+                LogOut();
+            });
+        }
+        else{
+            swal("Unauthorized", unauthMessage);
+        }
+    })
 }
 function RestartBot(textToUpdate) {
-    let ele = document.getElementById(textToUpdate);
-    ele.innerHTML = "Restarting...";
-    MakeRequest("/v1/RestartBot").then(response => {
-        ele.innerHTML = "Restarted.";
-        window.location.replace('../../index.html');
-    }).then(r => {
-        window.location.replace('../../index.html');
-    });
+    IsKliveAdmin().then(resp =>{
+        if(resp==true){
+            let ele = document.getElementById(textToUpdate);
+            ele.innerHTML = "Restarting...";
+            MakeRequest("/v1/RestartBot").then(response => {
+                ele.innerHTML = "Restarted.";
+                window.location.replace('../../index.html');
+            }).then(r => {
+                window.location.replace('../../index.html');
+            });
+        }
+        else{
+            swal("Unauthorized", unauthMessage);
+        }
+    })
 }
 function ShutdownServer(textToUpdate) {
-    let ele = document.getElementById(textToUpdate);
-    ele.innerHTML = "Shutting Down...";
-    MakeRequest("/v1/ShutdownServer").then(response => {
-        ele.innerHTML = "Shutdown.";
-    }).then(r => {
-        window.location.replace('../../index.html');
-    });
+    IsKliveAdmin().then(resp =>{
+        if(resp==true){
+            let ele = document.getElementById(textToUpdate);
+            ele.innerHTML = "Shutting Down...";
+            MakeRequest("/v1/ShutdownServer").then(response => {
+                ele.innerHTML = "Shutdown.";
+            }).then(r => {
+                window.location.replace('../../index.html');
+            });
+        }
+        else{
+            swal("Unauthorized", unauthMessage);
+        }
+    })
 }
 function ShutdownBot(textToUpdate) {
-    let ele = document.getElementById(textToUpdate);
-    ele.innerHTML = "Shutting Down...";
-    MakeRequest("/v1/TurnOffBot").then(response => {
-        ele.innerHTML = "Shutdown.";
-    }).then(r => {
-        window.location.replace('../../index.html');
-    });
+    IsKliveAdmin().then(resp =>{
+        if(resp==true){
+            let ele = document.getElementById(textToUpdate);
+            ele.innerHTML = "Shutting Down...";
+            MakeRequest("/v1/TurnOffBot").then(response => {
+                ele.innerHTML = "Shutdown.";
+            }).then(r => {
+                window.location.replace('../../index.html');
+            });
+        }
+        else{
+            swal("Unauthorized", unauthMessage);
+        }
+    })
 }
 function UpdateBot(textToUpdate) {
-    let ele = document.getElementById(textToUpdate);
-    ele.innerHTML = "Updating...";
-    MakeRequest("/v1/UpdateBot").then(response => {
-    }).then(r => {
-        window.location.replace('../../index.html');
-    });
+    IsKliveAdmin().then(resp =>{
+        if(resp==true){
+            let ele = document.getElementById(textToUpdate);
+            ele.innerHTML = "Updating...";
+            MakeRequest("/v1/UpdateBot").then(response => {
+                window.location.replace('../../index.html');
+            });
+        }
+        else{
+            swal("Unauthorized", unauthMessage);
+        }
+    })
 }
 function SendToSpeaker(speaker, textToUpdate) {
     let ele = document.getElementById(textToUpdate);
@@ -236,14 +272,13 @@ function SendToSpeaker(speaker, textToUpdate) {
     });
 }
 
-function IsKliveAdmin() {
-    let res = false;
-    MakeRequest('/v1/IsKliveAdmin?password=' + getCookie('password')).then(response => {
-        if (response == "PASS") {
-            res = true;
-            return res;
-        }
+async function IsKliveAdmin() {
+    let isAdmin = false;
+    await MakeRequest('/v1/IsKliveAdmin?password=' + getCookie('password')).then(response => {
+        isAdmin=response=="PASS";
+        console.log("Is admin?: "+isAdmin.toString());
     });
+    return Promise.resolve(isAdmin);
 }
 
 function SendToKlives(speaker, textToUpdate) {

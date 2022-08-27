@@ -75,32 +75,39 @@ function LoadBehaviourSettings() {
     }, 3);
 }
 function UpdateBehaviourSettings() {
-    try {
-        let minhourspost = document.getElementById('minhoursbeforepost');
-        let maxhourspost = document.getElementById('maxhoursbeforepost');
-        let minhoursrepost = document.getElementById('minreposts');
-        let minhashtags = document.getElementById('minhashtags');
-        let maxhashtags = document.getElementById('maxhashtags');
-        let messageklivescheckbox = document.getElementById('messageklives');
-        MakeRequest("/tumblr/GetTumblrBehaviorSettings").then(response => {
-            console.log(response);
-            let json = JSON.parse(response);
-            minhourspost.setAttribute("value", json.MinHoursAfterPost);
-            json.MinHoursAfterPost = minhourspost.value;
-            json.MinHoursBetweenReposts = minhoursrepost.value;
-            json.MaxHoursAfterPost = maxhourspost.value;
-            json.AmountOfHashtagsMin = minhashtags.value;
-            json.AmountOfHashtagsMax = maxhashtags.value;
-            json.MessageKlivesOnAction = messageklivescheckbox.checked;
-            MakeRequest("/tumblr/SetTumblrBehaviorSettings?json=" + JSON.stringify(json)).then(response2 => {
-                console.log("Updated Settings");
-            });
-        });
-    }
-    catch (err) {
-        swal("Error!", err);
-        console.log(err);
-    }
+    IsKliveAdmin().then(r => {
+        if(r==true){
+            try {
+                let minhourspost = document.getElementById('minhoursbeforepost');
+                let maxhourspost = document.getElementById('maxhoursbeforepost');
+                let minhoursrepost = document.getElementById('minreposts');
+                let minhashtags = document.getElementById('minhashtags');
+                let maxhashtags = document.getElementById('maxhashtags');
+                let messageklivescheckbox = document.getElementById('messageklives');
+                MakeRequest("/tumblr/GetTumblrBehaviorSettings").then(response => {
+                    console.log(response);
+                    let json = JSON.parse(response);
+                    minhourspost.setAttribute("value", json.MinHoursAfterPost);
+                    json.MinHoursAfterPost = minhourspost.value;
+                    json.MinHoursBetweenReposts = minhoursrepost.value;
+                    json.MaxHoursAfterPost = maxhourspost.value;
+                    json.AmountOfHashtagsMin = minhashtags.value;
+                    json.AmountOfHashtagsMax = maxhashtags.value;
+                    json.MessageKlivesOnAction = messageklivescheckbox.checked;
+                    MakeRequest("/tumblr/SetTumblrBehaviorSettings?json=" + JSON.stringify(json)).then(response2 => {
+                        console.log("Updated Settings");
+                    });
+                });
+            }
+            catch (err) {
+                swal("Error!", err);
+                console.log(err);
+            }
+        }
+        else{
+            swal("Unauthorized", unauthMessage);
+        }
+    })
 }
 
 function LoadTumblrReachChart(canvas, allaccountsJson) {
@@ -406,24 +413,31 @@ function RemoveTumblrAccount(name, page) {
         },
     }).then((value) => {
         if (value == "delete") {
-            try {
-                MakeRequest("/tumblr/RemoveTumblrAccount?name=" + name).then(response => {
-                    if (response != "OK") {
-                        alert("An error occurred while trying to remove the account.");
+            IsKliveAdmin(resp => {
+                if(resp==true){
+                    try {
+                        MakeRequest("/tumblr/RemoveTumblrAccount?name=" + name).then(response => {
+                            if (response != "OK") {
+                                alert("An error occurred while trying to remove the account.");
+                            }
+                            else {
+                                if (page == undefined) {
+                                    LoadAllAccounts();
+                                }
+                                else if (page == "tumblrmanagement") {
+                                    window.location.replace("tumblrsocial.html");
+                                }
+                            }
+                        })
                     }
-                    else {
-                        if (page == undefined) {
-                            LoadAllAccounts();
-                        }
-                        else if (page == "tumblrmanagement") {
-                            window.location.replace("tumblrsocial.html");
-                        }
+                    catch (err) {
+                        alert(err.message);
                     }
-                })
-            }
-            catch (err) {
-                alert(err.message);
-            }
+                }
+                else{
+                    swal("Unauthorized!", unauthMessage)
+                }
+            })
         }
     });
 }

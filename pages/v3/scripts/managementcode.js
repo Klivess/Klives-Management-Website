@@ -24,6 +24,31 @@ function createCookie(name, value, days) {
     document.cookie = name + "=" + value + expires + "; path=/";
 }
 
+function ConstructCardIntoDiv(caption, imageURL, box){
+    console.log(box);
+    let movie = document.createElement('div');
+    movie.className = "movieImage";
+    let image = document.createElement("img");
+    if (imageURL == "") {
+        image.src = "images/noimage.png";
+        image.style = "width: 150px; height: 175px; filter: invert();";
+    }
+    else {
+        image.src = imageURL;
+        image.style = "width: 150px; height: 175px;";
+    }
+    let divvy = document.createElement("div");
+    divvy.appendChild(image);
+    movie.appendChild(divvy);
+    let text = document.createElement('span');
+    text.style = "font-weight: bold; align-self: center; width: 200px; word-wrap: break-word; z-index: 3;";
+    text.innerHTML = caption;
+    movie.appendChild(text);
+    let moviegrid = document.getElementById(box);
+    moviegrid.appendChild(movie);
+    return movie;
+}
+
 function SetPerformance() {
     UpdatePerformance();
     setInterval(function () {

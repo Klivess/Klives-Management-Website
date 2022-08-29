@@ -52,6 +52,63 @@ function OnManagementPageLoad(){
             document.getElementById('mscrapeScrapesInLifetime').innerHTML=json.scrapes.length+" scrapes completed in lifetime.";
         }
     });
+    MakeRequest("/mscrape/GetAllCompiledMemeVideos").then(response=>{
+        let json = JSON.parse(response);
+        for (let index = 0; index < json.length; index++) {
+            const element = json[index];
+            ConstructCardIntoDiv(caption, "", "compiledMemeComps");
+        }
+    });
+}
+
+function CreateNewMemeVideo() {
+    let amountOfMemes = 0;
+    let maximumMemeDuration = 15;
+    let memeVideoName = "";
+    IsKliveAdmin().then(r=>{
+        if(r==true){
+            swal({
+                text: 'Amount Of Meme Videos?',
+                content: "input",
+                button: {
+                    text: "Next!",
+                    closeModal: false,
+                }
+            }).then(result => {
+                amountOfMemes=result;
+                swal({
+                    text: 'Maximum second duration of each meme?',
+                    content: "input",
+                    button: {
+                        text: "Next!",
+                        closeModal: false,
+                    }
+                }).then(res => {
+                    maximumMemeDuration=res;
+                    swal({
+                        text: 'Name of video file?',
+                        content: "input",
+                        button: {
+                            text: "Create!",
+                            closeModal: false,
+                        }
+                    }).then(res => {
+                        MakeRequest("/mscrape/ConstructVideo?amountOfVideos="+amountOfMemes+"&maximumVideoDuration="+maximumMemeDuration).then(r => {
+                            if(r=="OK"){
+                                swal("Complete!", "KliveBot will message you when the video creation is complete. Restarting will interrupt this video creation.");
+                            }
+                            else{
+                                swal("Error", r);
+                            }
+                        });
+                    });
+                });
+            });
+        }
+        else{
+            swal("Unauthorized!", unauthMessage);
+        }
+    }) 
 }
 
 function SaveSourcesToAPI(){

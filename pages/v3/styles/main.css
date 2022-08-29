@@ -44,6 +44,7 @@ video{
     padding: 0;
     -webkit-tap-highlight-color: transparent;
     --main: #0b090a;
+    --maindark: #010101;
     --body: #161a1d;
     --secondary: #39489e;
     --objectcolours: #0b090a;

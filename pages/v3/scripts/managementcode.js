@@ -269,8 +269,9 @@ function UpdateBot(textToUpdate) {
             let ele = document.getElementById(textToUpdate);
             ele.innerHTML = "Updating...";
             MakeRequest("/v1/UpdateBot").then(response => {
-                window.location.replace('../../index.html');
+                ele.innerHTML = "Updated!";
             });
+            window.location.replace('../../index.html');
         }
         else{
             swal("Unauthorized", unauthMessage);

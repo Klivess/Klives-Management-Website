@@ -1,5 +1,7 @@
 function GetSettings() {
+    document.body.style.visibility="hidden";
     IsKliveAdmin().then(resp => {
+        document.body.style.visibility="visible";
         if (resp == true) {
             document.getElementById('body').style.visibility = "visible";
             MakeRequest('/settings/GetSettings').then(response => {
@@ -27,7 +29,8 @@ function GetSettings() {
             });
         }
         else {
-            swal("Unauthorized!", unauthMessage);
+            document.body.style.visibility="hidden";
+            window.location.replace('main.html');
         }
     })
 }

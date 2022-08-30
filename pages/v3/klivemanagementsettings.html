@@ -7,7 +7,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="styles/main.css">
     <script src="scripts/swal.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js" integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"
+        integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
     <script src="scripts/managementcode.js"></script>
     <script src="scripts/tumblrsocials.js"></script>
     <script src="scripts/settingsupdater.js"></script>
@@ -32,6 +33,13 @@
         <a class="kbutton navbutton" href="klivemanagementsettings.html">Management</a>
     </horizontal-nav>
 </nav>
+<style>
+    .settingContainer {
+        height: 50px;
+        display: grid;
+        grid-template-rows: 1fr 1fr;
+    }
+</style>
 
 <body id="body" style="visibility: hidden;">
     <div class="appContainer">
@@ -44,48 +52,19 @@
         </div>
         <div class="infobox" style="height: 500px;">
             <h1>Settings</h1>
-            <div
-                style="position: absolute; display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr; padding: 20px; grid-gap: 50px;">
-                <div style="display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr;">
-                    <span>Enable Speakers</span>
-                    <input type="checkbox" id="speakerscheck" onclick="UpdateSettings()" class="toggle">
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr;">
-                    <span>Enable Discord Bot And Interactions</span>
-                    <input type="checkbox" id="discordbotcheck" onclick="UpdateSettings()" class="toggle">
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr;">
-                    <span>Enable Tumblr Bot</span>
-                    <input type="checkbox" id="tumblrbotcheck" onclick="UpdateSettings()" class="toggle">
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr;">
-                    <span>Enable Meme Scraper</span>
-                    <input type="checkbox" id="memescrapercheck" onclick="UpdateSettings()" class="toggle">
-                </div>
-            </div>
-            <div
-                style="position: absolute; left: 40%; display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr; padding: 20px; grid-gap: 50px;">
-                <div style="display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr;">
-                    <span>Enable Website Login Without Admin Pass</span>
-                    <input type="checkbox" id="websitelogincheck" onclick="UpdateSettings()" class="toggle">
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr;">
-                    <span>Enable Omniscience</span>
-                    <input type="checkbox" id="omnisciencecheck" onclick="UpdateSettings()" class="toggle">
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr;">
-                    <span>Enable Guest Pass</span>
-                    <input type="checkbox" id="guestpasscheck" onclick="UpdateSettings()" class="toggle">
-                    <input class="kinput" id="guestpasspassword" onchange="UpdateSettings()" style="display: none;" type="text">
-                </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr 1fr 1fr 1fr 1fr;" id="settingGrid">
             </div>
         </div>
-        <div class="infobox" style="height: 200px; display: inline-flex; justify-content: center; align-content: center;">
-            <button class="kbutton" onclick="SendFinalMessage()" style="width: 500px; margin-top: 50px; height: 100px; border: 3px solid rgb(73, 0, 73);"><a style="color: rgb(73, 0, 73);">Send Final Message</a></button>
+        <div class="infobox"
+            style="height: 200px; display: inline-flex; justify-content: center; align-content: center;">
+            <button class="kbutton" onclick="SendFinalMessage()"
+                style="width: 500px; margin-top: 50px; height: 100px; border: 3px solid rgb(73, 0, 73);"><a
+                    style="color: rgb(73, 0, 73);">Send Final Message</a></button>
         </div>
     </div>
 </body>
 <script>
     GetSettings();
 </script>
+
 </html>

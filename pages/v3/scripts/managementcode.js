@@ -7,9 +7,7 @@ window.addEventListener('load', function () {
     let allInfoBoxes = document.getElementsByClassName("infobox");
     for (let i = 0; i < allInfoBoxes.length; i++) {
     }
-    SetPerformance();
     AutomaticAuthentication();
-
 })
 function createCookie(name, value, days) {
     var expires;

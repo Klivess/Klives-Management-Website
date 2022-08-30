@@ -1,38 +1,30 @@
 function GetSettings() {
     IsKliveAdmin().then(resp => {
         if (resp == true) {
-            if (response != "PASS") {
-                alert("You are not authorized to enter this page.");
-                window.location.replace("main.html");
-            }
-            else {
-                document.getElementById('body').style.visibility = "visible";
-                MakeRequest('/settings/GetSettings').then(response => {
-                    let json = JSON.parse(response);
-                    let speakerscheck = document.getElementById("speakerscheck");
-                    let discordbotcheck = document.getElementById("discordbotcheck");
-                    let tumblrbotcheck = document.getElementById("tumblrbotcheck");
-                    let memescrapercheck = document.getElementById("memescrapercheck");
-                    let websitelogincheck = document.getElementById("websitelogincheck");
-                    let omnisciencecheck = document.getElementById("omnisciencecheck");
-                    let guestpasscheck = document.getElementById("guestpasscheck");
-                    let guestpassword = document.getElementById("guestpasspassword");
-                    speakerscheck.checked = json.SpeakersEnabled;
-                    discordbotcheck.checked = json.DiscordBotEnabled;
-                    tumblrbotcheck.checked = json.TumblrBotEnabled;
-                    memescrapercheck.checked = json.MemeScraperEnabled;
-                    websitelogincheck.checked = json.WebsiteLoginEnabled;
-                    omnisciencecheck.checked = json.OmniscienceEnabled;
-                    guestpasscheck.checked = json.GuestPassEnabled;
-                    if (json.GuestPassEnabled) {
-                        guestpassword.style.display = "block";
-                    }
-                    else {
-                        guestpassword.style.display = "none";
-                    }
-                    guestpassword.value = json.GuestPassword;
-                });
-            }
+            document.getElementById('body').style.visibility = "visible";
+            MakeRequest('/settings/GetSettings').then(response => {
+                let json = JSON.parse(response);
+                let fields = Object.keys(json);
+                let settingGrid = document.getElementById('settingGrid');
+                for (let index = 0; index < fields.length; index++) {
+                    const element = fields[index];
+                    let container = document.createElement('div');
+                    container.className = "settingContainer";
+                    let span = document.createElement('span');
+                    span.innerHTML = "Configure " + element;
+                    container.appendChild(span);
+                    let input = document.createElement('input');
+                    input.type = "checkbox";
+                    input.className = "toggle";
+                    input.setAttribute('field', element);
+                    input.setAttribute("onchange", 'UpdateSettings(this.getAttribute("field"))')
+                    container.appendChild(input);
+                    container.setAttribute('field', element);
+                    container.setAttribute('name', "settingInput");
+                    input.checked = json[element];
+                    settingGrid.appendChild(container);
+                }
+            });
         }
         else {
             swal("Unauthorized!", unauthMessage);
@@ -45,34 +37,52 @@ function SendFinalMessage() {
     LogOut();
 }
 
-function UpdateSettings() {
+function UpdateSettings(field) {
     MakeRequest('/settings/GetSettings').then(response => {
         let json = JSON.parse(response);
-        let speakerscheck = document.getElementById("speakerscheck");
-        let discordbotcheck = document.getElementById("discordbotcheck");
-        let tumblrbotcheck = document.getElementById("tumblrbotcheck");
-        let memescrapercheck = document.getElementById("memescrapercheck");
-        let websitelogincheck = document.getElementById("websitelogincheck");
-        let omnisciencecheck = document.getElementById("omnisciencecheck");
-        let guestpasscheck = document.getElementById("guestpasscheck");
-        let guestpassword = document.getElementById("guestpasspassword");
-        json.SpeakersEnabled = speakerscheck.checked;
-        json.DiscordBotEnabled = discordbotcheck.checked;
-        json.TumblrBotEnabled = tumblrbotcheck.checked;
-        json.MemeScraperEnabled = memescrapercheck.checked;
-        json.WebsiteLoginEnabled = websitelogincheck.checked;
-        json.OmniscienceEnabled = omnisciencecheck.checked;
-        json.GuestPassEnabled = guestpasscheck.checked;
-        if (json.GuestPassEnabled) {
-            guestpassword.style.display = "block";
+        let settings = document.getElementsByName('settingInput');
+        let fields = Object.keys(json);
+        for (let index = 0; index < fields.length; index++) {
+            const element = fields[index];
+            for (let index2 = 0; index2 < settings.length; index2++) {
+                const element2 = settings[index2];
+                if (element2.getAttribute('field') == element) {
+                    json[element] = element2.lastElementChild.checked;
+                }
+            }
         }
-        else {
-            guestpassword.style.display = "none";
+        if (field == "GuestPassEnabled"&&json.GuestPassEnabled==true) {
+            let ele = document.createElement('input');
+            ele.value=json.GuestPassword;
+            swal({
+                text: 'Guest Password?',
+                content: ele,
+                buttons: {
+                    cancel: "Cancel",
+                    setty: {
+                        text: "Set",
+                        value: "set"
+                    }
+                }
+            }).then(value =>{
+                console.log(value);
+                if(value=="set"){
+                    console.log(ele.value);
+                    json.GuestPassword = ele.value;
+                    MakeRequest('/settings/UpdateSettings?json=' + JSON.stringify(json)).then(response => {
+                    });
+                }
+                else{
+                    console.log(":(");
+                    json.GuestPassEnabled==false;
+                    console.log(document.querySelectorAll("[field="+field+"]"));
+                    document.querySelectorAll("[field="+field+"]")[1].checked=false;
+                }
+            })
         }
-        json.GuestPassword = guestpassword.value;
-        console.log(JSON.stringify(json));
-        MakeRequest('/settings/UpdateSettings?json=' + JSON.stringify(json)).then(response => {
-            console.log(response);
-        });
+        else{
+            MakeRequest('/settings/UpdateSettings?json=' + JSON.stringify(json)).then(response => {
+            });
+        }
     });
 }

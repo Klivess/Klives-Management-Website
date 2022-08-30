@@ -15,38 +15,21 @@
     <title>KliveBot Management: School</title>
 </head>
 <nav>
-    <horizontal-nav style="display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr;">
-        <span id="cpuPerf" style="margin-top: 0.2vw;">CPU Usage: </span>
-        <span id="ramPerf" style="margin-top: 0.2vw;">RAM Usage: </span>
-        <div style="float: right; z-index: 99;">
-            <div class="kbuttonContainer" onclick="LogOut();" style="margin-left: 200px; height: 25px; width: 20%;">
-                <div class="kbutton" style="height: 1px; padding: 12px;">
-                    <a style="font-size: 0.8vw;">
-                        Logout
-                    </a>
-                </div>
-            </div>
-        </div>
+    <horizontal-nav style="display: flex;">
+        <img onmouseenter="ImageSwitch()" id="logo" src="../../images/favicon.ico" alt="" style="width: 7vw;">
+        <a class="kbutton navbutton" href="main.html">Home</a>
+        <a class="kbutton navbutton" href="botpower.html">Bot Power</a>
+        <a class="kbutton navbutton" href="taskschedule.html">Schedule</a>
+        <a class="kbutton navbutton" href="socials.html">Socials</a>
+        <a class="kbutton navbutton" href="civilisation.html">Civilisation</a>
+        <a class="kbutton navbutton" href="klivesmovies.html">Klives Movies</a>
+        <a class="kbutton navbutton" href="speaker.html">Speaker</a>
+        <a class="kbutton navbutton" href="storage.html">Storage</a>
+        <a class="kbutton navbutton" href="logs.html">Logs</a>
+        <a class="kbutton navbutton" href="omniscience.html">Omni</a>
+        <a class="kbutton navbutton" href="school.html">School</a>
+        <a class="kbutton navbutton" href="klivemanagementsettings.html">Management</a>
     </horizontal-nav>
-    <vertical-nav style="min-width: 50px; width: 10%; padding-left: 10px; padding-right: 10px;">
-        <div style="display: flex; justify-content: center;">
-            <img onmouseenter="ImageSwitch()" id="logo" src="../../images/favicon.ico" alt="" style="width: 7vw;">
-        </div>
-        <div class="verticalgrid">
-            <a class="kbutton" href="main.html" style="font-size: medium; height: 100px; padding: 0%;">Home</a>
-            <a class="kbutton" href="botpower.html" style="font-size: medium; height: 75px;">Bot Power</a>
-            <a class="kbutton" href="taskschedule.html" style="font-size: medium; height: 75px;">Schedule</a>
-            <a class="kbutton" href="socials.html" style="font-size: medium; height: 75px;">Socials</a>
-            <a class="kbutton" href="civilisation.html" style="font-size: medium; height: 75px; color: aqua; border: 2px solid aqua;">Civilisation</a>
-            <a class="kbutton" href="klivesmovies.html" style="font-size: medium; height: 75px;">Klives Movies</a>
-            <a class="kbutton" href="speaker.html" style="font-size: medium; height: 75px;">Speaker</a>
-            <a class="kbutton" href="storage.html" style="font-size: medium; height: 75px;">Storage</a>
-            <a class="kbutton" href="logs.html" style="font-size: medium; height: 75px;">Logs</a>
-            <a class="kbutton" href="omniscience.html" style="font-size: medium; height: 75px;">Omni</a>
-            <a class="kbutton" href="school.html" style="font-size: medium; height: 75px;">School</a>
-            <a class="kbutton" href="klivemanagementsettings.html" style="font-size: medium; height: 75px;">Management</a>
-        </div>
-    </vertical-nav>
 </nav>
 
 

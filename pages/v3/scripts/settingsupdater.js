@@ -54,6 +54,7 @@ function UpdateSettings(field) {
         if (field == "GuestPassEnabled"&&json.GuestPassEnabled==true) {
             let ele = document.createElement('input');
             ele.value=json.GuestPassword;
+            console.log(json);
             swal({
                 text: 'Guest Password?',
                 content: ele,
@@ -65,7 +66,6 @@ function UpdateSettings(field) {
                     }
                 }
             }).then(value =>{
-                console.log(value);
                 if(value=="set"){
                     console.log(ele.value);
                     json.GuestPassword = ele.value;
@@ -73,8 +73,7 @@ function UpdateSettings(field) {
                     });
                 }
                 else{
-                    console.log(":(");
-                    json.GuestPassEnabled==false;
+                    json.GuestPassEnabled=false;
                     console.log(document.querySelectorAll("[field="+field+"]"));
                     document.querySelectorAll("[field="+field+"]")[1].checked=false;
                 }

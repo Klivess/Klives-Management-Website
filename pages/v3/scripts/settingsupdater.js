@@ -10,21 +10,23 @@ function GetSettings() {
                 let settingGrid = document.getElementById('settingGrid');
                 for (let index = 0; index < fields.length; index++) {
                     const element = fields[index];
-                    let container = document.createElement('div');
-                    container.className = "settingContainer";
-                    let span = document.createElement('span');
-                    span.innerHTML = "Configure " + element;
-                    container.appendChild(span);
-                    let input = document.createElement('input');
-                    input.type = "checkbox";
-                    input.className = "toggle";
-                    input.setAttribute('field', element);
-                    input.setAttribute("onchange", 'UpdateSettings(this.getAttribute("field"))')
-                    container.appendChild(input);
-                    container.setAttribute('field', element);
-                    container.setAttribute('name', "settingInput");
-                    input.checked = json[element];
-                    settingGrid.appendChild(container);
+                    if(element.toLowerCase().includes("value")!=true){
+                        let container = document.createElement('div');
+                        container.className = "settingContainer";
+                        let span = document.createElement('span');
+                        span.innerHTML = "Configure " + element;
+                        container.appendChild(span);
+                        let input = document.createElement('input');
+                        input.type = "checkbox";
+                        input.className = "toggle";
+                        input.setAttribute('field', element);
+                        input.setAttribute("onchange", 'UpdateSettings(this.getAttribute("field"))')
+                        container.appendChild(input);
+                        container.setAttribute('field', element);
+                        container.setAttribute('name', "settingInput");
+                        input.checked = json[element];
+                        settingGrid.appendChild(container);
+                    }
                 }
             });
         }
@@ -54,12 +56,14 @@ function UpdateSettings(field) {
                 }
             }
         }
-        if (field == "GuestPassEnabled"&&json.GuestPassEnabled==true) {
+        let fieldValue = field+"Value";
+        if(fieldValue!=null&&json[field]==true){
             let ele = document.createElement('input');
-            ele.value=json.GuestPassword;
+            ele.value=json[fieldValue];
+            ele.className="kinput";
             console.log(json);
             swal({
-                text: 'Guest Password?',
+                text: fieldValue+"?",
                 content: ele,
                 buttons: {
                     cancel: "Cancel",
@@ -70,14 +74,12 @@ function UpdateSettings(field) {
                 }
             }).then(value =>{
                 if(value=="set"){
-                    console.log(ele.value);
-                    json.GuestPassword = ele.value;
+                    json[fieldValue] = ele.value;
                     MakeRequest('/settings/UpdateSettings?json=' + JSON.stringify(json)).then(response => {
                     });
                 }
                 else{
-                    json.GuestPassEnabled=false;
-                    console.log(document.querySelectorAll("[field="+field+"]"));
+                    json[field]=false;
                     document.querySelectorAll("[field="+field+"]")[1].checked=false;
                 }
             })

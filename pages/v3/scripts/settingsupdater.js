@@ -57,7 +57,7 @@ function UpdateSettings(field) {
             }
         }
         let fieldValue = field+"Value";
-        if(fieldValue!=null&&json[field]==true){
+        if(json[fieldValue]!=null&&json[field]==true){
             let ele = document.createElement('input');
             ele.value=json[fieldValue];
             ele.className="kinput";

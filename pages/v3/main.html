@@ -79,12 +79,20 @@
             </div>
             <div class="infobox" style="width: 100%; height: 150px;">
                 <div>
-                    <h1 class="fadein">Utilities</h1>
-                    <div style="display: grid; justify-content: center; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <button onclick="DownloadScreenshot('serverscreenshot.png')" id="uploadbutton" class="kbutton"
-                            style="font-size: 30px; height: 150px; width: 100%; border: 2px solid yellow; color: yellow;">Download
-                            Screenshot Of Server
-                        </button>
+                    <h1 class="fadein">Server Statistics</h1>
+                    <div style="display: grid; justify-content: center; grid-template-columns: 1fr 1fr; gap: 10px; justify-content: center; height: 150px;">
+                        <div style="display: grid; justify-content: center; text-align: center; border-radius: 15px; align-content: center;" id="cpuBox">
+                            <div style="display: grid; grid-template-rows: 40px 30px; height: 50px;">
+                                <span style="font-size: 35px;">CPU Usage</span>
+                                <span id="cpuPerf" style="font-size: 30px;">Loading</span>
+                            </div>
+                        </div>
+                        <div style="display: grid; justify-content: center; text-align: center; border-radius: 15px; align-content: center;" id="ramBox">
+                            <div style="display: grid; grid-template-rows: 40px 30px; height: 50px;">
+                                <span style="font-size: 35px;">RAM Usage</span>
+                                <span id="ramPerf" style="font-size: 30px;">Loading</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

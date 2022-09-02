@@ -192,10 +192,15 @@ function ImageSwitch() {
 function UpdatePerformance() {
     let cpuperformance = document.getElementById("cpuPerf");
     let ramperformance = document.getElementById("ramPerf");
+    let cpubox = document.getElementById("cpuBox");
+    let rambox = document.getElementById("ramBox");
     MakeRequest("/v1/metrics").then(response => {
         response = JSON.parse(response);
-        cpuperformance.innerHTML = "CPU Usage: " + response.CPUPercent + "%";
-        ramperformance.innerHTML = "RAM Usage: " + response.MemoryUsed + "%";
+        cpuperformance.innerHTML = response.CPUPercent + "%";
+        //"background-image: linear-gradient(to right, rgba(0,0,0,0) " + p + "%, #474747 25%);";
+        cpubox.style.backgroundImage="linear-gradient(to bottom, rgba(0,0,0,0) "+(100-response.CPUPercent)+"%, rgba("+response.CPUPercent*2+", 50, 100, 0.5) 20%";
+        rambox.style.backgroundImage="linear-gradient(to bottom, rgba(0,0,0,0) "+(100-response.MemoryUsed)+"%, rgba("+response.MemoryUsed*2+", 50, 100, 0.5) 20%";
+        ramperformance.innerHTML = response.MemoryUsed + "%";
     });
 }
 
@@ -359,6 +364,7 @@ function LoadMainPage() {
             document.getElementById('serverStream').remove();
         }
     })
+    SetPerformance();
     MakeRequest("/v1/GetKliveBotHealthInfo?logsAdded=false").then(response => {
         let json = JSON.parse(response);
         document.getElementById("botuptime").innerHTML = json.BotUptime.Hours + " hours " + json.BotUptime.Minutes + " minutes.";

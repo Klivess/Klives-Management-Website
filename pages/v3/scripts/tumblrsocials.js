@@ -586,9 +586,17 @@ function GetTumblrManagementData() {
         document.getElementById('playerregistrationdate').innerHTML = "Klives Management Registration Date: " + date.toLocaleString();
         document.getElementById('playerfollowers').innerHTML = "Followers: " + json.Followers;
         document.getElementById('playeramountofimages').innerHTML = "Amount Of Images: " + json.AmountOfImages;
+        IsKliveAdmin().then(r=>{
+            if(r==true){
+                document.getElementById('playeremail').innerHTML = "Email: " + json.account.email;
+                document.getElementById('playerpassword').innerHTML = "Password: " + json.account.password;
+            }
+            else{
+                document.getElementById('playeremail').innerHTML = "Email: ************";
+                document.getElementById('playerpassword').innerHTML = "Password: ******";
+            }
+        })
         document.getElementById('removeTumblrAccount').setAttribute("name", name);
-        document.getElementById('playeremail').innerHTML = "Email: " + json.account.email;
-        document.getElementById('playerpassword').innerHTML = "Password: " + json.account.password;
         currentAccountID = json.account.playerID;
         LoadTumblrFollowerChart('followergraph', response);
     });

@@ -117,7 +117,7 @@ function SelectMemeVideo(path)
             else if (value == "delete") {
                 IsKliveAdmin().then(resp => {
                     if (resp == true) {
-                        MakeRequest("/storage/DeleteFileInCloudStorage?p=" + file).then(response => {
+                        MakeRequest("/storage/DeleteFileInCloudStorage?p=" + path).then(response => {
                             RemoveAllElementsInGrid(compiledMemeComps);
                             LoadAllMemeVideos();
                         });

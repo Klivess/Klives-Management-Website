@@ -52,12 +52,85 @@ function OnManagementPageLoad(){
             document.getElementById('mscrapeScrapesInLifetime').innerHTML=json.scrapes.length+" scrapes completed in lifetime.";
         }
     });
+    LoadAllMemeVideos();
+}
+
+function LoadAllMemeVideos(){
     MakeRequest("/mscrape/GetAllCompiledMemeVideos").then(response=>{
         let json = JSON.parse(response);
         for (let index = 0; index < json.length; index++) {
             const element = json[index];
-            ConstructCardIntoDiv(caption, "", "compiledMemeComps");
+            var leafname= element.split('\\').pop().split('/').pop();
+            var video = ConstructCardIntoDiv(leafname, "", "compiledMemeComps");
+            video.setAttribute("path", element);
+            video.setAttribute("onclick", "SelectMemeVideo(this.getAttribute('path'))");
+
         }
+    });
+}
+
+function SelectMemeVideo(path)
+{
+    var leafname= path.split('\\').pop().split('/').pop();
+    MakeRequest('/storage/GetFileInfo?p=' + path).then(response3 => {
+        let json = JSON.parse(response3);
+        let contenttext = "File Name: " + leafname + "\nFilepath: " + leafname + "\n\n";
+        //If Kilobyte
+        if (json.FilesizeB > 1024 && json.FilesizeKB < 1024) {
+            contenttext += "Filesize: " + Math.round(json.FilesizeKB) + "KB";
+        }
+        //If Megabyte
+        else if (json.FilesizeKB >= 1024 && json.FilesizeMB < 1024) {
+            contenttext += "Filesize: " + Math.round(json.FilesizeMB) + "MB";
+        }
+        //If Gigabyte
+        else if (json.FilesizeMB >= 1024) {
+            contenttext += "Filesize: " + Math.round(json.FilesizeGB) + "GB";
+        }
+        //If Bytes
+        else {
+            contenttext += "Filesize: " + Math.round(json.FilesizeB) + "B";
+        }
+        let uploaded = new Date(json.ModifiedDate);
+        let created = new Date(json.CreationDate);
+        contenttext += "\nUploaded: " + uploaded.toLocaleString() + "\nFile Created: " + created.toLocaleString();
+        swal(contenttext, {
+            buttons: {
+                cancel: "OK",
+                gopost: {
+                    text: "Download File",
+                    value: "download",
+                },
+                delpost: {
+                    text: "Delete File",
+                    value: "delete",
+                },
+                watchvideo: {
+                    text: "Watch Video",
+                    value: "watch",
+                }
+            },
+        }).then((value) => {
+            if (value == "download") {
+                DownloadFile(path, leafname);
+            }
+            else if (value == "delete") {
+                IsKliveAdmin().then(resp => {
+                    if (resp == true) {
+                        MakeRequest("/storage/DeleteFileInCloudStorage?p=" + file).then(response => {
+                            RemoveAllElementsInGrid(compiledMemeComps);
+                            LoadAllMemeVideos();
+                        });
+                    }
+                    else {
+                        swal("Unauthorized!", unauthMessage)
+                    }
+                })
+            }
+            else if (value == "watch") {
+                window.open("viewvideo.html?videoPath=" + path);
+            }
+        });
     });
 }
 
@@ -65,44 +138,48 @@ function CreateNewMemeVideo() {
     let amountOfMemes = 0;
     let maximumMemeDuration = 15;
     let memeVideoName = "";
+    let container = document.createElement('div');
+    container.style.width="400px";
+    container.style.height="100px";
+    container.style.gap="20px";
+    container.style.padding="20px;"
+    let amountOfVideosinput = document.createElement('input')
+    amountOfVideosinput.className="kinput";
+    amountOfVideosinput.placeholder="Amount Of Memes?";
+    let MaximumSecondDurationinput = document.createElement('input')
+    MaximumSecondDurationinput.className="kinput";
+    MaximumSecondDurationinput.placeholder='Maximum second duration of each meme?';
+    let nameOfVideoinput = document.createElement('input')
+    nameOfVideoinput.className="kinput";
+    nameOfVideoinput.placeholder='Name of meme video?';
+    container.appendChild(amountOfVideosinput);
+    container.appendChild(MaximumSecondDurationinput);
+    container.appendChild(nameOfVideoinput);
     IsKliveAdmin().then(r=>{
         if(r==true){
             swal({
-                text: 'Amount Of Meme Videos?',
-                content: "input",
-                button: {
-                    text: "Next!",
-                    closeModal: false,
-                }
-            }).then(result => {
-                amountOfMemes=result;
-                swal({
-                    text: 'Maximum second duration of each meme?',
-                    content: "input",
-                    button: {
+                text: 'Configure?',
+                content: container,
+                buttons: {
+                    cancel: "Cancel",
+                    next: {
                         text: "Next!",
                         closeModal: false,
+                        value: "next",
                     }
-                }).then(res => {
-                    maximumMemeDuration=res;
-                    swal({
-                        text: 'Name of video file?',
-                        content: "input",
-                        button: {
-                            text: "Create!",
-                            closeModal: false,
+                }
+            }).then(result => {
+                if(result=="next"){
+                    MakeRequest("/mscrape/ConstructVideo?amountOfVideos="+amountOfVideosinput.value+
+                    "&maximumVideoDuration="+MaximumSecondDurationinput.value+"&nameOfVideo="+nameOfVideoinput.value).then(r => {
+                        if(r=="OK"){
+                            swal("Complete!", "KliveBot will message you when the video creation is complete. Restarting the server will interrupt this video creation.");
                         }
-                    }).then(res => {
-                        MakeRequest("/mscrape/ConstructVideo?amountOfVideos="+amountOfMemes+"&maximumVideoDuration="+maximumMemeDuration).then(r => {
-                            if(r=="OK"){
-                                swal("Complete!", "KliveBot will message you when the video creation is complete. Restarting will interrupt this video creation.");
-                            }
-                            else{
-                                swal("Error", r);
-                            }
-                        });
+                        else{
+                            swal("Error", r);
+                        }
                     });
-                });
+                }
             });
         }
         else{

@@ -51,7 +51,6 @@ function OnSocialsLoadTumblr() {
                 postsmadealltime.innerHTML = "Couldn't get posts made all time.";
             };
         });
-        LoadTumblrTotalFollowerChart('tumblrTotalFollowerChart');
     }, 10);
 }
 function LoadBehaviourSettings() {

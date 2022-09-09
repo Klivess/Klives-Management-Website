@@ -22,7 +22,7 @@ function createCookie(name, value, days) {
     document.cookie = name + "=" + value + expires + "; path=/";
 }
 
-function ConstructCardIntoDiv(caption, imageURL, box){
+function ConstructCardIntoDiv(caption, imageURL, box) {
     console.log(box);
     let movie = document.createElement('div');
     movie.className = "movieImage";
@@ -198,15 +198,15 @@ function UpdatePerformance() {
         response = JSON.parse(response);
         cpuperformance.innerHTML = response.CPUPercent + "%";
         //"background-image: linear-gradient(to right, rgba(0,0,0,0) " + p + "%, #474747 25%);";
-        cpubox.style.backgroundImage="linear-gradient(to bottom, rgba(0,0,0,0) "+(100-response.CPUPercent)+"%, rgba("+response.CPUPercent*2+", 50, 100, 0.5) 20%";
-        rambox.style.backgroundImage="linear-gradient(to bottom, rgba(0,0,0,0) "+(100-response.MemoryUsed)+"%, rgba("+response.MemoryUsed*2+", 50, 100, 0.5) 20%";
+        cpubox.style.backgroundImage = "linear-gradient(to bottom, rgba(0,0,0,0) " + (100 - response.CPUPercent) + "%, rgba(" + response.CPUPercent * 2 + ", 50, 100, 0.5) 20%";
+        rambox.style.backgroundImage = "linear-gradient(to bottom, rgba(0,0,0,0) " + (100 - response.MemoryUsed) + "%, rgba(" + response.MemoryUsed * 2 + ", 50, 100, 0.5) 20%";
         ramperformance.innerHTML = response.MemoryUsed + "%";
     });
 }
 
 function RestartServer(textToUpdate) {
-    IsKliveAdmin().then(resp =>{
-        if(resp==true){
+    IsKliveAdmin().then(resp => {
+        if (resp == true) {
             let ele = document.getElementById(textToUpdate);
             ele.innerHTML = "Restarting...";
             MakeRequest("/v1/RestartServer").then(response => {
@@ -214,14 +214,14 @@ function RestartServer(textToUpdate) {
                 LogOut();
             });
         }
-        else{
+        else {
             swal("Unauthorized", unauthMessage);
         }
     })
 }
 function RestartBot(textToUpdate) {
-    IsKliveAdmin().then(resp =>{
-        if(resp==true){
+    IsKliveAdmin().then(resp => {
+        if (resp == true) {
             let ele = document.getElementById(textToUpdate);
             ele.innerHTML = "Restarting...";
             MakeRequest("/v1/RestartBot").then(response => {
@@ -231,14 +231,14 @@ function RestartBot(textToUpdate) {
                 window.location.replace('../../index.html');
             });
         }
-        else{
+        else {
             swal("Unauthorized", unauthMessage);
         }
     })
 }
 function ShutdownServer(textToUpdate) {
-    IsKliveAdmin().then(resp =>{
-        if(resp==true){
+    IsKliveAdmin().then(resp => {
+        if (resp == true) {
             let ele = document.getElementById(textToUpdate);
             ele.innerHTML = "Shutting Down...";
             MakeRequest("/v1/ShutdownServer").then(response => {
@@ -247,14 +247,14 @@ function ShutdownServer(textToUpdate) {
                 window.location.replace('../../index.html');
             });
         }
-        else{
+        else {
             swal("Unauthorized", unauthMessage);
         }
     })
 }
 function ShutdownBot(textToUpdate) {
-    IsKliveAdmin().then(resp =>{
-        if(resp==true){
+    IsKliveAdmin().then(resp => {
+        if (resp == true) {
             let ele = document.getElementById(textToUpdate);
             ele.innerHTML = "Shutting Down...";
             MakeRequest("/v1/TurnOffBot").then(response => {
@@ -263,14 +263,14 @@ function ShutdownBot(textToUpdate) {
                 window.location.replace('../../index.html');
             });
         }
-        else{
+        else {
             swal("Unauthorized", unauthMessage);
         }
     })
 }
 function UpdateBot(textToUpdate) {
-    IsKliveAdmin().then(resp =>{
-        if(resp==true){
+    IsKliveAdmin().then(resp => {
+        if (resp == true) {
             let ele = document.getElementById(textToUpdate);
             ele.innerHTML = "Updating...";
             MakeRequest("/v1/UpdateBot").then(response => {
@@ -278,7 +278,7 @@ function UpdateBot(textToUpdate) {
             });
             window.location.replace('../../index.html');
         }
-        else{
+        else {
             swal("Unauthorized", unauthMessage);
         }
     })
@@ -304,8 +304,8 @@ function SendToSpeaker(speaker, textToUpdate) {
 async function IsKliveAdmin() {
     let isAdmin = false;
     await MakeRequest('/v1/IsKliveAdmin?password=' + getCookie('password')).then(response => {
-        isAdmin=response=="PASS";
-        console.log("Is admin?: "+isAdmin.toString());
+        isAdmin = response == "PASS";
+        console.log("Is admin?: " + isAdmin.toString());
     });
     return Promise.resolve(isAdmin);
 }
@@ -354,13 +354,13 @@ function ColorLuminance(lum) {
 }
 
 function LoadMainPage() {
-    IsKliveAdmin().then(r=>{
-        if(r==true){
+    IsKliveAdmin().then(r => {
+        if (r == true) {
             setInterval(() => {
-                document.getElementById('serverStreamIMG').setAttribute("src", api+"/storage/DownloadScreenshot?r="+Math.random(10));
+                document.getElementById('serverStreamIMG').setAttribute("src", api + "/storage/DownloadScreenshot?r=" + Math.random(10));
             }, 1000);
         }
-        else{
+        else {
             document.getElementById('serverStream').remove();
         }
     })
@@ -429,8 +429,8 @@ function LoadMainPage() {
     MakeRequest("/omniscience/GetOmniscienceAnalytics").then(response => {
         let json = JSON.parse(response);
         const ctx = document.getElementById('omniscienceMessageDistribution').getContext('2d');
-        guildNames=[];
-        guildValues=[];
+        guildNames = [];
+        guildValues = [];
         for (let index = 0; index < json.GuildMessageDistribution.length; index++) {
             const element = json.GuildMessageDistribution[index];
             guildNames.push(element.Key);
@@ -479,8 +479,56 @@ function LoadMainPage() {
                 }
             }
         });
-        document.getElementById('omniscienceMessagesLogged').innerHTML=json.TotalMessagesLogged+" total messages logged.";
-        document.getElementById('omniscienceGuildsBeingWatched').innerHTML=json.GuildsLogged.length+" guilds being watched.";
+        document.getElementById('omniscienceMessagesLogged').innerHTML = json.TotalMessagesLogged + " total messages logged.";
+        document.getElementById('omniscienceGuildsBeingWatched').innerHTML = json.GuildsLogged.length + " guilds being watched.";
+    });
+    MakeRequest("/tumblr/GetAllTumblrAccountInformation").then(response => {
+        MakeRequest("/tumblr/GetAllTumblrAccountInformation").then(response => {
+            let accountsRunning = document.getElementById("tumblramountOfAccounts");
+            let postsMadeInLastHour = document.getElementById("tumblrpostsMadeInLastHour");
+            let postsmadealltime = document.getElementById("tumblrpostsAllTime");
+            let totalFollowers = document.getElementById("tumblrtotalFollowers");
+            let tumblrtotalFollowersAverageDifference = document.getElementById("tumblrtotalFollowersAverageDifference");
+            let json = JSON.parse(response);
+            let accountsRunningAmount = 0;
+            let accountsLoadedAmount = 0;
+            accountsRunning.innerHTML = accountsRunningAmount + " accounts running. " + accountsLoadedAmount + " accounts loaded.";
+            //foreach account in response
+            for (let i = 0; i < json.accountsAnalytics.length; i++) {
+                let account = json.accountsAnalytics[i];
+                if (account.IsValid == true) {
+                    console.log("Account " + account.playerName + " is valid");
+                    accountsRunningAmount = accountsRunningAmount + 1;
+                    accountsLoadedAmount = accountsLoadedAmount + 1;
+                }
+                else if (account.IsValid == false) {
+                    console.log("Account " + account.playerName + " is not valid");
+                    accountsLoadedAmount = accountsLoadedAmount + 1;
+                }
+                accountsRunning.innerHTML = accountsRunningAmount + " accounts running. " + accountsLoadedAmount + " accounts loaded.";
+            }
+            tumblrtotalFollowersAverageDifference.innerHTML = json.AverageTotalFollowerGain + " average total follower gain.";
+            postsMadeInLastHour.innerHTML = "Couldn't get posts made in last hour.";
+            MakeRequest("/tumblr/GetAllTumblrPostsMadeInHourRange?hours=12").then(response2 => {
+                let json2 = JSON.parse(response2);
+                postsMadeInLastHour.innerHTML = json2.length + " posts made in last 12 hours.";
+            }), (error) => {
+                postsMadeInLastHour.innerHTML = "Couldn't get posts made in last hour.";
+            };
+            MakeRequest("/tumblr/TumblrPostsLog").then(response3 => {
+                let json2 = JSON.parse(response3);
+                postsmadealltime.innerHTML = json2.length + " posts made all time.";
+            }), (error) => {
+                postsmadealltime.innerHTML = "Couldn't get posts made all time.";
+            };
+            let totalamountoffollowers = 0;
+            //foreach account in response, get total followers
+            for (let i = 0; i < json.accountsAnalytics.length; i++) {
+                let playerAccount = json.accountsAnalytics[i];
+                totalamountoffollowers = totalamountoffollowers + parseInt(playerAccount.Followers);
+            }
+            totalFollowers.innerHTML = totalamountoffollowers + " total followers reached.";
+        });
     });
 }
 

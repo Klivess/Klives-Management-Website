@@ -108,6 +108,7 @@ function LoadAllCloudFiles() {
             box.setAttribute("filename", json[i].filename);
             box.innerHTML = json[i].filename;
             box.setAttribute("onclick", "OpenCloudFile(this.id, this.getAttribute('filename'))");
+            box.setAttribute("rootDirectory", json[i].filepath.replace(json[i].filename, ""));
             cloudboxx.appendChild(box);
         }
     });
@@ -175,10 +176,13 @@ function OpenFolder(file, filename){
     newfilegrid.className = "filesgrid";
     newfilegrid.style = "display: grid; grid-template-rows: 5fr 1fr;"
     newfilegrid.id = "filegridpathed";
+    newfilegrid.setAttribute("directory", file);
+    newfilegrid.setAttribute("name","notRootDirectoryBox");
     foldergrid.appendChild(newfilegrid);
     let actualfilegrid = document.createElement('div');
     actualfilegrid.className = "filesgrid";
     actualfilegrid.id = "filegridpathed";
+    actualfilegrid.setAttribute("directory", file);
     newfilegrid.appendChild(actualfilegrid);
     let divSplit = document.createElement("div");
     divSplit.style = "display: grid; grid-template-columns: 1fr 1fr; padding: 10px; gap: 5px;";
@@ -208,176 +212,177 @@ function OpenFolder(file, filename){
             if (json[i].filename.endsWith(".txt")) {
                 box.style.border = "2px solid yellow";
             }
-            if (json[i].filename.includes('.') != true) {
+            if (json[i].isDirectory == true) {
                 box.style.border = "2px solid aqua";
             }
             box.id = json[i].filepath;
             box.setAttribute("filename", json[i].filename);
+            box.setAttribute('isdirectory', json[i].isDirectory);
             box.innerHTML = json[i].filename;
             box.setAttribute("onclick", "OpenCloudFile(this.id, this.getAttribute('filename'))");
+            box.setAttribute("rootDirectory", json[i].filepath.replace(json[i].filename, ""));
             actualfilegrid.appendChild(box);
         }
     })
 }
 
 function OpenCloudFile(file, filename) {
-    let foldergrid = document.getElementById('foldergrid');
-    foldergrid.style.gridTemplateColumns = "1fr";
     let clickedbox = document.getElementById(file);
-    selectedFolder = "";
-    try {
-        //uhhh, what the fuck?? I know these if statements seem useless but selecting files in
-        //folders embedded in KliveCloud doesn't work without these if statements. I'm really confused.
-        if (!clickedbox.parentElement.id == "filegridpathed") {
-            foldergrid.removeChild(document.getElementById('filegridpathed'));
-        }
-        else {
-            foldergrid.removeChild(document.getElementById('filegridpathed'));
-            throw ("clicked file in another folder.");
+    let clickedBoxRoot = clickedbox.getAttribute("rootDirectory");
+    if (clickedbox.getAttribute('isdirectory') == "true") {
+        let directoryToOpen = file;
+        let directoryToOpenName = filename;
+        let currentDirectory=selectedFolder+"\\";
+        if(file!=selectedFolder){
+            console.log(directoryToOpen);
+            console.log(currentDirectory);
+            if((directoryToOpen.includes(currentDirectory)!=true)&&currentDirectory!=""){
+                console.log("HA")
+                foldergrid.style.gridTemplateColumns = "1fr";
+                document.getElementById('filegridpathed').remove();
+                OpenFolder(file, filename);
+            }
+            else{
+                OpenFolder(file, filename);
+            }
         }
     }
-    catch (err) {
-        console.log(err);
-        if (clickedbox.getAttribute('isdirectory') == "true") {
-            OpenFolder(file, filename);
-        }
-        else {
-            MakeRequest('/storage/GetFileInfo?p=' + file).then(response3 => {
-                let json = JSON.parse(response3);
-                let contenttext = "File Name: " + filename + "\nFilepath: " + filename + "\n\n";
-                contenttext += "Filesize: " + json.FileSizeString;
-                let uploaded = new Date(json.ModifiedDate);
-                let created = new Date(json.CreationDate);
-                contenttext += "\nUploaded: " + uploaded.toLocaleString() + "\nFile Created: " + created.toLocaleString();
-                if (filename.endsWith(".txt")) {
-                    MakeRequest("/storage/ReadFile?p=" + file).then(response => {
-                        contenttext = contenttext + "\n\nContent:\n" + response;
-                        swal(contenttext, {
-                            buttons: {
-                                cancel: "OK",
-                                gopost: {
-                                    text: "Download File",
-                                    value: "download",
-                                },
-                                delpost: {
-                                    text: "Delete File",
-                                    value: "delete",
-                                }
+    else {
+        MakeRequest('/storage/GetFileInfo?p=' + file).then(response3 => {
+            let json = JSON.parse(response3);
+            let contenttext = "File Name: " + filename + "\nFilepath: " + filename + "\n\n";
+            contenttext += "Filesize: " + json.FileSizeString;
+            let uploaded = new Date(json.ModifiedDate);
+            let created = new Date(json.CreationDate);
+            contenttext += "\nUploaded: " + uploaded.toLocaleString() + "\nFile Created: " + created.toLocaleString();
+            if (filename.endsWith(".txt")) {
+                MakeRequest("/storage/ReadFile?p=" + file).then(response => {
+                    contenttext = contenttext + "\n\nContent:\n" + response;
+                    swal(contenttext, {
+                        buttons: {
+                            cancel: "OK",
+                            gopost: {
+                                text: "Download File",
+                                value: "download",
                             },
-                        }).then((value) => {
-                            if (value == "download") {
-                                DownloadFile(file, filename);
+                            delpost: {
+                                text: "Delete File",
+                                value: "delete",
                             }
-                            else if (value == "delete") {
-                                IsKliveAdmin().then(resp => {
-                                    if (resp == true) {
-                                        DeleteFile(file);
-                                    }
-                                    else {
-                                        swal("Unauthorized!", unauthMessage)
-                                    }
-                                })
+                        },
+                    }).then((value) => {
+                        if (value == "download") {
+                            DownloadFile(file, filename);
+                        }
+                        else if (value == "delete") {
+                            IsKliveAdmin().then(resp => {
+                                if (resp == true) {
+                                    DeleteFile(file);
+                                }
+                                else {
+                                    swal("Unauthorized!", unauthMessage)
+                                }
+                            })
+                        }
+                    })
+                });
+            }
+            else if (filename.endsWith(".mp4")) {
+                swal(contenttext, {
+                    buttons: {
+                        cancel: "OK",
+                        gopost: {
+                            text: "Download File",
+                            value: "download",
+                        },
+                        delpost: {
+                            text: "Delete File",
+                            value: "delete",
+                        },
+                        watchvideo: {
+                            text: "Watch Video",
+                            value: "watch",
+                        }
+                    },
+                }).then((value) => {
+                    if (value == "download") {
+                        DownloadFile(file, filename);
+                    }
+                    else if (value == "delete") {
+                        IsKliveAdmin().then(resp => {
+                            if (resp == true) {
+                                DeleteFile(file);
+                            }
+                            else {
+                                swal("Unauthorized!", unauthMessage)
                             }
                         })
-                    });
-                }
-                else if (filename.endsWith(".mp4")) {
-                    swal(contenttext, {
-                        buttons: {
-                            cancel: "OK",
-                            gopost: {
-                                text: "Download File",
-                                value: "download",
-                            },
-                            delpost: {
-                                text: "Delete File",
-                                value: "delete",
-                            },
-                            watchvideo: {
-                                text: "Watch Video",
-                                value: "watch",
+                    }
+                    else if (value == "watch") {
+                        window.open("viewvideo.html?videoPath=" + file);
+                    }
+                });
+            }
+            else if (filename.endsWith(".png")||filename.endsWith(".jpg")||filename.endsWith('jpeg')) {
+                swal(contenttext, {
+                    icon: api+"/storage/StreamImage?imagePath="+file,
+                    buttons: {
+                        cancel: "OK",
+                        gopost: {
+                            text: "Download File",
+                            value: "download",
+                        },
+                        delpost: {
+                            text: "Delete File",
+                            value: "delete",
+                        },
+                    },
+                }).then((value) => {
+                    if (value == "download") {
+                        DownloadFile(file, filename);
+                    }
+                    else if (value == "delete") {
+                        IsKliveAdmin().then(resp => {
+                            if (resp == true) {
+                                DeleteFile(file);
                             }
-                        },
-                    }).then((value) => {
-                        if (value == "download") {
-                            DownloadFile(file, filename);
-                        }
-                        else if (value == "delete") {
-                            IsKliveAdmin().then(resp => {
-                                if (resp == true) {
-                                    DeleteFile(file);
-                                }
-                                else {
-                                    swal("Unauthorized!", unauthMessage)
-                                }
-                            })
-                        }
-                        else if (value == "watch") {
-                            window.open("viewvideo.html?videoPath=" + file);
-                        }
-                    });
-                }
-                else if (filename.endsWith(".png")||filename.endsWith(".jpg")||filename.endsWith('jpeg')) {
-                    swal(contenttext, {
-                        icon: api+"/storage/StreamImage?imagePath="+file,
-                        buttons: {
-                            cancel: "OK",
-                            gopost: {
-                                text: "Download File",
-                                value: "download",
-                            },
-                            delpost: {
-                                text: "Delete File",
-                                value: "delete",
-                            },
-                        },
-                    }).then((value) => {
-                        if (value == "download") {
-                            DownloadFile(file, filename);
-                        }
-                        else if (value == "delete") {
-                            IsKliveAdmin().then(resp => {
-                                if (resp == true) {
-                                    DeleteFile(file);
-                                }
-                                else {
-                                    swal("Unauthorized!", unauthMessage)
-                                }
-                            })
-                        }
-                    });
-                }
-                else {
-                    swal(contenttext, {
-                        buttons: {
-                            cancel: "OK",
-                            gopost: {
-                                text: "Download File",
-                                value: "download",
-                            },
-                            delpost: {
-                                text: "Delete File",
-                                value: "delete",
+                            else {
+                                swal("Unauthorized!", unauthMessage)
                             }
+                        })
+                    }
+                });
+            }
+            else {
+                swal(contenttext, {
+                    buttons: {
+                        cancel: "OK",
+                        gopost: {
+                            text: "Download File",
+                            value: "download",
                         },
-                    }).then((value) => {
-                        if (value == "download") {
-                            DownloadFile(file, filename);
+                        delpost: {
+                            text: "Delete File",
+                            value: "delete",
                         }
-                        else if (value == "delete") {
-                            IsKliveAdmin().then(resp => {
-                                if (resp == true) {
-                                    DeleteFile(file);
-                                }
-                                else {
-                                    swal("Unauthorized!", unauthMessage)
-                                }
-                            })
-                        }
-                    });
-                }
-            });
-        }
+                    },
+                }).then((value) => {
+                    if (value == "download") {
+                        DownloadFile(file, filename);
+                    }
+                    else if (value == "delete") {
+                        IsKliveAdmin().then(resp => {
+                            if (resp == true) {
+                                DeleteFile(file);
+                            }
+                            else {
+                                swal("Unauthorized!", unauthMessage)
+                            }
+                        })
+                    }
+                });
+            }
+        });
     }
 }
 

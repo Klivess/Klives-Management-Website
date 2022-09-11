@@ -331,7 +331,8 @@ function OpenCloudFile(file, filename) {
                     }
                 });
             }
-            else if (filename.endsWith(".png")||filename.endsWith(".jpg")||filename.endsWith('jpeg')) {
+            else if (filename.endsWith(".png")||filename.endsWith(".jpg")||filename.endsWith('jpeg')||filename.endsWith('gif')||
+                filename.endsWith('webp')) {
                 swal(contenttext, {
                     icon: api+"/storage/StreamImage?imagePath="+file,
                     buttons: {

@@ -169,6 +169,57 @@ function UploadFile(uploadbuttonid) {
     }
 }
 
+function OpenFolder(file, filename){
+    foldergrid.style.gridTemplateColumns = foldergrid.style.gridTemplateColumns.replace('2fr', '1fr') + " 2fr";
+    let newfilegrid = document.createElement('div');
+    newfilegrid.className = "filesgrid";
+    newfilegrid.style = "display: grid; grid-template-rows: 5fr 1fr;"
+    newfilegrid.id = "filegridpathed";
+    foldergrid.appendChild(newfilegrid);
+    let actualfilegrid = document.createElement('div');
+    actualfilegrid.className = "filesgrid";
+    actualfilegrid.id = "filegridpathed";
+    newfilegrid.appendChild(actualfilegrid);
+    let divSplit = document.createElement("div");
+    divSplit.style = "display: grid; grid-template-columns: 1fr 1fr; padding: 10px; gap: 5px;";
+    newfilegrid.appendChild(divSplit);
+    let deletefolder = document.createElement("button");
+    deletefolder.className = "kbutton";
+    deletefolder.name = file;
+    deletefolder.style = "border: 2px solid red; color: red;"
+    deletefolder.innerHTML = "Delete Folder: " + filename;
+    deletefolder.setAttribute("onclick", "ClearFolder(this.getAttribute('name'))");
+    divSplit.appendChild(deletefolder);
+    let downloadFolder = document.createElement("button");
+    downloadFolder.className = "kbutton";
+    downloadFolder.style = "border: 2px solid green; color: red;"
+    downloadFolder.innerHTML = "Download Folder: " + filename;
+    downloadFolder.setAttribute("filename", filename);
+    downloadFolder.setAttribute("filepath", file);
+    downloadFolder.setAttribute("onclick", "DownloadFile(this.getAttribute('filename'), this.getAttribute('filepath'))");
+    divSplit.appendChild(downloadFolder);
+    selectedFolder = file;
+    MakeRequest('/storage/GetAllFilesInCloudStorage?p=' + file).then(response => {
+        let json = JSON.parse(response);
+        for (let i = 0; i < json.length; i++) {
+            let box = document.createElement('button');
+            box.className = "kbutton";
+            box.style = "height: 50px; width: 100%; font-size: 15px; margin-bottom: 3px; color: #ffffff; font-size: 1vw;  text-transform: none;";
+            if (json[i].filename.endsWith(".txt")) {
+                box.style.border = "2px solid yellow";
+            }
+            if (json[i].filename.includes('.') != true) {
+                box.style.border = "2px solid aqua";
+            }
+            box.id = json[i].filepath;
+            box.setAttribute("filename", json[i].filename);
+            box.innerHTML = json[i].filename;
+            box.setAttribute("onclick", "OpenCloudFile(this.id, this.getAttribute('filename'))");
+            actualfilegrid.appendChild(box);
+        }
+    })
+}
+
 function OpenCloudFile(file, filename) {
     let foldergrid = document.getElementById('foldergrid');
     foldergrid.style.gridTemplateColumns = "1fr";
@@ -188,75 +239,13 @@ function OpenCloudFile(file, filename) {
     catch (err) {
         console.log(err);
         if (clickedbox.getAttribute('isdirectory') == "true") {
-            foldergrid.style.gridTemplateColumns = foldergrid.style.gridTemplateColumns.replace('2fr', '1fr') + " 2fr";
-            let newfilegrid = document.createElement('div');
-            newfilegrid.className = "filesgrid";
-            newfilegrid.style = "display: grid; grid-template-rows: 5fr 1fr;"
-            newfilegrid.id = "filegridpathed";
-            foldergrid.appendChild(newfilegrid);
-            let actualfilegrid = document.createElement('div');
-            actualfilegrid.className = "filesgrid";
-            actualfilegrid.id = "filegridpathed";
-            newfilegrid.appendChild(actualfilegrid);
-            let divSplit = document.createElement("div");
-            divSplit.style = "display: grid; grid-template-columns: 1fr 1fr; padding: 10px; gap: 5px;";
-            newfilegrid.appendChild(divSplit);
-            let deletefolder = document.createElement("button");
-            deletefolder.className = "kbutton";
-            deletefolder.name = file;
-            deletefolder.style = "border: 2px solid red; color: red;"
-            deletefolder.innerHTML = "Delete Folder: " + filename;
-            deletefolder.setAttribute("onclick", "ClearFolder(this.getAttribute('name'))");
-            divSplit.appendChild(deletefolder);
-            let downloadFolder = document.createElement("button");
-            downloadFolder.className = "kbutton";
-            downloadFolder.style = "border: 2px solid green; color: red;"
-            downloadFolder.innerHTML = "Download Folder: " + filename;
-            downloadFolder.setAttribute("filename", filename);
-            downloadFolder.setAttribute("filepath", file);
-            downloadFolder.setAttribute("onclick", "DownloadFile(this.getAttribute('filename'), this.getAttribute('filepath'))");
-            divSplit.appendChild(downloadFolder);
-            selectedFolder = file;
-            MakeRequest('/storage/GetAllFilesInCloudStorage?p=' + file).then(response => {
-                let json = JSON.parse(response);
-                for (let i = 0; i < json.length; i++) {
-                    let box = document.createElement('button');
-                    box.className = "kbutton";
-                    box.style = "height: 50px; width: 100%; font-size: 15px; margin-bottom: 3px; color: #ffffff; font-size: 1vw;  text-transform: none;";
-                    if (json[i].filename.endsWith(".txt")) {
-                        box.style.border = "2px solid yellow";
-                    }
-                    if (json[i].filename.includes('.') != true) {
-                        box.style.border = "2px solid aqua";
-                    }
-                    box.id = json[i].filepath;
-                    box.setAttribute("filename", json[i].filename);
-                    box.innerHTML = json[i].filename;
-                    box.setAttribute("onclick", "OpenCloudFile(this.id, this.getAttribute('filename'))");
-                    actualfilegrid.appendChild(box);
-                }
-            })
+            OpenFolder(file, filename);
         }
         else {
             MakeRequest('/storage/GetFileInfo?p=' + file).then(response3 => {
                 let json = JSON.parse(response3);
                 let contenttext = "File Name: " + filename + "\nFilepath: " + filename + "\n\n";
-                //If Kilobyte
-                if (json.FilesizeB > 1024 && json.FilesizeKB < 1024) {
-                    contenttext += "Filesize: " + Math.round(json.FilesizeKB) + "KB";
-                }
-                //If Megabyte
-                else if (json.FilesizeKB >= 1024 && json.FilesizeMB < 1024) {
-                    contenttext += "Filesize: " + Math.round(json.FilesizeMB) + "MB";
-                }
-                //If Gigabyte
-                else if (json.FilesizeMB >= 1024) {
-                    contenttext += "Filesize: " + Math.round(json.FilesizeGB) + "GB";
-                }
-                //If Bytes
-                else {
-                    contenttext += "Filesize: " + Math.round(json.FilesizeB) + "B";
-                }
+                contenttext += "Filesize: " + json.FileSizeString;
                 let uploaded = new Date(json.ModifiedDate);
                 let created = new Date(json.CreationDate);
                 contenttext += "\nUploaded: " + uploaded.toLocaleString() + "\nFile Created: " + created.toLocaleString();
@@ -325,6 +314,36 @@ function OpenCloudFile(file, filename) {
                         }
                         else if (value == "watch") {
                             window.open("viewvideo.html?videoPath=" + file);
+                        }
+                    });
+                }
+                else if (filename.endsWith(".png")||filename.endsWith(".jpg")||filename.endsWith('jpeg')) {
+                    swal(contenttext, {
+                        icon: api+"/storage/StreamImage?imagePath="+file,
+                        buttons: {
+                            cancel: "OK",
+                            gopost: {
+                                text: "Download File",
+                                value: "download",
+                            },
+                            delpost: {
+                                text: "Delete File",
+                                value: "delete",
+                            },
+                        },
+                    }).then((value) => {
+                        if (value == "download") {
+                            DownloadFile(file, filename);
+                        }
+                        else if (value == "delete") {
+                            IsKliveAdmin().then(resp => {
+                                if (resp == true) {
+                                    DeleteFile(file);
+                                }
+                                else {
+                                    swal("Unauthorized!", unauthMessage)
+                                }
+                            })
                         }
                     });
                 }

@@ -84,6 +84,7 @@ function GetStorageData() {
 
 function LoadAllCloudFiles() {
     //Loading cloud storage
+    selectedFolder="";
     try {
         let foldergrid = document.getElementById('foldergrid');
         foldergrid.style.gridTemplateColumns = "1fr";
@@ -288,7 +289,14 @@ function OpenCloudFile(file, filename) {
                 });
             }
             else if (filename.endsWith(".mp4")) {
+                let video = api+"/klivemovie/streamvideo?videoPath="+file;
+                let videoEle = document.createElement('video');
+                videoEle.style.width="400px";
+                videoEle.setAttribute("controls", "true");
+                videoEle.style.height="500px";
+                videoEle.src=video;
                 swal(contenttext, {
+                    content: videoEle,
                     buttons: {
                         cancel: "OK",
                         gopost: {

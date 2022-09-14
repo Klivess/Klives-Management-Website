@@ -101,7 +101,7 @@
                 }
             },
         }).then((value) => {
-            IsKliveAdmin().then(resp => {
+            IsProfileAdmin().then(resp => {
                 if (resp == true) {
                     if (value == "yes") {
                         MakeRequest("/KliveMovie/DestroyMovie?movieName=" + name).then(response => {

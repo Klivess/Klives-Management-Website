@@ -276,7 +276,7 @@ function OpenCloudFile(file, filename) {
                             DownloadFile(file, filename);
                         }
                         else if (value == "delete") {
-                            IsKliveAdmin().then(resp => {
+                            IsProfileAdmin().then(resp => {
                                 if (resp == true) {
                                     DeleteFile(file);
                                 }
@@ -317,7 +317,7 @@ function OpenCloudFile(file, filename) {
                         DownloadFile(file, filename);
                     }
                     else if (value == "delete") {
-                        IsKliveAdmin().then(resp => {
+                        IsProfileAdmin().then(resp => {
                             if (resp == true) {
                                 DeleteFile(file);
                             }
@@ -351,7 +351,7 @@ function OpenCloudFile(file, filename) {
                         DownloadFile(file, filename);
                     }
                     else if (value == "delete") {
-                        IsKliveAdmin().then(resp => {
+                        IsProfileAdmin().then(resp => {
                             if (resp == true) {
                                 DeleteFile(file);
                             }
@@ -380,7 +380,7 @@ function OpenCloudFile(file, filename) {
                         DownloadFile(file, filename);
                     }
                     else if (value == "delete") {
-                        IsKliveAdmin().then(resp => {
+                        IsProfileAdmin().then(resp => {
                             if (resp == true) {
                                 DeleteFile(file);
                             }
@@ -431,7 +431,7 @@ function ClearFolder(path) {
         }
     }).then(result => {
         if (result == "YES") {
-            IsKliveAdmin().then(resp => {
+            IsProfileAdmin().then(resp => {
                 if(resp==true){
                     MakeRequest('/storage/ClearCloudFolder?path=' + path).then(response => {
                         if (response == "OK") {
@@ -462,7 +462,7 @@ function ClearFolder(path) {
 
 function DownloadScreenshot() {
     let meme = api+"/storage/DownloadScreenshot?r="+Math.Random;
-    IsKliveAdmin().then(r=>{
+    IsProfileAdmin().then(r=>{
         if(r==true){
             swal("Server Screenshot", {
                 icon: meme
@@ -540,7 +540,7 @@ function DownloadFile(file, filename) {
 }
 
 function DeleteFile(file) {
-    IsKliveAdmin().then(resp => {
+    IsProfileAdmin().then(resp => {
         if (resp == true) {
             MakeRequest("/storage/DeleteFileInCloudStorage?p=" + file).then(response => {
                 let grid = document.getElementById("files");

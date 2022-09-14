@@ -130,7 +130,7 @@ function ClearLogs() {
 
 function RemoveAllElementsInGrid(gridID) {
     //remove all elements in grid
-    let grid = document.getElementById(grid);
+    let grid = document.getElementById(gridID);
     while (grid.firstChild) {
         grid.removeChild(grid.firstChild);
     }
@@ -138,46 +138,16 @@ function RemoveAllElementsInGrid(gridID) {
 
 function Authentication() {
     try {
-        let formData = new FormData;
-        formData.append("p", getCookie("password"));
-        var url = api + "/v1/CheckPassword";
-        var xhr = new XMLHttpRequest();
-        xhr.onreadystatechange = function () {
-            if (xhr.status == 200 && xhr.readyState == 4) {
-                if (xhr.response == "" || xhr.response == null || xhr.response == undefined) {
-                    console.log(xhr.responseText);
-                    alert("The API could not be reached.");
-                    apistatus = false;
-                    LogOut();
-                }
-                else {
-                    console.log("API Online");
-                }
-                if (xhr.response == "PASS") {
-                    apistatus = true;
-                    if (document.readyState == "complete") {
-                        document.body.style.visibility = "visible";
-                    }
-                    else {
-                        window.onload = function () {
-                            document.body.style.visibility = "visible";
-                        };
-                    }
-                }
-                else if (xhr.response == "DISABLED") {
-                    alert("The owner of this website has disabled logins.");
-                    apistatus = false;
-                    LogOut();
-                }
-                else if (xhr.response == "NOENTRY") {
-                    apistatus = false;
-                    console.log('Not logged in >:(');
-                    LogOut();
-                }
+        MakeRequest("/KlivesManagementManager/LoginToManagement?password="+getCookie("password")+"&log=false").then(response => {
+            if(response=="NOENTRY"||response=="DISABLED"){
+                document.body.style.visibility="hidden";
+                swal("Unauthorized", "Klives has removed your access to this website.");
+                window.location.replace('../../index.html');
             }
-        };
-        xhr.open("POST", url, true);
-        xhr.send(formData);
+            else{
+                document.body.style.visibility="visible";
+            }
+        });
     }
     catch (err) {
         alert(err);
@@ -205,7 +175,7 @@ function UpdatePerformance() {
 }
 
 function RestartServer(textToUpdate) {
-    IsKliveAdmin().then(resp => {
+    IsProfileAdmin().then(resp => {
         if (resp == true) {
             let ele = document.getElementById(textToUpdate);
             ele.innerHTML = "Restarting...";
@@ -220,7 +190,7 @@ function RestartServer(textToUpdate) {
     })
 }
 function RestartBot(textToUpdate) {
-    IsKliveAdmin().then(resp => {
+    IsProfileAdmin().then(resp => {
         if (resp == true) {
             let ele = document.getElementById(textToUpdate);
             ele.innerHTML = "Restarting...";
@@ -236,8 +206,9 @@ function RestartBot(textToUpdate) {
         }
     })
 }
+
 function ShutdownServer(textToUpdate) {
-    IsKliveAdmin().then(resp => {
+    IsProfileAdmin().then(resp => {
         if (resp == true) {
             let ele = document.getElementById(textToUpdate);
             ele.innerHTML = "Shutting Down...";
@@ -253,7 +224,7 @@ function ShutdownServer(textToUpdate) {
     })
 }
 function ShutdownBot(textToUpdate) {
-    IsKliveAdmin().then(resp => {
+    IsProfileAdmin().then(resp => {
         if (resp == true) {
             let ele = document.getElementById(textToUpdate);
             ele.innerHTML = "Shutting Down...";
@@ -269,7 +240,7 @@ function ShutdownBot(textToUpdate) {
     })
 }
 function UpdateBot(textToUpdate) {
-    IsKliveAdmin().then(resp => {
+    IsProfileAdmin().then(resp => {
         if (resp == true) {
             let ele = document.getElementById(textToUpdate);
             ele.innerHTML = "Updating...";
@@ -301,10 +272,11 @@ function SendToSpeaker(speaker, textToUpdate) {
     });
 }
 
-async function IsKliveAdmin() {
+async function IsProfileAdmin() {
     let isAdmin = false;
-    await MakeRequest('/v1/IsKliveAdmin?password=' + getCookie('password')).then(response => {
-        isAdmin = response == "PASS";
+    await MakeRequest('/KlivesManagementManager/GetProfileByPassword?password=' + getCookie('password')).then(response => {
+        let json = JSON.parse(response);
+        isAdmin = json.KlivesManagementRank>=3;
         console.log("Is admin?: " + isAdmin.toString());
     });
     return Promise.resolve(isAdmin);
@@ -354,7 +326,7 @@ function ColorLuminance(lum) {
 }
 
 function LoadMainPage() {
-    IsKliveAdmin().then(r => {
+    IsProfileAdmin().then(r => {
         if (r == true) {
             setInterval(() => {
                 document.getElementById('serverStreamIMG').setAttribute("src", api + "/storage/DownloadScreenshot?r=" + Math.random(10));

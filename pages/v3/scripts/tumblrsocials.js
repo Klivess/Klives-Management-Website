@@ -74,7 +74,7 @@ function LoadBehaviourSettings() {
     }, 3);
 }
 function UpdateBehaviourSettings() {
-    IsKliveAdmin().then(r => {
+    IsProfileAdmin().then(r => {
         if(r==true){
             try {
                 let minhourspost = document.getElementById('minhoursbeforepost');
@@ -412,7 +412,7 @@ function RemoveTumblrAccount(name, page) {
         },
     }).then((value) => {
         if (value == "delete") {
-            IsKliveAdmin(resp => {
+            IsProfileAdmin(resp => {
                 if(resp==true){
                     try {
                         MakeRequest("/tumblr/RemoveTumblrAccount?name=" + name).then(response => {
@@ -585,7 +585,7 @@ function GetTumblrManagementData() {
         document.getElementById('playerregistrationdate').innerHTML = "Klives Management Registration Date: " + date.toLocaleString();
         document.getElementById('playerfollowers').innerHTML = "Followers: " + json.Followers;
         document.getElementById('playeramountofimages').innerHTML = "Amount Of Images: " + json.AmountOfImages;
-        IsKliveAdmin().then(r=>{
+        IsProfileAdmin().then(r=>{
             if(r==true){
                 document.getElementById('playeremail').innerHTML = "Email: " + json.account.email;
                 document.getElementById('playerpassword').innerHTML = "Password: " + json.account.password;

@@ -31,7 +31,7 @@
 <body style="display: flex; justify-content: center;" onkeypress="keypress(event)" onkeydown="enterKeyPressed(event)">
     <div id="loginbox" class="fadein" style="position: absolute; top: 40%;">
         <div class="form__group field" style="user-select: none; display: flex; justify-content: center;">
-            <input type="password" class="form__field" readonly placeholder="Name" name="name" id='password' autocomplete="off"
+            <input type="password" class="form__field" placeholder="Name" name="name" id='password' autocomplete="off"
                 style="width: 600px;" required />
             <label for="name" class="form__label" id="noticebox">Password</label>
         </div>
@@ -50,27 +50,20 @@
 
 <script>
     let apistatus = true;
-    fetch(kliveAPI + "/v1/CheckPassword?p=" + getCookie("password"))
+    fetch(kliveAPI + "/KlivesManagementManager/LoginToManagement?password=" + getCookie("password")+"&log=true")
         .then(res => res.text())
         .then((data) => {
             responsetext = data;
-            console.log(responsetext);
-            if (responsetext == "PASS") {
-                window.location.replace('pages/v3/main.html');
-            }
-            else if (responsetext == "NOENTRY") {
+            if (responsetext == "NOENTRY") {
                 console.log('Password refused.')
                 return false;
+            }
+            else{
+                window.location.replace('pages/v3/main.html');
             }
         })
         .catch(err => { throw err });
     document.onload = GetStatusOfAPI();
-    function keypress(event) {
-        let str = String.fromCharCode(event.keyCode);
-        let box = document.getElementById('password');
-        box.click();
-        box.value = box.value + str;
-    }
     function IndexLogin(passwordbox, button) {
         try {
             let passwordbox = document.getElementById('password');
@@ -80,18 +73,18 @@
             }
             if (passwordbox.value != "") {
                 if (apistatus) {
-                    MakeRequest('/v1/CheckPassword?p=' + passwordbox.value).then(response => {
-                        if (response == "PASS") {
-                            noticebox.innerHTML = "Logging In...";
-                            createCookie("password", passwordbox.value, 365);
-                            window.location.replace("pages/v3/main.html");
+                    MakeRequest('/KlivesManagementManager/LoginToManagement?password=' + passwordbox.value+"&log=true").then(response => {
+                        if (response == "NOENTRY") {
+                            noticebox.innerHTML = "Incorrect password.";
+                            passwordbox.value="";
                         }
                         else if (response == "DISABLED") {
                             noticebox.innerHTML = "The owner of this website has disabled logins.";
                         }
                         else {
-                            noticebox.innerHTML = "Incorrect password.";
-                            passwordbox.value="";
+                            noticebox.innerHTML = "Logging In...";
+                            createCookie("password", passwordbox.value, 365);
+                            window.location.replace("pages/v3/main.html");
                         }
                     });
                 }

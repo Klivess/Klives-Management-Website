@@ -61,10 +61,24 @@
                 style="width: 500px; margin-top: 50px; height: 100px; border: 3px solid rgb(73, 0, 73);"><a
                     style="color: rgb(73, 0, 73);">Send Final Message</a></button>
         </div>
+        <div class="infobox" style="height: 700px;">
+            <h1>Profile Manager</h1>
+            <div style="display: grid; grid-template-columns: 5fr 4fr; gap: 10px;">
+                <div>
+                    <div class="gridbox" style="height: 100%; width: 100%;" id="kmprofiles">
+
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-rows: 6fr 1fr;">
+                    <div></div>
+                    <button class="kbutton" style="color: greenyellow; border: 2px solid greenyellow;" onclick="CreateNewProfile()">Create New Profile</button>
+                </div>
+            </div>
+        </div>
     </div>
 </body>
 <script>
-    GetSettings();
+    LoadKlivesManager();
 </script>
 
 </html>

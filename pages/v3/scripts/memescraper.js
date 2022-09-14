@@ -115,7 +115,7 @@ function SelectMemeVideo(path)
                 DownloadFile(path, leafname);
             }
             else if (value == "delete") {
-                IsKliveAdmin().then(resp => {
+                IsProfileAdmin().then(resp => {
                     if (resp == true) {
                         MakeRequest("/storage/DeleteFileInCloudStorage?p=" + path).then(response => {
                             RemoveAllElementsInGrid(compiledMemeComps);
@@ -155,7 +155,7 @@ function CreateNewMemeVideo() {
     container.appendChild(amountOfVideosinput);
     container.appendChild(MaximumSecondDurationinput);
     container.appendChild(nameOfVideoinput);
-    IsKliveAdmin().then(r=>{
+    IsProfileAdmin().then(r=>{
         if(r==true){
             swal({
                 text: 'Configure?',

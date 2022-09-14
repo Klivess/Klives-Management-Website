@@ -96,7 +96,7 @@
     document.onload = GetTumblrManagementData();
     function removeTumblrAccount(name) {
         MakeRequest("/tumblr/RemoveTumblrAccount?name=" + name).then(response => {
-            IsKliveAdmin().then(resp => {
+            IsProfileAdmin().then(resp => {
                 if (resp == true) {
                     if (response == "OK") {
                         window.location.replace("tumblrsocial.html");

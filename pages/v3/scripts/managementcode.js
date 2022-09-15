@@ -1,7 +1,18 @@
 let apistatus = true;
 const unauthMessage = "Only Klives is authorized to perform this action.";
+let api = "https://90.255.227.194:80";
 
 window.addEventListener('load', function () {
+    if(this.document.URL.includes("tumblr")){
+        console.log("ya")
+        MakeRequest("/KlivesManagementManager/LoginToManagement?password="+getCookie("password")+"&log=false").then(response => {
+            let json = JSON.parse(response);
+            if(json.KlivesManagementRank=="0"){
+                this.alert("You're unauthorized to visit this page.");
+                window.location.replace('main.html');
+            }
+        });
+    }
     // on website load
     let allInfoBoxes = document.getElementsByClassName("infobox");
     for (let i = 0; i < allInfoBoxes.length; i++) {

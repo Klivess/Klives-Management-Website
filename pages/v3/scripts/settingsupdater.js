@@ -40,8 +40,9 @@ function GetSettings() {
 function LoadKlivesManager() {
     GetSettings();
     LoadAllProfiles();
+    //LoadLoginGraph();
 }
-function LoadAllProfiles(){
+function LoadAllProfiles() {
     MakeRequest("/KlivesManagementManager/GetAllProfiles").then(resp => {
         let jsonData = JSON.parse(resp);
         let grid = document.getElementById('kmprofiles');
@@ -52,6 +53,19 @@ function LoadAllProfiles(){
             profile.innerHTML = element.Name;
             profile.setAttribute("data", JSON.stringify(element));
             profile.style = "height: 75px;";
+            if(element.KlivesManagementRank=="0"){
+                profile.style.color="grey";
+            }
+            else if(element.KlivesManagementRank=="1"){
+                profile.style.color="purple";
+            }
+            else if(element.KlivesManagementRank=="2"){
+                profile.style.color="green";
+            }
+            else if(element.KlivesManagementRank=="3"){
+                profile.style.color="yellow";
+            }
+            profile.style.fontSize="25px";
             profile.setAttribute("onclick", "ViewProfile(this.getAttribute('data'))");
             grid.appendChild(profile);
         }
@@ -81,7 +95,7 @@ function ViewProfile(data) {
     let Loginbox = document.createElement('div');
     let permissions = document.createElement('select');
     container.appendChild(secondContainer);
-    if(json.KlivesManagementRank<3){
+    if (json.KlivesManagementRank < 3) {
         deleteButton.innerHTML = "Delete Profile";
         deleteButton.className = "kbutton";
         deleteButton.setAttribute("onclick", "DeleteProfile(" + json.UserID + ")");
@@ -142,7 +156,7 @@ function ViewProfile(data) {
             json.KlivesManagementRank = permissions.value;
             // create an XHR object
             const xhr = new XMLHttpRequest();
-            xhr.open('POST', api+"/KlivesManagementManager/ModifyProfile");
+            xhr.open('POST', api + "/KlivesManagementManager/ModifyProfile");
             let formData = new FormData();
             formData.append("id", json.UserID);
             formData.append("jsonData", JSON.stringify(json));
@@ -164,9 +178,60 @@ function ViewProfile(data) {
     })
 }
 
-function RefreshProfiles(){
+function RefreshProfiles() {
     RemoveAllElementsInGrid('kmprofiles');
     LoadAllProfiles();
+}
+
+function LoadLoginGraph() {
+    MakeRequest("/KlivesManagementManager/GetLoginAnalytics").then(resp => {
+        let json = JSON.parse(resp);
+        let names = [];
+        let dates = [];
+        for (let index = 0; index < json.length; index++) {
+            const element = json[index];
+            console.log(element);
+            const dateValue = element.Value;
+            console.log(dateValue);
+            let date = new Date(dateValue);
+            console.log(date.toLocaleString());
+        }
+        const ctx = document.getElementById('loginChart').getContext('2d');
+        const myChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Red', 'Blue', 'Yellow', 'Green', 'Purple', 'Orange'],
+                datasets: [{
+                    label: '# of Votes',
+                    data: [12, 19, 3, 5, 2, 3],
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.2)',
+                        'rgba(54, 162, 235, 0.2)',
+                        'rgba(255, 206, 86, 0.2)',
+                        'rgba(75, 192, 192, 0.2)',
+                        'rgba(153, 102, 255, 0.2)',
+                        'rgba(255, 159, 64, 0.2)'
+                    ],
+                    borderColor: [
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(255, 206, 86, 1)',
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(153, 102, 255, 1)',
+                        'rgba(255, 159, 64, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    });
 }
 
 function DeleteProfile(id) {
@@ -183,7 +248,7 @@ function DeleteProfile(id) {
     }).then(resp => {
         if (resp == "confirm") {
             MakeRequest("/KlivesManagementManager/DeleteProfile?profileid=" + id).then(resp => {
-                swal("Success", "Profile " + id + " has been removed.", "confirm");
+                swal("Success", "Profile " + id + " has been removed.");
                 RefreshProfiles();
             });
         }

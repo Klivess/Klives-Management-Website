@@ -1,4 +1,3 @@
-let api = "https://90.255.227.194:80";
 let apistatus = true;
 const unauthMessage = "Only Klives is authorized to perform this action.";
 
@@ -58,7 +57,7 @@ function AutomaticAuthentication() {
     Authentication();
     setInterval(() => {
         Authentication();
-    }, 2000);
+    }, 1250);
 }
 
 function DownloadFileFromServer(file, filename) {
@@ -141,7 +140,7 @@ function Authentication() {
         MakeRequest("/KlivesManagementManager/LoginToManagement?password="+getCookie("password")+"&log=false").then(response => {
             if(response=="NOENTRY"||response=="DISABLED"){
                 document.body.style.visibility="hidden";
-                swal("Unauthorized", "Klives has removed your access to this website.");
+                alert("Klives has removed your access to this website.");
                 window.location.replace('../../index.html');
             }
             else{

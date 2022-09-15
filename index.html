@@ -54,11 +54,11 @@
         .then(res => res.text())
         .then((data) => {
             responsetext = data;
-            if (responsetext == "NOENTRY") {
+            if (responsetext == "NOENTRY"||responsetext=="DISABLED") {
                 console.log('Password refused.')
                 return false;
             }
-            else{
+            else if(responsetext!="DISABLED"){
                 window.location.replace('pages/v3/main.html');
             }
         })
@@ -126,11 +126,6 @@
     function enterKeyPressed(event) {
         if (event.keyCode == 13) {
             IndexLogin();
-        }
-        else if (event.keyCode == 8) {
-            let box = document.getElementById('password');
-            box.click();
-            box.value = box.value.substring(0, box.value.length - 1);
         }
     }
     function createCookie(name, value, days) {

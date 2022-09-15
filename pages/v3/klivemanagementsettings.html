@@ -13,6 +13,7 @@
     <script src="scripts/tumblrsocials.js"></script>
     <script src="scripts/settingsupdater.js"></script>
     <script src="../../scripts/saved.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <link rel="shortcut icon" href="../../images/klivebot2.png" type="image/x-icon">
     <title>KliveBot Management: Settings</title>
 </head>
@@ -70,7 +71,9 @@
                     </div>
                 </div>
                 <div style="display: grid; grid-template-rows: 6fr 1fr;">
-                    <div></div>
+                    <div>
+                        <canvas id="loginChart" height="200px"></canvas>
+                    </div>
                     <button class="kbutton" style="color: greenyellow; border: 2px solid greenyellow;" onclick="CreateNewProfile()">Create New Profile</button>
                 </div>
             </div>

@@ -10,9 +10,10 @@
     <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js" integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
     <script src="scripts/managementcode.js"></script>
     <script src="scripts/tumblrsocials.js"></script>
+    <script src="scripts/bedroomcontrol.js"></script>
     <script src="../../scripts/saved.js"></script>
     <link rel="shortcut icon" href="../../images/klivebot2.png" type="image/x-icon">
-    <title>KliveBot Management: Dashboard</title>
+    <title>KliveBot Management: Bedroom</title>
 </head>
 <nav>
     <horizontal-nav style="display: flex;">
@@ -33,15 +34,59 @@
         <a class="kbutton navbutton" href="klivemanagementsettings.html">Management</a>
     </horizontal-nav>
 </nav>
+<style>
+    .deviceButton {
+        height: 150px;
+        width: 150px;
+        border-radius: 10px;
+        padding: 10px;
+        font-size: larger;
+        text-align: center;
+        background-image: url(https://cdn-icons-png.flaticon.com/512/3222/3222013.png);
+        background-size: cover;
+        color: white;
+        font-family: 'Roboto';
+        background-color: #1b1e20;
+        user-select: none;
+        transition: 0.5s;
+        align-items:baseline;
+        display: grid;
+        justify-content: baseline;
+        cursor: pointer;
+    }
+
+    .deviceButton:hover span{
+        transition: 0.5s;
+    }
+    .deviceButton:hover{
+        transition: 0.5s;
+        transform: scale3d(10%);
+    }
+    
+    .deviceButton span {
+        transform: translateY(50%);
+        font-size: larger;
+        color: white;
+    }
+
+    .deviceButton:active{
+        transition: 0.2s;
+        filter: invert();
+    }
+</style>
 
 <body style="visibility: hidden;">
     <div class="appContainer">
-        <div class="infobox">
-            <div id="quickactions">
-
+        <div class="infobox" style="height: 700px;">
+            <h1>Bedroom Devices</h1>
+            <div style="display: grid; grid-template-rows: 6fr 1fr;">
+                <div id="deviceGrid" style="display: flex; overflow-y: scroll; gap: 20px;">
+                </div>
             </div>
         </div>
     </div>
 </body>
-
+<script>
+    LoadBedroomPage();
+</script>
 </html>

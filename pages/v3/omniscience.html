@@ -14,6 +14,7 @@
     <script src="scripts/omnisciencecode.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.js"></script>
     <link rel="shortcut icon" href="../../images/klivebot2.png" type="image/x-icon">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment-with-locales.min.js"></script>
     <title>KliveBot Management: Omniscience</title>
 </head>
 <nav>
@@ -62,9 +63,11 @@
                 <h1>Omniscience Data</h1>
                 <div style="display: grid; grid-template-columns: 2fr 1fr;">
                     <div>
-                        <span id="omniscienceMessagesLogged" style="font-size: 2vw;">Loading...</span><br>
-                        <span id="omniscienceGuildsBeingWatched" style="font-size: 2vw;">Loading...</span><br>
-                        <span id="omniscienceKlivesMentions" style="font-size: 2vw;">Loading...</span><br><br><br>
+                        <span id="omniscienceMessagesLogged" style="font-size: 1.5vw;">Loading...</span><br>
+                        <span id="omniscienceGuildsBeingWatched" style="font-size: 1.5vw;">Loading...</span><br>
+                        <span id="omniscienceKlivesMentions" style="font-size: 1.5vw;">Loading...</span><br>
+                        <span id="omniscienceCompileTime" style="font-size: 1.5vw;">Loading...</span><br><br><br>
+
                         <div style="display: flex; justify-content: center;">
                             <h1>Most Frequent Speakers</h1>
                             <div class="scheduleBox" id="frequentspeakersbox" style="height: 500px; width: 600px;">

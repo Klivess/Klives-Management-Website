@@ -23,8 +23,8 @@ function LoadOmniscience() {
         }
         let json = JSON.parse(response);
         const ctx = document.getElementById('omniscienceMessageDistribution').getContext('2d');
-        guildNames=[];
-        guildValues=[];
+        guildNames = [];
+        guildValues = [];
         for (let index = 0; index < json.GuildMessageDistribution.length; index++) {
             const element = json.GuildMessageDistribution[index];
             guildNames.push(element.Key);
@@ -73,9 +73,10 @@ function LoadOmniscience() {
                 }
             }
         });
-        document.getElementById('omniscienceMessagesLogged').innerHTML=json.TotalMessagesLogged+" total messages logged.";
-        document.getElementById('omniscienceGuildsBeingWatched').innerHTML=json.GuildsLogged.length+" guilds being watched.";
-        document.getElementById('omniscienceKlivesMentions').innerHTML=json.KlivesMentions.length+" messages about Klives.";
+        document.getElementById('omniscienceMessagesLogged').innerHTML = json.TotalMessagesLogged + " total messages logged.";
+        document.getElementById('omniscienceGuildsBeingWatched').innerHTML = json.GuildsLogged.length + " guilds being watched.";
+        document.getElementById('omniscienceKlivesMentions').innerHTML = json.KlivesMentions.length + " messages about Klives.";
+        document.getElementById('omniscienceCompileTime').innerHTML = "Compiled analytics in "+(json.TimeTakenToCompileAnalyticsSeconds)+" seconds.";
         json.FrequentSpeakers.reverse();
         for (let index = 0; index < json.FrequentSpeakers.length; index++) {
             const element = json.FrequentSpeakers[index];
@@ -83,18 +84,18 @@ function LoadOmniscience() {
             let ele2 = document.createElement('button');
             ele2.className = "kbutton fadein";
             ele2.style = "height: 50px; font-size: 20px; text-transform: none; display: grid; grid-template-columns: 1fr 1fr;";
-            ele2.innerHTML = "<p class='special' style='font-size: large;'>" + element.Key.Username + "</p><p class ='special' style='color: cyan;'>" + element.Value+" Messages sent" + "</p>";
+            ele2.innerHTML = "<p class='special' style='font-size: large;'>" + element.Key.Username + "</p><p class ='special' style='color: cyan;'>" + element.Value + " Messages sent" + "</p>";
             ele.appendChild(ele2);
         }
         json.WordFrequency.reverse();
         for (let index = 0; index < json.WordFrequency.length; index++) {
             const element = json.WordFrequency[index];
-            if(element.Value>30){
+            if (element.Value > 30) {
                 let ele = document.getElementById("wordfrequency");
                 let ele2 = document.createElement('button');
                 ele2.className = "kbutton fadein";
                 ele2.style = "height: 50px; font-size: 20px; text-transform: none; display: grid; grid-template-columns: 1fr 1fr;";
-                ele2.innerHTML = "<p class='special' style='font-size: large;'>'" + element.Key + "'</p><p class ='special' style='color: cyan;'> Mentioned " + element.Value+" times." + "</p>";
+                ele2.innerHTML = "<p class='special' style='font-size: large;'>'" + element.Key + "'</p><p class ='special' style='color: cyan;'> Mentioned " + element.Value + " times." + "</p>";
                 ele.appendChild(ele2);
             }
         }

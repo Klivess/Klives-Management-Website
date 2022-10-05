@@ -5,9 +5,9 @@ let api = "https://90.255.227.194:80";
 window.addEventListener('load', function () {
     if(this.document.URL.includes("tumblr")){
         console.log("ya")
-        MakeRequest("/KlivesManagementManager/LoginToManagement?password="+getCookie("password")+"&log=false").then(response => {
-            let json = JSON.parse(response);
-            if(json.KlivesManagementRank=="0"){
+        GetProfilePermissionRank().then(response => {
+            console.log(response);
+            if(response=="0"){
                 this.alert("You're unauthorized to visit this page.");
                 window.location.replace('main.html');
             }
@@ -290,6 +290,15 @@ async function IsProfileAdmin() {
         console.log("Is admin?: " + isAdmin.toString());
     });
     return Promise.resolve(isAdmin);
+}
+
+async function GetProfilePermissionRank() {
+    let rank = "";
+    MakeRequest("/KlivesManagementManager/LoginToManagement?password="+getCookie("password")+"&log=false").then(response => {
+        let json = JSON.parse(response);
+        rank = json.KlivesManagementRank;
+    });
+    return Promise.resolve(rank);
 }
 
 function SendToKlives(speaker, textToUpdate) {

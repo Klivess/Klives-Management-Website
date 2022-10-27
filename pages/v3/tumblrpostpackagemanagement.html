@@ -114,21 +114,19 @@
             }
             catch { }
             document.getElementById('pkgName').innerHTML = json.package.Name;
-            try{
-                for (let index = 0; index < json.Accounts.length; index++) {
-                const element = json.Accounts[index];
+            for (let index = 0; index < Object.values(json.Accounts).length; index++) {
+                const element = Object.values(json.Accounts)[index];
+                console.log(element);
                 let button = document.createElement('a');
                 button.className = "kbutton";
-                button.innerHTML = element.Value;
-                button.setAttribute('href', "tumblraccountmanagement.html?name=" + element.Value);
+                button.innerHTML = element;
+                button.setAttribute('href', "tumblraccountmanagement.html?name=" + element);
                 button.style.height = "80px";
-                grid.appendChild(button);
+                document.getElementById('accountsUsing').appendChild(button);
             }
-            }
-            catch{}
             for (let index = 0; index < json.package.Captions.length; index++) {
                 const element = json.package.Captions[index];
-                captionBox.value = captionBox.value + "\n" +element;
+                captionBox.value = captionBox.value + "\n" + element;
             }
             for (let index = 0; index < json.package.Hashtags.length; index++) {
                 const element = json.package.Hashtags[index];
@@ -148,15 +146,29 @@
     function DeletePostPackage() {
         IsProfileAdmin().then(r => {
             if (r == true) {
-                MakeRequest("/tumblr/DeletePostPackage?pkgID=" + pkgID).then(resp => {
-                    if (resp == "OK") {
-                        swal("Complete!");
-                        window.location.replace('tumblrsocial.html');
+                swal("Confirm", {
+                    text: "Are you sure you want to do this?",
+                    buttons: {
+                        cancel: "Cancel",
+                        confirm: {
+                            text: "Confirm",
+                            value: "confirm",
+                            closeModal: false
+                        }
                     }
-                    else {
-                        swal(resp);
+                }).then(resp => {
+                    if (resp == "confirm") {
+                        MakeRequest("/tumblr/DeletePostPackage?pkgID=" + pkgID).then(resp => {
+                            if (resp == "OK") {
+                                swal("Complete!");
+                                window.location.replace('tumblrsocial.html');
+                            }
+                            else {
+                                swal(resp);
+                            }
+                        })
                     }
-                })
+                });
             }
             else {
                 swal("Unauthorized!", "Only Klives and his associates can do this.");
@@ -181,7 +193,7 @@
             }
             else {
                 swal(xhr.responseText);
-            }    
+            }
         }
     }
 

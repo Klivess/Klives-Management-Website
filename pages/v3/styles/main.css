@@ -34,6 +34,7 @@ video {
     background-color: #190e2b;
     border-radius: 20px;
     overflow-y: scroll;
+    overflow-x: hidden;
     border: 2px solid #573391;
     scrollbar-width: 1px;
 }

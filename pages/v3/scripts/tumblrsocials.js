@@ -455,7 +455,7 @@ function LoadAccount(name) {
         var d = new Date(json.account.TimeUntilNextPost);
         accountNextPost.innerHTML = "Next Post: " + d.toLocaleString();
         button.innerHTML = "Manage " + name;
-        button.setAttribute("onclick", "GoToAccountManagementPage('" + name + "')");
+        button.setAttribute("href", "tumblraccountmanagement.html?name=" + name);
         LoadTumblrFollowerChart('accountFollowerGraph', document.getElementsByName(name)[0].getAttribute("data"));
     }
     else if (document.getElementsByName(name)[0].getAttribute("isvalid") == "false") {
@@ -469,9 +469,6 @@ function LoadAccount(name) {
     }
 }
 
-function GoToAccountManagementPage(name) {
-    window.location.replace("tumblraccountmanagement.html?name=" + name);
-}
 
 function RemoveTumblrAccount(name, page) {
     swal("Are you sure you want to delete this tumblr account?", {
@@ -677,11 +674,18 @@ function GetTumblrManagementData() {
                 option.innerHTML=element.package.Name;
                 option.value=element.package.ID;
                 try{
-                    if(element.package.ID.trim()==json.account.PostPackageID.trim()){
+                    if(element.package.ID==json.account.PostPackageID){
                         option.setAttribute("selected", "true");
                     }
                 }
                 catch(err){console.error(err)}
+                document.getElementById('postPackage').appendChild(option);
+            }
+            if(json.account.PostPackageID==null){
+                var option = document.createElement('option');
+                option.innerHTML="";
+                option.value="";
+                option.setAttribute("selected", "true");
                 document.getElementById('postPackage').appendChild(option);
             }
         });

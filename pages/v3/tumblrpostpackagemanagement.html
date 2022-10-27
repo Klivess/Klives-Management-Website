@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles/main.css">
+    <script src="scripts/swal.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"
+        integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
+    <script src="scripts/managementcode.js"></script>
+    <script src="scripts/tumblrsocials.js"></script>
+    <script src="../../scripts/saved.js"></script>
+    <link rel="shortcut icon" href="../../images/klivebot2.png" type="image/x-icon">
+    <title>KliveBot Management: Post Package Management</title>
+</head>
+<nav>
+    <horizontal-nav style="display: flex;">
+        <img onmouseenter="ImageSwitch()" id="logo" src="../../images/favicon.ico" alt="" style="width: 7vw;">
+        <a class="kbutton navbutton" href="main.html">Home</a>
+        <a class="kbutton navbutton" href="botpower.html">Bot Power</a>
+        <a class="kbutton navbutton" href="taskschedule.html">Schedule</a>
+        <a class="kbutton navbutton" href="socials.html">Socials</a>
+        <a class="kbutton navbutton" href="civilisation.html">Universe</a>
+        <a class="kbutton navbutton" href="klivesmovies.html">Movies</a>
+        <a class="kbutton navbutton" href="klivesminecraft.html">Minecraft</a>
+        <a class="kbutton navbutton" href="klivesbedroom.html">Bedroom</a>
+        <a class="kbutton navbutton" href="speaker.html">Speaker</a>
+        <a class="kbutton navbutton" href="storage.html">Storage</a>
+        <a class="kbutton navbutton" href="logs.html">Logs</a>
+        <a class="kbutton navbutton" href="omniscience.html">Omni</a>
+        <a class="kbutton navbutton" href="school.html">School</a>
+        <a class="kbutton navbutton" href="klivemanagementsettings.html">Management</a>
+    </horizontal-nav>
+</nav>
+
+<body style="visibility: hidden;">
+    <div class="appContainer">
+        <div style="height: 100px; text-align: center;">
+            <span style="font-size: 60px;" id="pkgName"></span>
+        </div>
+        <div class="infobox" style="height: 500px;">
+            <h1>Post Package Details</h1>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr;">
+                <div style="display: grid;">
+                    <span style="font-size: 23px;" id="postpkgAccountsInUse">Amounts Of Accounts In Use: </span>
+                    <span style="font-size: 23px;" id="postpkgVariety">Variety Of Posts: </span>
+                    <span style="font-size: 23px;" id="postpkgcaptionslength">Amount Of Captions: </span>
+                    <span style="font-size: 23px;" id="postpkgplugslength">Amount Of Plugs: </span>
+                    <span style="font-size: 23px;" id="postpkghashtagslength">Amount Of Hashtags: </span>
+                    <span style="font-size: 23px;" id="postpkgextrawordslength">Amount Of Extra Words: </span>
+                </div>
+                <div>
+                    <h1>Manage</h1>
+                    <div class="verticalgrid">
+                        <button class="kbutton" style="color: green; border: 2px green solid; height: 100px;"
+                            onclick="SavePostPackageChanges()">Save Changes</button>
+                        <button class="kbutton" style="color: red; border: 2px red solid; height: 100px;"
+                            onclick="DeletePostPackage()">Delete</button>
+                    </div>
+                </div>
+                <div>
+                    <h1>Accounts Using This Package</h1>
+                    <div class="gridbox" id="accountsUsing" style="height: 500px;"></div>
+                </div>
+            </div>
+        </div>
+        <div class="infobox" style="height: 500px;">
+            <h1>Captions</h1>
+            <textarea id="captionBox" class="kinput" style="padding: 20px; width: 97%;"
+                placeholder="Captions go here"></textarea>
+        </div>
+        <div class="infobox" style="height: 500px;">
+            <h1>Hashtags</h1>
+            <textarea id="hashtagsBox" class="kinput" style="padding: 20px; width: 97%;"
+                placeholder="Hashtags go here"></textarea>
+        </div>
+        <div class="infobox" style="height: 500px;">
+            <h1>Plugs</h1>
+            <textarea id="plugsBox" class="kinput" style="padding: 20px; width: 97%;"
+                placeholder="Plugs go here"></textarea>
+        </div>
+        <div class="infobox" style="height: 500px;">
+            <h1>Extra Words</h1>
+            <textarea id="extrawordsBox" class="kinput" style="padding: 20px; width: 97%;"
+                placeholder="Extra Words go here"></textarea>
+        </div>
+    </div>
+</body>
+<script>
+    let pkgID;
+    let captionBox = document.getElementById('captionBox');
+    let extrawordsBox = document.getElementById('extrawordsBox');
+    let plugsBox = document.getElementById('plugsBox');
+    let hashtagsBox = document.getElementById('hashtagsBox');
+    let data;
+    LoadAllInfo();
+    function LoadAllInfo() {
+        const queryString = window.location.search;
+        const urlParams = new URLSearchParams(queryString);
+        let name = urlParams.get('id');
+        pkgID = name;
+        MakeRequest("/tumblr/GetPostPackageByID?pkgid=" + name).then(resp => {
+            let json = JSON.parse(resp);
+            data = json;
+            try {
+                document.getElementById('postpkgAccountsInUse').innerHTML = "Amount Of Accounts In Use: " + json.AmountOfAccountsUsing;
+                document.getElementById('postpkgVariety').innerHTML = "Variety: " + json.PossibleVariaties + " possible posts.";
+                document.getElementById('postpkgcaptionslength').innerHTML = "Amount Of Captions: " + json.package.Captions.length;
+                document.getElementById('postpkgplugslength').innerHTML = "Amount Of Plugs: " + json.package.Plugs.length;
+                document.getElementById('postpkghashtagslength').innerHTML = "Amount Of Hashtags: " + json.package.Hashtags.length;
+                document.getElementById('postpkgextrawordslength').innerHTML = "Amount Of Extra Words: " + json.package.RandomWords.length;
+            }
+            catch { }
+            document.getElementById('pkgName').innerHTML = json.package.Name;
+            try{
+                for (let index = 0; index < json.Accounts.length; index++) {
+                const element = json.Accounts[index];
+                let button = document.createElement('a');
+                button.className = "kbutton";
+                button.innerHTML = element.Value;
+                button.setAttribute('href', "tumblraccountmanagement.html?name=" + element.Value);
+                button.style.height = "80px";
+                grid.appendChild(button);
+            }
+            }
+            catch{}
+            for (let index = 0; index < json.package.Captions.length; index++) {
+                const element = json.package.Captions[index];
+                captionBox.value = captionBox.value + "\n" +element;
+            }
+            for (let index = 0; index < json.package.Hashtags.length; index++) {
+                const element = json.package.Hashtags[index];
+                hashtagsBox.value = hashtagsBox.value + "\n" + element;
+            }
+            for (let index = 0; index < json.package.Plugs.length; index++) {
+                const element = json.package.Plugs[index];
+                extrawordsBox.value = extrawordsBox.value + "\n" + element;
+            }
+            for (let index = 0; index < json.package.RandomWords.length; index++) {
+                const element = json.package.RandomWords[index];
+                plugsBox.value = plugsBox.value + "\n" + element;
+            }
+        });
+    }
+
+    function DeletePostPackage() {
+        IsProfileAdmin().then(r => {
+            if (r == true) {
+                MakeRequest("/tumblr/DeletePostPackage?pkgID=" + pkgID).then(resp => {
+                    if (resp == "OK") {
+                        swal("Complete!");
+                        window.location.replace('tumblrsocial.html');
+                    }
+                    else {
+                        swal(resp);
+                    }
+                })
+            }
+            else {
+                swal("Unauthorized!", "Only Klives and his associates can do this.");
+            }
+        })
+    }
+
+    function SavePostPackageChanges() {
+        data.package.Captions = captionBox.value.split('\n');
+        data.package.Hashtags = hashtagsBox.value.split('\n');
+        data.package.RandomWords = extrawordsBox.value.split('\n');
+        data.package.Plugs = plugsBox.value.split('\n');
+        let formData = new FormData;
+        formData.append("postPackageJSON", JSON.stringify(data.package));
+        var url = api + "/tumblr/ModifyPostPackage";
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", url, true);
+        xhr.send(formData);
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState == 4 && xhr.status == 200) {
+                swal("Complete!");
+            }
+            else {
+                swal(xhr.responseText);
+            }    
+        }
+    }
+
+</script>
+
+</html>

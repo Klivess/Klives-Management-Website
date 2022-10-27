@@ -2,10 +2,81 @@ let accountBeingMade = false;
 let currentAccountID = "";
 
 function LoadTumblrSocialPage() {
-    LoadData('contenttext', 'caption');
     LoadAllAccounts('allAccounts');
     LoadPostLog();
     LoadBehaviourSettings();
+    LoadTumblrPostPackages();
+}
+
+function LoadTumblrPostPackages(){
+    MakeRequest("/tumblr/GetAllPostPackages").then(resp => {
+        let json = JSON.parse(resp);
+        let grid = document.getElementById('postpackages');
+        for (let index = 0; index < json.length; index++) {
+            const element = json[index];
+            let button = document.createElement('button');
+            button.className="kbutton";
+            button.innerHTML=element.package.Name;
+            button.setAttribute('data', JSON.stringify(element));
+            button.setAttribute('onclick', "LoadTumblrPostPackage(this.getAttribute('data'))");
+            button.style.height="80px";
+            grid.appendChild(button);
+        }
+        LoadTumblrPostPackage(JSON.stringify(json[0]));
+    });
+}
+
+function LoadTumblrPostPackage(data){
+    let json = JSON.parse(data);
+    document.getElementById('postpkgName').innerHTML="Name: "+json.package.Name;
+    document.getElementById('postpkgAccountsInUse').innerHTML="Amount Of Accounts In Use: "+json.AmountOfAccountsUsing;
+    document.getElementById('postpkgVariety').innerHTML="Variety: "+json.PossibleVariaties+" possible posts.";
+    document.getElementById('postpkgDescription').innerHTML="Description: "+json.package.Description;
+    let button = document.getElementById('managePackage');
+    button.innerHTML="Manage "+json.package.Name;
+    button.setAttribute("href", "tumblrpostpackagemanagement.html?id="+json.package.ID);
+}
+
+function CreateNewPostPackage(){
+    let container = document.createElement('div');
+    container.style.width="400px";
+    container.style.height="180px";
+    container.style.gap="20px";
+    container.style.padding="20px;"
+    let name = document.createElement('input')
+    name.className="kinput";
+    name.placeholder="Name Of Post Package?";
+    let description = document.createElement('input')
+    description.className="kinput";
+    description.placeholder='Description?';
+    description.style.height="100px";
+    description.style.marginTop="20px";
+    container.appendChild(name);
+    container.appendChild(description);
+    swal({
+        text: 'Create New Post Package',
+        content: container,
+        buttons: {
+            cancel: "Cancel",
+            next: {
+                text: "Next!",
+                closeModal: false,
+                value: "next",
+            }
+        }
+    }).then(result => {
+        if(result=="next"){
+            MakeRequest("/tumblr/CreateNewPostPackage?name="+name.value+
+            "&description="+description.value).then(r => {
+                if(r=="OK"){
+                    swal("Complete!");
+                }
+                else{
+                    swal("Error", r);
+                }
+            });
+        }
+    });
 }
 
 function OnSocialsLoadTumblr() {
@@ -333,6 +404,7 @@ function MakeNewTumblr() {
         formData.append("tokenSecret", tokenSecret);
         formData.append("email", email);
         formData.append("password", password);
+        formData.append("postPackageID", document.getElementById('postPackage').value);
         formData.append("file", file);
         var url = api + "/tumblr/MakeNewTumblrAccount";
         var xhr = new XMLHttpRequest();
@@ -597,8 +669,57 @@ function GetTumblrManagementData() {
         })
         document.getElementById('removeTumblrAccount').setAttribute("name", name);
         currentAccountID = json.account.playerID;
+        MakeRequest("/tumblr/GetAllPostPackages").then(response => {
+            let jsonPostPackage = JSON.parse(response);
+            for (let index = 0; index < jsonPostPackage.length; index++) {
+                const element = jsonPostPackage[index];
+                var option = document.createElement('option');
+                option.innerHTML=element.package.Name;
+                option.value=element.package.ID;
+                try{
+                    if(element.package.ID.trim()==json.account.PostPackageID.trim()){
+                        option.setAttribute("selected", "true");
+                    }
+                }
+                catch(err){console.error(err)}
+                document.getElementById('postPackage').appendChild(option);
+            }
+        });
         LoadTumblrFollowerChart('followergraph', response);
     });
+}
+
+function OnPostPackageSelectionChanged(){
+    IsProfileAdmin().then(r=>{
+        if(r==true){
+            swal("Confirm",
+            {
+                text: "Are you sure you want to change this?", 
+                buttons: {
+                    cancel: "No.",
+                    conf:{
+                        text: "Yes.",
+                        value: "confirm",
+                        closeModal: false
+                    }
+                }
+            }).then(resp =>{
+                if(resp=="confirm"){
+                    MakeRequest("/tumblr/ChangeTumblrAccountPostPackageID?tumblraccountID="+currentAccountID+"&pkgID="+document.getElementById('postPackage').value).then(resp =>{
+                        if(resp=="OK"){
+                            swal("Complete!");
+                        }
+                        else{
+                            swal(resp);
+                        }
+                    });
+                }
+            });
+        }
+        else{
+            swal("Unauthorized.");
+        }
+    })
 }
 
 function FlipPhotoAndImage() {

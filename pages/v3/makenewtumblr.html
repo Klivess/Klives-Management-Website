@@ -52,8 +52,14 @@
                 <input class="kinput" type="text" id="tokenSecret" style="width: 90%; height: 5%; margin: 10px;" placeholder="Token Secret">
                 <input class="kinput" type="text" id="email" style="width: 90%; height: 5%; margin: 10px;" placeholder="Email">
                 <input class="kinput" type="text" id="password" style="width: 90%; height: 5%; margin: 10px;" placeholder="Password">
-                <h1 style="position: relative; top: 10px;">Image Zip (What will be posted onto the tumblr!)</h1>
-                <input style="width: 86%; height: 6%; font-size: 25px; margin: 10px;" id="imageZip" class="kbutton" type="file"></button>
+                <div style="margin: 50px;">
+                    <h1>Post Package</h1>
+                    <select style="font-size: 25px; height: 75px; width: 300px;" id="postPackage"></select>
+                </div>
+                <div>
+                    <h1>Image Zip (What will be posted onto the tumblr!)</h1>
+                    <input style="width: 86%; height: 6%; font-size: 25px; margin: 10px;" id="imageZip" class="kbutton" type="file"></button>
+                </div>
                 <button class="kbutton" style="height: 180px; margin: 10px; width: 95%; border: 2px solid rgb(0, 145, 0);" onclick="MakeNewTumblr()">
                     <a id="submitButtonText" style="color: rgb(0, 200, 0);">Create!</a>
                 </button>
@@ -68,6 +74,22 @@
     window.onload = function() {
         // make uploadProgress invisible
         document.getElementById("uploadProgress").style.visibility = "hidden";
+        MakeRequest("/tumblr/GetAllPostPackages").then(response => {
+            let jsonPostPackage = JSON.parse(response);
+            for (let index = 0; index < jsonPostPackage.length; index++) {
+                const element = jsonPostPackage[index];
+                var option = document.createElement('option');
+                option.innerHTML=element.package.Name;
+                option.value=element.package.ID;
+                try{
+                    if(element.package.ID.trim()==json.account.PostPackageID.trim()){
+                        option.setAttribute("selected", "true");
+                    }
+                }
+                catch(err){console.error(err)}
+                document.getElementById('postPackage').appendChild(option);
+            }
+        });
     };
 </script>
 </html>

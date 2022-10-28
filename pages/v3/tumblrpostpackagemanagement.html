@@ -134,23 +134,23 @@
             }
             for (let index = 0; index < json.package.Captions.length; index++) {
                 const element = json.package.Captions[index];
-                captionBox.value = captionBox.value + "\n" + element;
+                captionBox.value = captionBox.value + element+ "\n";
             }
             for (let index = 0; index < json.package.Hashtags.length; index++) {
                 const element = json.package.Hashtags[index];
-                hashtagsBox.value = hashtagsBox.value + "\n" + element;
+                hashtagsBox.value = hashtagsBox.value + element+ "\n";
             }
             for (let index = 0; index < json.package.Plugs.length; index++) {
                 const element = json.package.Plugs[index];
-                extrawordsBox.value = extrawordsBox.value + "\n" + element;
+                extrawordsBox.value = extrawordsBox.value + element+ "\n";
             }
             for (let index = 0; index < json.package.RandomWords.length; index++) {
                 const element = json.package.RandomWords[index];
-                plugsBox.value = plugsBox.value + "\n" + element;
+                plugsBox.value = plugsBox.value + element+ "\n";
             }
             for (let index = 0; index < json.package.HashtagsToRepost.length; index++) {
                 const element = json.package.HashtagsToRepost[index];
-                hashtagsToRepostBox.value = hashtagsToRepostBox.value + "\n" + element;
+                hashtagsToRepostBox.value = hashtagsToRepostBox.value + element + "\n";
             }
         });
     }

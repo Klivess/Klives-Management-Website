@@ -71,10 +71,17 @@
             <textarea id="captionBox" class="kinput" style="padding: 20px; width: 97%;"
                 placeholder="Captions go here"></textarea>
         </div>
-        <div class="infobox" style="height: 500px;">
-            <h1>Hashtags</h1>
-            <textarea id="hashtagsBox" class="kinput" style="padding: 20px; width: 97%;"
-                placeholder="Hashtags go here"></textarea>
+        <div class="dualbox">
+            <div class="infobox" style="height: 500px;">
+                <h1>Hashtags</h1>
+                <textarea id="hashtagsBox" class="kinput" style="padding: 20px; width: 97%;"
+                    placeholder="Hashtags go here"></textarea>
+            </div>
+            <div class="infobox" style="height: 500px;">
+                <h1>Hashtags To Repost</h1>
+                <textarea id="hashtagsToRepostBox" class="kinput" style="padding: 20px; width: 95%;"
+                    placeholder="Hashtags go here"></textarea>
+            </div>
         </div>
         <div class="infobox" style="height: 500px;">
             <h1>Plugs</h1>
@@ -94,6 +101,7 @@
     let extrawordsBox = document.getElementById('extrawordsBox');
     let plugsBox = document.getElementById('plugsBox');
     let hashtagsBox = document.getElementById('hashtagsBox');
+    let hashtagsToRepostBox = document.getElementById('hashtagsToRepostBox');
     let data;
     LoadAllInfo();
     function LoadAllInfo() {
@@ -140,6 +148,10 @@
                 const element = json.package.RandomWords[index];
                 plugsBox.value = plugsBox.value + "\n" + element;
             }
+            for (let index = 0; index < json.package.HashtagsToRepost.length; index++) {
+                const element = json.package.HashtagsToRepost[index];
+                hashtagsToRepostBox.value = hashtagsToRepostBox.value + "\n" + element;
+            }
         });
     }
 
@@ -181,6 +193,7 @@
         data.package.Hashtags = hashtagsBox.value.split('\n');
         data.package.RandomWords = extrawordsBox.value.split('\n');
         data.package.Plugs = plugsBox.value.split('\n');
+        data.package.HashtagsToRepost = hashtagsToRepostBox.value.split('\n');
         let formData = new FormData;
         formData.append("postPackageJSON", JSON.stringify(data.package));
         var url = api + "/tumblr/ModifyPostPackage";

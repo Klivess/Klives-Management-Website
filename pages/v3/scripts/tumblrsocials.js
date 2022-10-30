@@ -4,7 +4,6 @@ let currentAccountID = "";
 function LoadTumblrSocialPage() {
     LoadAllAccounts('allAccounts');
     LoadPostLog();
-    LoadBehaviourSettings();
     LoadTumblrPostPackages();
 }
 
@@ -79,107 +78,6 @@ function CreateNewPostPackage(){
     });
 }
 
-function OnSocialsLoadTumblr() {
-    console.log("Loaded");
-    setTimeout(function () {
-        let accountsRunning = document.getElementById("tumblramountOfAccounts");
-        let postsMadeInLastHour = document.getElementById("tumblrpostsMadeInLastHour");
-        let postsmadealltime = document.getElementById("tumblrpostsAllTime");
-        let totalFollowers = document.getElementById("tumblrtotalFollowers");
-        let tumblrtotalFollowersAverageDifference = document.getElementById("tumblrtotalFollowersAverageDifference");
-        MakeRequest("/tumblr/GetAllTumblrAccountInformation").then(response => {
-            let json = JSON.parse(response);
-            LoadTumblrReachChart('tumblrFollowerChart', json);
-            let accountsRunningAmount = 0;
-            let accountsLoadedAmount = 0;
-            accountsRunning.innerHTML = accountsRunningAmount + " accounts running. " + accountsLoadedAmount + " accounts loaded.";
-            //foreach account in response
-            for (let i = 0; i < json.accountsAnalytics.length; i++) {
-                let account = json.accountsAnalytics[i];
-                if (account.IsValid == true) {
-                    console.log("Account " + account.playerName + " is valid");
-                    accountsRunningAmount = accountsRunningAmount + 1;
-                    accountsLoadedAmount = accountsLoadedAmount + 1;
-                }
-                else if (account.IsValid == false) {
-                    console.log("Account " + account.playerName + " is not valid");
-                    accountsLoadedAmount = accountsLoadedAmount + 1;
-                }
-                accountsRunning.innerHTML = accountsRunningAmount + " accounts running. " + accountsLoadedAmount + " accounts loaded.";
-            }
-            tumblrtotalFollowersAverageDifference.innerHTML = json.AverageTotalFollowerGain + " average total follower gain.";
-            postsMadeInLastHour.innerHTML = "Couldn't get posts made in last hour.";
-            MakeRequest("/tumblr/GetAllTumblrPostsMadeInHourRange?hours=12").then(response2 => {
-                let json2 = JSON.parse(response2);
-                postsMadeInLastHour.innerHTML = json2.length + " posts made in last 12 hours.";
-            }), (error) => {
-                postsMadeInLastHour.innerHTML = "Couldn't get posts made in last hour.";
-            };
-            MakeRequest("/tumblr/TumblrPostsLog").then(response3 => {
-                let json2 = JSON.parse(response3);
-                postsmadealltime.innerHTML = json2.length + " posts made all time.";
-            }), (error) => {
-                postsmadealltime.innerHTML = "Couldn't get posts made all time.";
-            };
-        });
-    }, 10);
-}
-function LoadBehaviourSettings() {
-    setTimeout(function () {
-        let minhourspost = document.getElementById("minhoursbeforepost");
-        let maxhourspost = document.getElementById('maxhoursbeforepost');
-        let minhoursrepost = document.getElementById('minreposts');
-        let minhashtags = document.getElementById('minhashtags');
-        let maxhashtags = document.getElementById('maxhashtags');
-        let messageklivescheckbox = document.getElementById('messageklives');
-        MakeRequest("/tumblr/GetTumblrBehaviorSettings").then(response => {
-            console.log(response);
-            let json = JSON.parse(response);
-            minhourspost.value = json.MinHoursAfterPost;
-            maxhourspost.value = json.MaxHoursAfterPost;
-            minhoursrepost.value = json.MinHoursBetweenReposts;
-            minhashtags.value = json.AmountOfHashtagsMin;
-            maxhashtags.value = json.AmountOfHashtagsMax;
-            messageklivescheckbox.checked = json.MessageKlivesOnAction;
-        });
-    }, 3);
-}
-function UpdateBehaviourSettings() {
-    IsProfileAdmin().then(r => {
-        if(r==true){
-            try {
-                let minhourspost = document.getElementById('minhoursbeforepost');
-                let maxhourspost = document.getElementById('maxhoursbeforepost');
-                let minhoursrepost = document.getElementById('minreposts');
-                let minhashtags = document.getElementById('minhashtags');
-                let maxhashtags = document.getElementById('maxhashtags');
-                let messageklivescheckbox = document.getElementById('messageklives');
-                MakeRequest("/tumblr/GetTumblrBehaviorSettings").then(response => {
-                    console.log(response);
-                    let json = JSON.parse(response);
-                    minhourspost.setAttribute("value", json.MinHoursAfterPost);
-                    json.MinHoursAfterPost = minhourspost.value;
-                    json.MinHoursBetweenReposts = minhoursrepost.value;
-                    json.MaxHoursAfterPost = maxhourspost.value;
-                    json.AmountOfHashtagsMin = minhashtags.value;
-                    json.AmountOfHashtagsMax = maxhashtags.value;
-                    json.MessageKlivesOnAction = messageklivescheckbox.checked;
-                    MakeRequest("/tumblr/SetTumblrBehaviorSettings?json=" + JSON.stringify(json)).then(response2 => {
-                        console.log("Updated Settings");
-                    });
-                });
-            }
-            catch (err) {
-                swal("Error!", err);
-                console.log(err);
-            }
-        }
-        else{
-            swal("Unauthorized", unauthMessage);
-        }
-    })
-}
-
 function LoadTumblrReachChart(canvas, allaccountsJson) {
     //add first accounts.
     let playerNames = [];
@@ -239,6 +137,53 @@ function LoadTumblrReachChart(canvas, allaccountsJson) {
         }
     });
 }
+
+function OnSocialsLoadTumblr() {
+    console.log("Loaded");
+    setTimeout(function () {
+        let accountsRunning = document.getElementById("tumblramountOfAccounts");
+        let postsMadeInLastHour = document.getElementById("tumblrpostsMadeInLastHour");
+        let postsmadealltime = document.getElementById("tumblrpostsAllTime");
+        let totalFollowers = document.getElementById("tumblrtotalFollowers");
+        let tumblrtotalFollowersAverageDifference = document.getElementById("tumblrtotalFollowersAverageDifference");
+        MakeRequest("/tumblr/GetAllTumblrAccountInformation").then(response => {
+            let json = JSON.parse(response);
+            LoadTumblrReachChart('tumblrFollowerChart', json);
+            let accountsRunningAmount = 0;
+            let accountsLoadedAmount = 0;
+            accountsRunning.innerHTML = accountsRunningAmount + " accounts running. " + accountsLoadedAmount + " accounts loaded.";
+            //foreach account in response
+            for (let i = 0; i < json.accountsAnalytics.length; i++) {
+                let account = json.accountsAnalytics[i];
+                if (account.IsValid == true) {
+                    console.log("Account " + account.playerName + " is valid");
+                    accountsRunningAmount = accountsRunningAmount + 1;
+                    accountsLoadedAmount = accountsLoadedAmount + 1;
+                }
+                else if (account.IsValid == false) {
+                    console.log("Account " + account.playerName + " is not valid");
+                    accountsLoadedAmount = accountsLoadedAmount + 1;
+                }
+                accountsRunning.innerHTML = accountsRunningAmount + " accounts running. " + accountsLoadedAmount + " accounts loaded.";
+            }
+            tumblrtotalFollowersAverageDifference.innerHTML = json.AverageTotalFollowerGain + " average total follower gain.";
+            postsMadeInLastHour.innerHTML = "Couldn't get posts made in last hour.";
+            MakeRequest("/tumblr/GetAllTumblrPostsMadeInHourRange?hours=12").then(response2 => {
+                let json2 = JSON.parse(response2);
+                postsMadeInLastHour.innerHTML = json2.length + " posts made in last 12 hours.";
+            }), (error) => {
+                postsMadeInLastHour.innerHTML = "Couldn't get posts made in last hour.";
+            };
+            MakeRequest("/tumblr/TumblrPostsLog").then(response3 => {
+                let json2 = JSON.parse(response3);
+                postsmadealltime.innerHTML = json2.length + " posts made all time.";
+            }), (error) => {
+                postsmadealltime.innerHTML = "Couldn't get posts made all time.";
+            };
+        });
+    }, 10);
+}
+
 function LoadTumblrFollowerChart(canvas, accountStatisticJson) {
     Chart.helpers.each(Chart.instances, function (instance) {
         instance.destroy();
@@ -394,6 +339,7 @@ function MakeNewTumblr() {
         let password = document.getElementById("password").value;
         let file = document.getElementById("imageZip").files[0];
         let buttontext = document.getElementById("submitButtonText");
+        let pkgSelectedID = document.getElementById('postPackage').value;
         accountBeingMade = true;
         //upload file to server
         let formData = new FormData;
@@ -404,7 +350,7 @@ function MakeNewTumblr() {
         formData.append("tokenSecret", tokenSecret);
         formData.append("email", email);
         formData.append("password", password);
-        formData.append("postPackageID", document.getElementById('postPackage').value);
+        formData.append("postPackageID", pkgSelectedID);
         formData.append("file", file);
         var url = api + "/tumblr/MakeNewTumblrAccount";
         var xhr = new XMLHttpRequest();

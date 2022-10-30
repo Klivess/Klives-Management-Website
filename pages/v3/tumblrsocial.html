@@ -7,7 +7,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="styles/main.css">
     <script src="scripts/swal.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js" integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"
+        integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
     <script src="scripts/managementcode.js"></script>
     <script src="scripts/tumblrsocials.js"></script>
     <script src="../../scripts/saved.js"></script>
@@ -46,9 +47,12 @@
             style="display: grid; grid-template-columns: 1fr 1fr; background-color: #011b33; border: 7px solid #141414; height: 800px;">
             <h1>Tumblr Accounts</h1>
             <div style="display: grid;">
-                <div class="verticalgrid" style="border-radius: 25px; overflow-y: scroll; height: 700px; background-color: #000814;" id="allAccounts">
+                <div class="verticalgrid"
+                    style="border-radius: 25px; overflow-y: scroll; height: 700px; background-color: #000814;"
+                    id="allAccounts">
                 </div>
-                <button class="kbutton" style="height: 100px; border: 2px solid rgb(0, 77, 0);" onclick="window.location.replace('makenewtumblr.html')">
+                <button class="kbutton" style="height: 100px; border: 2px solid rgb(0, 77, 0);"
+                    onclick="window.location.replace('makenewtumblr.html')">
                     <a style="color: rgb(2, 255, 2);">+</a>
                 </button>
             </div>
@@ -78,17 +82,23 @@
             <h1>Tumblr Post Packages</h1>
             <div style="display: grid; grid-template-columns: 1fr 1fr;">
                 <div style="grid-template-rows: 10fr 1fr;">
-                    <div style="height: 500px; background-color: rgb(24, 23, 23); border-radius: 15px; border: 2px rgb(53, 52, 52) solid;" class="verticalgrid" id="postpackages"></div>
-                    <button onclick="CreateNewPostPackage()" style="height: 100px; color: green; border: 2px green solid;" class="kbutton">Add New Package</button>
+                    <div style="height: 500px; background-color: rgb(24, 23, 23); border-radius: 15px; border: 2px rgb(53, 52, 52) solid;"
+                        class="verticalgrid" id="postpackages"></div>
+                    <button onclick="CreateNewPostPackage()"
+                        style="height: 100px; color: green; border: 2px green solid;" class="kbutton">Add New
+                        Package</button>
                 </div>
-                <div style="background-color: rgb(24, 23, 23); border-radius: 15px; margin: 10px; border: 2px rgb(53, 52, 52) solid; display: flex; justify-content: center; padding: 30px;">
-                    <div style="display: grid; grid-template-rows: 3fr 5fr 3fr; width: 100%; text-align: center; justify-content: center;">
+                <div
+                    style="background-color: rgb(24, 23, 23); border-radius: 15px; margin: 10px; border: 2px rgb(53, 52, 52) solid; display: flex; justify-content: center; padding: 30px;">
+                    <div
+                        style="display: grid; grid-template-rows: 3fr 5fr 3fr; width: 100%; text-align: center; justify-content: center;">
                         <div style="display: grid; height: 100px;">
                             <span style="font-size: 23px;" id="postpkgName">Name:</span>
                             <span style="font-size: 23px;" id="postpkgAccountsInUse">Amounts Of Accounts In Use: </span>
                             <span style="font-size: 23px;" id="postpkgVariety">Variety Of Posts: </span>
                         </div>
-                        <div style="width: 100%; text-align: center; display: flex; justify-content: center; overflow-y: scroll; height: 200px;">
+                        <div
+                            style="width: 100%; text-align: center; display: flex; justify-content: center; overflow-y: scroll; height: 200px;">
                             <span style="font-size: 23px;" id="postpkgDescription">Description: </span>
                         </div>
                         <a id="managePackage" class="kbutton" style="width: 800px;">Manage Package</a>
@@ -96,43 +106,9 @@
                 </div>
             </div>
         </div>
-        <div class="dualbox">
-            <div class="infobox" style="height: 600px;">
-                <h1>Tumblr Posts Log</h1>
-                <div class="verticalgrid" style="overflow-y: scroll;" id="tumblrpostlogs">
-                </div>
-            </div>
-            <div class="infobox" style="height: 600px;">
-                <h1>Tumblr Behaviour Settings</h1>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; padding: 30px;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr;">
-                        <span style="font-size: 16px;">Min Hours Before Posting</span>
-                        <input id="minhoursbeforepost" type="number" class="kinput" onchange="UpdateBehaviourSettings()" style="width:100px; height:10px;">
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr;">
-                        <span style="font-size: 16px;">Max Hours Before Posting</span>
-                        <input id="maxhoursbeforepost" type="number" class="kinput" onchange="UpdateBehaviourSettings()" style="width:100px; height:10px;">
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr;">
-                        <span style="font-size: 16px;">Min Hours Before Reposting</span>
-                        <input id="minreposts" type="number" class="kinput" onchange="UpdateBehaviourSettings()" style="width:100px; height:10px;">
-                    </div>
-                    <div></div>
-                    <div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr;">
-                            <span style="font-size: 16px;">Min Hashtags In A Post</span>
-                            <input id="minhashtags" type="number" class="kinput" onchange="UpdateBehaviourSettings()" style="width:100px; height:10px;">
-                        </div>
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr;">
-                        <span style="font-size: 16px;">Max Hashtags In A Post</span>
-                        <input id="maxhashtags" type="number" class="kinput" onchange="UpdateBehaviourSettings()" style="width:100px; height:10px;">
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr;">
-                        <span style="font-size: 16px;">Message Klives On Post/Repost</span>
-                        <input type="checkbox" id="messageklives" onclick="UpdateBehaviourSettings()" class="toggle">
-                    </div>
-                </div>
+        <div class="infobox" style="height: 600px;">
+            <h1>Tumblr Posts Log</h1>
+            <div class="verticalgrid" style="overflow-y: scroll;" id="tumblrpostlogs">
             </div>
         </div>
     </div>
@@ -140,4 +116,5 @@
 <script>
     window.onload = LoadTumblrSocialPage();
 </script>
+
 </html>

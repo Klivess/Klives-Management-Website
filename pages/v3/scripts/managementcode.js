@@ -282,6 +282,19 @@ function SendToSpeaker(speaker, textToUpdate) {
     });
 }
 
+async function CreateInputSwal(caption){
+    swal({
+        text: caption,
+        content: "input",
+        button: {
+            text: "Submit",
+            closeModal: false,
+        }
+    }).then(result => {
+        return result;
+    });
+}
+
 async function IsProfileAdmin() {
     let isAdmin = false;
     await MakeRequest('/KlivesManagementManager/GetProfileByPassword?password=' + getCookie('password')).then(response => {

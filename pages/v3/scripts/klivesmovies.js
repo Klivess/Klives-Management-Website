@@ -138,34 +138,39 @@ function DownloadMovie(movieURL, movieName) {
             }
         },
     }).then((value) => {
-        let button = document.getElementById('moviebutton');
-        button.innerHTML = "Requesting...";
         if (value == "download") {
-            let formdata = new FormData();
-            formdata.append("kliveMovieURL", movieURL);
-            var xhr = new XMLHttpRequest();
-            xhr.open("POST", api + "/klivemovie/downloadmovie", true);
-            xhr.send(formdata);
-            xhr.onreadystatechange = function () {
-                if (xhr.readyState == 4 && xhr.status == 200) {
-                    button.innerHTML = "Movie is downloading, KliveBot will message Klives when it is done.";
-                    setTimeout(function () {
-                        button.innerHTML = "Search";
-                    }, 2000)
-                    setTimeout(function () {
-                        ReloadData();
-                    }, 500)
+            CreateInputSwal("What do you want to name this movie?").then(name => {
+                let button = document.getElementById('moviebutton');
+                button.innerHTML = "Requesting...";
+                if (value == "download") {
+                    let formdata = new FormData();
+                    formdata.append("kliveMovieURL", movieURL);
+                    formdata.append("name", name);
+                    var xhr = new XMLHttpRequest();
+                    xhr.open("POST", api + "/klivemovie/downloadmovie", true);
+                    xhr.send(formdata);
+                    xhr.onreadystatechange = function () {
+                        if (xhr.readyState == 4 && xhr.status == 200) {
+                            button.innerHTML = "Movie is downloading, KliveBot will message Klives when it is done.";
+                            setTimeout(function () {
+                                button.innerHTML = "Search";
+                            }, 2000)
+                            setTimeout(function () {
+                                ReloadData();
+                            }, 500)
+                        }
+                        else {
+                            button.innerHTML = "Failed.";
+                            setTimeout(function () {
+                                button.innerHTML = "Search";
+                            }, 2000)
+                        }
+                    }
                 }
-                else {
-                    button.innerHTML = "Failed.";
-                    setTimeout(function () {
-                        button.innerHTML = "Search";
-                    }, 2000)
+                else{
+                    button.innerHTML = "Search";
                 }
-            }
-        }
-        else{
-            button.innerHTML = "Search";
+            })
         }
     })
 }

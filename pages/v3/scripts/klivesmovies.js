@@ -144,7 +144,7 @@ function DownloadMovie(movieURL, movieName) {
                 content: "input",
                 button: {
                     text: "Submit",
-                    closeModal: false,
+                    closeModal: true,
                 }
             }).then(result => {
                 let button = document.getElementById('moviebutton');

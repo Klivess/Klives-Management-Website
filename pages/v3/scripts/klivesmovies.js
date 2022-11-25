@@ -139,13 +139,20 @@ function DownloadMovie(movieURL, movieName) {
         },
     }).then((value) => {
         if (value == "download") {
-            CreateInputSwal("What do you want to name this movie?").then(name => {
+            swal({
+                text: "What do you want to name this movie?",
+                content: "input",
+                button: {
+                    text: "Submit",
+                    closeModal: false,
+                }
+            }).then(result => {
                 let button = document.getElementById('moviebutton');
                 button.innerHTML = "Requesting...";
                 if (value == "download") {
                     let formdata = new FormData();
                     formdata.append("kliveMovieURL", movieURL);
-                    formdata.append("name", name);
+                    formdata.append("name", result);
                     var xhr = new XMLHttpRequest();
                     xhr.open("POST", api + "/klivemovie/downloadmovie", true);
                     xhr.send(formdata);
@@ -170,7 +177,7 @@ function DownloadMovie(movieURL, movieName) {
                 else{
                     button.innerHTML = "Search";
                 }
-            })
+            });
         }
     })
 }

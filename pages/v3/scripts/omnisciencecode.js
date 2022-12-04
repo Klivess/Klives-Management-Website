@@ -162,6 +162,16 @@ function LoadOmniscience() {
                 ele.appendChild(ele2);
             }
         }
+        json.ProfanityCounterPerUser.reverse();
+        for (let index = 0; index < json.ProfanityCounterPerUser.length; index++) {
+            const element = json.ProfanityCounterPerUser[index];
+            let ele = document.getElementById("profanitycounter");
+            let ele2 = document.createElement('button');
+            ele2.className = "kbutton fadein";
+            ele2.style = "height: 50px; font-size: 20px; text-transform: none; display: grid; grid-template-columns: 1fr 1fr;";
+            ele2.innerHTML = "<p class='special' style='font-size: large;'>'" + element.Key + "'</p><p class ='special' style='color: cyan;'>Profanity used " + element.Value + " times." + "</p>";
+            ele.appendChild(ele2);
+        }
     });
 }
 

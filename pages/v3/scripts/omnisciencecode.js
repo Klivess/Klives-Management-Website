@@ -23,6 +23,7 @@ function LoadOmniscience() {
         }
         let json = JSON.parse(response);
         const ctx = document.getElementById('omniscienceMessageDistribution').getContext('2d');
+        const omniscienceDailyFrequency = document.getElementById('omniscienceDailyFrequency').getContext('2d');
         guildNames = [];
         guildValues = [];
         for (let index = 0; index < json.GuildMessageDistribution.length; index++) {
@@ -73,10 +74,72 @@ function LoadOmniscience() {
                 }
             }
         });
+        dailyFrequencyDatasets = [];
+        for (let index = 0; index < Object.keys(json.FrequencyOfMessagesInWeek).length; index++) {
+            const element = Object.values(json.FrequencyOfMessagesInWeek)[index];
+            for (let index2 = 0; index2 < Object.values(element).length; index2++) {
+                const servername = Object.keys(element)[index2];
+                const servervalue = Object.values(element)[index2];
+                let hasInserted = false;
+                for (let index3 = 0; index3 < Object.keys(dailyFrequencyDatasets).length; index3++) {
+                    const element3 = Object.values(dailyFrequencyDatasets)[index3];
+                    if(element3.key==servername){
+                        let val = dailyFrequencyDatasets[index3];
+                        val.value.data.push(servervalue);
+                        dailyFrequencyDatasets[index3]=val;
+                        hasInserted = true;
+                        break;
+                    }
+                }
+                if(hasInserted==false){
+                    let newdat = {
+                        label: servername,
+                        data: [servervalue],
+                        backgroundColor: getRandomColor(),
+                        stack: 'Stack 0',
+                    };
+                    let dictList = {
+                        key: servername,
+                        value: newdat
+                    }
+                    dailyFrequencyDatasets.push(dictList);
+                }
+            }
+        }
+        let graphArray = [];
+        for (let index = 0; index < Object.values(dailyFrequencyDatasets).length; index++) {
+            const element = Object.values(dailyFrequencyDatasets)[index];
+            graphArray.push(element.value);
+        }
+        console.log(graphArray);
+        const dailyFrequencyChart = new Chart(omniscienceDailyFrequency, {
+            type: 'bar',
+            data: {
+                labels: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+                datasets: graphArray,
+            },
+            options: {
+                maintainAspectRatio: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Message Frequency Per Day'
+                    },
+                },
+                scales: {
+                    x: {
+                        stacked: true,
+                    },
+                    y: {
+                        stacked: true
+                    }
+                }
+            }
+        });
         document.getElementById('omniscienceMessagesLogged').innerHTML = json.TotalMessagesLogged + " total messages logged.";
         document.getElementById('omniscienceGuildsBeingWatched').innerHTML = json.GuildsLogged.length + " guilds being watched.";
         document.getElementById('omniscienceKlivesMentions').innerHTML = json.KlivesMentions.length + " messages about Klives.";
-        document.getElementById('omniscienceCompileTime').innerHTML = "Compiled analytics in "+(json.TimeTakenToCompileAnalyticsSeconds)+" seconds.";
+        document.getElementById('omniscienceCompileTime').innerHTML = "Compiled analytics in " + (json.TimeTakenToCompileAnalyticsSeconds) + " seconds.";
         json.FrequentSpeakers.reverse();
         for (let index = 0; index < json.FrequentSpeakers.length; index++) {
             const element = json.FrequentSpeakers[index];

@@ -174,13 +174,13 @@ function UpdatePerformance() {
     let ramperformance = document.getElementById("ramPerf");
     let cpubox = document.getElementById("cpuBox");
     let rambox = document.getElementById("ramBox");
-    MakeRequest("/v1/metrics").then(response => {
+    MakeRequest("/v1/GetKliveBotHealthInfo").then(response => {
         response = JSON.parse(response);
-        cpuperformance.innerHTML = response.CPUPercent + "%";
+        cpuperformance.innerHTML = response.performanceMetrics.CPUPercent + "%";
         //"background-image: linear-gradient(to right, rgba(0,0,0,0) " + p + "%, #474747 25%);";
-        cpubox.style.backgroundImage = "linear-gradient(to bottom, rgba(0,0,0,0) " + (100 - response.CPUPercent) + "%, rgba(" + response.CPUPercent * 2 + ", 50, 100, 0.5) 20%";
-        rambox.style.backgroundImage = "linear-gradient(to bottom, rgba(0,0,0,0) " + (100 - response.MemoryUsed) + "%, rgba(" + response.MemoryUsed * 2 + ", 50, 100, 0.5) 20%";
-        ramperformance.innerHTML = response.MemoryUsed + "%";
+        cpubox.style.backgroundImage = "linear-gradient(to bottom, rgba(0,0,0,0) " + (100 - response.performanceMetrics.CPUPercent) + "%, rgba(" + response.performanceMetrics.CPUPercent * 2 + ", 50, 100, 0.5) 20%";
+        rambox.style.backgroundImage = "linear-gradient(to bottom, rgba(0,0,0,0) " + (100 - response.performanceMetrics.MemoryUsed) + "%, rgba(" + response.performanceMetrics.MemoryUsed * 2 + ", 50, 100, 0.5) 20%";
+        ramperformance.innerHTML = response.performanceMetrics.MemoryUsed + "%";
     });
 }
 

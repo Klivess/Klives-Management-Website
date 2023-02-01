@@ -89,8 +89,7 @@ function LoadTumblrReachChart(canvas, allaccountsJson) {
         if(r==0){
             isGuest=true;
         }
-    });
-    //foreach account in response, get total followers
+        //foreach account in response, get total followers
     for (let i = 0; i < allaccountsJson.accountsAnalytics.length; i++) {
         let playerAccount = allaccountsJson.accountsAnalytics[i];
         playerFollowers.push(playerAccount.Followers);
@@ -146,6 +145,7 @@ function LoadTumblrReachChart(canvas, allaccountsJson) {
                 }
             }
         }
+    });
     });
 }
 

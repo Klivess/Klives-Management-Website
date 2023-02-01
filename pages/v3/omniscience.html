@@ -7,7 +7,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="styles/main.css">
     <script src="scripts/swal.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js" integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"
+        integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
     <script src="scripts/managementcode.js"></script>
     <script src="scripts/tumblrsocials.js"></script>
     <script src="../../scripts/saved.js"></script>
@@ -76,10 +77,12 @@
                         </div>
                     </div>
                     <div style="display: grid; grid-template-rows: 300px, 400px;">
-                        <div style="width: 300px; height: 300px; margin-left: 60px; display: flex; justify-content: center;">
+                        <div
+                            style="width: 300px; height: 300px; margin-left: 60px; display: flex; justify-content: center;">
                             <canvas id="omniscienceMessageDistribution"></canvas>
                         </div>
-                        <div style="width: 400px; height: 400px; margin-right: 60px; display: flex; justify-content: center;">
+                        <div
+                            style="width: 400px; height: 400px; margin-right: 60px; display: flex; justify-content: center;">
                             <canvas width="400px" height="400px" id="omniscienceDailyFrequency"></canvas>
                         </div>
                     </div>
@@ -96,9 +99,88 @@
                 </div>
             </div>
         </div>
+        <div class="infobox" style="height: 650px;">
+            <h1>Message Queries</h1>
+            <div style="display: flexbox; justify-content: center; align-content: center; text-align: center;">
+                <span style="font-size: 40px;">Search For Word In Total Database</span>
+                <div style="display: grid; grid-template-columns: 6fr 1fr; gap: 30px;">
+                    <input type="text" id="desiredWord" class="kinput" style="height: 50px;"
+                        placeholder="Type desired word(s)">
+                    <button class="kbutton" id="queryDatabasebtn"
+                        onclick="SearchDesiredWordInDatabase()">Search</button>
+                </div>
+                <div class="gridbox" id="messageQueryResult" style="height: 450px; width: 100%; margin-top: 10px;">
+                </div>
+            </div>
+            <span id="messageQueryResults" style="font-size: 30px;"></span>
+        </div>
     </div>
 </body>
 <script>
-    window.onload=LoadOmniscience();
+    let queryingDatabase = false;
+    window.onload = LoadOmniscience();
+    function SearchDesiredWordInDatabase() {
+        let input = document.getElementById('desiredWord').value;
+        let btn = document.getElementById('queryDatabasebtn');
+        let grid = document.getElementById('messageQueryResult');
+        RemoveAllElementsInGrid("messageQueryResult");
+        btn.innerHTML = "Searching...";
+        if (queryingDatabase == false) {
+            try {
+                queryingDatabase = true;
+                GetProfilePermissionRank().then(r => {
+                    if (r < 2) {
+                        swal("You are unauthorized to do this.");
+                    }
+                    else {
+                        let formData = new FormData;
+                        formData.append("words", input);
+                        MakePostRequest("/omniscience/QueryWordsInMessages", formData).then(r => {
+                            let json = JSON.parse(r);
+                            for (let index = 0; index < json.length; index++) {
+                                const element = json[index];
+                                var button = document.createElement('button');
+                                button.className = "kbutton";
+                                button.style = "font-size: 20px; height: 50px; display: grid; grid-template-columns: 1fr 4fr 1fr; ";
+                                button.setAttribute("data", JSON.stringify(element));
+                                button.setAttribute("onclick", "LoadQueryMessageData(this.getAttribute('data'))");
+                                let date = new Date(element.MessageTimestamp);
+                                button.innerHTML = '<span style="font-size: 12px; text-transform: none; color: cyan;">' + element.Username + '</span><span style="font-size: 12px; letter-spacing: normal; text-transform: none;">' + element.MessageContent + '</span><span style="font-size: 12px; color: yellow;">' + date.toLocaleString() + '</span>';
+                                grid.appendChild(button);
+                            }
+                            document.getElementById('messageQueryResults').innerHTML = "Results: " + json.length + " messages found.";
+                        });
+                    }
+                })
+            }
+            catch (err) {
+                swal("Error! " + err);
+                console.error(err);
+            }
+            queryingDatabase = false;
+            btn.innerHTML = "Search";
+        }
+    }
+
+    function LoadQueryMessageData(data) {
+        let dat = JSON.parse(data);
+        let date = new Date(dat.MessageTimestamp);
+        swal("Username: " + dat.Username + "\n\nMessage: " + dat.MessageContent + "\n\n Date: " + date.toLocaleString(), {
+            buttons: {
+                cancel: "OK",
+                gopost: {
+                    text: "Go To Message",
+                    value: "msg",
+                }
+            },
+        }).then((value) => {
+            switch (value) {
+                case "msg":
+                    window.open(dat.messageURL);
+                    break;
+            }
+        });
+    }
 </script>
+
 </html>

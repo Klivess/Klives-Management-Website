@@ -382,36 +382,41 @@ function MakeNewTumblr() {
 }
 
 function LoadAccount(name) {
-    let accountName = document.getElementById("accountName");
-    let accountFollowers = document.getElementById("accountFollowers");
-    let accountLink = document.getElementById("accountLink");
-    let accountNextPost = document.getElementById("accountNextPost");
-    let button = document.getElementById("accountManageButton");
-    accountName.innerHTML = "Name: " + "Downloading data...";
-    accountFollowers.innerHTML = "Followers: Downloading data...";
-    accountLink.innerHTML = "Downloading data...";
-    accountNextPost.innerHTML = "Next Post: Downloading data...";
-    button.innerHTML = "<a>Downloading data for" + name + "</a>";
-    if (document.getElementsByName(name)[0].getAttribute("isvalid") == "true") {
-        let json = JSON.parse(document.getElementsByName(name)[0].getAttribute("data"));
-        accountName.innerHTML = "Name: " + json.account.playerName;
-        accountFollowers.innerHTML = "Followers: " + json.Followers;
-        accountLink.href = json.BlogLinks[0];
-        accountLink.innerHTML = "Go to Tumblr Page"
-        var d = new Date(json.account.TimeUntilNextPost);
-        accountNextPost.innerHTML = "Next Post: " + d.toLocaleString();
-        button.innerHTML = "Manage " + name;
-        button.setAttribute("href", "tumblraccountmanagement.html?name=" + name);
-        LoadTumblrFollowerChart('accountFollowerGraph', document.getElementsByName(name)[0].getAttribute("data"));
+    try{
+        let accountName = document.getElementById("accountName");
+        let accountFollowers = document.getElementById("accountFollowers");
+        let accountLink = document.getElementById("accountLink");
+        let accountNextPost = document.getElementById("accountNextPost");
+        let button = document.getElementById("accountManageButton");
+        accountName.innerHTML = "Name: " + "Downloading data...";
+        accountFollowers.innerHTML = "Followers: Downloading data...";
+        accountLink.innerHTML = "Downloading data...";
+        accountNextPost.innerHTML = "Next Post: Downloading data...";
+        button.innerHTML = "<a>Downloading data for" + name + "</a>";
+        if (document.getElementsByName(name)[0].getAttribute("isvalid") == "true") {
+            let json = JSON.parse(document.getElementsByName(name)[0].getAttribute("data"));
+            accountName.innerHTML = "Name: " + json.account.playerName;
+            accountFollowers.innerHTML = "Followers: " + json.Followers;
+            accountLink.href = json.BlogLinks[0];
+            accountLink.innerHTML = "Go to Tumblr Page"
+            var d = new Date(json.account.TimeUntilNextPost);
+            accountNextPost.innerHTML = "Next Post: " + d.toLocaleString();
+            button.innerHTML = "Manage " + name;
+            button.setAttribute("href", "tumblraccountmanagement.html?name=" + name);
+            LoadTumblrFollowerChart('accountFollowerGraph', document.getElementsByName(name)[0].getAttribute("data"));
+        }
+        else if (document.getElementsByName(name)[0].getAttribute("isvalid") == "false") {
+            accountFollowers.innerHTML = "";
+            accountName.innerHTML = "This is an invalid account, please make sure you have the correct key and secret.";
+            accountImages.innerHTML = "";
+            accountBlogMessages.innerHTML = "";
+            button.innerHTML = "Delete " + name;
+            button.style = "border: 2px solid rgb(200, 0, 0); color: rgb(200, 0, 0);'>";
+            button.setAttribute("onclick", "RemoveTumblrAccount('" + name + "')");
+        }
     }
-    else if (document.getElementsByName(name)[0].getAttribute("isvalid") == "false") {
-        accountFollowers.innerHTML = "";
-        accountName.innerHTML = "This is an invalid account, please make sure you have the correct key and secret.";
-        accountImages.innerHTML = "";
-        accountBlogMessages.innerHTML = "";
-        button.innerHTML = "Delete " + name;
-        button.style = "border: 2px solid rgb(200, 0, 0); color: rgb(200, 0, 0);'>";
-        button.setAttribute("onclick", "RemoveTumblrAccount('" + name + "')");
+    catch(err){
+        console.error(err);
     }
 }
 

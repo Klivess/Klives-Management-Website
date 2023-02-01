@@ -307,11 +307,9 @@ async function IsProfileAdmin() {
 
 async function GetProfilePermissionRank() {
     let rank = "";
-    MakeRequest("/KlivesManagementManager/LoginToManagement?password="+getCookie("password")+"&log=false").then(response => {
-        let json = JSON.parse(response);
-        rank = json.KlivesManagementRank;
-    });
-    return Promise.resolve(rank);
+    let response = await fetch(api + "/KlivesManagementManager/LoginToManagement?password="+getCookie("password")+"&log=false");
+    let json = JSON.parse(await response.text());
+    return json.KlivesManagementRank;
 }
 
 function SendToKlives(speaker, textToUpdate) {
@@ -558,11 +556,13 @@ async function MakeRequest(endpoint) {
 
 async function MakePostRequest(endpoint, data, override = false) {
     if (apistatus) {
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', api + endpoint);
-        xhr.send(data);
-        xhr.onload = () => {
-            return xhr.response;
-        };
+        return new Promise(function (resolve, reject) {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', api + endpoint);
+            xhr.onload = () => {
+                return resolve(xhr.response);
+            };
+            xhr.send(data);
+        });
     }
 }

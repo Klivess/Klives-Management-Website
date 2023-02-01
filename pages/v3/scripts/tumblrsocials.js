@@ -84,18 +84,24 @@ function LoadTumblrReachChart(canvas, allaccountsJson) {
     let playerFollowers = [];
     let totalFollowers = document.getElementById("tumblrtotalFollowers");
     let totalamountoffollowers = 0;
+    let isGuest = false;
+    GetProfilePermissionRank().then(r=>{
+        if(r==0){
+            isGuest=true;
+        }
+    });
     //foreach account in response, get total followers
     for (let i = 0; i < allaccountsJson.accountsAnalytics.length; i++) {
         let playerAccount = allaccountsJson.accountsAnalytics[i];
         playerFollowers.push(playerAccount.Followers);
         totalamountoffollowers = totalamountoffollowers + parseInt(playerAccount.Followers);
-        playerNames.push(playerAccount.account.playerName);
-    }
-    GetProfilePermissionRank().then(r=>{
-        if(r==0){
-            playerNames=["******"];
+        if(isGuest==true){
+            playerNames.push("********");
         }
-    });
+        else{
+            playerNames.push(playerAccount.account.playerName);
+        }
+    }
     totalFollowers.innerHTML = totalamountoffollowers + " total followers reached.";
     const ctx = document.getElementById(canvas).getContext('2d');
     const myChart = new Chart(ctx, {

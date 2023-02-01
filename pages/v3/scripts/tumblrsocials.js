@@ -91,6 +91,11 @@ function LoadTumblrReachChart(canvas, allaccountsJson) {
         totalamountoffollowers = totalamountoffollowers + parseInt(playerAccount.Followers);
         playerNames.push(playerAccount.account.playerName);
     }
+    GetProfilePermissionRank().then(r=>{
+        if(r==0){
+            playerNames=["******"];
+        }
+    });
     totalFollowers.innerHTML = totalamountoffollowers + " total followers reached.";
     const ctx = document.getElementById(canvas).getContext('2d');
     const myChart = new Chart(ctx, {

@@ -115,6 +115,11 @@
 </body>
 <script>
     window.onload = LoadTumblrSocialPage();
+    GetProfilePermissionRank().then(r=>{
+        if(r==0){
+            window.location.replace("https://klivesmanagement.netlify.app/pages/v3/main.html");
+        }
+    });
 </script>
 
 </html>

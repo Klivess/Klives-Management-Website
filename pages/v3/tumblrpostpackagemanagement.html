@@ -111,6 +111,10 @@
                                 id="imagetotext">
                         </div>
                     </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                        <span style="font-size: 16px;">Use Meme Scraper Source</span>
+                        <input type="checkbox" id="linkToMemeScraper" class="toggle">
+                    </div>
                 </div>
             </div>
             <div class="infobox" style="height: 600px;">
@@ -200,25 +204,35 @@
                 button.style.height = "80px";
                 document.getElementById('accountsUsing').appendChild(button);
             }
-            for (let index = 0; index < json.package.Captions.length; index++) {
-                const element = json.package.Captions[index];
-                captionBox.value = captionBox.value + element + "\n";
+            if (json.package.Captions != null) {
+                for (let index = 0; index < json.package.Captions.length; index++) {
+                    const element = json.package.Captions[index];
+                    captionBox.value = captionBox.value + element + "\n";
+                }
             }
-            for (let index = 0; index < json.package.Hashtags.length; index++) {
-                const element = json.package.Hashtags[index];
-                hashtagsBox.value = hashtagsBox.value + element + "\n";
+            if (json.package.Hashtags != null) {
+                for (let index = 0; index < json.package.Hashtags.length; index++) {
+                    const element = json.package.Hashtags[index];
+                    hashtagsBox.value = hashtagsBox.value + element + "\n";
+                }
             }
-            for (let index = 0; index < json.package.Plugs.length; index++) {
-                const element = json.package.Plugs[index];
-                extrawordsBox.value = extrawordsBox.value + element + "\n";
+            if (json.package.Plugs != null) {
+                for (let index = 0; index < json.package.Plugs.length; index++) {
+                    const element = json.package.Plugs[index];
+                    extrawordsBox.value = extrawordsBox.value + element + "\n";
+                }
             }
-            for (let index = 0; index < json.package.RandomWords.length; index++) {
-                const element = json.package.RandomWords[index];
-                plugsBox.value = plugsBox.value + element + "\n";
+            if (json.package.RandomWords != null) {
+                for (let index = 0; index < json.package.RandomWords.length; index++) {
+                    const element = json.package.RandomWords[index];
+                    plugsBox.value = plugsBox.value + element + "\n";
+                }
             }
-            for (let index = 0; index < json.package.HashtagsToRepost.length; index++) {
-                const element = json.package.HashtagsToRepost[index];
-                hashtagsToRepostBox.value = hashtagsToRepostBox.value + element + "\n";
+            if (json.package.HashtagsToRepost != null) {
+                for (let index = 0; index < json.package.HashtagsToRepost.length; index++) {
+                    const element = json.package.HashtagsToRepost[index];
+                    hashtagsToRepostBox.value = hashtagsToRepostBox.value + element + "\n";
+                }
             }
             document.getElementById('enableImageToTextRatio').checked = data.package.Behaviour.UseFixedImageToPhotoRatio;
             document.getElementById('maxhashtags').value = data.package.Behaviour.AmountOfHashtagsMax;
@@ -229,13 +243,14 @@
             document.getElementById('messageklives').checked = data.package.Behaviour.MessageKlivesOnAction;
             document.getElementById('minreposts').value = data.package.Behaviour.MinHoursBetweenReposts;
             document.getElementById('enableImageToTextRatio').checked = data.package.Behaviour.UseFixedImageToPhotoRatio;
+            document.getElementById('linkToMemeScraper').checked = data.package.LinkToMemeScraper;
             document.getElementById('imagetotextratio').innerHTML = "Image: " + data.package.Behaviour.ImagePercentChance + "% | Text: " + (100 - data.package.Behaviour.ImagePercentChance) + "%";
             let accountsRunning = document.getElementById("tumblramountOfAccounts");
             let postsMadeInLastHour = document.getElementById("tumblrpostsMadeInLastHour");
             let postsmadealltime = document.getElementById("tumblrpostsAllTime");
             let totalFollowers = document.getElementById("tumblrtotalFollowers");
             let tumblrtotalFollowersAverageDifference = document.getElementById("tumblrtotalFollowersAverageDifference");
-            MakeRequest("/tumblr/GetAllTumblrAccountInfoFromPostPackageID?pkgid="+pkgID).then(response => {
+            MakeRequest("/tumblr/GetAllTumblrAccountInfoFromPostPackageID?pkgid=" + pkgID).then(response => {
                 let json = JSON.parse(response);
                 LoadTumblrReachChart('reach', json);
                 let accountsRunningAmount = 0;
@@ -368,6 +383,7 @@
         data.package.Behaviour.MessageKlivesOnAction = document.getElementById('messageklives').checked;
         data.package.Behaviour.MinHoursBetweenReposts = document.getElementById('minreposts').value;
         data.package.Behaviour.UseFixedImageToPhotoRatio = document.getElementById('enableImageToTextRatio').checked;
+        data.package.LinkToMemeScraper = document.getElementById('linkToMemeScraper').checked;
         let formData = new FormData;
         formData.append("postPackageJSON", JSON.stringify(data.package));
         var url = api + "/tumblr/ModifyPostPackage";

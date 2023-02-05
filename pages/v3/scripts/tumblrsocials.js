@@ -35,7 +35,6 @@ function LoadTumblrPostPackage(data){
     button.innerHTML="Manage "+json.package.Name;
     button.setAttribute("href", "tumblrpostpackagemanagement.html?id="+json.package.ID);
 }
-
 function CreateNewPostPackage(){
     let container = document.createElement('div');
     container.style.width="400px";
@@ -77,7 +76,6 @@ function CreateNewPostPackage(){
         }
     });
 }
-
 function LoadTumblrReachChart(canvas, allaccountsJson) {
     //add first accounts.
     let playerNames = [];
@@ -204,8 +202,8 @@ function LoadTumblrFollowerChart(canvas, accountStatisticJson) {
     let dates = [];
     let time = new Date();
     for (let i = 0; i < json.FollowersAnalytics.length; i++) {
-        followers.push(json.FollowersAnalytics[i].Value)
-        time = new Date(json.FollowersAnalytics[i].Key);
+        followers.push(json.FollowersAnalytics[i].amount)
+        time = new Date(json.FollowersAnalytics[i].timeOfRecording);
         dates.push(time.toLocaleString());
     }
     const ctx = document.getElementById(canvas).getContext('2d');
@@ -325,7 +323,7 @@ function LoadAllAccounts(element) {
                     newElement.name = account.playerName;
                     newElement.setAttribute("isvalid", "false");
                     newElement.setAttribute("data", JSON.stringify(json.accountsAnalytics[i]));
-                    newElement.style = "border: 2px solid rgb(200, 0, 0); height: 130px;";
+                    newElement.style = "border: 2px solid rgb(200, 0, 0); height: 86px;";
                     newElement.id = "ACCOUNT" + account.playerName;
                     newElement.innerHTML = account.playerName;
                     newElement.setAttribute('onclick', "LoadAccount('" + account.playerName + "')");

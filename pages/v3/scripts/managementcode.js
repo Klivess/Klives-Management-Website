@@ -3,20 +3,6 @@ const unauthMessage = "Only Klives is authorized to perform this action.";
 let api = "https://90.255.227.194:80";
 
 window.addEventListener('load', function () {
-    if(this.document.URL.includes("tumblr")){
-        console.log("ya")
-        GetProfilePermissionRank().then(response => {
-            console.log(response);
-            if(response=="0"){
-                this.alert("You're unauthorized to visit this page.");
-                window.location.replace('main.html');
-            }
-        });
-    }
-    // on website load
-    let allInfoBoxes = document.getElementsByClassName("infobox");
-    for (let i = 0; i < allInfoBoxes.length; i++) {
-    }
     AutomaticAuthentication();
 })
 function createCookie(name, value, days) {
@@ -65,9 +51,9 @@ function SetPerformance() {
 }
 
 function AutomaticAuthentication() {
-    Authentication();
+    Authentication(false);
     setInterval(() => {
-        Authentication();
+        Authentication(false);
     }, 1250);
 }
 
@@ -146,9 +132,9 @@ function RemoveAllElementsInGrid(gridID) {
     }
 }
 
-function Authentication() {
+function Authentication(log=false) {
     try {
-        MakeRequest("/KlivesManagementManager/LoginToManagement?password="+getCookie("password")+"&log=false").then(response => {
+        MakeRequest("/KlivesManagementManager/LoginToManagement?password="+getCookie("password")+"&log="+log).then(response => {
             if(response=="NOENTRY"||response=="DISABLED"){
                 document.body.style.visibility="hidden";
                 alert("Klives has removed your access to this website.");

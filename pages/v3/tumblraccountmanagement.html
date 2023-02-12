@@ -72,7 +72,6 @@
             <div
                 style="display: grid; grid-template-rows: 1fr 1fr 1fr; gap: 100px; grid-template-columns: 1fr 1fr 1fr; padding: 40px;">
                 <button class="kbutton" id="removeTumblrAccount"
-                    onclick="removeTumblrAccount(this.getAttribute('name'), 'tumblrmanagement')"
                     style="font-size: 30px; color: darkred; border: 3px solid darkred;"><a
                         style="color: darkred;">Remove Tumblr Bot</a></button>
                 <button onclick="DownloadTumblrAccountImagePack('downloadpack')" id="downloadpack" class="kbutton"
@@ -97,20 +96,6 @@
 </body>
 <script>
     document.onload = GetTumblrManagementData();
-    function removeTumblrAccount(name) {
-        MakeRequest("/tumblr/RemoveTumblrAccount?name=" + name).then(response => {
-            IsProfileAdmin().then(resp => {
-                if (resp == true) {
-                    if (response == "OK") {
-                        window.location.replace("tumblrsocial.html");
-                    }
-                }
-                else{
-                    swal("Unauthorized", unauthMessage);
-                }
-            })
-        });
-    }
 </script>
 
 </html>

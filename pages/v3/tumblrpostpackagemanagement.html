@@ -111,9 +111,15 @@
                                 id="imagetotext">
                         </div>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr;">
-                        <span style="font-size: 16px;">Use Meme Scraper Source</span>
-                        <input type="checkbox" id="linkToMemeScraper" class="toggle">
+                    <div style="display: grid; grid-template-rows: 1fr 1fr; padding: 20px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                            <span style="font-size: 16px;">Use Meme Scraper Source</span>
+                            <input type="checkbox" id="linkToMemeScraper" class="toggle">
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                            <span style="font-size: 16px;">Enable Post Package</span>
+                            <input type="checkbox" id="postPackageEnabled" class="toggle">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -244,6 +250,7 @@
             document.getElementById('minreposts').value = data.package.Behaviour.MinHoursBetweenReposts;
             document.getElementById('enableImageToTextRatio').checked = data.package.Behaviour.UseFixedImageToPhotoRatio;
             document.getElementById('linkToMemeScraper').checked = data.package.LinkToMemeScraper;
+            document.getElementById('postPackageEnabled').checked = data.package.IsEnabled;
             document.getElementById('imagetotextratio').innerHTML = "Image: " + data.package.Behaviour.ImagePercentChance + "% | Text: " + (100 - data.package.Behaviour.ImagePercentChance) + "%";
             let accountsRunning = document.getElementById("tumblramountOfAccounts");
             let postsMadeInLastHour = document.getElementById("tumblrpostsMadeInLastHour");
@@ -383,6 +390,7 @@
         data.package.Behaviour.MessageKlivesOnAction = document.getElementById('messageklives').checked;
         data.package.Behaviour.MinHoursBetweenReposts = document.getElementById('minreposts').value;
         data.package.Behaviour.UseFixedImageToPhotoRatio = document.getElementById('enableImageToTextRatio').checked;
+        data.package.IsEnabled = document.getElementById('postPackageEnabled').checked;
         data.package.LinkToMemeScraper = document.getElementById('linkToMemeScraper').checked;
         let formData = new FormData;
         formData.append("postPackageJSON", JSON.stringify(data.package));

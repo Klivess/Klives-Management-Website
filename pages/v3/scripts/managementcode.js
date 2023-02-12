@@ -54,7 +54,7 @@ function AutomaticAuthentication() {
     Authentication(false);
     setInterval(() => {
         Authentication(false);
-    }, 1250);
+    }, 5250);
 }
 
 function DownloadFileFromServer(file, filename) {
@@ -143,6 +143,8 @@ function Authentication(log=false) {
             else{
                 document.body.style.visibility="visible";
             }
+        }).catch(err =>{
+            
         });
     }
     catch (err) {
@@ -298,22 +300,8 @@ async function GetProfilePermissionRank() {
     return json.KlivesManagementRank;
 }
 
-function SendToKlives(speaker, textToUpdate) {
-    let ele = document.getElementById(textToUpdate);
-    let eleprev = ele.innerHTML;
-    let ele2 = document.getElementById(speaker).value;
-    ele.innerHTML = "Sending...";
-    MakeRequest("/v1/SendMessageToKlive?message=" + ele2).then(response => {
-        if (response == "DISABLED") {
-            ele.innerHTML = "Messaging Is Disabled.";
-        }
-        else {
-            ele.innerHTML = "Sent.";
-        }
-        setTimeout(function () {
-            ele.innerHTML = "Send To Klives";
-        }, 1000);
-    });
+function SendToKlives(text) {
+    MakeRequest("/v1/SendMessageToKlive?message=" + text);
 }
 
 function getRandomColor() {
@@ -379,7 +367,7 @@ function LoadMainPage() {
                 hours += 1;
                 document.getElementById("botuptime").innerHTML = hours + " hours " + minutes + " minutes.";
             }
-        }, 1000);
+        }, 6000);
     })
     MakeRequest('/timemanagement/GetUndoneTasks').then(response => {
         let json = JSON.parse(response);

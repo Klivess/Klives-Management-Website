@@ -17,6 +17,11 @@ function LoadTumblrPostPackages(){
             button.className="kbutton";
             button.innerHTML=element.package.Name;
             button.setAttribute('data', JSON.stringify(element));
+            if(element.package.IsEnabled==false){
+                console.log("disabled");
+                button.style.borderColor="red";
+                button.style.color="red";
+            }
             button.setAttribute('onclick', "LoadTumblrPostPackage(this.getAttribute('data'))");
             button.style.height="80px";
             grid.appendChild(button);
@@ -31,6 +36,13 @@ function LoadTumblrPostPackage(data){
     document.getElementById('postpkgAccountsInUse').innerHTML="Amount Of Accounts In Use: "+json.AmountOfAccountsUsing;
     document.getElementById('postpkgVariety').innerHTML="Variety: "+json.PossibleVariaties+" possible posts.";
     document.getElementById('postpkgDescription').innerHTML="Description: "+json.package.Description;
+    if(json.package.IsEnabled){
+        document.getElementById('postpkgEnabled').innerHTML="Is Enabled: True";
+    }
+    else{
+        document.getElementById('postpkgEnabled').innerHTML="Is Enabled: False";
+        document.getElementById('postpkgEnabled').style.color="red";
+    }
     let button = document.getElementById('managePackage');
     button.innerHTML="Manage "+json.package.Name;
     button.setAttribute("href", "tumblrpostpackagemanagement.html?id="+json.package.ID);
@@ -411,17 +423,19 @@ function LoadAccount(name) {
             var d = new Date(json.account.TimeUntilNextPost);
             accountNextPost.innerHTML = "Next Post: " + d.toLocaleString();
             button.innerHTML = "Manage " + name;
+            button.style.visibility="visible";
             button.setAttribute("href", "tumblraccountmanagement.html?name=" + name);
             LoadTumblrFollowerChart('accountFollowerGraph', document.getElementsByName(name)[0].getAttribute("data"));
         }
         else if (document.getElementsByName(name)[0].getAttribute("isvalid") == "false") {
+            let json = JSON.parse(document.getElementsByName(name)[0].getAttribute("data"));
             accountFollowers.innerHTML = "";
             accountName.innerHTML = "This is an invalid account, please make sure you have the correct key and secret.";
-            accountImages.innerHTML = "";
-            accountBlogMessages.innerHTML = "";
             button.innerHTML = "Delete " + name;
+            accountNextPost.innerHTML="";
+            button.style.visibility="hidden";
             button.style = "border: 2px solid rgb(200, 0, 0); color: rgb(200, 0, 0);'>";
-            button.setAttribute("onclick", "RemoveTumblrAccount('" + name + "')");
+            button.setAttribute("onclick", "RemoveTumblrAccount('" + json.account.playerID + "')");
         }
     }
     catch(err){
@@ -430,7 +444,7 @@ function LoadAccount(name) {
 }
 
 
-function RemoveTumblrAccount(name, page) {
+function RemoveTumblrAccount(id, page) {
     swal("Are you sure you want to delete this tumblr account?", {
         buttons: {
             cancel: "No, what am I doing!!",
@@ -441,12 +455,12 @@ function RemoveTumblrAccount(name, page) {
         },
     }).then((value) => {
         if (value == "delete") {
-            IsProfileAdmin(resp => {
-                if(resp==true){
+            GetProfilePermissionRank().then(k => {
+                if(k==3){
                     try {
-                        MakeRequest("/tumblr/RemoveTumblrAccount?name=" + name).then(response => {
+                        MakeRequest("/tumblr/RemoveTumblrAccount?accountid=" + id).then(response => {
                             if (response != "OK") {
-                                alert("An error occurred while trying to remove the account.");
+                                swal(response);
                             }
                             else {
                                 if (page == undefined) {
@@ -624,7 +638,7 @@ function GetTumblrManagementData() {
                 document.getElementById('playerpassword').innerHTML = "Password: ******";
             }
         })
-        document.getElementById('removeTumblrAccount').setAttribute("name", name);
+        document.getElementById('removeTumblrAccount').setAttribute("onclick", "RemoveTumblrAccount("+json.account.playerID+", 'tumblrmanagement')");
         currentAccountID = json.account.playerID;
         MakeRequest("/tumblr/GetAllPostPackages").then(response => {
             let jsonPostPackage = JSON.parse(response);
@@ -649,6 +663,7 @@ function GetTumblrManagementData() {
                 document.getElementById('postPackage').appendChild(option);
             }
         });
+        
         LoadTumblrFollowerChart('followergraph', response);
     });
 }

@@ -38,6 +38,7 @@ function LoadTumblrPostPackage(data){
     document.getElementById('postpkgDescription').innerHTML="Description: "+json.package.Description;
     if(json.package.IsEnabled){
         document.getElementById('postpkgEnabled').innerHTML="Is Enabled: True";
+        document.getElementById('postpkgEnabled').style.color = "green";
     }
     else{
         document.getElementById('postpkgEnabled').innerHTML="Is Enabled: False";

@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles/main.css">
+    <script src="scripts/swal.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"
+        integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
+    <script src="scripts/managementcode.js"></script>
+    <script src="scripts/tumblrsocials.js"></script>
+    <script src="../../scripts/saved.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.min.js"></script>
+    <link rel="shortcut icon" href="../../images/klivebot2.png" type="image/x-icon">
+    <title>KliveBot Management: Post Package Management</title>
+</head>
+<nav>
+    <horizontal-nav style="display: flex;">
+        <img onmouseenter="ImageSwitch()" id="logo" src="../../images/favicon.ico" alt="" style="width: 7vw;">
+        <a class="kbutton navbutton" href="main.html">Home</a>
+        <a class="kbutton navbutton" href="botpower.html">Bot Power</a>
+        <a class="kbutton navbutton" href="taskschedule.html">Schedule</a>
+        <a class="kbutton navbutton" href="socials.html">Socials</a>
+        <a class="kbutton navbutton" href="civilisation.html">Universe</a>
+        <a class="kbutton navbutton" href="klivesmovies.html">Movies</a>
+        <a class="kbutton navbutton" href="klivesminecraft.html">Minecraft</a>
+        <a class="kbutton navbutton" href="klivesbedroom.html">Bedroom</a>
+        <a class="kbutton navbutton" href="speaker.html">Speaker</a>
+        <a class="kbutton navbutton" href="storage.html">Storage</a>
+        <a class="kbutton navbutton" href="logs.html">Logs</a>
+        <a class="kbutton navbutton" href="omniscience.html">Omni</a>
+        <a class="kbutton navbutton" href="school.html">School</a>
+        <a class="kbutton navbutton" href="klivemanagementsettings.html">Management</a>
+    </horizontal-nav>
+</nav>
+
+<body style="visibility: hidden;">
+    <div class="appContainer">
+        <div style="height: 100px; text-align: center;">
+            <span style="font-size: 60px;" id="pkgName"></span>
+        </div>
+        <div class="infobox" style="height: 500px; background-color: #0f0005;">
+            <h1>Post Package Details</h1>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr;">
+                <div style="display: grid;">
+                    <span style="font-size: 23px;" id="postpkgAccountsInUse">Amounts Of Accounts In Use: </span>
+                    <span style="font-size: 23px;" id="postpkgVariety">Variety Of Posts: </span>
+                    <span style="font-size: 23px;" id="postpkgcaptionslength">Amount Of Captions: </span>
+                    <span style="font-size: 23px;" id="postpkgplugslength">Amount Of Plugs: </span>
+                    <span style="font-size: 23px;" id="postpkghashtagslength">Amount Of Hashtags: </span>
+                    <span style="font-size: 23px;" id="postpkgextrawordslength">Amount Of Extra Words: </span>
+                </div>
+                <div>
+                    <h1>Manage</h1>
+                    <div class="verticalgrid" style="background-color: #2e000f;">
+                        <button class="kbutton" style="color: green; border: 2px green solid; height: 100px;"
+                            onclick="SavePostPackageChanges()">Save Changes</button>
+                        <button class="kbutton" style="color: red; border: 2px red solid; height: 100px;"
+                            onclick="DeletePostPackage()">Delete</button>
+                    </div>
+                </div>
+                <div>
+                    <h1>Accounts Using This Package</h1>
+                    <div class="verticalgrid" id="accountsUsing" style="height: 500px; background-color: #2e000f; border-radius: 10px; margin-left: 10px; border: 2px solid #6d0125;"></div>
+                </div>
+            </div>
+        </div>
+        <div class="dualbox">
+            <div class="infobox" style="height: 600px; background-color: #0f0005;">
+                <h1>Instagram Behaviour Settings</h1>
+                <div
+                    style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr 1fr 1fr 1fr; padding: 30px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                        <span style="font-size: 16px;">Min Hours Before Posting</span>
+                        <input id="minhoursbeforepost" type="number" class="kinput" style="width:100px; height:10px;">
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                        <span style="font-size: 16px;">Max Hours Before Posting</span>
+                        <input id="maxhoursbeforepost" type="number" class="kinput" style="width:100px; height:10px;">`
+                    </div>
+                    <div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                            <span style="font-size: 16px;">Min Hashtags In A Post</span>
+                            <input id="minhashtags" type="number" class="kinput" style="width:100px; height:10px;">
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                        <span style="font-size: 16px;">Max Hashtags In A Post</span>
+                        <input id="maxhashtags" type="number" class="kinput" style="width:100px; height:10px;">
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                        <span style="font-size: 16px;">Message Klives On Post/Repost</span>
+                        <input type="checkbox" id="messageklives" class="toggle">
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                        <span style="font-size: 16px;">Use Meme Scraper Source</span>
+                        <input type="checkbox" id="linkToMemeScraper" class="toggle">
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                        <span style="font-size: 16px;">Enable Post Package</span>
+                        <input type="checkbox" id="postPackageEnabled" class="toggle">
+                    </div>
+                </div>
+            </div>
+            <div class="infobox" style="height: 600px; background-color: #0f0005;">
+                <h1>Analytics</h1>
+                <div style="display: grid; grid-template-rows: 1fr 1fr; height: 600px;">
+                    <div style="display: grid;">
+                        <span id="tumblramountOfAccounts" style="font-size: 2vw;">Loading...</span>
+                        <span id="tumblrpostsMadeInLastHour" style="font-size: 2vw;">Loading...</span>
+                        <span id="tumblrpostsAllTime" style="font-size: 2vw;">Loading...</span>
+                        <span id="tumblrtotalFollowers" style="font-size: 2vw;">Loading...</span>
+                    </div>
+                    <div style="display: flex; justify-content: center; width: 800px; height: 300px;">
+                        <canvas id="reach"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="infobox" style="height: 500px;">
+            <h1>Captions</h1>
+            <textarea id="captionBox" class="kinput" style="padding: 20px; width: 97%;"
+                placeholder="Captions go here"></textarea>
+        </div>
+        <div class="infobox" style="height: 500px;">
+            <h1>Hashtags</h1>
+            <textarea id="hashtagsBox" class="kinput" style="padding: 20px; width: 97%;"
+                placeholder="Hashtags go here"></textarea>
+        </div>
+        <div class="infobox" style="height: 500px;">
+            <h1>Plugs</h1>
+            <textarea id="plugsBox" class="kinput" style="padding: 20px; width: 97%;"
+                placeholder="Plugs go here"></textarea>
+        </div>
+        <div class="infobox" style="height: 500px;">
+            <h1>Extra Words</h1>
+            <textarea id="extrawordsBox" class="kinput" style="padding: 20px; width: 97%;"
+                placeholder="Extra Words go here"></textarea>
+        </div>
+    </div>
+</body>
+<script>
+    let pkgID;
+    let captionBox = document.getElementById('captionBox');
+    let extrawordsBox = document.getElementById('extrawordsBox');
+    let plugsBox = document.getElementById('plugsBox');
+    let hashtagsBox = document.getElementById('hashtagsBox');
+    let hashtagsToRepostBox = document.getElementById('hashtagsToRepostBox');
+    let data;
+    LoadAllInfo();
+
+    function AdjustImageToTextRatioText() {
+        var ele = document.getElementById('imagetotext');
+        document.getElementById('imagetotextratio').innerHTML = "Image: " + ele.value + "% | Text: " + (100 - ele.value) + "%";
+    }
+
+    function LoadAllInfo() {
+        const queryString = window.location.search;
+        const urlParams = new URLSearchParams(queryString);
+        let name = urlParams.get('id');
+        pkgID = name;
+        MakeRequest("/instagram/GetPostPackageStatisticsByID?pkgid=" + name).then(resp => {
+            let json = JSON.parse(resp);
+            data = json;
+            try {
+                document.getElementById('postpkgAccountsInUse').innerHTML = "Amount Of Accounts In Use: " + json.AccountsUsing;
+                document.getElementById('postpkgVariety').innerHTML = "Variety: " + json.PossibleVarieties + " possible posts.";
+                document.getElementById('postpkgcaptionslength').innerHTML = "Amount Of Captions: " + json.postPackage.Captions.length;
+                document.getElementById('postpkgplugslength').innerHTML = "Amount Of Plugs: " + json.postPackage.Plugs.length;
+                document.getElementById('postpkghashtagslength').innerHTML = "Amount Of Hashtags: " + json.postPackage.Hashtags.length;
+                document.getElementById('postpkgextrawordslength').innerHTML = "Amount Of Extra Words: " + json.postPackage.RandomWords.length;
+            }
+            catch { }
+            document.getElementById('pkgName').innerHTML = json.postPackage.Name;
+            for (let index = 0; index < Object.values(json.accountStatistics).length; index++) {
+                const element = Object.values(json.accountStatistics)[index];
+                console.log(element);
+                let button = document.createElement('a');
+                button.className = "kbutton";
+                button.innerHTML = element;
+                button.setAttribute('href', "instagramaccountmanagement.html?accID=" + element.account.playerID);
+                button.style.height = "80px";
+                document.getElementById('accountsUsing').appendChild(button);
+            }
+            if (json.postPackage.Captions != null) {
+                for (let index = 0; index < json.postPackage.Captions.length; index++) {
+                    const element = json.postPackage.Captions[index];
+                    captionBox.value = captionBox.value + element + "\n";
+                }
+            }
+            if (json.postPackage.Hashtags != null) {
+                for (let index = 0; index < json.postPackage.Hashtags.length; index++) {
+                    const element = json.postPackage.Hashtags[index];
+                    hashtagsBox.value = hashtagsBox.value + element + "\n";
+                }
+            }
+            if (json.postPackage.Plugs != null) {
+                for (let index = 0; index < json.postPackage.Plugs.length; index++) {
+                    const element = json.postPackage.Plugs[index];
+                    extrawordsBox.value = extrawordsBox.value + element + "\n";
+                }
+            }
+            if (json.postPackage.RandomWords != null) {
+                for (let index = 0; index < json.postPackage.RandomWords.length; index++) {
+                    const element = json.postPackage.RandomWords[index];
+                    plugsBox.value = plugsBox.value + element + "\n";
+                }
+            }
+            if (json.postPackage.HashtagsToRepost != null) {
+                for (let index = 0; index < json.postPackage.HashtagsToRepost.length; index++) {
+                    const element = json.postPackage.HashtagsToRepost[index];
+                    hashtagsToRepostBox.value = hashtagsToRepostBox.value + element + "\n";
+                }
+            }
+            document.getElementById('maxhashtags').value = data.postPackage.Behaviour.AmountOfHashtagsMax;
+            document.getElementById('minhashtags').value = data.postPackage.Behaviour.AmountOfHashtagsMin;
+            document.getElementById('maxhoursbeforepost').value = data.postPackage.Behaviour.MaxHoursAfterPost;
+            document.getElementById('minhoursbeforepost').value = data.postPackage.Behaviour.MinHoursAfterPost;
+            document.getElementById('messageklives').checked = data.postPackage.Behaviour.MessageKlivesOnAction;
+            document.getElementById('linkToMemeScraper').checked = data.postPackage.LinkToMemeScraper;
+            document.getElementById('postPackageEnabled').checked = data.postPackage.IsEnabled;
+            let accountsRunning = document.getElementById("tumblramountOfAccounts");
+            let postsMadeInLastHour = document.getElementById("tumblrpostsMadeInLastHour");
+            let postsmadealltime = document.getElementById("tumblrpostsAllTime");
+            let totalFollowers = document.getElementById("tumblrtotalFollowers");
+            let tumblrtotalFollowersAverageDifference = document.getElementById("tumblrtotalFollowersAverageDifference");
+            MakeRequest("/tumblr/GetAllTumblrAccountInfoFromPostPackageID?pkgid=" + pkgID).then(response => {
+                let json = JSON.parse(response);
+                LoadTumblrReachChart('reach', json);
+                let accountsRunningAmount = 0;
+                let accountsLoadedAmount = 0;
+                accountsRunning.innerHTML = accountsRunningAmount + " accounts running. " + accountsLoadedAmount + " accounts loaded.";
+                //foreach account in response
+                for (let i = 0; i < json.accountsAnalytics.length; i++) {
+                    let account = json.accountsAnalytics[i];
+                    if (account.IsValid == true) {
+                        console.log("Account " + account.playerName + " is valid");
+                        accountsRunningAmount = accountsRunningAmount + 1;
+                        accountsLoadedAmount = accountsLoadedAmount + 1;
+                    }
+                    else if (account.IsValid == false) {
+                        console.log("Account " + account.playerName + " is not valid");
+                        accountsLoadedAmount = accountsLoadedAmount + 1;
+                    }
+                    accountsRunning.innerHTML = accountsRunningAmount + " accounts running. " + accountsLoadedAmount + " accounts loaded.";
+                }
+                postsMadeInLastHour.innerHTML = "Couldn't get posts made in last hour.";
+                postsmadealltime.innerHTML = "Couldn't get posts made all time.";
+            });
+        });
+    }
+
+    function LoadTumblrReachChart(canvas, allaccountsJson) {
+        //add first accounts.
+        let playerNames = [];
+        let playerFollowers = [];
+        let totalFollowers = document.getElementById("tumblrtotalFollowers");
+        let totalamountoffollowers = 0;
+        //foreach account in response, get total followers
+        for (let i = 0; i < allaccountsJson.accountsAnalytics.length; i++) {
+            let playerAccount = allaccountsJson.accountsAnalytics[i];
+            playerFollowers.push(playerAccount.Followers);
+            totalamountoffollowers = totalamountoffollowers + parseInt(playerAccount.Followers);
+            playerNames.push(playerAccount.account.playerName);
+        }
+        totalFollowers.innerHTML = totalamountoffollowers + " total followers reached.";
+        const ctx = document.getElementById(canvas).getContext('2d');
+        const myChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: playerNames,
+                datasets: [{
+                    label: '# Followers',
+                    data: playerFollowers,
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.2)',
+                        'rgba(54, 162, 235, 0.2)',
+                        'rgba(255, 206, 86, 0.2)',
+                        'rgba(75, 192, 192, 0.2)',
+                        'rgba(153, 102, 255, 0.2)',
+                        'rgba(255, 159, 64, 0.2)',
+                        'rgba(3, 29, 68, 0.2)',
+                        'rgba(4, 57, 94, 0.2)',
+                        'rgba(112, 162, 136, 0.2)',
+                        'rgba(218, 183, 133, 0.2)',
+                    ],
+                    borderColor: [
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(255, 206, 86, 1)',
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(153, 102, 255, 1)',
+                        'rgba(255, 159, 64, 1)',
+                        'rgba(3, 29, 68, 1)',
+                        'rgba(4, 57, 94, 1)',
+                        'rgba(112, 162, 136, 1)',
+                        'rgba(218, 183, 133, 1)',
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    function DeletePostPackage() {
+        IsProfileAdmin().then(r => {
+            if (r == true) {
+                swal("Confirm", {
+                    text: "Are you sure you want to do this?",
+                    buttons: {
+                        cancel: "Cancel",
+                        confirm: {
+                            text: "Confirm",
+                            value: "confirm",
+                            closeModal: false
+                        }
+                    }
+                }).then(resp => {
+                    if (resp == "confirm") {
+                        MakeRequest("/instagram/DeletePostPackage?pkgID=" + pkgID).then(resp => {
+                            if (resp == "OK") {
+                                swal("Complete!");
+                                window.location.replace('instagramsocial.html');
+                            }
+                            else {
+                                swal(resp);
+                            }
+                        })
+                    }
+                });
+            }
+            else {
+                swal("Unauthorized!", "Only Klives and his associates can do this.");
+            }
+        })
+    }
+
+    function SavePostPackageChanges() {
+        data.postPackage.Captions = captionBox.value.split('\n');
+        data.postPackage.Hashtags = hashtagsBox.value.split('\n');
+        data.postPackage.RandomWords = extrawordsBox.value.split('\n');
+        data.postPackage.Plugs = plugsBox.value.split('\n');
+        data.postPackage.Behaviour.AmountOfHashtagsMax = document.getElementById('maxhashtags').value;
+        data.postPackage.Behaviour.AmountOfHashtagsMin = document.getElementById('minhashtags').value;
+        data.postPackage.Behaviour.MaxHoursAfterPost = document.getElementById('maxhoursbeforepost').value;
+        data.postPackage.Behaviour.MinHoursAfterPost = document.getElementById('minhoursbeforepost').value;
+        data.postPackage.Behaviour.MessageKlivesOnAction = document.getElementById('messageklives').checked;
+        data.postPackage.IsEnabled = document.getElementById('postPackageEnabled').checked;
+        data.postPackage.LinkToMemeScraper = document.getElementById('linkToMemeScraper').checked;
+        let formData = new FormData;
+        formData.append("JSON", JSON.stringify(data.postPackage));
+        var url = api + "/instagram/ModifyPostPackage";
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", url, true);
+        xhr.send(formData);
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState == 4 && xhr.status == 200) {
+                swal("Complete!");
+            }
+            else {
+                swal(xhr.responseText);
+            }
+        }
+    }
+
+</script>
+
+</html>

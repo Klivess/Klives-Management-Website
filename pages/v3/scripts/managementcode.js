@@ -378,7 +378,13 @@ function LoadMainPage() {
             ele2.className = "kbutton fadein";
             ele2.style = "height: 50px; font-size: 20px; text-transform: none; display: grid; grid-template-columns: 1fr 1fr 4fr;";
             let date = new Date(json[i].time);
-            ele2.innerHTML = "<p class='special' style='font-size: small;'>" + date.toLocaleString() + "|</p><p class ='special' style='color: cyan;'>" + json[i].topic + "</p> <div>" + json[i].reason + "</div>";
+            let noticeString = "";
+            if(new Date()>date){
+                ele2.style.border="3px solid red";
+                ele2.style.color="red"
+                noticeString="OVERDUE"
+            }
+            ele2.innerHTML = "<p class='special' style='font-size: small;'>" + date.toLocaleString() + "|</p><p class ='special' style='color: cyan;'>" + json[i].topic+" "+noticeString + "</p> <div>" + json[i].reason + "</div>";
             ele.appendChild(ele2);
         }
     });

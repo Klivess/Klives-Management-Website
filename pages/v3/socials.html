@@ -13,6 +13,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"
         integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.min.js"></script>
+    <script src="scripts/instagramsocials.js"></script>
     <link rel="shortcut icon" href="../../images/klivebot2.png" type="image/x-icon">
     <title>KliveBot Management: Socials</title>
 </head>
@@ -39,25 +40,44 @@
 
 <body style="visibility: hidden;">
     <div class="appContainer">
-        <div class="infobox" style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;">
+        <div class="infobox" style="height: 400px; background-color: #010a13;">
             <h1>
                 <span>Tumblr Bot</span>
             </h1>
-            <div style="display: grid;">
-                <span id="tumblramountOfAccounts" style="font-size: 2vw;">Loading...</span>
-                <span id="tumblrpostsMadeInLastHour" style="font-size: 2vw;">Loading...</span>
-                <span id="tumblrpostsAllTime" style="font-size: 2vw;">Loading...</span>
-                <span id="tumblrtotalFollowers" style="font-size: 2vw;">Loading...</span>
-                <span id="tumblrtotalFollowersAverageDifference" style="font-size: 2vw;">Loading...</span>
+            <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                <div style="display: grid; grid-template-rows: 1fr 1fr;">
+                    <div style="display: grid;">
+                        <span id="tumblramountOfAccounts" style="font-size: 1.2vw;">Loading...</span>
+                        <span id="tumblrpostsMadeInLastHour" style="font-size: 1.2vw;">Loading...</span>
+                        <span id="tumblrpostsAllTime" style="font-size: 1.2vw;">Loading...</span>
+                        <span id="tumblrtotalFollowers" style="font-size: 1.2vw;">Loading...</span>
+                        <span id="tumblrtotalFollowersAverageDifference" style="font-size: 1.2vw;">Loading...</span>
+                    </div>
+                    <a class="kbutton" href="tumblrsocial.html" style="width: 95%;">Go To Tumblr Management</a>
+                </div>
+                <div>
+                    <canvas id="tumblrFollowerChart" height="400px"></canvas>
+                </div>
             </div>
-            <div>
-                <canvas id="tumblrFollowerChart">
-
-                </canvas>
-            </div>
-            <a class="kbutton" href="tumblrsocial.html" style="width: 95%;">Go To Tumblr Management</a>
-            <div>
-                <canvas id="tumblrTotalFollowerChart"></canvas>
+        </div>
+        <div class="infobox" style="height: 440px; background-color: #0f0005;"> 
+            <h1>Instagram Bot</h1>
+            <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                <div style="display: grid; grid-template-rows: 1fr 1fr;">
+                    <div style="display: grid; grid-template-rows: 1fr 1fr 1fr 1fr;">
+                        <span id="instaAccountsLoad" style="font-size: 1.2vw;">Loading...</span>
+                        <span id="instapostsMadeInLast12Hours" style="font-size: 1.2vw;">Loading...</span>
+                        <span id="instapostsMadeAllTime" style="font-size: 1.2vw;">Loading...</span>
+                        <span id="instaTotalFollowers" style="font-size: 1.2vw;">Loading...</span>
+                        <span id="instaamountofpackages" style="font-size: 1.2vw;">Loading...</span>
+                    </div>
+                    <div>
+                        <a class="kbutton" href="instagramsocial.html" style="height: 100%;">Go To Instagram Management</a>
+                    </div>
+                </div>
+                <div>
+                    <canvas id="instaDistributionChart" height="400px"></canvas>
+                </div>
             </div>
         </div>
         <div class="dualbox">
@@ -70,7 +90,7 @@
                     <span id="mscrapeMemesDownloadedLastScrape" style="font-size: 1.3vw;">Loading...</span>
                     <span id="mscrapeScrapesInLifetime" style="font-size: 1.3vw;">Loading...</span>
                 </div>
-                <a href="mscrape.html" style="width: 90%; text-align: center;" class="kbutton">Go To Meme Scrape Management</a>
+                <a href="mscrape.html" style="width: 100%; text-align: center;" class="kbutton">Go To Meme Scrape Management</a>
             </div>
         </div>
     </div>
@@ -78,5 +98,6 @@
 <script>
     document.onload = OnSocialsLoadTumblr();
     document.onload = OnSocialsLoadMScrape();
+    document.onload=OnSocialsLoadInstagram();
 </script>
 </html>

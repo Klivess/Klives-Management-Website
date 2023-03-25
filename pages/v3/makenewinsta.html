@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles/main.css">
+    <script src="scripts/swal.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js" integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
+    <script src="scripts/managementcode.js"></script>
+    <script src="scripts/instagramsocials.js"></script>
+    <script src="../../scripts/saved.js"></script>
+    <link rel="shortcut icon" href="../../images/klivebot2.png" type="image/x-icon">
+    <title>KliveBot Management: Make New Tumblr Account</title>
+</head>
+<nav>
+    <horizontal-nav style="display: flex;">
+        <img onmouseenter="ImageSwitch()" id="logo" src="../../images/favicon.ico" alt="" style="width: 7vw;">
+        <a class="kbutton navbutton" href="main.html">Home</a>
+        <a class="kbutton navbutton" href="botpower.html">Bot Power</a>
+        <a class="kbutton navbutton" href="taskschedule.html">Schedule</a>
+        <a class="kbutton navbutton" href="socials.html">Socials</a>
+        <a class="kbutton navbutton" href="civilisation.html">Universe</a>
+        <a class="kbutton navbutton" href="klivesmovies.html">Movies</a>
+        <a class="kbutton navbutton" href="klivesminecraft.html">Minecraft</a>
+        <a class="kbutton navbutton" href="klivesbedroom.html">Bedroom</a>
+        <a class="kbutton navbutton" href="speaker.html">Speaker</a>
+        <a class="kbutton navbutton" href="storage.html">Storage</a>
+        <a class="kbutton navbutton" href="logs.html">Logs</a>
+        <a class="kbutton navbutton" href="omniscience.html">Omni</a>
+        <a class="kbutton navbutton" href="school.html">School</a>
+        <a class="kbutton navbutton" href="klivemanagementsettings.html">Management</a>
+    </horizontal-nav>
+</nav>
+
+
+<body style="visibility: hidden;">
+    <div class="appContainer">
+        <div class="infobox" id="box" style="height: 1000px;">
+            <h1>
+                Make New Account
+            </h1>
+            <button class="kbutton" style="position: absolute; width: 200px; font-size: 20px; right: 50px;" onclick="window.location.replace('tumblrsocial.html')">
+                <a>Go Back</a>
+            </button>
+            <div class="verticalgrid" style="display: inline-block;">
+                <input class="kinput" type="text" id="playerName" style="width: 90%; height: 5%; margin: 10px; margin-top: 30px;" placeholder="Name of Instagram account">
+                <input class="kinput" type="text" id="email" style="width: 90%; height: 5%; margin: 10px;" placeholder="Email">
+                <input class="kinput" type="text" id="username" style="width: 90%; height: 5%; margin: 10px;" placeholder="Signup Username">
+                <input class="kinput" type="text" id="password" style="width: 90%; height: 5%; margin: 10px;" placeholder="Password">
+                <div style="margin: 50px;">
+                    <h1>Post Package</h1>
+                    <select style="font-size: 23px; height: 75px; width: 400px;" id="postPackage"></select>
+                </div>
+                <div>
+                    <h1>Image Zip (What will be posted onto the instagram!)</h1>
+                    <input style="width: 86%; height: 6%; font-size: 25px; margin: 10px;" id="imageZip" class="kbutton" type="file"></button>
+                </div>
+                <button class="kbutton" style="height: 180px; margin: 10px; width: 95%; border: 2px solid rgb(0, 145, 0);" onclick="CreateInstagramAccount()">
+                    <a id="submitButtonText" style="color: rgb(0, 200, 0);">Create!</a>
+                </button>
+                <div style="background-color: #2e000f; height: 25px; width: 0%; padding: 5px; border-radius: 15px; font-size: 20px; font-family: 'Roboto';
+                color: white; display: flex; justify-content: center;" id="uploadProgress">
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+<script>
+    window.onload = function() {
+        // make uploadProgress invisible
+        document.getElementById("uploadProgress").style.visibility = "hidden";
+        MakeRequest("/instagram/GetAllPostPackages").then(response => {
+            let jsonPostPackage = JSON.parse(response);
+            for (let index = 0; index < jsonPostPackage.length; index++) {
+                const element = jsonPostPackage[index];
+                var option = document.createElement('option');
+                option.innerHTML=element.Name;
+                option.value=element.ID;
+                try{
+                    if(element.ID.trim()==json.account.PostPackageID.trim()){
+                        option.setAttribute("selected", "true");
+                    }
+                }
+                catch(err){console.error(err)}
+                document.getElementById('postPackage').appendChild(option);
+            }
+        });
+    };
+
+    function CreateInstagramAccount(){
+        let data = new FormData();
+        data.append("name", document.getElementById('playerName').value);
+        data.append("username", document.getElementById('username').value);
+        data.append("password", document.getElementById('password').value);
+        data.append("email", document.getElementById('email').value);
+        data.append("postPackageID", document.getElementById('postPackage').value);
+        let file = document.getElementById("imageZip").files[0];
+        data.append("zipfile", file);
+        MakePostRequest("/instagram/CreateNewInstagramAccount", data).then(r => {
+            if(r!="OK"){
+                swal(r);
+            }
+            else{
+                swal("Created!").then(()=>{
+                    window.location.replace('instagramsocial.html');
+                });
+            }
+        });
+    }
+</script>
+</html>

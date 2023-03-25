@@ -63,17 +63,15 @@
             <div class="infobox" style="height: 700px;">
                 <h1>Omniscience Data</h1>
                 <div style="display: grid; grid-template-columns: 2fr 1fr;">
-                    <div>
-                        <span id="omniscienceMessagesLogged" style="font-size: 1.5vw;">Loading...</span><br>
-                        <span id="omniscienceGuildsBeingWatched" style="font-size: 1.5vw;">Loading...</span><br>
-                        <span id="omniscienceKlivesMentions" style="font-size: 1.5vw;">Loading...</span><br>
-                        <span id="omniscienceCompileTime" style="font-size: 1.5vw;">Loading...</span><br><br><br>
-
-                        <div style="display: flex; justify-content: center;">
-                            <h1>Most Frequent Speakers</h1>
-                            <div class="scheduleBox" id="frequentspeakersbox" style="height: 500px; width: 600px;">
-
-                            </div>
+                    <div style="display: grid; grid-template-rows: 1fr 10fr; height: 700px;">
+                        <div>
+                            <span id="omniscienceMessagesLogged" style="font-size: 1.5vw;">Loading...</span><br>
+                            <span id="omniscienceGuildsBeingWatched" style="font-size: 1.5vw;">Loading...</span><br>
+                            <span id="omniscienceKlivesMentions" style="font-size: 1.5vw;">Loading...</span><br>
+                            <span id="omniscienceCompileTime" style="font-size: 1.5vw;">Loading...</span><br><br><br>
+                        </div>
+                        <div style="padding: 30px;">
+                            <canvas id="omniscienceDailyMessageLog"></canvas>
                         </div>
                     </div>
                     <div style="display: grid; grid-template-rows: 300px, 400px;">
@@ -90,24 +88,40 @@
             </div>
         </div>
         <div class="infobox" style="height: 600px;">
-            <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 20px;">
-                <div class="scheduleBox" id="wordfrequency" style="height: 600px; width: 600px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;">
+                <div class="scheduleBox" id="wordfrequency" style="height: 600px; width: 100%;">
                     <h1>Word Frequency</h1>
                 </div>
-                <div class="scheduleBox" id="profanitycounter" style="height: 600px; width: 600px;">
+                <div class="scheduleBox" id="profanitycounter" style="height: 600px; width: 100%;">
                     <h1>Profanity Counter Per Use</h1>
+                </div>
+                <div style="display: flex; justify-content: center;">
+                    <h1>Most Frequent Speakers</h1>
+                    <div class="scheduleBox" id="frequentspeakersbox" style="height: 600px; width: 100%;"></div>
                 </div>
             </div>
         </div>
         <div class="infobox" style="height: 650px;">
             <h1>Message Queries</h1>
             <div style="display: flexbox; justify-content: center; align-content: center; text-align: center;">
-                <span style="font-size: 40px;">Search For Word In Total Database</span>
-                <div style="display: grid; grid-template-columns: 6fr 1fr; gap: 30px;">
-                    <input type="text" id="desiredWord" class="kinput" style="height: 50px;"
-                        placeholder="Type desired word(s)">
-                    <button class="kbutton" id="queryDatabasebtn"
-                        onclick="SearchDesiredWordInDatabase()">Search</button>
+                <span style="font-size: 40px;">Search For Word In Total Discord Database</span>
+                <div style="display: grid; grid-template-rows: 6fr 1fr; height: 110px;">
+                    <div style="display: grid; grid-template-columns: 6fr 1fr; gap: 30px;">
+                        <input type="text" id="desiredWord" class="kinput" style="height: 50px;"
+                            placeholder="Type desired word(s)">
+                        <button class="kbutton" id="queryDatabasebtn"
+                            onclick="SearchDesiredWordInDatabase()">Search</button>
+                    </div>
+                    <div style="width: 800px; display: grid; grid-template-columns: 2fr 2fr 2fr 2fr; gap: 30px;">
+                        <span>Isolate Messages From User:</span>
+                        <select id="userIsolationSelection">
+                            <option value="0">All Users</option>
+                        </select>
+                        <span>Isolate Messages From Server:</span>
+                        <select id="guildsIsolationSelection">
+                            <option value="0">All Servers</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="gridbox" id="messageQueryResult" style="height: 450px; width: 100%; margin-top: 10px;">
                 </div>
@@ -125,6 +139,10 @@
         let grid = document.getElementById('messageQueryResult');
         RemoveAllElementsInGrid("messageQueryResult");
         btn.innerHTML = "Searching...";
+        let btnPreviousState = btn.style;
+        btn.style.border = "4px solid yellow";
+        btn.style.color = "yellow";
+        btn.style.fontSize = "25px"
         if (queryingDatabase == false) {
             try {
                 queryingDatabase = true;
@@ -133,8 +151,16 @@
                         swal("You are unauthorized to do this.");
                     }
                     else {
+                        let addition = "";
+                        let guildId = document.getElementById('guildsIsolationSelection').value;
                         let formData = new FormData;
                         formData.append("words", input);
+                        if (document.getElementById('userIsolationSelection').value != 0) {
+                            formData.append("userID", document.getElementById('userIsolationSelection').value);
+                        }
+                        if (guildId != 0) {
+                            formData.append("guildID", guildId);
+                        }
                         MakePostRequest("/omniscience/QueryWordsInMessages", formData).then(r => {
                             let json = JSON.parse(r);
                             for (let index = 0; index < json.length; index++) {
@@ -149,6 +175,11 @@
                                 grid.appendChild(button);
                             }
                             document.getElementById('messageQueryResults').innerHTML = "Results: " + json.length + " messages found.";
+                            btn.innerHTML = "Search";
+                            btn.style = btnPreviousState;
+                        }).catch(err => {
+                            btn.innerHTML = "ERROR";
+                            swal("Error!", err);
                         });
                     }
                 })
@@ -158,7 +189,6 @@
                 console.error(err);
             }
             queryingDatabase = false;
-            btn.innerHTML = "Search";
         }
     }
 

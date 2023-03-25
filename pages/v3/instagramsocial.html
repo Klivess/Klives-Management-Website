@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles/main.css">
+    <script src="scripts/swal.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js"
+        integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
+    <script src="scripts/managementcode.js"></script>
+    <script src="scripts/instagramsocials.js"></script>
+    <script src="../../scripts/saved.js"></script>
+    <link rel="shortcut icon" href="../../images/klivebot2.png" type="image/x-icon">
+    <title>KliveBot Management: Instagram Socials</title>
+</head>
+<nav>
+    <horizontal-nav style="display: flex;">
+        <img onmouseenter="ImageSwitch()" id="logo" src="../../images/favicon.ico" alt="" style="width: 7vw;">
+        <a class="kbutton navbutton" href="main.html">Home</a>
+        <a class="kbutton navbutton" href="botpower.html">Bot Power</a>
+        <a class="kbutton navbutton" href="taskschedule.html">Schedule</a>
+        <a class="kbutton navbutton" href="socials.html">Socials</a>
+        <a class="kbutton navbutton" href="civilisation.html">Universe</a>
+        <a class="kbutton navbutton" href="klivesmovies.html">Movies</a>
+        <a class="kbutton navbutton" href="klivesminecraft.html">Minecraft</a>
+        <a class="kbutton navbutton" href="klivesbedroom.html">Bedroom</a>
+        <a class="kbutton navbutton" href="speaker.html">Speaker</a>
+        <a class="kbutton navbutton" href="storage.html">Storage</a>
+        <a class="kbutton navbutton" href="logs.html">Logs</a>
+        <a class="kbutton navbutton" href="omniscience.html">Omni</a>
+        <a class="kbutton navbutton" href="school.html">School</a>
+        <a class="kbutton navbutton" href="klivemanagementsettings.html">Management</a>
+    </horizontal-nav>
+</nav>
+
+<body style="visibility: hidden;">
+    <div class="appContainer">
+        <div class="infobox" style="height: 100px; display: flex; justify-content: center; border: 2px solid grey;">
+            <h1>Notice From Klives</h1>
+            <span style="text-align: center; align-self: center; font-size: 40px;">I did NOT finish this damn Instagram bot 😭😭😭</span>
+        </div>
+        <div class="infobox" style="height: 800px;">
+            <h1>Instagram Accounts</h1>
+            <div style="margin: 6px; background-color: #2e000f; border-radius: 10px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; padding: 10px; height: 100%;">
+                    <div style="display: grid; grid-template-rows: 5fr 1fr;">
+                        <div class="gridbox" id="instaaccountList"
+                            style="height: 100%; border: none; background-color: #140108;"></div>
+                        <a href="makenewinsta.html" style="height: 80%; color: greenyellow; border: 2px solid green;"
+                            class="kbutton">+</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="infobox" style="height: 600px;">
+            <h1>Instagram Post Packages</h1>
+            <div style="display: grid; grid-template-columns: 1fr 1fr;">
+                <div style="grid-template-rows: 15fr 1fr;">
+                    <div style="height: 500px; background-color: #2e000f; border-radius: 15px; border: 2px rgb(53, 52, 52) solid;"
+                        class="verticalgrid" id="postpackages"></div>
+                    <button onclick="CreateNewPostPackage().then(r => { LoadPostPackageList(); })"
+                        style="height: 100px; color: green; border: 2px green solid;" class="kbutton">Add New
+                        Package</button>
+                </div>
+                <div
+                    style="background-color: #2e000f; border-radius: 15px; margin: 10px; border: 2px rgb(53, 52, 52) solid; display: flex; justify-content: center; padding: 30px;">
+                    <div
+                        style="display: grid; grid-template-rows: 3fr 5fr 3fr; width: 100%; text-align: center; justify-content: center;">
+                        <div style="display: grid; height: 100px;">
+                            <span style="font-size: 23px;" id="postpkgName">Name:</span>
+                            <span style="font-size: 23px;" id="postpkgAccountsInUse">Amounts Of Accounts In Use: </span>
+                            <span style="font-size: 23px;" id="postpkgVariety">Variety Of Posts: </span>
+                            <span style="font-size: 23px;" id="postpkgEnabled">Is Enabled: </span>
+                        </div>
+                        <div
+                            style="width: 100%; text-align: center; display: flex; justify-content: center; overflow-y: scroll; height: 200px;">
+                            <span style="font-size: 23px;" id="postpkgDescription">Description: </span>
+                        </div>
+                        <a id="managePackage" class="kbutton" style="width: 800px; color: greenyellow; border: 2px solid #96063b; color: #e20959;">Manage Package</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+<script>
+
+    document.onload = OnLoadInstagramSocialPage();
+    function OnLoadInstagramSocialPage() {
+        LoadAccountList();
+        LoadPostPackageList();
+    }
+    function LoadAccountList() {
+        RemoveAllElementsInGrid('instaaccountList');
+        let accountGridBox = document.getElementById('instaaccountList');
+        MakeRequest("/instagram/GetAllInstagramAccountAnalytics").then(resp => {
+            let analytics = JSON.parse(resp);
+            for (let index = 0; index < analytics.AccountStatistics.length; index++) {
+                const element = analytics.AccountStatistics[index];
+                let button = document.createElement("button");
+                button.className = "kbutton";
+                button.innerHTML = element.playerName;
+                button.style = "height: 100px;"
+                accountGridBox.appendChild(button);
+                if(index==0){
+                    button.click();
+                }
+            }
+        });
+    }
+
+    function LoadPostPackageList() {
+        RemoveAllElementsInGrid('postpackages');
+        let postPackageGridBox = document.getElementById('postpackages');
+        MakeRequest("/instagram/GetAllInstagramPostPackageAnalytics").then(resp => {
+            let analytics = JSON.parse(resp);
+            for (let index = 0; index < analytics.length; index++) {
+                const element = analytics[index];
+                let button = document.createElement("button");
+                button.className = "kbutton";
+                button.innerHTML = element.postPackage.Name;
+                button.style = "height: 100px;"
+                if (element.postPackage.IsEnabled == false) {
+                    button.style.border = "2px solid red";
+                    button.style.color = "red";
+                }
+                else {
+                    button.style.border = "2px solid green";
+                    button.style.color = "green";
+                }
+                button.setAttribute("data", JSON.stringify(element));
+                button.setAttribute("onclick", "LoadPostPackageDetails(this.getAttribute('data'))");
+                postPackageGridBox.appendChild(button);
+                if(index==0){
+                    button.click();
+                }
+            }
+        });
+        document.getElementById(postPackageGridBox.firstElementChild.id).click();
+    }
+
+    function LoadAccount(data) {
+
+    }
+
+    function LoadPostPackageDetails(data) {
+        let json = JSON.parse(data);
+        document.getElementById('postpkgName').innerHTML = "Name: " + json.postPackage.Name;
+        document.getElementById('postpkgAccountsInUse').innerHTML = "Amount Of Accounts In Use: " + json.AccountsUsing;
+        document.getElementById('postpkgVariety').innerHTML = "Variety: " + json.PossibleVarieties + " possible posts.";
+        document.getElementById('postpkgDescription').innerHTML = "Description: " + json.postPackage.Description;
+        if (json.postPackage.IsEnabled) {
+            document.getElementById('postpkgEnabled').innerHTML = "Is Enabled: True";
+            document.getElementById('postpkgEnabled').style.color = "green";
+        }
+        else {
+            document.getElementById('postpkgEnabled').innerHTML = "Is Enabled: False";
+            document.getElementById('postpkgEnabled').style.color = "red";
+        }
+        let button = document.getElementById('managePackage');
+        button.innerHTML = "Manage " + json.postPackage.Name;
+        button.setAttribute("href", "instagrampostpackagemanagement.html?id=" + json.postPackage.ID);
+    }
+
+</script>
+
+</html>

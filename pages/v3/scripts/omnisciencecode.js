@@ -1,4 +1,6 @@
 let omnisciencedata = "";
+let allUsersToIDs = [];
+let allGuildsToIDs = [];
 
 function LoadOmniscience() {
     MakeRequest('/omniscience/GetOmniscienceAnalytics').then(response => {
@@ -140,6 +142,8 @@ function LoadOmniscience() {
         document.getElementById('omniscienceGuildsBeingWatched').innerHTML = json.GuildsLogged.length + " guilds being watched.";
         document.getElementById('omniscienceKlivesMentions').innerHTML = json.KlivesMentions.length + " messages about Klives.";
         document.getElementById('omniscienceCompileTime').innerHTML = "Compiled analytics in " + (json.TimeTakenToCompileAnalyticsSeconds) + " seconds.";
+        var isoUserselect = document.getElementById('userIsolationSelection');
+        var isoGuildselect = document.getElementById('guildsIsolationSelection');
         json.FrequentSpeakers.reverse();
         for (let index = 0; index < json.FrequentSpeakers.length; index++) {
             const element = json.FrequentSpeakers[index];
@@ -149,6 +153,19 @@ function LoadOmniscience() {
             ele2.style = "height: 50px; font-size: 20px; text-transform: none; display: grid; grid-template-columns: 1fr 1fr;";
             ele2.innerHTML = "<p class='special' style='font-size: large;'>" + element.Key.Username + "</p><p class ='special' style='color: cyan;'>" + element.Value + " Messages sent" + "</p>";
             ele.appendChild(ele2);
+            allUsersToIDs.push({key: element.Key.Username+"#"+element.Key.UserDiscriminator, value: element.Key.UserID});
+            let selectionBox = document.createElement("option");
+            selectionBox.innerHTML=element.Key.Username+"#"+element.Key.UserDiscriminator;
+            selectionBox.value=element.Key.UserID;
+            isoUserselect.appendChild(selectionBox);
+        }
+        for (let index = 0; index < json.GuildsLogged.length; index++) {
+            const element = json.GuildsLogged[index];
+            allGuildsToIDs.push({key: element.Value, value: element.Key});
+            let selectionBox = document.createElement("option");
+            selectionBox.innerHTML=element.Value;
+            selectionBox.value=element.Key;
+            isoGuildselect.appendChild(selectionBox);
         }
         json.WordFrequency.reverse();
         for (let index = 0; index < json.WordFrequency.length; index++) {
@@ -171,6 +188,44 @@ function LoadOmniscience() {
             ele2.style = "height: 50px; font-size: 20px; text-transform: none; display: grid; grid-template-columns: 1fr 1fr;";
             ele2.innerHTML = "<p class='special' style='font-size: large;'>'" + element.Key + "'</p><p class ='special' style='color: cyan;'>Profanity used " + element.Value + " times." + "</p>";
             ele.appendChild(ele2);
+        }
+        LoadOmniscienceDailyMessageLogGraph();
+    });
+}
+
+function LoadOmniscienceDailyMessageLogGraph(){
+    let dates = [];
+    let values = [];
+    let lengthOfDict = Object.keys(omnisciencedata.MessagePerDay).length;
+    for (let index = 0; index < lengthOfDict; index++) {
+        const elementKey = Object.keys(omnisciencedata.MessagePerDay)[index];
+        const elementValue = Object.values(omnisciencedata.MessagePerDay)[index];
+        dates.push(elementKey);
+        values.push(elementValue);
+    }
+    const ctx = document.getElementById('omniscienceDailyMessageLog').getContext('2d');
+    const lineChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: dates,
+            datasets: [{
+                label: "Messages Logged Per Day",
+                data: values,
+                backgroundColor: [
+                    'rgba(255, 99, 132, 0.2)',
+                ],
+                borderColor: [
+                    'rgba(255, 99, 132, 1)',
+                ],
+            }]
+        },
+        options: {
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
         }
     });
 }

@@ -1,0 +1,24 @@
+.kinput {
+    background-color: #1d1d1d;
+    border: none;
+    border-radius: 25px;
+    color: $secondary;
+    font-family: 'Roboto';
+    font-size: 20px;
+    padding: 7px;
+    width: 100%;
+    word-wrap: break-word;
+    word-break: break-all;
+    transition: 0.4s;
+    z-index: 5;
+    animation-name: fadingup;
+    animation-duration: 0.5s;
+}
+
+.kinput:focus {
+    outline: none;
+}
+
+.kinput:hover {
+    border-bottom: 4px solid $secondary;
+}

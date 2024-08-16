@@ -1,0 +1,21 @@
+body{
+    background-color: $main;
+}
+
+* {
+    font-family: 'Roboto';
+    color: $secondary;
+}
+
+p{
+    font-size: 20px;
+}
+
+::-webkit-scrollbar {
+    width: 3px;
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: #5C5C5C;
+}

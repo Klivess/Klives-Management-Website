@@ -5,6 +5,7 @@ body{
 * {
     font-family: 'Roboto';
     color: $secondary;
+    margin: 0;
 }
 
 p{
@@ -18,4 +19,10 @@ p{
 
 ::-webkit-scrollbar-thumb {
     background-color: #5C5C5C;
+}
+
+.infobox {
+    background-color: $mainDarker;
+    border-radius: 20px;
+    padding: 10px;
 }

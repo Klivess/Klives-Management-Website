@@ -9,7 +9,6 @@ button {
     display:flex;
     justify-content: center;
     text-transform: uppercase;
-    font-size: large;
     position: relative;
     transition: background-color 0.2s cubic-bezier(0.19, 1, 0.22, 1),
         border 1s cubic-bezier(0.19, 1, 0.22, 1),
@@ -22,7 +21,7 @@ button {
 button a {
     position: absolute;
     color: $secondary;
-    font-size: 1.3vw;
+    font-size: clamp(12px, 1.3vw, 1.3vw);
     width: 100%;
     font-family: 'Roboto';
     text-decoration: none;

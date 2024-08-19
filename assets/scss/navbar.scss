@@ -1,0 +1,9 @@
+nav{
+    background-color: $mainDarker;
+    border-bottom: 2px solid $secondary; 
+    border-color: red($color: #000000);
+
+    button a {
+        font-size: clamp(12px, 1vw, 1.3vw);
+    }
+}

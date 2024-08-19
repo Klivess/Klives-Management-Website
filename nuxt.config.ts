@@ -25,10 +25,12 @@ export default defineNuxtConfig({
         rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Roboto:wght@500&display=swap'
       }],
     },
+    layoutTransition: { name: 'layout', mode: 'out-in' },
     pageTransition: { name: 'page', mode: 'out-in' },
   },
   css: ['~/assets/scss/main.scss',
     '~/assets/scss/main.scss',
     '~/assets/scss/button.scss',
-    '~/assets/scss/inputbox.scss'],
+    '~/assets/scss/inputbox.scss',
+    '~/assets/scss/navbar.scss'],
 })

@@ -1,6 +1,6 @@
 export{KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI};
 
-const KliveAPIUrl = "http://81.78.164.204:7777";
+const KliveAPIUrl = "https://81.78.164.204:7777";
 
 async function RequestGETFromKliveAPI(query: string, content = "") {
     return await $fetch(KliveAPIUrl+query, {method: "GET", body: content, });

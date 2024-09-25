@@ -1,15 +1,20 @@
+
+
+<template>
+  <NuxtLoadingIndicator />
+    <NuxtLayout>
+      <keep-alive>
+        <AuthenticationManager/>
+      </keep-alive>
+      <NuxtPage/>
+    </NuxtLayout>
+</template>
+
 <script setup lang="ts">
 
 import {KliveAPIUrl} from '~/scripts/APIInterface'
 import Navbar from './layouts/navbar.vue';
 </script>
-
-<template>
-  <NuxtLoadingIndicator />
-    <NuxtLayout>
-      <NuxtPage/>
-    </NuxtLayout>
-</template>
 
 <style>
 .page-enter-active,

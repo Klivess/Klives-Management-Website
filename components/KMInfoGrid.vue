@@ -5,6 +5,7 @@
 </template>
 
 <script>
+
 export default{
     name: "KMInfoBox",
     props:{
@@ -13,13 +14,16 @@ export default{
     methods: {
         updateGrid(){
 
+        },
+        updateComponent() {
+            console.log(`Number of children: ${this.$children.length}`);
+            // Additional logic to adjust the component based on the number of children
         }
     },
-    mounted(){
-        this.$children.forEach((child) => {
-        console.log(child.$options.name); // Get the name of the child component
-        console.log(child.someProp); // Access a specific property of the child
-      });
+    setup(props, context){
     },
+    beforeDestroy() {
+
+    }
 }
 </script>

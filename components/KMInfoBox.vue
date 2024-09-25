@@ -1,6 +1,5 @@
 <template>
     <div class="infobox">
-        <slot/>
     </div>
 </template>
 
@@ -11,6 +10,9 @@ export default{
         horizontalGrids: {
             type: Number,
         }
+    },
+    mounted(){
+        console.log(this.horizontalGrids);
     }
 }
 </script>

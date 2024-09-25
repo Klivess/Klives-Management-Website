@@ -42,13 +42,12 @@ export default {
     },
     async onLoginSubmit() {
       this.buttonText = "Logging in";
-        const successOrNot = await (await RequestPOSTFromKliveAPI('/KMProfiles/AttemptLogin', JSON.stringify(this.password))).text();
+        const successOrNot = await (await RequestPOSTFromKliveAPI('/KMProfiles/AttemptLogin', JSON.stringify(this.password))).json();
         console.log("Login: "+successOrNot);
         if(successOrNot=="true"){
           const passwordCookie = useCookie('password');
           passwordCookie.value = this.password;
           this.buttonText = "Logged in";
-
           // Open Dashboard
           this.$router.push('/dashboard');
         }

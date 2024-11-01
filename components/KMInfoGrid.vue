@@ -1,5 +1,5 @@
 <template>
-    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(50px, 625px)); grid-template-rows: repeat(auto-fill, minmax(50px, 225px)); gap: 10px;">
+    <div ref="infoGrid" style="display: grid; gap: 10px; margin-bottom: 10px;">
         <slot/>
     </div>
 </template>
@@ -9,11 +9,18 @@
 export default{
     name: "KMInfoBox",
     props:{
-        
+        columns: {
+            type: Number,
+            default: 1
+        },
+        rows: {
+            type: Number,
+            default: 1
+        },
     },
     methods: {
         updateGrid(){
-
+            alert("thiranya");
         },
         updateComponent() {
             console.log(`Number of children: ${this.$children.length}`);
@@ -21,6 +28,24 @@ export default{
         }
     },
     setup(props, context){
+    },
+    mounted() {
+        let x = (99 / this.columns);
+        //Form string to put in grid template columns, there must be x columns.
+        let gridTemplateColumns = "";
+        for(let i = 0; i < this.columns; i++){
+            gridTemplateColumns += `${x}% `;
+        }
+        console.log(gridTemplateColumns);
+        //Form string to put in grid template rows, there must be x rows of 225px
+        let gridTemplateRows = "";
+        for(let i = 0; i < this.rows; i++){
+            gridTemplateRows += "260px ";
+        }
+        console.log(gridTemplateRows);
+
+        this.$refs.infoGrid.style.gridTemplateRows = gridTemplateRows;
+        this.$refs.infoGrid.style.gridTemplateColumns = gridTemplateColumns;
     },
     beforeDestroy() {
 

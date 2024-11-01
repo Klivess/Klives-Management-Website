@@ -1,6 +1,6 @@
 export{KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, VerifyLogin};
 
-const KliveAPIUrl = "http://193.237.139.172:5000";
+const KliveAPIUrl = "https://193.237.139.172:7777";
 
 async function RequestGETFromKliveAPI(query: string) {
     return Promise.resolve(fetch(KliveAPIUrl+query, {method: "GET"}));

@@ -55,8 +55,20 @@ export default {
           this.buttonText = "Failed";
         }
     },
+    async checkIfAPIAccessible(){
+      const isAccessible = (await RequestGETFromKliveAPI('/ping')).status;
+      if(isAccessible==200){
+        console.log("API is accessible.");
+      }
+      else{
+        console.log("API is not accessible.");
+        window.location.replace(KliveAPIUrl+"/redirect?redirectURL="+window.location.href);
+      }
+
+    }
   },
-  mounted(){
+  async mounted(){
+      await this.checkIfAPIAccessible();
       this.AttemptLoginWithCookie();
     },
 }

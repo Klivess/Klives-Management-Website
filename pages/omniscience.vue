@@ -3,5 +3,5 @@
 </template>
 
 <script>
-definePageMeta({layout: 'navbar'})
+definePageMeta({layout: 'navbar'});
 </script>

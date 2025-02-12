@@ -18,10 +18,6 @@ export default {
 </script>
 
 <style scoped>
-.infobox {
-    position: relative;
-    padding-top: 30px;
-}
 
 .caption {
     position: absolute;

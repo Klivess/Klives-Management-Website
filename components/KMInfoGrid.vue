@@ -1,5 +1,5 @@
 <template>
-    <div ref="infoGrid" style="display: grid; gap: 10px; margin-bottom: 10px;">
+    <div ref="infoGrid" style="display: grid; gap: 10px; padding-bottom: 40px; margin-bottom: 10px; height: auto; width: 100%; overflow-x: hidden; overflow-y: hidden">
         <slot/>
     </div>
 </template>
@@ -20,7 +20,6 @@ export default{
     },
     methods: {
         updateGrid(){
-            alert("thiranya");
         },
         updateComponent() {
             console.log(`Number of children: ${this.$children.length}`);

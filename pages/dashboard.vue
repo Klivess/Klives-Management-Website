@@ -15,6 +15,7 @@
             </div>
             <div style="display: grid; gap: 10px;">
                 <span ref="klivetechGadgetsConnectedStat" style="font-size: 1.5em;">KliveTech Gadgets Connected: Loading</span>
+                <KMButton message="Update Omnipotent"></KMButton>
             </div>
 
             </div>

@@ -34,4 +34,5 @@ export default defineNuxtConfig({
     '~/assets/scss/inputbox.scss',
     '~/assets/scss/navbar.scss',
     '~/assets/scss/klivetech.scss'],
+  modules: []
 })

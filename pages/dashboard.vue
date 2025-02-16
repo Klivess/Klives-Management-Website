@@ -20,9 +20,12 @@
             </div>
         </KMInfoBox>
     </KMInfoGrid>
-    <KMInfoGrid columns="2" rows="2">
-        <KMInfoBox caption="Service Statistics" style="height: 600px;"><span>hey</span></KMInfoBox>
-        <KMInfoBox caption="Scheduled Bot Tasks" style="height: 600px;">
+    <KMInfoGrid columns="2" rows="2" rowHeight="600">
+        <KMInfoBox caption="Service Statistics"><span>hey</span></KMInfoBox>
+        <KMInfoBox caption="Scheduled Bot Tasks">
+            <KMGridList>
+
+            </KMGridList>
         </KMInfoBox>
     </KMInfoGrid>
 </template>
@@ -31,6 +34,7 @@
 import KMInfoGrid from '~/components/KMInfoGrid.vue';
 import KMInfoBox from '~/components/KMInfoBox.vue';
 import { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import KMGridList from '~/components/KMGridList.vue';
 export default {
     data(){
         return  {

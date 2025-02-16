@@ -13,7 +13,9 @@
     "cors": "^2.8.5",
     "nuxt": "^3.12.4",
     "nuxt-helm": "^0.0.2",
-    "vue": "latest"
+    "sweetalert2": "^11.16.1",
+    "vue": "latest",
+    "vue-sweetalert2": "^5.0.11"
   },
   "devDependencies": {
     "sass": "^1.77.8"

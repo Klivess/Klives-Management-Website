@@ -1,5 +1,5 @@
 <template>
-    <div ref="infoGrid" style="display: grid; gap: 30px; padding-bottom: 40px; margin-bottom: 10px; height: auto; width: 100%; overflow-x: hidden; overflow-y: hidden">
+    <div ref="infoGrid" style="display: grid; gap: 10px; padding-bottom: 10px; margin-bottom: 5px; height: auto; width: 100%; overflow-x: hidden; overflow-y: hidden">
         <slot/>
     </div>
 </template>
@@ -20,7 +20,7 @@ export default{
         rowHeight: {
             type: Number,
             default: 260
-        }
+        },
     },
     methods: {
         updateGrid(){
@@ -43,7 +43,7 @@ export default{
         //Form string to put in grid template rows, there must be x rows of 225px
         let gridTemplateRows = "";
         for(let i = 0; i < this.rows; i++){
-            gridTemplateRows += rowHeight+"px ";
+            gridTemplateRows += this.rowHeight.toString()+"px ";
         }
         console.log(gridTemplateRows);
 

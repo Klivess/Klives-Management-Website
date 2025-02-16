@@ -1,7 +1,9 @@
 <template>
     <div class="infobox">
         <div v-if="caption" class="caption">{{ caption }}</div>
-        <slot/>
+        <div style="padding: 10px;">
+            <slot/>
+        </div>
     </div>
 </template>
 

@@ -1,4 +1,9 @@
 
+<script setup lang="ts">
+import { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import Navbar from './layouts/navbar.vue';
+
+</script>
 
 <template>
   <NuxtLoadingIndicator />
@@ -9,12 +14,6 @@
       <NuxtPage/>
     </NuxtLayout>
 </template>
-
-<script setup lang="ts">
-
-import {KliveAPIUrl} from '~/scripts/APIInterface'
-import Navbar from './layouts/navbar.vue';
-</script>
 
 <style>
 .page-enter-active,

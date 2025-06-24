@@ -25,9 +25,11 @@ export default {
     name: 'KliveTech',
     methods: {
     },
+    /*
     async mounted() {
         const allGadgets = await (await RequestGETFromKliveAPI('/klivetech/GetAllGadgets')).json();
     }
+        */
 };
 </script>
 

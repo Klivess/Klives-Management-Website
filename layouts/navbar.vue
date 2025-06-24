@@ -43,7 +43,7 @@
 import KMButton from '~/components/KMButton.vue';
 import KMInfoGrid from '~/components/KMInfoGrid.vue';
 
-export default {
+export const navbarLayout = {
   name: 'navbarLayout',
   props: {
     

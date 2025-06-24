@@ -1,6 +1,6 @@
 <template>
     <KMInfoGrid columns="1" rows="3">
-        <KMInfoBox caption="All Connected Gadgets" style="height: 35em;" >
+        <KMInfoBox caption="All Connected Gadgets" style="height: 45em; overflow-y: scroll;" >
             <div style="display: grid; grid-template-columns: 1fr 1fr; overflow-y: scroll; height: 100%;" id="kliveTechGadgetContainer">
                 <div style="display: flex; justify-content: center;">
                     <KliveTechGadget></KliveTechGadget>

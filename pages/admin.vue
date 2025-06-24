@@ -19,6 +19,7 @@
 import KMInfoGrid from '~/components/KMInfoGrid.vue';
 import Swal from 'sweetalert2/dist/sweetalert2.js'
 import KMGridList from '~/components/KMGridList.vue';
+import { NuxtPage } from '#components';
 
 definePageMeta({ layout: 'navbar' });
 

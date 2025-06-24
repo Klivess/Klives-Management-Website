@@ -65,12 +65,14 @@ export default {
             });
         }
     },
+    /*
     mounted(){
         this.LoadDashboardData();
         setInterval(() => {
             this.LoadDashboardData();
         }, 5000);
     }
+        */
 }
 
 definePageMeta({ layout: 'navbar' });

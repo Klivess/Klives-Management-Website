@@ -32,10 +32,6 @@ async function RequestGETFromKliveAPI(query: string, kickToDashboardIfUnauthoriz
             'Authorization': pass,
         },
     });
-    if (response.status == 401 && kickToDashboardIfUnauthorized) {
-        alert("You are not authorized to do whatever you're doing right now.");
-        window.location.replace('/dashboard');
-    }
     return response;
 }
 
@@ -50,10 +46,6 @@ async function RequestPOSTFromKliveAPI(query: string, content = "", kickToDashbo
             "Authorization": pass,
         }
     });
-    if (response.status == 401 && kickToDashboardIfUnauthorized) {
-        alert("You are not authorized to do whatever you're doing right now.");
-        window.location.replace('/dashboard');
-    }
     return response;
 }
 

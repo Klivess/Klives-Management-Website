@@ -1,4 +1,5 @@
 <template>
+    <div>
     <KMInfoGrid columns=1 rows=1 rowHeight=320>
         <KMInfoBox caption="Website Analytics">
 
@@ -13,6 +14,7 @@
             <KMButton style="height: 100px; margin-top: 30px;" message="Create New Profile" :onclick="hey"></KMButton>
         </KMInfoBox>
     </KMInfoGrid>
+    </div>
 </template>
 
 <script>

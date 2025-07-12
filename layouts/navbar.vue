@@ -12,8 +12,8 @@
         <NuxtLink to="/socials">
           <KMButton message="Socials"></KMButton>
         </NuxtLink>
-        <NuxtLink to="/botnets">
-          <KMButton message="Botnets"></KMButton>
+        <NuxtLink to="/schemes">
+          <KMButton message="Schemes"></KMButton>
         </NuxtLink>
         <NuxtLink to="/storage">
           <KMButton message="Storage"></KMButton>
@@ -27,7 +27,7 @@
         <NuxtLink to="/admin">
           <KMButton message="Admin"></KMButton>
         </NuxtLink>
-        <KMButton @click="logOut" message="Log Out"></KMButton>
+        <KMButton onclick="logOut" message="Log Out"></KMButton>
       </div>
     </nav>
     <!-- Added margin-top to push content below the fixed navbar -->
@@ -50,6 +50,7 @@ export const navbarLayout = {
   },
   methods: {
     logOut(){
+      console.log("Logging out...");
       const cook = useCookie('password');
       cook.value = "";
       this.$router.push('/');

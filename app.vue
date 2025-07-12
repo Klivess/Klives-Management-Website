@@ -1,7 +1,6 @@
 
 <script setup lang="ts">
 import { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
-import Navbar from './layouts/navbar.vue';
 
 </script>
 

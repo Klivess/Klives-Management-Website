@@ -31,7 +31,7 @@ export default {
   methods: {
     AttemptLoginWithCookie() {
       const cook = useCookie('password');
-      if(cook.value!=""){
+      if(cook.value!=""&&cook.value!=null&&cook.value!=undefined&&cook.value!="undefined"){
         console.log("Attempting login with cookie.");
         this.password=cook.value;
         this.onLoginSubmit();
@@ -41,10 +41,11 @@ export default {
       }
     },
     async onLoginSubmit() {
-      this.buttonText = "Logging in";
+      try{
+              this.buttonText = "Logging in";
         const successOrNot = await (await RequestPOSTFromKliveAPI('/KMProfiles/AttemptLogin', JSON.stringify(this.password))).json();
         console.log("Login: "+successOrNot);
-        if(successOrNot=="true"){
+        if(successOrNot=='true'){
           const passwordCookie = useCookie('password');
           passwordCookie.value = this.password;
           this.buttonText = "Logged in";
@@ -54,21 +55,15 @@ export default {
         else{
           this.buttonText = "Failed";
         }
+      }
+      catch(e){
+        console.error("Error during login: ", e);
+        this.buttonText = "Error";
+        return;
+      }
     },
-    async checkIfAPIAccessible(){
-      const isAccessible = (await RequestGETFromKliveAPI('/ping')).status;
-      if(isAccessible==200){
-        console.log("API is accessible.");
-      }
-      else{
-        console.log("API is not accessible.");
-        window.location.replace(KliveAPIUrl+"/redirect?redirectURL="+window.location.href);
-      }
-
-    }
   },
   async mounted(){
-      await this.checkIfAPIAccessible();
       this.AttemptLoginWithCookie();
     },
 }

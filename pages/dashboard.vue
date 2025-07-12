@@ -3,7 +3,11 @@
         <KMInfoBox caption="General Statistics">
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 20px;">
                 <div style="display: grid; gap: 10px;">
-                    <span ref="lastUpdateStat" style="font-size: 1.6em;">Last Update: Loading</span>
+                    <span v-if="pending" style="font-size: 1.6em;">Last Update: Loading</span>
+                    <span v-else-if="error" style="font-size: 1.6em;">Last Update: Error</span>
+                    <span v-else style="font-size: 1.6em;">Last Update: {{ data }}</span>
+
+                    
                     <span ref="totalUptimeStat" style="font-size: 1.5em;">Total Uptime: Loading</span>
                     <span ref="totalLogsStat" style="font-size: 1em;">Total Logs: Loading</span>
                     <span ref="totalStatusStat" style="font-size: 1em;">Total Status Logs: Loading</span>
@@ -29,6 +33,23 @@
         </KMInfoBox>
     </KMInfoGrid>
 </template>
+
+<script setup>
+const { data, pending, error } = await useFetch(KliveAPIUrl+"/GeneralBotStatistics/GetFrontpageStats", {
+    method: 'GET',
+    headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'incarnation'
+    },
+    onResponse({ response }) {
+        if (response.status === 200) {
+            return response.json();
+        } else {
+            throw new Error('Failed to fetch data');
+        }
+    }
+});
+</script>
 
 <script>
 import KMInfoGrid from '~/components/KMInfoGrid.vue';

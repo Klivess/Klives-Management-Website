@@ -10,15 +10,15 @@ export default{
     name: "KMInfoBox",
     props:{
         columns: {
-            type: Number,
+            type: String,
             default: 1
         },
         rows: {
-            type: Number,
+            type: String,
             default: 1
         },
         rowHeight: {
-            type: Number,
+            type: String,
             default: 260
         },
     },

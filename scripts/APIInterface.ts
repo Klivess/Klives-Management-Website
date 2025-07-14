@@ -35,11 +35,9 @@ async function RequestGETFromKliveAPI(query: string, redirectToDashboardIfUnauth
     if (res.status === 401) {
         // Unauthorized access, handle accordingly
         console.log("Unauthorized access to API");
-        if (res.headers.get('requestdeniedcode') == "2") {
-            alert("Your profile doesnt have enough clearance to do this.");
-            if (redirectToDashboardIfUnauthorized) {
-                window.location.replace('/dashboard');
-            }
+        if(redirectToDashboardIfUnauthorized==true){
+            alert("You are not authorized to access this resource.");
+            window.location.replace('/dashboard');
         }
     }
     return res;

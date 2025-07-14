@@ -27,7 +27,7 @@
     </KMInfoGrid>
     <KMInfoGrid columns="2" rows="2" rowHeight="600">
         <KMInfoBox caption="Service Statistics">
-            <span>hey</span>
+                    <span>still working on this entire page</span>
         </KMInfoBox>
         <KMInfoBox caption="Scheduled Bot Tasks">
             <TimeManagerTasksListShort>

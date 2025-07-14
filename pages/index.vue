@@ -43,7 +43,7 @@ export default {
     async onLoginSubmit() {
       try{
               this.buttonText = "Logging in";
-        const successOrNot = await (await RequestPOSTFromKliveAPI('/KMProfiles/AttemptLogin', JSON.stringify(this.password))).json();
+        const successOrNot = await (await RequestPOSTFromKliveAPI('/KMProfiles/AttemptLogin', JSON.stringify(this.password), false)).json();
         console.log("Login: "+successOrNot);
         if(successOrNot=='true'){
           const passwordCookie = useCookie('password');
@@ -51,6 +51,9 @@ export default {
           this.buttonText = "Logged in";
           // Open Dashboard
           this.$router.push('/dashboard');
+        }
+        else if(successOrNot=='LoginDisabled'){
+          this.buttonText = "Login Disabled";
         }
         else{
           this.buttonText = "Failed";

@@ -78,10 +78,15 @@ function GetLocalPassword() {
 }
 
 async function VerifyLogin() {
+    //Only run this if the user is not already on the login page
+    if (window.location.pathname == "/") {
+        return;
+    }
     RequestGETFromKliveAPI("/KMProfiles/LoginStatus").then(response => {
         response.json().then((json: any) => {
             if (json == "ProfileDisabled") {
                 window.location.replace('/');
+                
                 alert("Your profile has been disabled.");
             }
             else if (json == "ProfileNotFound") {

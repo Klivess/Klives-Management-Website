@@ -23,20 +23,19 @@ export default {
             type: String,
             default: ""
         },
-		checked: {
+		boxChecked: {
 			type: Boolean,
 			default: false
 		}
 	},
     methods: {
 		onInput(){
-			this.$props.checked = !this.$props.checked;
-			alert(this.checked);
+			this.$props.boxChecked = !this.$props.boxChecked;
 		}
     },
 	mounted() {
 		//Change the checked value to the value passed in the checked prop
-		this.$refs.checkBox.checked = this.$props.checked;
+		this.$refs.checkBox.checked = this.$props.boxChecked;
 	}
 }
 </script>

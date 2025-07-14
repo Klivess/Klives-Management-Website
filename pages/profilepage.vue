@@ -7,7 +7,7 @@
         <KMInputBox v-model:value="userPassword" style="width: 400px; margin-top: 10px; margin-bottom: 10px;" ></KMInputBox>
         <p>Rank</p>
         <KMSelectBox v-model:selected="userRank" :options="rankOptions" style="width: 400px; margin-top: 10px; margin-bottom: 10px;"></KMSelectBox>
-        <KMCheckBox v-bind:checked="canLogin" id="canLoginCheckbox" message="Can Login"></KMCheckBox>
+        <KMCheckBox v-bind:boxChecked="canLogin" id="canLoginCheckbox" message="Can Login" @change="canLogin = $event.target.checked"></KMCheckBox>
     </KMInfoBox>
     <KMInfoBox caption="User Info">
         <p ref="creationDate">Creation Date: Loading...</p>
@@ -105,8 +105,7 @@ export default {
             await this.ChangePassword();
             await this.ChangeRank();
             await this.ChangeCanLogin();
-            alert("Profile Modified");
-            this.buttonMessage = "Modify Profile";
+            this.buttonMessage = "Modified!!";
         }
     },
     mounted() {

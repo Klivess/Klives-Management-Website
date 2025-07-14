@@ -30,9 +30,9 @@
             <span>hey</span>
         </KMInfoBox>
         <KMInfoBox caption="Scheduled Bot Tasks">
-            <KMGridList>
+            <TimeManagerTasksListShort>
 
-            </KMGridList>
+            </TimeManagerTasksListShort>
         </KMInfoBox>
     </KMInfoGrid>
     </div>
@@ -47,6 +47,7 @@ import KMInfoGrid from '~/components/KMInfoGrid.vue';
 import KMInfoBox from '~/components/KMInfoBox.vue';
 import { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import KMGridList from '~/components/KMGridList.vue';
+import TimeManagerTasksListShort from '~/components/Dashboard/TimeManagerTasksListShort.vue';
 export default {
     data(){
         return  {
@@ -77,14 +78,12 @@ export default {
             });
         }
     },
-    /*
     mounted(){
         this.LoadDashboardData();
         setInterval(() => {
             this.LoadDashboardData();
         }, 5000);
     }
-        */
 }
 
 definePageMeta({ layout: 'navbar' });

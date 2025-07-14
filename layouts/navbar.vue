@@ -27,7 +27,7 @@
         <NuxtLink to="/admin">
           <KMButton message="Admin"></KMButton>
         </NuxtLink>
-        <KMButton onclick="logOut" message="Log Out"></KMButton>
+        <KMButton @click="logOut" message="Log Out"></KMButton>
       </div>
     </nav>
     <!-- Added margin-top to push content below the fixed navbar -->
@@ -43,7 +43,7 @@
 import KMButton from '~/components/KMButton.vue';
 import KMInfoGrid from '~/components/KMInfoGrid.vue';
 
-export const navbarLayout = {
+export default {
   name: 'navbarLayout',
   props: {
     

@@ -7,7 +7,7 @@
         <KMInputBox v-model:value="userPassword" style="width: 400px; margin-top: 10px; margin-bottom: 10px;" ></KMInputBox>
         <p>Rank</p>
         <KMSelectBox v-model:selected="userRank" :options="rankOptions" style="width: 400px; margin-top: 10px; margin-bottom: 10px;"></KMSelectBox>
-        <KMCheckBox v-bind:checked="canLogin" message="Can Login"></KMCheckBox>
+        <KMCheckBox v-bind:checked="canLogin" id="canLoginCheckbox" message="Can Login"></KMCheckBox>
     </KMInfoBox>
     <KMInfoBox caption="User Info">
         <p ref="creationDate">Creation Date: Loading...</p>
@@ -66,6 +66,9 @@ export default {
                     this.$refs.creationDate.innerText = "Creation Date: " + date.toLocaleDateString() + " " + date.toLocaleTimeString();
                     this.userRank = this.rankOptions[data.KlivesManagementRank - 1];
                     this.canLogin = data.CanLogin;
+                    if(this.canLogin==true){
+                        document.getElementById("canLoginCheckbox").click();
+                    }
                 }
                 else
                 {
@@ -84,14 +87,13 @@ export default {
             });
         },
         async ChangeCanLogin(){
-            alert("Can Login: " + this.canLogin.toString());
             await RequestPOSTFromKliveAPI('/KMProfiles/ChangeCanLogin?id='+this.userID+"&enabled="+this.canLogin.toString()).then(async (response) => {});
         },
         async ChangeName(){
             await RequestPOSTFromKliveAPI('/KMProfiles/ChangeProfileName?id='+this.userID+"&name="+this.userName).then(async (response) => {});
         },
         async ChangePassword(){
-            await RequestPOSTFromKliveAPI('/KMProfiles/ChangeProfilePassword?id='+this.userID+"&password="+this.userPassword, "", false).then(async (response) => {});
+            await RequestPOSTFromKliveAPI('/KMProfiles/ChangeProfilePassword?id='+this.userID, this.userPassword, false).then(async (response) => {});
         },
         async ChangeRank(){
             let rank = this.rankOptions.indexOf(this.userRank) + 1;

@@ -1,4 +1,5 @@
 <template>
+    <div>
     <KMInfoGrid columns="1" rows="1">
         <KMInfoBox caption="General Statistics">
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 20px;">
@@ -25,30 +26,20 @@
         </KMInfoBox>
     </KMInfoGrid>
     <KMInfoGrid columns="2" rows="2" rowHeight="600">
-        <KMInfoBox caption="Service Statistics"><span>hey</span></KMInfoBox>
+        <KMInfoBox caption="Service Statistics">
+            <span>hey</span>
+        </KMInfoBox>
         <KMInfoBox caption="Scheduled Bot Tasks">
             <KMGridList>
 
             </KMGridList>
         </KMInfoBox>
     </KMInfoGrid>
+    </div>
 </template>
 
 <script setup>
-const { data, pending, error } = await useFetch(KliveAPIUrl+"/GeneralBotStatistics/GetFrontpageStats", {
-    method: 'GET',
-    headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'incarnation'
-    },
-    onResponse({ response }) {
-        if (response.status === 200) {
-            return response.json();
-        } else {
-            throw new Error('Failed to fetch data');
-        }
-    }
-});
+
 </script>
 
 <script>
@@ -59,7 +50,7 @@ import KMGridList from '~/components/KMGridList.vue';
 export default {
     data(){
         return  {
-            QuickActionsBoxWidth: 2,
+
         }
     },
     methods: {

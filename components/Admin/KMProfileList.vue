@@ -22,7 +22,6 @@ export default {
     methods: {
         // Add your methods here
     },
-    /*
     mounted() {
         // Component mounted lifecycle hook
         RequestGETFromKliveAPI('/KMProfiles/GetAllProfiles').then((response) => {
@@ -66,7 +65,6 @@ export default {
             }
         });
     }
-        */
 }
 </script>
 

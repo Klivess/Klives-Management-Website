@@ -22,20 +22,30 @@ enum KMPermissions {
     Klives = 5
 }
 
-async function RequestGETFromKliveAPI(query: string, kickToDashboardIfUnauthorized = true) {
+async function RequestGETFromKliveAPI(query: string, redirectToDashboardIfUnauthorized = true) {
     const pass = GetLocalPassword();
-    let response;
-    response = await fetch(`${KliveAPIUrl}${query}`, {
+    const res = await fetch(`${KliveAPIUrl}${query}`, {
         method: 'GET',
         mode: 'cors',
         headers: {
             'Authorization': pass,
         },
     });
-    return response;
+
+    if (res.status === 401) {
+        // Unauthorized access, handle accordingly
+        console.log("Unauthorized access to API");
+        if (res.headers.get('requestdeniedcode') == "2") {
+            alert("Your profile doesnt have enough clearance to do this.");
+            if (redirectToDashboardIfUnauthorized) {
+                window.location.replace('/dashboard');
+            }
+        }
+    }
+    return res;
 }
 
-async function RequestPOSTFromKliveAPI(query: string, content = "", kickToDashboardIfUnauthorized = true) {
+async function RequestPOSTFromKliveAPI(query: string, content = "", redirectToDashboardIfUnauthorized = true) {
     const pass = GetLocalPassword();
     let response;
     response = await fetch(KliveAPIUrl + query, {
@@ -46,6 +56,19 @@ async function RequestPOSTFromKliveAPI(query: string, content = "", kickToDashbo
             "Authorization": pass,
         }
     });
+    if (response.status === 401) {
+        // Unauthorized access, handle accordingly
+        console.log("Unauthorized access to API");
+        console.log(response.headers.get('RequestDeniedCode'));
+
+        if (response.headers.get('RequestDeniedCode') == "2") {
+            alert("Your profile doesnt have enough clearance to do this.");
+            if (redirectToDashboardIfUnauthorized) {
+                window.location.replace('/dashboard');
+            }
+        }
+    }
+
     return response;
 }
 
@@ -55,16 +78,18 @@ function GetLocalPassword() {
 }
 
 async function VerifyLogin() {
-    var response = await RequestGETFromKliveAPI("/KMProfiles/LoginStatus", false);
-    let json = await response.json();
-    if (json == "ProfileDisabled") {
-        window.location.replace('/');
-        alert("Your profile has been disabled.");
-    }
-    else if (json == "ProfileNotFound") {
-        if (window.location.pathname != "/") {
-            window.location.replace('/');
-            alert("You don't even have a profile or a password here, get out!!");
-        }
-    }
+    RequestGETFromKliveAPI("/KMProfiles/LoginStatus").then(response => {
+        response.json().then((json: any) => {
+            if (json == "ProfileDisabled") {
+                window.location.replace('/');
+                alert("Your profile has been disabled.");
+            }
+            else if (json == "ProfileNotFound") {
+                if (window.location.pathname != "/") {
+                    window.location.replace('/');
+                    alert("You don't even have a profile or a password here, get out!!");
+                }
+            }
+        });
+    });
 }

@@ -31,6 +31,7 @@ export default{
         }
     },
     setup(props, context){
+
     },
     mounted() {
         let x = (99 / this.columns);

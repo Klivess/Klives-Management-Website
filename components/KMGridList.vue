@@ -9,16 +9,11 @@
 <script>
 export default {
     name: 'KMGridList',
-    data() {
-        return {
-            items: []
-        }
-    },
     props: {
         // Define your component properties here
         items: {
             type: Array,
-            required: true
+            required: false,
         },
         // Color of button prop
         buttonColor: {

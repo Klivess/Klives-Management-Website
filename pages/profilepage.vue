@@ -1,4 +1,5 @@
 <template>
+<div class="admin-profile-page">
 <KMInfoGrid columns="2" rows="1" rowHeight="340">
     <KMInfoBox caption="Modify User Profile">
         <p>Name</p>
@@ -21,10 +22,14 @@
         <KMButton textColor="red" :onclick="DeleteProfile" message="Delete Profile" style="height: 200px;" ></KMButton>
     </KMInfoBox>
 </KMInfoGrid>
+</div>
 </template>
 
-<script>
+<script setup>
 definePageMeta({ layout: 'navbar' });
+</script>
+
+<script>
 import { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 
 
@@ -118,6 +123,6 @@ export default {
 
 <style scoped>
 .admin-profile-page {
-    /* add your styles here */
+    padding: 20px;
 }
 </style>

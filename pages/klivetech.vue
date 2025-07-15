@@ -17,10 +17,12 @@
     </KMInfoGrid>
 </template>
 
+<script setup>
+definePageMeta({layout: 'navbar'});
+</script>
+
 <script>
 import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
-
-definePageMeta({layout: 'navbar'});
 export default {
     name: 'KliveTech',
     methods: {

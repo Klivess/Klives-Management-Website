@@ -2,6 +2,6 @@
     <span>Omniscience Page</span>
 </template>
 
-<script>
+<script setup>
 definePageMeta({layout: 'navbar'});
 </script>

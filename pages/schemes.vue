@@ -33,12 +33,15 @@
     </div>
 </template>
 
+<script setup>
+definePageMeta({ layout: 'navbar' });
+</script>
+
 <script>
 import KMInfoBox from '~/components/KMInfoBox.vue';
 import Swal from 'sweetalert2/dist/sweetalert2.js';
 import { NuxtPage } from '#components';
 import KMInfoGrid from '~/components/KMInfoGrid.vue';
-definePageMeta({ layout: 'navbar' });
 export default {
     components: {
         KMInfoGrid,

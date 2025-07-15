@@ -11,12 +11,14 @@
     </div>
 </template>
 
+<script setup>
+definePageMeta({layout: 'none'});
+</script>
+
 <script>
 import KMButton from '~/components/KMButton.vue';
 import KMInputBox from '~/components/KMInputBox.vue';
 import { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
-
-definePageMeta({layout: 'none'});
 export default {
   components: {
     KMButton,

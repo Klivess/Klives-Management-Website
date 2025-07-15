@@ -2,9 +2,12 @@
 export default defineNuxtConfig({
   compatibilityDate: '2024-04-03',
   devtools: { enabled: true },
+  ssr: true,
   routeRules: {
     '/': {prerender: true},
     '/administration/**': {ssr: false}, // Disable SSR for admin routes
+    '/dashboard': {ssr: false}, // Disable SSR for dashboard to avoid hydration issues
+    '/profilepage': {ssr: false}, // Disable SSR for profilepage
     '/*': {cors: true},
   },
   vite: {

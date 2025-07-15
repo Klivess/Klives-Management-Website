@@ -6,7 +6,7 @@
                 <div style="display: grid; gap: 10px;">
                     <span v-if="pending" style="font-size: 1.6em;">Last Update: Loading</span>
                     <span v-else-if="error" style="font-size: 1.6em;">Last Update: Error</span>
-                    <span v-else style="font-size: 1.6em;">Last Update: {{ data }}</span>
+                    <span v-else style="font-size: 1.6em;">Last Update: {{ lastUpdate }}</span>
 
                     
                     <span ref="totalUptimeStat" style="font-size: 1.5em;">Total Uptime: Loading</span>
@@ -15,8 +15,8 @@
                     <span ref="totalErrorStat" style="font-size: 1em;">Total Error Logs: Loading</span>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                    <GradientProgress ref="CPUUsageProgressStat" progress="90" caption="CPU Usage"/>
-                    <GradientProgress ref="RAMUsageProgressStat" progress="24" caption="RAM Usage"/>
+                    <GradientProgress ref="CPUUsageProgressStat" :progress="90" caption="CPU Usage"/>
+                    <GradientProgress ref="RAMUsageProgressStat" :progress="24" caption="RAM Usage"/>
                 </div>
                 <div style="display: grid; gap: 10px;">
                     <span ref="klivetechGadgetsConnectedStat" style="font-size: 1.5em;">KliveTech Gadgets Connected: Loading</span>
@@ -30,16 +30,14 @@
                     <span>still working on this entire page</span>
         </KMInfoBox>
         <KMInfoBox caption="Scheduled Bot Tasks">
-            <TimeManagerTasksListShort>
 
-            </TimeManagerTasksListShort>
         </KMInfoBox>
     </KMInfoGrid>
     </div>
 </template>
 
 <script setup>
-
+definePageMeta({ layout: 'navbar' });
 </script>
 
 <script>
@@ -47,44 +45,41 @@ import KMInfoGrid from '~/components/KMInfoGrid.vue';
 import KMInfoBox from '~/components/KMInfoBox.vue';
 import { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import KMGridList from '~/components/KMGridList.vue';
-import TimeManagerTasksListShort from '~/components/Dashboard/TimeManagerTasksListShort.vue';
 export default {
     data(){
         return  {
-
+            pending: false,
+            error: null,
+            lastUpdate: 'Never',
+            loadInterval: null
         }
     },
     methods: {
         LoadDashboardData(){
+            this.pending = true;
+            this.error = null;
+            
             RequestGETFromKliveAPI('/GeneralBotStatistics/GetFrontpageStats').then((response) => {
-                if(response.status == 200){
-                    response.json().then((data) => {
-                        this.$refs.totalUptimeStat.innerText = `Total Uptime: ${data.BotUptimeHumanized}`;
-                        this.$refs.totalLogsStat.innerText = `Total Logs: ${data.TotalLogs}`;
-                        this.$refs.totalStatusStat.innerText = `Total Status Logs: ${data.TotalStatusLogs}`;
-                        this.$refs.totalErrorStat.innerText = `Total Error Logs: ${data.TotalErrorLogs}`;
-                        if(data.ConnectedKliveGadgets != null){
-                            this.$refs.klivetechGadgetsConnectedStat.innerText = `KliveTech Gadgets Connected: ${data.ConnectedKliveGadgets.length}`;
-                        }
-                        else{
-                            this.$refs.klivetechGadgetsConnectedStat.innerText = `KliveTech Gadgets Connected: 0`;
-                        }
-                        let lastUpdate = new Date(data.lastOmnipotentUpdate);
-                        this.$refs.lastUpdateStat.innerText = `Last Update: ${lastUpdate.toLocaleString()}`;
-                        this.$refs.CPUUsageProgress.SetProgress(data.CPUUsage);
-                        this.$refs.RAMUsageProgress.SetProgress(data.RAMUsage);
-                    });
-                }
+                this.pending = false;
+                this.lastUpdate = new Date().toLocaleString();
+                // Handle response data here when the API returns actual data
+            }).catch((err) => {
+                this.pending = false;
+                this.error = err;
+                this.lastUpdate = 'Error loading data';
             });
         }
     },
     mounted(){
         this.LoadDashboardData();
-        setInterval(() => {
+        this.loadInterval = setInterval(() => {
             this.LoadDashboardData();
         }, 5000);
+    },
+    beforeUnmount(){
+        if (this.loadInterval) {
+            clearInterval(this.loadInterval);
+        }
     }
 }
-
-definePageMeta({ layout: 'navbar' });
 </script>

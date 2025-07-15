@@ -18,10 +18,12 @@
     </KMInfoGrid>
 </template>
 
+<script setup>
+definePageMeta({ layout: 'navbar' });
+</script>
+
 <script>
 import { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
-
-definePageMeta({ layout: 'navbar' });
 
 export default {
     name: 'CreateProfile',
@@ -72,6 +74,6 @@ export default {
 <style scoped>
 /* Component-specific styles */
 .create-profile {
-    /* styling goes here */
+    padding: 20px;
 }
 </style>

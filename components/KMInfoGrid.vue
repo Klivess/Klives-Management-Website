@@ -10,16 +10,16 @@ export default{
     name: "KMInfoBox",
     props:{
         columns: {
-            type: String,
-            default: 1
+            type: [String, Number],
+            default: "1"
         },
         rows: {
-            type: String,
-            default: 1
+            type: [String, Number],
+            default: "1"
         },
         rowHeight: {
-            type: String,
-            default: 260
+            type: [String, Number],
+            default: "260"
         },
     },
     methods: {
@@ -34,16 +34,16 @@ export default{
 
     },
     mounted() {
-        let x = (99 / this.columns);
+        let x = (99 / Number(this.columns));
         //Form string to put in grid template columns, there must be x columns.
         let gridTemplateColumns = "";
-        for(let i = 0; i < this.columns; i++){
+        for(let i = 0; i < Number(this.columns); i++){
             gridTemplateColumns += `${x}% `;
         }
         console.log(gridTemplateColumns);
         //Form string to put in grid template rows, there must be x rows of 225px
         let gridTemplateRows = "";
-        for(let i = 0; i < this.rows; i++){
+        for(let i = 0; i < Number(this.rows); i++){
             gridTemplateRows += this.rowHeight.toString()+"px ";
         }
         console.log(gridTemplateRows);

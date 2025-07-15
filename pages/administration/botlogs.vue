@@ -5,7 +5,7 @@
             <div class="header-left">
                 <NuxtLink to="/admin" class="back-button">
                     <div class="back-button-wrapper">
-                        <KMButton message="← Back to Admin" textColor="#4d9e39" />
+                        <KMButton message="← Back to Admin" style="width: 400px;" textColor="#4d9e39"/>
                     </div>
                 </NuxtLink>
             </div>
@@ -16,15 +16,9 @@
             <div class="header-right">
                 <div class="refresh-controls">
                     <div class="manual-refresh-button" @click="loadLogs">
-                        <KMButton 
+                        <KMButton
                             :message="loading ? '⏳ Loading...' : '🔄 Refresh'"
                             :textColor="loading ? '#969696' : '#4d9e39'"
-                        />
-                    </div>
-                    <div class="auto-refresh-button" @click="toggleAutoRefresh">
-                        <KMButton 
-                            :message="autoRefresh ? 'Auto: ON' : 'Auto: OFF'"
-                            :textColor="autoRefresh ? '#62ce47' : '#969696'"
                         />
                     </div>
                 </div>
@@ -101,7 +95,7 @@
                         <!-- Pagination -->
                         <div class="pagination-controls" v-if="totalPages > 1">
                             <div class="pagination-button" @click="previousPage">
-                                <KMButton 
+                                <KMButton style="width: 200px;"
                                     message="Previous"
                                     :textColor="currentPage > 1 ? '#4d9e39' : '#969696'"
                                 />
@@ -139,7 +133,6 @@ export default {
         const selectedService = ref('All Services');
         const selectedType = ref('All Types');
         const showErrorsOnly = ref(false);
-        const autoRefresh = ref(false);
         const currentPage = ref(1);
         const logsPerPage = 20;
         const apiError = ref(false);
@@ -262,15 +255,6 @@ export default {
             currentPage.value = 1;
         };
 
-        const toggleAutoRefresh = () => {
-            autoRefresh.value = !autoRefresh.value;
-            if (autoRefresh.value) {
-                refreshInterval = setInterval(loadLogs, 30000); // Refresh every 30 seconds
-            } else {
-                clearInterval(refreshInterval);
-            }
-        };
-
         const nextPage = () => {
             if (currentPage.value < totalPages.value) {
                 currentPage.value++;
@@ -301,7 +285,6 @@ export default {
             selectedService,
             selectedType,
             showErrorsOnly,
-            autoRefresh,
             currentPage,
             filteredLogs,
             paginatedLogs,
@@ -314,7 +297,6 @@ export default {
             errorMessage,
             loadLogs,
             clearFilters,
-            toggleAutoRefresh,
             nextPage,
             previousPage
         };
@@ -357,8 +339,7 @@ export default {
     height: 100%;
 }
 
-.manual-refresh-button,
-.auto-refresh-button {
+.manual-refresh-button {
     flex: 1;
     height: 100%;
     cursor: pointer;

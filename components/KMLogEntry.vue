@@ -47,7 +47,6 @@ export default {
             switch(type) {
                 case 0: return 'log-info';
                 case 1: return 'log-error';
-                case 2: return 'log-warning';
                 default: return 'log-info';
             }
         },
@@ -55,7 +54,6 @@ export default {
             switch(type) {
                 case 0: return 'INFO';
                 case 1: return 'ERROR';
-                case 2: return 'WARNING';
                 default: return 'INFO';
             }
         },
@@ -88,10 +86,6 @@ export default {
 
 .log-entry.log-error {
     border-left-color: #e74c3c;
-}
-
-.log-entry.log-warning {
-    border-left-color: #f39c12;
 }
 
 .log-header {
@@ -139,11 +133,6 @@ export default {
 .log-type-badge.log-error {
     background-color: rgba(231, 76, 60, 0.2);
     color: #e74c3c;
-}
-
-.log-type-badge.log-warning {
-    background-color: rgba(243, 156, 18, 0.2);
-    color: #f39c12;
 }
 
 .log-message {

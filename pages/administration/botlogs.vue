@@ -153,7 +153,7 @@ export default {
         });
 
         const typeOptions = computed(() => {
-            return ['All Types', 'INFO', 'ERROR', 'WARNING'];
+            return ['All Types', 'INFO', 'ERROR'];
         });
 
         const errorLogs = computed(() => {
@@ -180,7 +180,7 @@ export default {
 
             // Filter by type
             if (selectedType.value && selectedType.value !== 'All Types') {
-                const typeMap = { 'INFO': 0, 'ERROR': 1, 'WARNING': 2 };
+                const typeMap = { 'INFO': 0, 'ERROR': 1 };
                 filtered = filtered.filter(log => log.type === typeMap[selectedType.value]);
             }
 

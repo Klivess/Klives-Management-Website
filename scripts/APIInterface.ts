@@ -1,5 +1,6 @@
 
 import { useCookie } from '#imports';
+import { TRUE } from 'sass';
 
 export { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, VerifyLogin, KMPermissions };
 
@@ -22,7 +23,7 @@ enum KMPermissions {
     Klives = 5
 }
 
-async function RequestGETFromKliveAPI(query: string, redirectToDashboardIfUnauthorized = true) {
+async function RequestGETFromKliveAPI(query: string, redirectToDashboardIfUnauthorized = true, alertUserIfUnauthorized = true) {
     const pass = GetLocalPassword();
     const res = await fetch(`${KliveAPIUrl}${query}`, {
         method: 'GET',
@@ -35,8 +36,10 @@ async function RequestGETFromKliveAPI(query: string, redirectToDashboardIfUnauth
     if (res.status === 401) {
         // Unauthorized access, handle accordingly
         console.log("Unauthorized access to API");
-        if(redirectToDashboardIfUnauthorized==true){
+        if(alertUserIfUnauthorized==true){
             alert("You are not authorized to access this resource.");
+        }
+        if(redirectToDashboardIfUnauthorized==true){
             window.location.replace('/dashboard');
         }
     }

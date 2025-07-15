@@ -1,6 +1,7 @@
 
 import { useCookie } from '#imports';
 import { TRUE } from 'sass';
+import Swal from 'sweetalert2';
 
 export { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, VerifyLogin, KMPermissions };
 
@@ -37,7 +38,17 @@ async function RequestGETFromKliveAPI(query: string, redirectToDashboardIfUnauth
         // Unauthorized access, handle accordingly
         console.log("Unauthorized access to API");
         if(alertUserIfUnauthorized==true && process.client){
-            alert("You are not authorized to access this resource.");
+            Swal.fire({
+                icon: 'error',
+                title: 'Access Denied',
+                text: 'You are not authorized to access this resource.',
+                confirmButtonColor: '#4d9e39',
+                background: '#161516',
+                color: '#ffffff',
+                customClass: {
+                    popup: 'swal-dark-theme'
+                }
+            });
         }
         if(redirectToDashboardIfUnauthorized==true && process.client){
             window.location.replace('/dashboard');
@@ -64,7 +75,17 @@ async function RequestPOSTFromKliveAPI(query: string, content = "", redirectToDa
 
         if (response.headers.get('RequestDeniedCode') == "2") {
             if (process.client) {
-                alert("Your profile doesnt have enough clearance to do this.");
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Insufficient Clearance',
+                    text: 'Your profile doesnt have enough clearance to do this.',
+                    confirmButtonColor: '#4d9e39',
+                    background: '#161516',
+                    color: '#ffffff',
+                    customClass: {
+                        popup: 'swal-dark-theme'
+                    }
+                });
                 if (redirectToDashboardIfUnauthorized) {
                     window.location.replace('/dashboard');
                 }
@@ -89,12 +110,32 @@ async function VerifyLogin() {
         response.json().then((json: any) => {
             if (json == "ProfileDisabled") {
                 window.location.replace('/');
-                alert("Your profile has been disabled.");
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Profile Disabled',
+                    text: 'Your profile has been disabled.',
+                    confirmButtonColor: '#4d9e39',
+                    background: '#161516',
+                    color: '#ffffff',
+                    customClass: {
+                        popup: 'swal-dark-theme'
+                    }
+                });
             }
             else if (json == "ProfileNotFound") {
                 if (window.location.pathname != "/") {
                     window.location.replace('/');
-                    alert("You don't even have a profile or a password here, get out!!");
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Profile Not Found',
+                        text: 'You don\'t even have a profile or a password here, get out!!',
+                        confirmButtonColor: '#4d9e39',
+                        background: '#161516',
+                        color: '#ffffff',
+                        customClass: {
+                            popup: 'swal-dark-theme'
+                        }
+                    });
                 }
             }
         });

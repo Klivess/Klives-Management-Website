@@ -24,6 +24,7 @@ definePageMeta({ layout: 'navbar' });
 
 <script>
 import { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import Swal from 'sweetalert2';
 
 export default {
     name: 'CreateProfile',
@@ -55,12 +56,32 @@ export default {
                     window.location.replace("/admin");
                 }
                 else if(response.status == 403){
-                    alert("The server refused to do this. You probably tried to create a rank higher than yourself.")
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Permission Denied',
+                        text: 'The server refused to do this. You probably tried to create a rank higher than yourself.',
+                        confirmButtonColor: '#4d9e39',
+                        background: '#161516',
+                        color: '#ffffff',
+                        customClass: {
+                            popup: 'swal-dark-theme'
+                        }
+                    });
                     this.buttonMessage = "Failed!";
                 }
                 else if(response.status=500)
                 {
-                    alert("The server just threw an error. This is probably a bug. :((");
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Server Error',
+                        text: 'The server just threw an error. This is probably a bug. :((',
+                        confirmButtonColor: '#4d9e39',
+                        background: '#161516',
+                        color: '#ffffff',
+                        customClass: {
+                            popup: 'swal-dark-theme'
+                        }
+                    });
                     this.buttonMessage = "Failed!";
                 }
             });

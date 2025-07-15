@@ -31,7 +31,7 @@ definePageMeta({ layout: 'navbar' });
 
 <script>
 import { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
-
+import Swal from 'sweetalert2';
 
 export default {
     name: "AdminProfilePage",
@@ -77,7 +77,17 @@ export default {
                 }
                 else
                 {
-                    alert("Failed to get profile info");
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Profile Load Failed',
+                        text: 'Failed to get profile info',
+                        confirmButtonColor: '#4d9e39',
+                        background: '#161516',
+                        color: '#ffffff',
+                        customClass: {
+                            popup: 'swal-dark-theme'
+                        }
+                    });
                     window.location.replace("/");
                 }
             });
@@ -86,7 +96,17 @@ export default {
             RequestPOSTFromKliveAPI('/KMProfiles/DeleteProfile?id='+this.userID).then(async (response) => {
                 if(response.status == 200)
                 {
-                    alert("Profile Deleted");
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Profile Deleted',
+                        text: 'Profile has been successfully deleted.',
+                        confirmButtonColor: '#4d9e39',
+                        background: '#161516',
+                        color: '#ffffff',
+                        customClass: {
+                            popup: 'swal-dark-theme'
+                        }
+                    });
                     window.location.replace("/admin");
                 }
             });

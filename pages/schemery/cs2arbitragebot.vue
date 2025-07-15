@@ -204,6 +204,7 @@ import CS2MetricCard from '~/components/CS2MetricCard.vue';
 import CS2OverviewSection from '~/components/CS2OverviewSection.vue';
 import CS2GainDistributionBar from '~/components/CS2GainDistributionBar.vue';
 import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
+import Swal from 'sweetalert2';
 
 definePageMeta({ layout: 'navbar' });
 
@@ -300,12 +301,32 @@ const fetchData = async () => {
             analyticsData.value = data;
             console.log('Analytics data loaded successfully:', data);
         } else {
-            alert("Failed to fetch analytics data.");
+            Swal.fire({
+                icon: 'error',
+                title: 'Data Fetch Failed',
+                text: 'Failed to fetch analytics data.',
+                confirmButtonColor: '#4d9e39',
+                background: '#161516',
+                color: '#ffffff',
+                customClass: {
+                    popup: 'swal-dark-theme'
+                }
+            });
             window.location.replace("/schemes");
         }
     } catch (error) {
         console.error('Error fetching analytics data:', error);
-        alert("Error loading analytics data.");
+        Swal.fire({
+            icon: 'error',
+            title: 'Loading Error',
+            text: 'Error loading analytics data.',
+            confirmButtonColor: '#4d9e39',
+            background: '#161516',
+            color: '#ffffff',
+            customClass: {
+                popup: 'swal-dark-theme'
+            }
+        });
     } finally {
         isLoading.value = false;
     }

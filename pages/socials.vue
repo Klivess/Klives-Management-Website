@@ -1,7 +1,6 @@
 <template>
     <div>
-        <h1>Bot Schedule</h1>
-        <NuxtLink to="/dashboard">hello</NuxtLink>
+        <span>this ALSO isnt finished but is being actively worked on trust me 🤞</span>
     </div>
 </template>
 

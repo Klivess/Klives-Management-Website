@@ -99,11 +99,12 @@ export default {
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
-    height: 100%;
+    height: 70%;
     display: flex;
     flex-direction: column;
     justify-content: center;
     backdrop-filter: blur(10px);
+    margin: 5px;
 }
 
 .metric-card:hover {

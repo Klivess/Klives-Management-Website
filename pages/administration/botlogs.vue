@@ -78,7 +78,7 @@
                     <div v-else-if="filteredLogs.length === 0" class="empty-state">
                         <p>No logs match your current filters.</p>
                         <div class="clear-filters-button" @click="clearFilters">
-                            <KMButton 
+                            <KMButton style="width: 400px;"
                                 message="Clear Filters" 
                                 textColor="#4d9e39"
                             />
@@ -386,7 +386,7 @@ export default {
 }
 
 .clear-filters-button {
-    width: 150px;
+    width: 400px;
     height: 40px;
     margin: 0 auto;
     cursor: pointer;

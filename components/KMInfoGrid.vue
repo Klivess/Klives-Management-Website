@@ -34,11 +34,10 @@ export default{
 
     },
     mounted() {
-        let x = (99 / Number(this.columns));
-        //Form string to put in grid template columns, there must be x columns.
+        // Use fr units instead of percentages to avoid overflow issues with gaps
         let gridTemplateColumns = "";
         for(let i = 0; i < Number(this.columns); i++){
-            gridTemplateColumns += `${x}% `;
+            gridTemplateColumns += "1fr ";
         }
         console.log(gridTemplateColumns);
         //Form string to put in grid template rows, there must be x rows of 225px

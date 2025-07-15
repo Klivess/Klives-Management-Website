@@ -62,6 +62,11 @@ export default {
         formattedValue() {
             if (this.value === null || this.value === undefined) return '--';
             
+            // Handle string values (like "Restricted", "Unavailable", etc.)
+            if (typeof this.value === 'string' && isNaN(Number(this.value))) {
+                return this.value;
+            }
+            
             switch (this.format) {
                 case 'currency':
                     return `£${Number(this.value).toFixed(2)}`;

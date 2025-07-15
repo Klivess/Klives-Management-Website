@@ -3,7 +3,7 @@
         <!-- Header Section -->
         <div style="text-align: center; margin-bottom: 30px;">
             <h1 style="color: #62ce47; font-size: 2.5rem; margin-bottom: 10px;">KliveTech Device Manager</h1>
-            <p style="color: #969696; font-size: 1.1rem;">Manage and control your connected IoT devices</p>
+            <p style="color: #969696; font-size: 1.1rem;">Manage and control KliveTech Gadgets</p>
         </div>
 
         <!-- Loading State -->

@@ -62,8 +62,8 @@ export default {
         formattedValue() {
             if (this.value === null || this.value === undefined) return '--';
             
-            // Handle string values (like "Restricted", "Unavailable", etc.)
-            if (typeof this.value === 'string' && isNaN(Number(this.value))) {
+            // Handle string values (like "Restricted", "Unavailable", etc.), except for dates
+            if (this.format !== 'date' && typeof this.value === 'string' && isNaN(Number(this.value))) {
                 return this.value;
             }
             
@@ -77,7 +77,8 @@ export default {
                     const gainPercent = (Number(this.value) - 1) * 100;
                     return `${gainPercent.toFixed(2)}%`;
                 case 'date':
-                    return new Date(this.value).toLocaleDateString();
+                    // Display date and time
+                    return new Date(this.value).toLocaleString();
                 case 'count':
                     return Number(this.value).toLocaleString();
                 default:

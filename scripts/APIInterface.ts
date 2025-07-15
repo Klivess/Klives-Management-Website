@@ -36,10 +36,10 @@ async function RequestGETFromKliveAPI(query: string, redirectToDashboardIfUnauth
     if (res.status === 401) {
         // Unauthorized access, handle accordingly
         console.log("Unauthorized access to API");
-        if(alertUserIfUnauthorized==true){
+        if(alertUserIfUnauthorized==true && process.client){
             alert("You are not authorized to access this resource.");
         }
-        if(redirectToDashboardIfUnauthorized==true){
+        if(redirectToDashboardIfUnauthorized==true && process.client){
             window.location.replace('/dashboard');
         }
     }
@@ -63,9 +63,11 @@ async function RequestPOSTFromKliveAPI(query: string, content = "", redirectToDa
         console.log(response.headers.get('RequestDeniedCode'));
 
         if (response.headers.get('RequestDeniedCode') == "2") {
-            alert("Your profile doesnt have enough clearance to do this.");
-            if (redirectToDashboardIfUnauthorized) {
-                window.location.replace('/dashboard');
+            if (process.client) {
+                alert("Your profile doesnt have enough clearance to do this.");
+                if (redirectToDashboardIfUnauthorized) {
+                    window.location.replace('/dashboard');
+                }
             }
         }
     }
@@ -79,15 +81,14 @@ function GetLocalPassword() {
 }
 
 async function VerifyLogin() {
-    //Only run this if the user is not already on the login page
-    if (window.location.pathname == "/") {
+    //Only run this if the user is not already on the login page and we're in the browser
+    if (!process.client || window.location.pathname == "/") {
         return;
     }
     RequestGETFromKliveAPI("/KMProfiles/LoginStatus").then(response => {
         response.json().then((json: any) => {
             if (json == "ProfileDisabled") {
                 window.location.replace('/');
-                
                 alert("Your profile has been disabled.");
             }
             else if (json == "ProfileNotFound") {

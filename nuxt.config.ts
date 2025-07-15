@@ -4,6 +4,7 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   routeRules: {
     '/': {prerender: true},
+    '/administration/**': {ssr: false}, // Disable SSR for admin routes
     '/*': {cors: true},
   },
   vite: {

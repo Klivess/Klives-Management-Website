@@ -202,6 +202,11 @@ export default {
 
         // Methods
         const loadLogs = async () => {
+            // Only run on client side
+            if (!process.client) {
+                return;
+            }
+            
             loading.value = true;
             apiError.value = false;
             errorMessage.value = '';
@@ -269,7 +274,10 @@ export default {
 
         // Lifecycle
         onMounted(() => {
-            loadLogs();
+            // Only load logs if we're in the browser
+            if (process.client) {
+                loadLogs();
+            }
         });
 
         onUnmounted(() => {

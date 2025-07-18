@@ -10,6 +10,7 @@
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
+    "chart.js": "^4.5.0",
     "cors": "^2.8.5",
     "nuxt": "^3.12.4",
     "nuxt-helm": "^0.0.2",

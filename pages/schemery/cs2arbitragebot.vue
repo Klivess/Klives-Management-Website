@@ -23,6 +23,142 @@
             </div>
         </div>
 
+        <!-- Purchased Items Section -->
+        <CS2OverviewSection 
+            title="💼 Purchased Items"
+            subtitle="Recently purchased items and detailed information"
+        >
+            <KMInfoGrid columns="2" rows="1" rowHeight="500" style="padding-bottom: 30px; padding-top: 10px;">
+                <!-- Left side: List of purchased items -->
+                <KMInfoBox caption="Recent Purchases">
+                    <div class="purchased-items-list">
+                        <div 
+                            v-for="(item, index) in sortedPurchasedItems" 
+                            :key="item.CSFloatListingID"
+                            :class="['purchase-item', { 'active': selectedItem?.CSFloatListingID === item.CSFloatListingID }]"
+                            @click="selectItem(item)"
+                        >
+                            <div class="item-header">
+                                <img :src="item.comparison?.CSFloatListing?.ImageURL" :alt="item.ItemMarketHashName" class="item-image" />
+                                <div class="item-info">
+                                    <div class="item-name">{{ item.ItemMarketHashName }}</div>
+                                    <div class="item-profit" :class="getStrategyStatusClass(item.CurrentStrategicStage)">
+                                        {{ getStrategyStatusText(item.CurrentStrategicStage) }}
+                                    </div>
+                                </div>
+                                <div class="item-financial">
+                                    <div class="financial-row">
+                                        <span class="financial-label">Expected Profit:</span>
+                                        <span class="financial-value profit">+£{{ item.ExpectedAbsoluteProfitInPounds?.toFixed(2) }}</span>
+                                    </div>
+                                    <div class="financial-row">
+                                        <span class="financial-label">Purchase Price:</span>
+                                        <span class="financial-value">{{ item.comparison?.CSFloatListing?.PriceText }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </KMInfoBox>
+
+                <!-- Right side: Detailed item information -->
+                <KMInfoBox caption="Item Details">
+                    <div v-if="selectedItem" class="item-detail-panel">
+                        <!-- Item Header with Image -->
+                        <div class="detail-header">
+                            <img :src="selectedItem.comparison?.CSFloatListing?.ImageURL" :alt="selectedItem.ItemMarketHashName" class="detail-item-image" />
+                            <div class="detail-item-info">
+                                <h3 class="detail-item-name">{{ selectedItem.ItemMarketHashName }}</h3>
+                                <div class="detail-item-status" :class="getStrategyStatusClass(selectedItem.CurrentStrategicStage)">
+                                    {{ getStrategyStatusText(selectedItem.CurrentStrategicStage) }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Financial Information -->
+                        <div class="detail-section">
+                            <h4 class="section-title">💰 Financial Details</h4>
+                            <div class="detail-grid">
+                                <div class="detail-item-row">
+                                    <span class="label">Purchase Price:</span>
+                                    <span class="value">{{ selectedItem.comparison?.CSFloatListing?.PriceText }}</span>
+                                </div>
+                                <div class="detail-item-row">
+                                    <span class="label">Expected Steam Price:</span>
+                                    <span class="value">{{ selectedItem.comparison?.SteamListing?.PriceText }}</span>
+                                </div>
+                                <div class="detail-item-row">
+                                    <span class="label">Expected Profit:</span>
+                                    <span class="value profit">+£{{ selectedItem.ExpectedAbsoluteProfitInPounds?.toFixed(2) }} ({{ selectedItem.ExpectedProfitPercentage?.toFixed(1) }}%)</span>
+                                </div>
+                                <div class="detail-item-row">
+                                    <span class="label">Actual Profit:</span>
+                                    <span class="value" :class="selectedItem.ActualAbsoluteProfitInPounds > 0 ? 'profit' : 'neutral'">
+                                        {{ selectedItem.ActualAbsoluteProfitInPounds > 0 ? '+' : '' }}£{{ selectedItem.ActualAbsoluteProfitInPounds?.toFixed(2) }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Item Properties -->
+                        <div class="detail-section">
+                            <h4 class="section-title">🔍 Item Properties</h4>
+                            <div class="detail-grid">
+                                <div class="detail-item-row">
+                                    <span class="label">Float Value:</span>
+                                    <span class="value">{{ selectedItem.ItemFloatValue?.toFixed(6) }}</span>
+                                </div>
+                                <div class="detail-item-row">
+                                    <span class="label">CS Float ID:</span>
+                                    <span class="value">{{ selectedItem.CSFloatListingID }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Timeline Information -->
+                        <div class="detail-section">
+                            <h4 class="section-title">⏱️ Timeline</h4>
+                            <div class="detail-grid">
+                                <div class="detail-item-row">
+                                    <span class="label">Purchased:</span>
+                                    <span class="value">{{ formatDateTime(selectedItem.TimeOfPurchase) }}</span>
+                                </div>
+                                <div class="detail-item-row" v-if="selectedItem.TimeOfSellerToAcceptSale && selectedItem.TimeOfSellerToAcceptSale !== '0001-01-01T00:00:00'">
+                                    <span class="label">Seller Accepted:</span>
+                                    <span class="value">{{ formatDateTime(selectedItem.TimeOfSellerToAcceptSale) }}</span>
+                                </div>
+                                <div class="detail-item-row" v-if="selectedItem.TimeOfItemRetrieval && selectedItem.TimeOfItemRetrieval !== '0001-01-01T00:00:00'">
+                                    <span class="label">Item Retrieved:</span>
+                                    <span class="value">{{ formatDateTime(selectedItem.TimeOfItemRetrieval) }}</span>
+                                </div>
+                                <div class="detail-item-row">
+                                    <span class="label">Predicted Resale:</span>
+                                    <span class="value">{{ formatDateTime(selectedItem.PredictedTimeToBeResoldOnSteam) }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Action Links -->
+                        <div class="detail-section" v-if="selectedItem.comparison">
+                            <h4 class="section-title">🔗 Quick Actions</h4>
+                            <div class="action-links">
+                                <a :href="selectedItem.comparison.CSFloatURL" target="_blank" class="action-link csfloat">
+                                    View on CSFloat
+                                </a>
+                                <a :href="selectedItem.comparison.SteamListingURL" target="_blank" class="action-link steam">
+                                    View on Steam Market
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else class="no-selection">
+                        <div class="no-selection-icon">📦</div>
+                        <div class="no-selection-text">Select a purchased item to view details</div>
+                    </div>
+                </KMInfoBox>
+            </KMInfoGrid>
+        </CS2OverviewSection>
+
         <!-- Key Performance Indicators -->
         <CS2OverviewSection 
             title="🎯 Key Performance Indicators"
@@ -168,6 +304,20 @@
             </KMInfoGrid>
         </CS2OverviewSection>
 
+        <!-- Daily Purchase Activity Chart -->
+        <CS2OverviewSection 
+            title="📈 Daily Purchase Activity"
+            subtitle="Number of purchased listings per day"
+        >
+            <KMInfoGrid columns="1" rows="1" rowHeight="500">
+                <KMInfoBox caption="Daily Purchased Listings">
+                    <div class="chart-container">
+                        <canvas ref="chartCanvas" id="dailyPurchaseChart"></canvas>
+                    </div>
+                </KMInfoBox>
+            </KMInfoGrid>
+        </CS2OverviewSection>
+
         <!-- System Information -->
         <CS2OverviewSection 
             title="ℹ️ System Information"
@@ -196,7 +346,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, nextTick, computed, watch } from 'vue';
+import { Chart, registerables } from 'chart.js';
 import KMInfoGrid from '~/components/KMInfoGrid.vue';
 import KMInfoBox from '~/components/KMInfoBox.vue';
 import KMButton from '~/components/KMButton.vue';
@@ -206,9 +357,84 @@ import CS2GainDistributionBar from '~/components/CS2GainDistributionBar.vue';
 import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 import Swal from 'sweetalert2';
 
+// Register Chart.js components
+Chart.register(...registerables);
+
 definePageMeta({ layout: 'navbar' });
 
 // Define the structure of the analytics data based on the C# class
+interface CSFloatListing {
+    ItemListingID: string;
+    ItemName: string;
+    ItemMarketHashName: string;
+    PriceText: string;
+    PriceInCents: number;
+    PriceInPence: number;
+    PriceInPounds: number;
+    ListingURL: string;
+    ImageURL: string;
+    AppraisalBasePriceInPence: number;
+    AppraisalBasePriceInPounds: number;
+    AppraisalPriceText: string;
+    AssetID: string;
+    FloatValue: number;
+    ItemID64: string;
+    DateTimeListingCreated: string;
+}
+
+interface SteamListing {
+    Name: string;
+    CheapestSellOrderPriceInPence: number;
+    CheapestSellOrderPriceInPounds: number;
+    HighestBuyOrderPriceInPence: number;
+    HighestBuyOrderPriceInPounds: number;
+    BuyAndSellOrders: any;
+    SellListings: string;
+    PriceText: string;
+    ImageURL: string;
+    floatType: number;
+    NameColor: string;
+    ListingURL: string;
+}
+
+interface ComparisonData {
+    ItemMarketHashName: string;
+    PriceTextCSFloat: string;
+    PriceTextSteamMarket: string;
+    RawArbitrageGain: number;
+    ArbitrageGainAfterSteamTax: number;
+    PredictedOverallArbitrageGain: number;
+    CSFloatURL: string;
+    SteamListingURL: string;
+    CSFloatListing: CSFloatListing;
+    SteamListing: SteamListing;
+    LastUpdate: string;
+}
+
+interface PurchasedItem {
+    comparison?: ComparisonData;
+    CSFloatListingID: string;
+    ExpectedAbsoluteProfitInPence: number;
+    ExpectedAbsoluteProfitInPounds: number;
+    ExpectedProfitPercentage: number;
+    ActualProfitPercentage: number;
+    ActualAbsoluteProfitInPounds: number;
+    ActualAbsoluteProfitInPence: number;
+    TimeOfPurchase: string;
+    TimeOfSellerToAcceptSale: string;
+    TimeOfSellerToSendTradeOffer: string;
+    TimeOfItemRetrieval: string;
+    PredictedTimeToBeResoldOnSteam: string;
+    ActualTimeResoldOnSteam: string;
+    TimeOfConvertToRealFunds: string;
+    TimeOfCollectedRevenue: string;
+    CSFloatToSteamTradeOfferLink: string;
+    ItemFloatValue: number;
+    ItemMarketHashName: string;
+    ActualSalePriceOnSteam: number;
+    CurrentStrategicStage: number;
+}
+
 interface AnalyticsData {
     NumberOfListingsBelow0PercentGain: number;
     MeanPriceOfListingsBelow0PercentGain: number;
@@ -234,6 +460,7 @@ interface AnalyticsData {
     TotalExpectedProfitPercent: number;
     FirstListingDateRecorded: string;
     AnalyticsGeneratedAt: string;
+    AllPurchasedItems: PurchasedItem[];
 }
 
 const analyticsData = ref<AnalyticsData>({
@@ -261,9 +488,63 @@ const analyticsData = ref<AnalyticsData>({
     TotalExpectedProfitPercent: 0,
     FirstListingDateRecorded: new Date().toISOString(),
     AnalyticsGeneratedAt: new Date().toISOString(),
+    AllPurchasedItems: [],
 });
 
 const isLoading = ref(false);
+const chartCanvas = ref<HTMLCanvasElement | null>(null);
+let dailyPurchaseChart: Chart | null = null;
+
+// Reactive data for purchased items
+const selectedItem = ref<PurchasedItem | null>(null);
+
+// Computed property for sorted purchased items (most recent first)
+const sortedPurchasedItems = computed(() => {
+    return [...analyticsData.value.AllPurchasedItems].sort((a, b) => {
+        const dateA = new Date(a.TimeOfPurchase).getTime();
+        const dateB = new Date(b.TimeOfPurchase).getTime();
+        return dateB - dateA; // Most recent first
+    });
+});
+
+// Functions for purchased items
+const selectItem = (item: PurchasedItem) => {
+    selectedItem.value = item;
+};
+
+const getStrategyStatusText = (stage: number): string => {
+    const stages = {
+        0: 'Waiting for Seller to Accept Sale',
+        1: 'Waiting for Trade to be Sent',
+        2: 'Waiting for Trade to be Accepted',
+        3: 'Just Retrieved',
+        4: 'Waiting for Market Sale on Steam',
+        5: 'Waiting for Conversion Items to Purchase',
+        6: 'Waiting for Conversion Items to Sell',
+        7: 'Strategy Completed'
+    };
+    return stages[stage as keyof typeof stages] || 'Unknown Status';
+};
+
+const getStrategyStatusClass = (stage: number): string => {
+    const classes = {
+        0: 'status-waiting',
+        1: 'status-waiting',
+        2: 'status-waiting',
+        3: 'status-retrieved',
+        4: 'status-selling',
+        5: 'status-converting',
+        6: 'status-converting',
+        7: 'status-completed'
+    };
+    return classes[stage as keyof typeof classes] || 'status-unknown';
+};
+
+const formatDateTime = (dateString: string): string => {
+    if (!dateString || dateString === '0001-01-01T00:00:00') return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleString();
+};
 
 // Utility functions for time calculations
 const getTimeAgo = (dateString: string): string => {
@@ -291,6 +572,238 @@ const getDaysAgo = (dateString: string): string => {
     return `${diffDays} days of data`;
 };
 
+// Generate daily purchase data for chart from real purchase data
+const generateDailyPurchaseData = (purchasedItems: PurchasedItem[]) => {
+    const dailyData: { date: string, purchases: number }[] = [];
+    
+    // Create a map to count purchases per day
+    const purchaseCountByDate = new Map<string, number>();
+    
+    // Find the earliest and latest purchase dates from actual data
+    let earliestDate: Date | null = null;
+    let latestDate: Date | null = null;
+    
+    // Count actual purchases by date and find date range
+    purchasedItems.forEach(item => {
+        if (item.TimeOfPurchase && item.TimeOfPurchase !== "0001-01-01T00:00:00") {
+            const purchaseDate = new Date(item.TimeOfPurchase);
+            const dateStr = purchaseDate.toISOString().split('T')[0];
+            purchaseCountByDate.set(dateStr, (purchaseCountByDate.get(dateStr) || 0) + 1);
+            
+            // Track earliest and latest dates
+            if (!earliestDate || purchaseDate < earliestDate) {
+                earliestDate = purchaseDate;
+            }
+            if (!latestDate || purchaseDate > latestDate) {
+                latestDate = purchaseDate;
+            }
+        }
+    });
+    
+    // If no purchase data, return empty array
+    if (!earliestDate || !latestDate) {
+        return [];
+    }
+    
+    // Generate data for each day from earliest to latest purchase date
+    const currentDate = new Date((earliestDate as Date).getTime());
+    while (currentDate.getTime() <= (latestDate as Date).getTime()) {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        const purchases = purchaseCountByDate.get(dateStr) || 0;
+        
+        dailyData.push({
+            date: dateStr,
+            purchases: purchases
+        });
+        
+        currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    return dailyData;
+};
+
+// Create the daily purchase chart
+const createDailyPurchaseChart = async () => {
+    await nextTick();
+    
+    if (!chartCanvas.value) {
+        console.error('Chart canvas not found');
+        return;
+    }
+    
+    // Destroy existing chart if it exists
+    if (dailyPurchaseChart) {
+        dailyPurchaseChart.destroy();
+    }
+    
+    const dailyData = generateDailyPurchaseData(
+        analyticsData.value.AllPurchasedItems || []
+    );
+    
+    const ctx = chartCanvas.value.getContext('2d');
+    if (!ctx) return;
+    
+    dailyPurchaseChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: dailyData.map(d => {
+                const date = new Date(d.date);
+                return date.toLocaleDateString('en-GB', { 
+                    month: 'short', 
+                    day: 'numeric'
+                });
+            }),
+            datasets: [{
+                label: 'Purchased Listings',
+                data: dailyData.map(d => d.purchases),
+                backgroundColor: 'rgba(77, 158, 57, 0.8)',
+                borderColor: 'rgba(77, 158, 57, 1)',
+                borderWidth: 1,
+                borderRadius: 4,
+                borderSkipped: false,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(22, 22, 22, 0.9)',
+                    titleColor: '#ffffff',
+                    bodyColor: '#ffffff',
+                    borderColor: 'rgba(77, 158, 57, 0.8)',
+                    borderWidth: 1,
+                    callbacks: {
+                        title: function(context) {
+                            const dataIndex = context[0].dataIndex;
+                            const fullDate = new Date(dailyData[dataIndex].date);
+                            return fullDate.toLocaleDateString('en-GB', {
+                                weekday: 'long',
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                            });
+                        },
+                        label: function(context) {
+                            const purchases = context.parsed.y;
+                            if (purchases === 0) {
+                                return 'No purchases made';
+                            } else if (purchases === 1) {
+                                return '1 item purchased';
+                            } else {
+                                return `${purchases} items purchased`;
+                            }
+                        },
+                        afterLabel: function(context) {
+                            const dataIndex = context.dataIndex;
+                            const date = dailyData[dataIndex].date;
+                            const purchases = context.parsed.y;
+                            
+                            if (purchases > 0) {
+                                // Find items purchased on this date
+                                const itemsOnDate = analyticsData.value.AllPurchasedItems?.filter(item => {
+                                    if (item.TimeOfPurchase && item.TimeOfPurchase !== "0001-01-01T00:00:00") {
+                                        const purchaseDate = new Date(item.TimeOfPurchase);
+                                        return purchaseDate.toISOString().split('T')[0] === date;
+                                    }
+                                    return false;
+                                }) || [];
+                                
+                                if (itemsOnDate.length > 0) {
+                                    const totalProfit = itemsOnDate.reduce((sum, item) => sum + item.ExpectedAbsoluteProfitInPounds, 0);
+                                    const details = [`Expected total profit: £${totalProfit.toFixed(2)}`, ''];
+                                    
+                                    // Add each item with its purchase time
+                                    itemsOnDate.forEach((item, index) => {
+                                        const purchaseTime = new Date(item.TimeOfPurchase);
+                                        const timeStr = purchaseTime.toLocaleTimeString('en-GB', { 
+                                            hour: '2-digit', 
+                                            minute: '2-digit',
+                                            hour12: false
+                                        });
+                                        const itemName = item.ItemMarketHashName || 'Unknown Item';
+                                        const profit = item.ExpectedAbsoluteProfitInPounds;
+                                        
+                                        details.push(`${timeStr} - ${itemName}`);
+                                        details.push(`  Expected profit: £${profit.toFixed(2)}`);
+                                        
+                                        // Add a separator between items (except for the last one)
+                                        if (index < itemsOnDate.length - 1) {
+                                            details.push('');
+                                        }
+                                    });
+                                    
+                                    return details;
+                                }
+                            }
+                            return '';
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        color: 'rgba(77, 158, 57, 0.1)',
+                        display: true
+                    },
+                    ticks: {
+                        color: '#969696',
+                        maxTicksLimit: 15,
+                        callback: function(value, index, ticks) {
+                            // Show every nth label to avoid overcrowding
+                            const totalTicks = ticks.length;
+                            const step = Math.ceil(totalTicks / 10);
+                            return index % step === 0 ? this.getLabelForValue(value as number) : '';
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Date',
+                        color: '#ffffff',
+                        font: {
+                            size: 12,
+                            weight: 'bold'
+                        }
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(77, 158, 57, 0.1)',
+                        display: true
+                    },
+                    ticks: {
+                        color: '#969696',
+                        stepSize: 1
+                    },
+                    title: {
+                        display: true,
+                        text: 'Number of Purchases',
+                        color: '#ffffff',
+                        font: {
+                            size: 12,
+                            weight: 'bold'
+                        }
+                    }
+                }
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            elements: {
+                bar: {
+                    borderRadius: 4
+                }
+            }
+        }
+    });
+};
+
 // Fetch data function
 const fetchData = async () => {
     isLoading.value = true;
@@ -300,6 +813,21 @@ const fetchData = async () => {
             const data = await response.json();
             analyticsData.value = data;
             console.log('Analytics data loaded successfully:', data);
+            
+            // Create chart after data is loaded
+            setTimeout(() => {
+                createDailyPurchaseChart();
+            }, 100);
+            
+            // Auto-select the first (most recent) purchased item
+            if (data.AllPurchasedItems && data.AllPurchasedItems.length > 0) {
+                const sortedItems = [...data.AllPurchasedItems].sort((a, b) => {
+                    const dateA = new Date(a.TimeOfPurchase).getTime();
+                    const dateB = new Date(b.TimeOfPurchase).getTime();
+                    return dateB - dateA; // Most recent first
+                });
+                selectedItem.value = sortedItems[0];
+            }
         } else {
             Swal.fire({
                 icon: 'error',
@@ -336,6 +864,13 @@ const fetchData = async () => {
 onMounted(() => {
     fetchData();
 });
+
+// Watch for changes in sortedPurchasedItems and auto-select first item if none selected
+watch(sortedPurchasedItems, (newItems) => {
+    if (newItems.length > 0 && !selectedItem.value) {
+        selectedItem.value = newItems[0];
+    }
+}, { immediate: true });
 
 </script>
 
@@ -513,6 +1048,19 @@ onMounted(() => {
 
 .distribution-container {
   padding: 1rem;
+}
+
+.chart-container {
+  height: 400px;
+  width: 100%;
+  padding: 1rem;
+  background-color: rgba(22, 22, 22, 0.5);
+  border-radius: 12px;
+  border: 1px solid rgba(77, 158, 57, 0.2);
+}
+
+.chart-container canvas {
+  background-color: transparent !important;
 }
 
 .overview-section {
@@ -700,5 +1248,290 @@ onMounted(() => {
 
 ::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(135deg, #62ce47, #4d9e39);
+}
+
+/* Purchased Items Styles */
+.purchased-items-list {
+  height: 420px;
+  overflow-y: auto;
+  padding-right: 10px;
+}
+
+.purchase-item {
+  background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+  border: 1px solid rgba(77, 158, 57, 0.2);
+  border-radius: 12px;
+  padding: 15px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.purchase-item:hover {
+  border-color: rgba(77, 158, 57, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(77, 158, 57, 0.1);
+}
+
+.purchase-item.active {
+  border-color: #4d9e39;
+  background: linear-gradient(135deg, #1a2a1a 0%, #2a3a2a 100%);
+  box-shadow: 0 0 0 2px rgba(77, 158, 57, 0.3);
+}
+
+.item-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 0;
+}
+
+.item-image {
+  width: 48px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid rgba(77, 158, 57, 0.3);
+}
+
+.item-info {
+  flex: 1;
+}
+
+.item-name {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+
+.item-profit {
+  font-size: 0.8rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+  display: inline-block;
+}
+
+.item-financial {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+  text-align: right;
+}
+
+.financial-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+
+.financial-label {
+  color: #969696;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.financial-value {
+  color: #ffffff;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.financial-value.profit {
+  color: #4d9e39;
+  font-weight: 600;
+}
+
+/* Item Detail Panel Styles */
+.item-detail-panel {
+  height: 420px;
+  overflow-y: auto;
+  padding-right: 10px;
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid rgba(77, 158, 57, 0.2);
+}
+
+.detail-item-image {
+  width: 80px;
+  height: 60px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 2px solid rgba(77, 158, 57, 0.3);
+}
+
+.detail-item-info {
+  flex: 1;
+}
+
+.detail-item-name {
+  color: #ffffff;
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  line-height: 1.3;
+}
+
+.detail-item-status {
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  display: inline-block;
+}
+
+.detail-section {
+  margin-bottom: 20px;
+}
+
+.section-title {
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detail-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.detail-item-row:last-child {
+  border-bottom: none;
+}
+
+.label {
+  color: #969696;
+  font-size: 0.85rem;
+}
+
+.value {
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: right;
+  max-width: 60%;
+  word-break: break-all;
+}
+
+.value.profit {
+  color: #4d9e39;
+  font-weight: 600;
+}
+
+.value.neutral {
+  color: #969696;
+}
+
+.action-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.action-link {
+  display: block;
+  padding: 8px 12px;
+  border-radius: 6px;
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.action-link.csfloat {
+  background: linear-gradient(135deg, #ff6b35, #f7931e);
+  color: white;
+}
+
+.action-link.csfloat:hover {
+  background: linear-gradient(135deg, #f7931e, #ff6b35);
+  transform: translateY(-1px);
+}
+
+.action-link.steam {
+  background: linear-gradient(135deg, #171a21, #2a475e);
+  color: white;
+}
+
+.action-link.steam:hover {
+  background: linear-gradient(135deg, #2a475e, #171a21);
+  transform: translateY(-1px);
+}
+
+.no-selection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #969696;
+  text-align: center;
+}
+
+.no-selection-icon {
+  font-size: 3rem;
+  margin-bottom: 15px;
+  opacity: 0.5;
+}
+
+.no-selection-text {
+  font-size: 1rem;
+  opacity: 0.7;
+}
+
+/* Strategy Status Classes */
+.status-waiting {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+.status-retrieved {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+}
+
+.status-selling {
+  background: rgba(168, 85, 247, 0.2);
+  color: #a855f7;
+}
+
+.status-converting {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.status-completed {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.status-unknown {
+  background: rgba(156, 163, 175, 0.2);
+  color: #9ca3af;
 }
 </style>

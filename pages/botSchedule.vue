@@ -9,31 +9,31 @@
         <!-- Statistics Cards -->
         <KMInfoGrid columns="4" rows="1" rowHeight="160" style="margin-bottom: 30px;">
             <CS2MetricCard
-                :value="totalTasks"
+                :value="loading ? 'Loading...' : totalTasks"
                 label="Total Tasks"
                 format="count"
                 variant="info"
                 icon="📋"
             />
             <CS2MetricCard
-                :value="importantTasks"
+                :value="loading ? 'Loading...' : importantTasks"
                 label="Important Tasks"
                 format="count"
                 variant="warning"
                 icon="⚡"
-                :highlight="importantTasks > 0"
+                :highlight="!loading && importantTasks > 0"
             />
             <CS2MetricCard
-                :value="uniqueAgents"
+                :value="loading ? 'Loading...' : uniqueAgents"
                 label="Active Agents"
                 format="count"
                 variant="success"
                 icon="🤖"
             />
             <CS2MetricCard
-                :value="nextTaskTime"
+                :value="loading ? 'Loading...' : nextTaskTime"
                 label="Next Task"
-                :subtitle="nextTaskAgent"
+                :subtitle="loading ? '' : nextTaskAgent"
                 format="time"
                 variant="info"
                 icon="⏰"
@@ -49,55 +49,72 @@
         <KMInfoGrid columns="1" rows="1" rowHeight="600" style="margin-bottom: 30px;">
             <KMInfoBox caption="Task Queue">
                 <div class="task-container">
-                    <div 
-                        v-for="(task, index) in sortedTasks" 
-                        :key="task.randomidentifier + index"
-                        class="task-item"
-                        :class="{ 'important': task.isImportant, 'due-soon': isDueSoon(task.dateTimeDue) }"
-                    >
-                        <div class="task-header">
-                            <div class="task-title">
-                                <span class="task-icon">{{ getTaskIcon(task.agentName) }}</span>
-                                <span class="task-name">{{ task.taskName }}</span>
-                                <span v-if="task.isImportant" class="important-badge">⚡ IMPORTANT</span>
-                            </div>
-                            <div class="task-timing">
-                                <span class="due-time">{{ formatDueTime(task.dateTimeDue) }}</span>
-                                <span class="time-until">{{ getTimeUntil(task.dateTimeDue) }}</span>
-                            </div>
-                        </div>
-                        
-                        <div class="task-details">
-                            <div class="task-info">
-                                <div class="info-row">
-                                    <span class="label">Agent:</span>
-                                    <span class="value agent-name">{{ task.agentName }}</span>
+                    <!-- Loading State -->
+                    <div v-if="loading" class="loading-state">
+                        <div class="loading-icon">⏳</div>
+                        <div class="loading-text">Loading scheduled tasks...</div>
+                    </div>
+                    
+                    <!-- Error State -->
+                    <div v-else-if="error" class="error-state">
+                        <div class="error-icon">⚠️</div>
+                        <div class="error-text">{{ error }}</div>
+                        <button @click="loadTasks" class="retry-button">Retry</button>
+                    </div>
+                    
+                    <!-- Tasks List -->
+                    <div v-else-if="tasks.length > 0">
+                        <div 
+                            v-for="(task, index) in sortedTasks" 
+                            :key="task.randomidentifier + index"
+                            class="task-item"
+                            :class="{ 'important': task.isImportant, 'due-soon': isDueSoon(task.dateTimeDue) }"
+                        >
+                            <div class="task-header">
+                                <div class="task-title">
+                                    <span class="task-icon">{{ getTaskIcon(task.agentName) }}</span>
+                                    <span class="task-name">{{ task.taskName }}</span>
+                                    <span v-if="task.isImportant" class="important-badge">⚡ IMPORTANT</span>
                                 </div>
-                                <div class="info-row">
-                                    <span class="label">Topic:</span>
-                                    <span class="value">{{ task.topic }}</span>
-                                </div>
-                                <div class="info-row">
-                                    <span class="label">Reason:</span>
-                                    <span class="value reason">{{ task.reason }}</span>
+                                <div class="task-timing">
+                                    <span class="due-time">{{ formatDueTime(task.dateTimeDue) }}</span>
+                                    <span class="time-until">{{ getTimeUntil(task.dateTimeDue) }}</span>
                                 </div>
                             </div>
                             
-                            <div class="task-metadata">
-                                <div class="metadata-item">
-                                    <span class="meta-label">Task ID:</span>
-                                    <span class="meta-value">{{ task.timeID }}</span>
+                            <div class="task-details">
+                                <div class="task-info">
+                                    <div class="info-row">
+                                        <span class="label">Agent:</span>
+                                        <span class="value agent-name">{{ task.agentName }}</span>
+                                    </div>
+                                    <div class="info-row">
+                                        <span class="label">Topic:</span>
+                                        <span class="value">{{ task.topic }}</span>
+                                    </div>
+                                    <div class="info-row">
+                                        <span class="label">Reason:</span>
+                                        <span class="value reason">{{ task.reason }}</span>
+                                    </div>
                                 </div>
-                                <div class="metadata-item">
-                                    <span class="meta-label">Set:</span>
-                                    <span class="meta-value">{{ formatSetTime(task.dateTimeSet) }}</span>
+                                
+                                <div class="task-metadata">
+                                    <div class="metadata-item">
+                                        <span class="meta-label">Task ID:</span>
+                                        <span class="meta-value">{{ task.timeID }}</span>
+                                    </div>
+                                    <div class="metadata-item">
+                                        <span class="meta-label">Set:</span>
+                                        <span class="meta-value">{{ formatSetTime(task.dateTimeSet) }}</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                     
-                    <div v-if="tasks.length === 0" class="no-tasks">
-                        <div class="no-tasks-icon"></div>
+                    <!-- No Tasks State -->
+                    <div v-else class="no-tasks">
+                        <div class="no-tasks-icon">📭</div>
                         <div class="no-tasks-text">No scheduled tasks found</div>
                     </div>
                 </div>
@@ -163,6 +180,7 @@ import { ref, computed, onMounted } from 'vue';
 import CS2MetricCard from '~/components/CS2MetricCard.vue';
 import KMInfoGrid from '~/components/KMInfoGrid.vue';
 import KMInfoBox from '~/components/KMInfoBox.vue';
+import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 
 export default {
     components: {
@@ -172,93 +190,9 @@ export default {
     },
     data() {
         return {
-            // Sample data - replace with actual API call
-            tasks: [
-                {
-                    "taskName": "SnipeCS2Deals",
-                    "dateTimeDue": "2025-07-15T17:09:36.4736754+01:00",
-                    "dateTimeSet": "2025-07-15T16:39:36.473685+01:00",
-                    "agentName": "CS2ArbitrageBot",
-                    "topic": "CS2ArbitrageSearch",
-                    "reason": "Search through CSFloat and compare listings to Steam Market",
-                    "isImportant": true,
-                    "timeID": "1325087185",
-                    "randomidentifier": "24123184635216851101",
-                    "PassableData": null
-                },
-                {
-                    "taskName": "SnipeCS2Deals",
-                    "dateTimeDue": "2025-07-15T17:09:36.4736754+01:00",
-                    "dateTimeSet": "2025-07-15T16:39:36.473685+01:00",
-                    "agentName": "CS2ArbitrageBot",
-                    "topic": "CS2ArbitrageSearch",
-                    "reason": "Search through CSFloat and compare listings to Steam Market",
-                    "isImportant": true,
-                    "timeID": "1325087185",
-                    "randomidentifier": "24123184635216851102",
-                    "PassableData": null
-                },
-                {
-                    "taskName": "SnipeCS2Deals",
-                    "dateTimeDue": "2025-07-15T17:09:36.4736754+01:00",
-                    "dateTimeSet": "2025-07-15T16:39:36.473685+01:00",
-                    "agentName": "CS2ArbitrageBot",
-                    "topic": "CS2ArbitrageSearch",
-                    "reason": "Search through CSFloat and compare listings to Steam Market",
-                    "isImportant": true,
-                    "timeID": "1325087185",
-                    "randomidentifier": "24123184635216851103",
-                    "PassableData": null
-                },
-                {
-                    "taskName": "SnipeCS2Deals",
-                    "dateTimeDue": "2025-07-15T17:09:36.4736754+01:00",
-                    "dateTimeSet": "2025-07-15T16:39:36.473685+01:00",
-                    "agentName": "CS2ArbitrageBot",
-                    "topic": "CS2ArbitrageSearch",
-                    "reason": "Search through CSFloat and compare listings to Steam Market",
-                    "isImportant": true,
-                    "timeID": "1325087185",
-                    "randomidentifier": "24123184635216851104",
-                    "PassableData": null
-                },
-                {
-                    "taskName": "SnipeCS2Deals",
-                    "dateTimeDue": "2025-07-15T17:09:36.4736754+01:00",
-                    "dateTimeSet": "2025-07-15T16:39:36.473685+01:00",
-                    "agentName": "CS2ArbitrageBot",
-                    "topic": "CS2ArbitrageSearch",
-                    "reason": "Search through CSFloat and compare listings to Steam Market",
-                    "isImportant": true,
-                    "timeID": "1325087185",
-                    "randomidentifier": "24123184635216851105",
-                    "PassableData": null
-                },
-                {
-                    "taskName": "SnipeCS2Deals",
-                    "dateTimeDue": "2025-07-15T17:09:36.4736754+01:00",
-                    "dateTimeSet": "2025-07-15T16:39:36.473685+01:00",
-                    "agentName": "CS2ArbitrageBot",
-                    "topic": "CS2ArbitrageSearch",
-                    "reason": "Search through CSFloat and compare listings to Steam Market",
-                    "isImportant": true,
-                    "timeID": "1325087185",
-                    "randomidentifier": "24123184635216851106",
-                    "PassableData": null
-                },
-                {
-                    "taskName": "SnipeCS2Deals",
-                    "dateTimeDue": "2025-07-15T17:09:36.4736754+01:00",
-                    "dateTimeSet": "2025-07-15T16:39:36.473685+01:00",
-                    "agentName": "CS2ArbitrageBot",
-                    "topic": "CS2ArbitrageSearch",
-                    "reason": "Search through CSFloat and compare listings to Steam Market",
-                    "isImportant": true,
-                    "timeID": "1325087185",
-                    "randomidentifier": "24123184635216851107",
-                    "PassableData": null
-                }
-            ]
+            tasks: [],
+            loading: true,
+            error: null
         };
     },
     computed: {
@@ -311,6 +245,27 @@ export default {
         }
     },
     methods: {
+        async loadTasks() {
+            this.loading = true;
+            this.error = null;
+            
+            try {
+                const response = await RequestGETFromKliveAPI('/timemanager/getalltasks');
+                
+                if (response.status === 200) {
+                    const data = await response.json();
+                    this.tasks = data || [];
+                } else {
+                    throw new Error(`Failed to load tasks: ${response.status}`);
+                }
+            } catch (err) {
+                console.error('Error loading tasks:', err);
+                this.error = 'Failed to load tasks. Please try again later.';
+                this.tasks = [];
+            } finally {
+                this.loading = false;
+            }
+        },
         formatDueTime(dateString) {
             const date = new Date(dateString);
             return date.toLocaleString('en-GB', {
@@ -362,6 +317,10 @@ export default {
             };
             return icons[agentName] || '🤖';
         }
+    },
+    mounted() {
+        // Load tasks when component is mounted
+        this.loadTasks();
     }
 };
 </script>
@@ -583,6 +542,37 @@ export default {
 
 .no-tasks-text {
     font-size: 1.2rem;
+}
+
+.loading-state, .error-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #666;
+}
+
+.loading-icon, .error-icon {
+    font-size: 4rem;
+    margin-bottom: 16px;
+}
+
+.loading-text, .error-text {
+    font-size: 1.2rem;
+    margin-bottom: 20px;
+}
+
+.retry-button {
+    background: #4d9e39;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.retry-button:hover {
+    background: #62ce47;
 }
 
 .agent-overview {

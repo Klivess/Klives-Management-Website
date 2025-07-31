@@ -112,7 +112,7 @@
                                     @update:value="updateActionInput(`${gadget.gadgetID}_${index}`, $event)"
                                     style="flex: 1; height: 45px;"
                                 />
-                                <KMButton 
+                                <KMButton
                                     :message="getActionButtonText(gadget, action, 'Execute', index)"
                                     :style="getActionButtonStyle(gadget, action, index)"
                                     @click="executeAction(gadget, action, actionInputs[`${gadget.gadgetID}_${index}`], index)"
@@ -281,15 +281,6 @@ export default {
                     setTimeout(() => {
                         this.actionStates[buttonKey] = 'default';
                     }, 2000);
-                    
-                    // Clear the input after successful execution
-                    const inputKey = Object.keys(this.actionInputs).find(key => 
-                        key.startsWith(gadget.gadgetID) && 
-                        this.actionInputs[key] === (typeof parameter === 'string' ? parameter : parameter?.toString())
-                    );
-                    if (inputKey) {
-                        this.actionInputs[inputKey] = '';
-                    }
                 } else {
                     console.error('Failed to execute action:', response.status);
                     this.actionStates[buttonKey] = 'error';
@@ -358,7 +349,7 @@ export default {
             const state = this.actionStates[buttonKey] || 'default';
             
             let baseStyle = action.parameters === 3 ? 'width: 100%; height: 45px;' : 
-                           (action.parameters === 2 ? 'height: 45px;' : 'width: 100px; height: 45px;');
+                           (action.parameters === 2 ? 'height: 45px;' : 'width: 100px; height: 45px; font-size: 0.48rem; letter-spacing: 0.08em;');
             
             switch (state) {
                 case 'executing':

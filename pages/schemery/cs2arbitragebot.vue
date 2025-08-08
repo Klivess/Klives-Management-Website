@@ -318,6 +318,14 @@
             </KMInfoGrid>
         </CS2OverviewSection>
 
+        <!-- Liquidity Plan -->
+        <CS2OverviewSection 
+            title="💹 Liquidity Plan"
+            subtitle="View optimal purchase strategies and market opportunities"
+        >
+            <LiquidityPlanSection />
+        </CS2OverviewSection>
+
         <!-- System Information -->
         <CS2OverviewSection 
             title="ℹ️ System Information"
@@ -354,6 +362,7 @@ import KMButton from '~/components/KMButton.vue';
 import CS2MetricCard from '~/components/CS2MetricCard.vue';
 import CS2OverviewSection from '~/components/CS2OverviewSection.vue';
 import CS2GainDistributionBar from '~/components/CS2GainDistributionBar.vue';
+import LiquidityPlanSection from '~/components/LiquidityPlanSection.vue';
 import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 import Swal from 'sweetalert2';
 

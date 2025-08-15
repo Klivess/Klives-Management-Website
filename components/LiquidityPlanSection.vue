@@ -39,7 +39,7 @@
                 <span class="steam-price">Steam: £{{ gap.steamListing.HighestBuyOrderPriceInPounds.toFixed(2) }}</span>
               </div>
               <div class="return-coefficient">
-                Return: <span class="coefficient">{{ (gap.ReturnCoefficientFromSteamToCSFloatTaxIncluded * 100).toFixed(2) }}%</span>
+                Ideal Return: <span class="coefficient">{{ (gap.IdealReturnCoefficientFromSteamToCSFloatTaxIncluded * 100).toFixed(2) }}%</span>
                 <span class="item-rank">#{{ index + 1 }}</span>
               </div>
             </div>
@@ -332,7 +332,7 @@ const fetchLiquidityPlan = async () => {
       
       // Sort the gaps by IdealReturnCoefficientFromSteamToCSFloatTaxIncluded
       liquidityPlan.value.Top10Gaps.sort((a, b) => 
-        b.ReturnCoefficientFromSteamToCSFloatTaxIncluded - a.ReturnCoefficientFromSteamToCSFloatTaxIncluded
+        b.IdealReturnCoefficientFromSteamToCSFloatTaxIncluded - a.IdealReturnCoefficientFromSteamToCSFloatTaxIncluded
       );
       
       // Automatically select the first gap

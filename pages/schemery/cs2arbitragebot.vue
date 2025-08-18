@@ -23,6 +23,78 @@
             </div>
         </div>
 
+        <!-- Balance Overview Section -->
+        <CS2OverviewSection 
+            title="💰 Balance Overview"
+            subtitle="Current balance status and history"
+        >
+            <KMInfoGrid columns="2" rows="1" rowHeight="400">
+                <!-- Left side: Balance metrics -->
+                <KMInfoBox caption="Balance Overview">
+                    <div class="balance-metrics-container" v-if="balanceHistory.length > 0">
+                        <!-- Main Balance -->
+                        <div class="balance-metric main-balance">
+                            <div class="metric-label">Total Balance</div>
+                            <div class="metric-value total">£{{ (latestBalance.SteamTotalBalanceInPounds + latestBalance.CSFloatTotalBalanceInPounds).toFixed(2) }}</div>
+                            <div class="metric-subtitle">Combined Steam & CSFloat</div>
+                        </div>
+                        
+                        <!-- Available Balances -->
+                        <div class="balance-grid">
+                            <div class="balance-metric">
+                                <div class="metric-label">Current Steam Balance</div>
+                                <div class="metric-value steam">£{{ latestBalance.SteamUsableBalanceInPounds.toFixed(2) }}</div>
+                                <div class="metric-subtitle">Available for spending</div>
+                            </div>
+                            
+                            <div class="balance-metric">
+                                <div class="metric-label">Current CSFloat Balance</div>
+                                <div class="metric-value csfloat">£{{ latestBalance.CSFloatUsableBalanceInPounds.toFixed(2) }}</div>
+                                <div class="metric-subtitle">Available for spending</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Pending Balances -->
+                        <div class="balance-grid" v-if="hasPendingBalances">
+                            <div class="pending-balances-title">Pending Balances</div>
+                            <div class="balance-metric">
+                                <div class="metric-label">Pending Steam Balance</div>
+                                <div class="metric-value pending">£{{ latestBalance.SteamPendingBalanceInPounds.toFixed(2) }}</div>
+                                <div class="metric-subtitle">In trade holds or market listings</div>
+                            </div>
+                            
+                            <div class="balance-metric">
+                                <div class="metric-label">Pending CSFloat Balance</div>
+                                <div class="metric-value pending">£{{ latestBalance.CSFloatPendingBalanceInPounds.toFixed(2) }}</div>
+                                <div class="metric-subtitle">In trade holds or pending transfers</div>
+                            </div>
+                            
+                            <div class="balance-metric pending-total-metric">
+                                <div class="metric-label">Total Pending Balance</div>
+                                <div class="metric-value pending-total">£{{ (latestBalance.SteamPendingBalanceInPounds + latestBalance.CSFloatPendingBalanceInPounds).toFixed(2) }}</div>
+                                <div class="metric-subtitle">Across all platforms</div>
+                            </div>
+                        </div>
+                        
+                        <div class="balance-update-time">
+                            Last updated: {{ formatDateTime(latestBalance.DateTimeOfBalanceRecord) }}
+                        </div>
+                    </div>
+                    
+                    <div class="no-data-message" v-else>
+                        No balance data available
+                    </div>
+                </KMInfoBox>
+                
+                <!-- Right side: Balance history chart -->
+                <KMInfoBox caption="Balance History">
+                    <div class="chart-container">
+                        <canvas ref="balanceChartCanvas" id="balanceHistoryChart"></canvas>
+                    </div>
+                </KMInfoBox>
+            </KMInfoGrid>
+        </CS2OverviewSection>
+
         <!-- Purchased Items Section -->
         <CS2OverviewSection 
             title="💼 Purchased Items"
@@ -632,6 +704,164 @@ const generateDailyPurchaseData = (purchasedItems: PurchasedItem[]) => {
 };
 
 // Create the daily purchase chart
+// Create the balance history chart
+const createBalanceHistoryChart = async () => {
+    await nextTick();
+    
+    if (!balanceChartCanvas.value) {
+        console.error('Balance chart canvas not found');
+        return;
+    }
+    
+    // Destroy existing chart if it exists
+    if (balanceHistoryChart) {
+        balanceHistoryChart.destroy();
+    }
+    
+    const ctx = balanceChartCanvas.value.getContext('2d');
+    if (!ctx) return;
+    
+    // Format the data for the chart
+    const labels = balanceHistory.value.map(record => {
+        const date = new Date(record.DateTimeOfBalanceRecord);
+        return date.toLocaleDateString('en-GB', {
+            month: 'short',
+            day: 'numeric'
+        });
+    });
+    
+    const steamBalanceData = balanceHistory.value.map(record => record.SteamTotalBalanceInPounds);
+    const csFloatBalanceData = balanceHistory.value.map(record => record.CSFloatTotalBalanceInPounds);
+    
+    balanceHistoryChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Steam Balance',
+                    data: steamBalanceData,
+                    borderColor: 'rgba(59, 130, 246, 1)',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.2,
+                    pointBackgroundColor: 'rgba(59, 130, 246, 1)',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 1,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                },
+                {
+                    label: 'CSFloat Balance',
+                    data: csFloatBalanceData,
+                    borderColor: 'rgba(245, 158, 11, 1)',
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.2,
+                    pointBackgroundColor: 'rgba(245, 158, 11, 1)',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 1,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Balance History',
+                    color: '#ffffff',
+                    font: {
+                        size: 16,
+                        weight: 'bold'
+                    },
+                    padding: {
+                        top: 10,
+                        bottom: 30
+                    }
+                },
+                legend: {
+                    position: 'top',
+                    align: 'center',
+                    labels: {
+                        color: '#ffffff',
+                        usePointStyle: true,
+                        pointStyle: 'circle',
+                        padding: 20,
+                        font: {
+                            size: 12
+                        }
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(22, 22, 22, 0.9)',
+                    titleColor: '#ffffff',
+                    bodyColor: '#ffffff',
+                    borderColor: '#4d9e39',
+                    borderWidth: 1,
+                    padding: 12,
+                    displayColors: true,
+                    callbacks: {
+                        title: function(context) {
+                            const dataIndex = context[0].dataIndex;
+                            const fullDate = new Date(balanceHistory.value[dataIndex].DateTimeOfBalanceRecord);
+                            return fullDate.toLocaleDateString('en-GB', {
+                                weekday: 'long',
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                            });
+                        },
+                        label: function(context) {
+                            const value = context.raw as number;
+                            return `${context.dataset.label}: £${value.toFixed(2)}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.05)',
+                    },
+                    ticks: {
+                        color: '#969696'
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Balance (£)',
+                        color: '#969696',
+                        font: {
+                            size: 12
+                        }
+                    },
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.05)',
+                    },
+                    ticks: {
+                        color: '#969696',
+                        callback: function(value) {
+                            return '£' + value;
+                        }
+                    },
+                    beginAtZero: true
+                }
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            }
+        }
+    });
+};
+
 const createDailyPurchaseChart = async () => {
     await nextTick();
     
@@ -814,9 +1044,79 @@ const createDailyPurchaseChart = async () => {
 };
 
 // Fetch data function
+// Define balance history data structure
+interface BalanceHistoryRecord {
+    CSFloatFee: number;
+    CSFloatWithdrawFee: number;
+    CSFloatUsableBalanceInPounds: number;
+    CSFloatTotalBalanceInPounds: number;
+    CSFloatPendingBalanceInPounds: number;
+    SteamUsableBalanceInPounds: number;
+    SteamPendingBalanceInPounds: number;
+    SteamTotalBalanceInPounds: number;
+    DateTimeOfBalanceRecord: string;
+    CSFloatProfileStatistics: {
+        TotalSales: number;
+        TotalPurchases: number;
+        MedianTradeTime: number;
+        TotalAvoidedTrades: number;
+        TotalFailedTrades: number;
+        TotalVerifiedTrades: number;
+        TotalTrades: number;
+    };
+}
+
+const balanceHistory = ref<BalanceHistoryRecord[]>([]);
+const balanceChartCanvas = ref<HTMLCanvasElement | null>(null);
+let balanceHistoryChart: Chart | null = null;
+
+// Computed property to get the most recent balance record
+const latestBalance = computed<BalanceHistoryRecord>(() => {
+    if (balanceHistory.value.length === 0) {
+        // Return a default empty object if no balance records
+        return {
+            CSFloatFee: 0,
+            CSFloatWithdrawFee: 0,
+            CSFloatUsableBalanceInPounds: 0,
+            CSFloatTotalBalanceInPounds: 0,
+            CSFloatPendingBalanceInPounds: 0,
+            SteamUsableBalanceInPounds: 0,
+            SteamPendingBalanceInPounds: 0,
+            SteamTotalBalanceInPounds: 0,
+            DateTimeOfBalanceRecord: new Date().toISOString(),
+            CSFloatProfileStatistics: {
+                TotalSales: 0,
+                TotalPurchases: 0,
+                MedianTradeTime: 0,
+                TotalAvoidedTrades: 0,
+                TotalFailedTrades: 0,
+                TotalVerifiedTrades: 0,
+                TotalTrades: 0
+            }
+        };
+    }
+    
+    // Sort by date (newest first) and return the most recent record
+    return [...balanceHistory.value].sort((a, b) => {
+        return new Date(b.DateTimeOfBalanceRecord).getTime() - new Date(a.DateTimeOfBalanceRecord).getTime();
+    })[0];
+});
+
+// Computed property to check if there are any pending balances
+const hasPendingBalances = computed(() => {
+    if (!latestBalance.value) return false;
+    
+    const steamPending = latestBalance.value.SteamPendingBalanceInPounds || 0;
+    const csFloatPending = latestBalance.value.CSFloatPendingBalanceInPounds || 0;
+    
+    // Show the pending balances section if either value is greater than zero or explicitly set to zero
+    return steamPending > 0 || csFloatPending > 0;
+});
+
 const fetchData = async () => {
     isLoading.value = true;
     try {
+        // Fetch analytics data
         const response = await RequestGETFromKliveAPI("/cs2arbitragebot/getscanalytics");
         if (response.status === 200) {
             const data = await response.json();
@@ -836,6 +1136,18 @@ const fetchData = async () => {
                     return dateB - dateA; // Most recent first
                 });
                 selectedItem.value = sortedItems[0];
+            }
+            
+            // Fetch balance history data
+            const balanceResponse = await RequestGETFromKliveAPI("/cs2arbitragebot/balanceHistory");
+            if (balanceResponse.status === 200) {
+                balanceHistory.value = await balanceResponse.json();
+                console.log('Balance history data loaded successfully:', balanceHistory.value);
+                
+                // Create balance history chart
+                setTimeout(() => {
+                    createBalanceHistoryChart();
+                }, 150);
             }
         } else {
             Swal.fire({
@@ -1070,6 +1382,167 @@ watch(sortedPurchasedItems, (newItems) => {
 
 .chart-container canvas {
   background-color: transparent !important;
+}
+
+/* Balance Overview styles */
+.balance-metrics-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 10px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.balance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 15px;
+  width: 100%;
+}
+
+.balance-metric {
+  background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+  border-radius: 12px;
+  padding: 15px;
+  border: 1px solid rgba(77, 158, 57, 0.2);
+  transition: all 0.3s ease;
+}
+
+.balance-metric:hover {
+  border-color: rgba(77, 158, 57, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(77, 158, 57, 0.1);
+}
+
+.main-balance {
+  margin-bottom: 15px;
+  background: linear-gradient(135deg, #1a2a1a 0%, #2a3a2a 100%);
+  border: 1px solid rgba(77, 158, 57, 0.4);
+  padding: 20px;
+}
+
+.metric-label {
+  color: #969696;
+  font-size: 0.9rem;
+  margin-bottom: 5px;
+}
+
+.metric-value {
+  font-size: 1.8rem;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.metric-value.total {
+  color: #4d9e39;
+  font-size: 2.8rem;
+}
+
+.metric-value.steam {
+  color: rgba(59, 130, 246, 1);
+}
+
+.metric-value.csfloat {
+  color: rgba(245, 158, 11, 1);
+}
+
+.metric-value.pending {
+  color: rgba(168, 85, 247, 0.9);
+}
+
+.metric-value.pending-total {
+  color: rgba(168, 85, 247, 1);
+  font-size: 1.4rem;
+}
+
+.metric-subtitle {
+  color: #969696;
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.pending-balances-title {
+  grid-column: 1 / -1;
+  color: #969696;
+  font-size: 1rem;
+  margin-top: 10px;
+  margin-bottom: 5px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(77, 158, 57, 0.2);
+}
+
+.pending-total-metric {
+  grid-column: 1 / -1;
+  background: linear-gradient(135deg, #1e1a24 0%, #2a2430 100%);
+}
+
+.balance-update-time {
+  text-align: right;
+  color: #969696;
+  font-size: 0.8rem;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .balance-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.no-data-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #969696;
+  font-size: 1.2rem;
+  font-style: italic;
+}
+
+/* Balance History Chart styles */
+.balance-history-legend {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  margin-bottom: 15px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.steam-color {
+  background-color: rgba(59, 130, 246, 1);
+}
+
+.csfloat-color {
+  background-color: rgba(245, 158, 11, 1);
+}
+
+.legend-label {
+  font-size: 0.9rem;
+  color: #ffffff;
+}
+
+/* Chart tooltip customization */
+.chart-tooltip {
+  background-color: rgba(22, 22, 22, 0.95) !important;
+  border: 1px solid #4d9e39 !important;
+  border-radius: 8px !important;
+  padding: 10px !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3) !important;
 }
 
 .overview-section {

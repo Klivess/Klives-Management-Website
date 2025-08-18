@@ -9,9 +9,6 @@
         <NuxtLink to="/omniscience">
           <KMButton message="Omniscience"></KMButton>
         </NuxtLink>
-        <NuxtLink to="/socials">
-          <KMButton message="Socials"></KMButton>
-        </NuxtLink>
         <NuxtLink to="/schemes">
           <KMButton message="Schemes"></KMButton>
         </NuxtLink>

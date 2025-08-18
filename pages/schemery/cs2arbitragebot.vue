@@ -28,7 +28,7 @@
             title="💰 Balance Overview"
             subtitle="Current balance status and history"
         >
-            <KMInfoGrid columns="2" rows="1" rowHeight="400">
+            <KMInfoGrid columns="2" rows="1" rowHeight="360">
                 <!-- Left side: Balance metrics -->
                 <KMInfoBox caption="Balance Overview">
                     <div class="balance-metrics-container" v-if="balanceHistory.length > 0">
@@ -771,6 +771,14 @@ const createBalanceHistoryChart = async () => {
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            layout: {
+                padding: {
+                    left: 5,
+                    right: 30,
+                    top: 5,
+                    bottom: 25
+                }
+            },
             plugins: {
                 title: {
                     display: true,
@@ -781,8 +789,8 @@ const createBalanceHistoryChart = async () => {
                         weight: 'bold'
                     },
                     padding: {
-                        top: 10,
-                        bottom: 30
+                        top: 5,
+                        bottom: 15
                     }
                 },
                 legend: {
@@ -792,9 +800,11 @@ const createBalanceHistoryChart = async () => {
                         color: '#ffffff',
                         usePointStyle: true,
                         pointStyle: 'circle',
-                        padding: 20,
+                        padding: 10,
+                        boxWidth: 10,
+                        boxHeight: 10,
                         font: {
-                            size: 12
+                            size: 11
                         }
                     }
                 },
@@ -830,7 +840,14 @@ const createBalanceHistoryChart = async () => {
                         color: 'rgba(255, 255, 255, 0.05)',
                     },
                     ticks: {
-                        color: '#969696'
+                        color: '#969696',
+                        maxRotation: 0,
+                        autoSkip: true,
+                        maxTicksLimit: 7,
+                        padding: 8
+                    },
+                    border: {
+                        display: false
                     }
                 },
                 y: {
@@ -840,6 +857,9 @@ const createBalanceHistoryChart = async () => {
                         color: '#969696',
                         font: {
                             size: 12
+                        },
+                        padding: {
+                            bottom: 10
                         }
                     },
                     grid: {
@@ -847,11 +867,18 @@ const createBalanceHistoryChart = async () => {
                     },
                     ticks: {
                         color: '#969696',
+                        padding: 8,
                         callback: function(value) {
                             return '£' + value;
-                        }
+                        },
+                        count: 6
                     },
-                    beginAtZero: true
+                    border: {
+                        display: false
+                    },
+                    beginAtZero: true,
+                    // Add padding at the top of the scale
+                    suggestedMax: Math.max(...steamBalanceData, ...csFloatBalanceData) * 1.2
                 }
             },
             interaction: {
@@ -1372,16 +1399,21 @@ watch(sortedPurchasedItems, (newItems) => {
 }
 
 .chart-container {
-  height: 400px;
-  width: 100%;
-  padding: 1rem;
+  height: 300px;
+  width: calc(100% - 10px);
+  padding: 1rem 2rem 2rem 1rem;
+  margin: 5px;
   background-color: rgba(22, 22, 22, 0.5);
   border-radius: 12px;
   border: 1px solid rgba(77, 158, 57, 0.2);
+  position: relative;
+  box-sizing: border-box;
 }
 
 .chart-container canvas {
   background-color: transparent !important;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 /* Balance Overview styles */

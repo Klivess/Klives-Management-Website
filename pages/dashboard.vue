@@ -79,6 +79,27 @@
                             </div>
                         </div>
                         
+                        <div class="scheme-card memescraper-card" @click="navigateToScheme('/schemery/memescraper')">
+                            <div class="scheme-header">
+                                <h3>Meme Scraper</h3>
+                                <div class="scheme-status active">Active</div>
+                            </div>
+                            <div class="scheme-metrics">
+                                <div class="metric">
+                                    <span class="metric-label">Instagram Sources</span>
+                                    <span class="metric-value">{{ memescraperStats.totalSources }}</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Memes Collected</span>
+                                    <span class="metric-value">{{ memescraperStats.totalMemes }}</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Active Niches</span>
+                                    <span class="metric-value">{{ memescraperStats.activeNiches }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <div class="scheme-card inactive-card">
                             <div class="scheme-header">
                                 <h3>OmniTrader</h3>
@@ -95,19 +116,6 @@
                         <div class="scheme-card inactive-card">
                             <div class="scheme-header">
                                 <h3>OmniTube Bot</h3>
-                                <div class="scheme-status inactive">Development</div>
-                            </div>
-                            <div class="scheme-metrics">
-                                <div class="metric">
-                                    <span class="metric-label">Status</span>
-                                    <span class="metric-value">Planned</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="scheme-card inactive-card">
-                            <div class="scheme-header">
-                                <h3>Meme Scraper</h3>
                                 <div class="scheme-status inactive">Development</div>
                             </div>
                             <div class="scheme-metrics">
@@ -299,6 +307,11 @@ export default {
                 itemsScanned: 0,
                 bestFind: 0
             },
+            memescraperStats: {
+                totalSources: 0,
+                totalMemes: 0,
+                activeNiches: 0
+            },
             botStats: {
                 activeBots: 0,
                 scheduledTasks: 0,
@@ -330,6 +343,9 @@ export default {
                 
                 // Load CS2 analytics
                 await this.loadCS2Stats();
+                
+                // Load Meme Scraper stats
+                await this.loadMemescraperStats();
                 
                 // Load KliveTech device data
                 await this.loadKliveTechStats();
@@ -388,6 +404,46 @@ export default {
                     successRate: 0,
                     itemsScanned: 0,
                     bestFind: 0
+                };
+            }
+        },
+        
+        async loadMemescraperStats() {
+            try {
+                const response = await RequestGETFromKliveAPI('/memescraper/getAllInstagramSources', false, false);
+                if (response.ok) {
+                    const sources = await response.json();
+                    
+                    // Calculate stats from the sources data
+                    const totalMemes = sources.reduce((total, source) => total + (source.MemesCollectedTotal || 0), 0);
+                    const uniqueNiches = new Set();
+                    sources.forEach(source => {
+                        if (source.Niches) {
+                            source.Niches.forEach(niche => {
+                                uniqueNiches.add(niche.NicheTagName);
+                            });
+                        }
+                    });
+                    
+                    this.memescraperStats = {
+                        totalSources: sources.length,
+                        totalMemes: totalMemes,
+                        activeNiches: uniqueNiches.size
+                    };
+                } else {
+                    // API not available or no permission
+                    this.memescraperStats = {
+                        totalSources: 0,
+                        totalMemes: 0,
+                        activeNiches: 0
+                    };
+                }
+            } catch (error) {
+                console.log('Meme Scraper stats API unavailable');
+                this.memescraperStats = {
+                    totalSources: 0,
+                    totalMemes: 0,
+                    activeNiches: 0
                 };
             }
         },
@@ -743,6 +799,15 @@ export default {
 .scheme-card.cs2-card:hover {
     border-color: rgba(34, 197, 94, 0.7);
     box-shadow: 0 8px 25px rgba(34, 197, 94, 0.2);
+}
+
+.scheme-card.memescraper-card {
+    border-color: rgba(139, 92, 246, 0.4);
+}
+
+.scheme-card.memescraper-card:hover {
+    border-color: rgba(139, 92, 246, 0.7);
+    box-shadow: 0 8px 25px rgba(139, 92, 246, 0.2);
 }
 
 .scheme-card.inactive-card {

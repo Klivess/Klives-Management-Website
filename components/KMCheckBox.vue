@@ -1,6 +1,6 @@
 <template>
-<label class="toggle" for="uniqueID">
-			<input id="uniqueID" type="checkbox" ref="checkBox" class="toggle__input" :oninput="onInput"/>
+<label class="toggle" :for="uniqueId">
+			<input :id="uniqueId" type="checkbox" ref="checkBox" class="toggle__input" @input="handleInput" :checked="boxChecked"/>
 			<span class="toggle-track">
 				<span class="toggle-indicator">
 					<!-- 	This check mark is optional	 -->
@@ -16,6 +16,8 @@
 </template>
 
 <script>
+let componentCounter = 0;
+
 export default {
     name: 'KMCheckBox',
 	props: {
@@ -28,14 +30,38 @@ export default {
 			default: false
 		}
 	},
+	data() {
+		return {
+			instanceId: ++componentCounter
+		};
+	},
+	computed: {
+		uniqueId() {
+			// Generate a unique ID for each checkbox instance
+			return 'checkbox-' + this.instanceId + '-' + Math.random().toString(36).substr(2, 5);
+		}
+	},
+	emits: ['update:boxChecked', 'change'],
     methods: {
-		onInput(){
-			this.$props.boxChecked = !this.$props.boxChecked;
+		handleInput(event) {
+			const isChecked = event.target.checked;
+			this.$emit('update:boxChecked', isChecked);
+			this.$emit('change', isChecked);
 		}
     },
 	mounted() {
-		//Change the checked value to the value passed in the checked prop
-		this.$refs.checkBox.checked = this.$props.boxChecked;
+		// Set initial checked state
+		if (this.$refs.checkBox) {
+			this.$refs.checkBox.checked = this.boxChecked;
+		}
+	},
+	watch: {
+		boxChecked(newValue) {
+			// Update the checkbox when the prop changes
+			if (this.$refs.checkBox) {
+				this.$refs.checkBox.checked = newValue;
+			}
+		}
 	}
 }
 </script>

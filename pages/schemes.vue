@@ -8,6 +8,10 @@
                         <p class="scheme-description">A bot for arbitrage trading in CS2.</p>
                     </div>
                     <div class="scheme-row">
+                        <NuxtLink to="/schemery/memescraper" class="scheme-link">Meme Scraper</NuxtLink>
+                        <p class="scheme-description">A bot that periodically downloads online media (memes), to use for producing automated content.</p>
+                    </div>
+                    <div class="scheme-row">
                         <NuxtLink to="/schemery/omnitrader" class="scheme-link">OmniTrader</NuxtLink>
                         <p class="scheme-description">An algorithmic trading bot.</p>
                         <span>(Incomplete)</span>
@@ -15,11 +19,6 @@
                     <div class="scheme-row">
                         <NuxtLink to="/schemery/omnitube" class="scheme-link">OmniTube Bot</NuxtLink>
                         <p class="scheme-description">A bot that automates the production, upload and strategy of YouTube content.</p>
-                        <span>(Incomplete)</span>
-                    </div>
-                    <div class="scheme-row">
-                        <NuxtLink to="/schemery/omnitube" class="scheme-link">Meme Scraper</NuxtLink>
-                        <p class="scheme-description">A bot that periodically downloads online media (memes), to use for producing automated content.</p>
                         <span>(Incomplete)</span>
                     </div>
                 </div>

@@ -79,23 +79,25 @@
                             </div>
                         </div>
                         
-                        <div class="scheme-card memescraper-card" @click="navigateToScheme('/schemery/memescraper')">
+                        <div class="scheme-card memescraper-card" @click="memescraperStats.hasAccess ? navigateToScheme('/schemery/memescraper') : showAccessDeniedMessage()">
                             <div class="scheme-header">
                                 <h3>Meme Scraper</h3>
-                                <div class="scheme-status active">Active</div>
+                                <div :class="['scheme-status', memescraperStats.hasAccess ? 'active' : 'restricted']">
+                                    {{ memescraperStats.hasAccess ? 'Active' : 'Restricted' }}
+                                </div>
                             </div>
                             <div class="scheme-metrics">
                                 <div class="metric">
-                                    <span class="metric-label">Instagram Sources</span>
-                                    <span class="metric-value">{{ memescraperStats.totalSources }}</span>
+                                    <span class="metric-label">Total Memes</span>
+                                    <span class="metric-value">{{ memescraperStats.totalMemes === 'Restricted' ? 'Restricted' : memescraperStats.totalMemes.toLocaleString() }}</span>
                                 </div>
                                 <div class="metric">
-                                    <span class="metric-label">Memes Collected</span>
-                                    <span class="metric-value">{{ memescraperStats.totalMemes }}</span>
+                                    <span class="metric-label">Today's Downloads</span>
+                                    <span class="metric-value success">{{ memescraperStats.todayDownloads === 'Restricted' ? 'Restricted' : '+' + memescraperStats.todayDownloads }}</span>
                                 </div>
                                 <div class="metric">
-                                    <span class="metric-label">Active Niches</span>
-                                    <span class="metric-value">{{ memescraperStats.activeNiches }}</span>
+                                    <span class="metric-label">Top Source</span>
+                                    <span class="metric-value profit">{{ memescraperStats.topPerformingSource }}</span>
                                 </div>
                             </div>
                         </div>
@@ -310,7 +312,11 @@ export default {
             memescraperStats: {
                 totalSources: 0,
                 totalMemes: 0,
-                activeNiches: 0
+                activeNiches: 0,
+                todayDownloads: 0,
+                avgDownloadsPerDay: 0,
+                topPerformingSource: 'N/A',
+                hasAccess: true
             },
             botStats: {
                 activeBots: 0,
@@ -410,40 +416,112 @@ export default {
         
         async loadMemescraperStats() {
             try {
-                const response = await RequestGETFromKliveAPI('/memescraper/getAllInstagramSources', false, false);
+                const response = await RequestGETFromKliveAPI('/memescraper/memeScraperAnalytics', false, false);
                 if (response.ok) {
-                    const sources = await response.json();
+                    const analytics = await response.json();
                     
-                    // Calculate stats from the sources data
-                    const totalMemes = sources.reduce((total, source) => total + (source.MemesCollectedTotal || 0), 0);
-                    const uniqueNiches = new Set();
-                    sources.forEach(source => {
-                        if (source.Niches) {
-                            source.Niches.forEach(niche => {
-                                uniqueNiches.add(niche.NicheTagName);
-                            });
+                    // Calculate today's downloads with multiple date format attempts
+                    let todayDownloads = 0;
+                    if (analytics.MemesDownloadedPerDay) {
+                        const today = new Date();
+                        const dateFormats = [
+                            // Try different date formats
+                            today.toISOString().split('T')[0], // YYYY-MM-DD
+                            today.toLocaleDateString('en-US'), // M/D/YYYY
+                            today.toLocaleDateString('en-GB'), // DD/MM/YYYY
+                            `${today.getMonth() + 1}/${today.getDate()}/${today.getFullYear()}`, // M/D/YYYY
+                            `${today.getDate()}/${today.getMonth() + 1}/${today.getFullYear()}`, // D/M/YYYY
+                            today.toDateString(), // Full date string
+                        ];
+                        
+                        // Try to find today's data with any of these formats
+                        for (const dateFormat of dateFormats) {
+                            if (analytics.MemesDownloadedPerDay[dateFormat]) {
+                                todayDownloads = analytics.MemesDownloadedPerDay[dateFormat];
+                                break;
+                            }
                         }
-                    });
+                        
+                        // If still not found, check if any key contains today's date
+                        if (todayDownloads === 0) {
+                            const todayStr = today.toISOString().split('T')[0];
+                            const keys = Object.keys(analytics.MemesDownloadedPerDay);
+                            for (const key of keys) {
+                                if (key.includes(todayStr) || new Date(key).toDateString() === today.toDateString()) {
+                                    todayDownloads = analytics.MemesDownloadedPerDay[key];
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // Debug logging
+                        console.log('Available date keys:', Object.keys(analytics.MemesDownloadedPerDay));
+                        console.log('Today download count found:', todayDownloads);
+                    }
+                    
+                    // Calculate average downloads per day
+                    const downloadEntries = Object.entries(analytics.MemesDownloadedPerDay || {});
+                    const totalDownloads = downloadEntries.reduce((sum, [, count]) => sum + (count || 0), 0);
+                    const totalDays = downloadEntries.length || 1;
+                    const avgDownloadsPerDay = Math.round(totalDownloads / totalDays);
+                    
+                    // Find top performing source from ReelsDownloadedPerSource
+                    let topSource = 'N/A';
+                    if (analytics.ReelsDownloadedPerSource) {
+                        const sortedSources = Object.entries(analytics.ReelsDownloadedPerSource)
+                            .sort(([,a], [,b]) => b - a);
+                        if (sortedSources.length > 0) {
+                            topSource = sortedSources[0][0] || 'N/A';
+                            if (topSource.length > 15) {
+                                topSource = topSource.substring(0, 12) + '...';
+                            }
+                        }
+                    }
                     
                     this.memescraperStats = {
-                        totalSources: sources.length,
-                        totalMemes: totalMemes,
-                        activeNiches: uniqueNiches.size
+                        totalSources: analytics.InstagramSources?.length || 0,
+                        totalMemes: analytics.InstagramReelsDownloaded?.length || 0,
+                        activeNiches: Object.keys(analytics.TopNichesByDownload || {}).length,
+                        todayDownloads: todayDownloads,
+                        avgDownloadsPerDay: avgDownloadsPerDay,
+                        topPerformingSource: topSource,
+                        hasAccess: true
                     };
+                } else if (response.status === 401) {
+                    // User doesn't have permission to view meme scraper analytics
+                    this.memescraperStats = {
+                        totalSources: 'Restricted',
+                        totalMemes: 'Restricted',
+                        activeNiches: 'Restricted',
+                        todayDownloads: 'Restricted',
+                        avgDownloadsPerDay: 'Restricted',
+                        topPerformingSource: 'Restricted',
+                        hasAccess: false
+                    };
+                    console.log('Meme Scraper analytics access denied - insufficient permissions');
                 } else {
-                    // API not available or no permission
+                    // API not available or other error
+                    console.log('Meme Scraper analytics API returned status:', response.status);
                     this.memescraperStats = {
                         totalSources: 0,
                         totalMemes: 0,
-                        activeNiches: 0
+                        activeNiches: 0,
+                        todayDownloads: 0,
+                        avgDownloadsPerDay: 0,
+                        topPerformingSource: 'N/A',
+                        hasAccess: true
                     };
                 }
             } catch (error) {
-                console.log('Meme Scraper stats API unavailable');
+                console.log('Meme Scraper analytics API unavailable:', error);
                 this.memescraperStats = {
                     totalSources: 0,
                     totalMemes: 0,
-                    activeNiches: 0
+                    activeNiches: 0,
+                    todayDownloads: 0,
+                    avgDownloadsPerDay: 0,
+                    topPerformingSource: 'N/A',
+                    hasAccess: true
                 };
             }
         },
@@ -855,6 +933,12 @@ export default {
     background: rgba(156, 163, 175, 0.2);
     color: #9ca3af;
     border: 1px solid rgba(156, 163, 175, 0.3);
+}
+
+.scheme-status.restricted {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
 .scheme-metrics {

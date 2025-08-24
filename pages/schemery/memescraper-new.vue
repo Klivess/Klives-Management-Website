@@ -3,7 +3,7 @@
         <!-- Modern Header -->
         <div class="page-header">
             <div class="header-left">
-                <KMButton style="width: 300px;"
+                <KMButton style="width: 200px;"
                     message="Back To Schemes"
                     @click="navigateBack"
                 />
@@ -12,7 +12,7 @@
                 <h1 class="page-title">Meme Scraper Analytics</h1>
                 <p class="page-subtitle">Instagram content analytics and performance insights</p>
             </div>
-            <div class="header-right" style="width: 200px;">
+            <div class="header-right">
                 <KMButton 
                     message="🔄 Refresh"
                     @click="fetchAnalytics"
@@ -21,25 +21,6 @@
             </div>
         </div>
 
-        <!-- Loading Screen (Initial Load) -->
-        <div v-show="isLoading && analytics === null" class="loading-overlay">
-            <div class="loading-content">
-                <div class="loading-spinner"></div>
-                <h3 class="loading-title">Loading Analytics</h3>
-                <p class="loading-subtitle">Please wait while analytics are produced...</p>
-            </div>
-        </div>
-
-        <!-- Refresh Loading Overlay (when data already exists) -->
-        <div v-if="isLoading && analytics" class="refresh-loading-overlay">
-            <div class="refresh-loading-content">
-                <div class="refresh-spinner"></div>
-                <span class="refresh-text">Refreshing data...</span>
-            </div>
-        </div>
-
-        <!-- Main Content (hidden when loading initially) -->
-        <div v-show="analytics !== null" class="main-content fade-in">
         <!-- Key Metrics Overview -->
         <MemescraperOverviewSection 
             title="Key Metrics"
@@ -115,15 +96,15 @@
                     <div class="diversity-stats">
                         <div class="stat-item">
                             <span class="stat-label">Diversity Index</span>
-                            <span class="stat-value">{{ ((analytics?.SourceDiversityIndex || 0) * 100).toFixed(1) }}%</span>
+                            <span class="stat-value">{{ (analytics?.SourceDiversityIndex * 100).toFixed(1) }}%</span>
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Active Sources</span>
-                            <span class="stat-value">{{ (analytics?.PercentageOfSourcesWithRecentActivity || 0).toFixed(1) }}%</span>
+                            <span class="stat-value">{{ analytics?.PercentageOfSourcesWithRecentActivity.toFixed(1) }}%</span>
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Most Active Day</span>
-                            <span class="stat-value">{{ formatDate(analytics?.MostActiveDownloadDay || '') }}</span>
+                            <span class="stat-value">{{ formatDate(analytics?.MostActiveDownloadDay) }}</span>
                         </div>
                     </div>
                 </div>
@@ -194,15 +175,6 @@
                                 >
                                     {{ isInactiveSource(source) ? 'Inactive' : 'Active' }}
                                 </span>
-                            </div>
-                            <div class="source-actions">
-                                <button 
-                                    class="delete-button"
-                                    @click="showDeleteConfirmation(source)"
-                                    title="Delete source"
-                                >
-                                    🗑️
-                                </button>
                             </div>
                         </div>
                         
@@ -318,39 +290,6 @@
                 </div>
             </div>
         </MemescraperOverviewSection>
-
-        <!-- Delete Confirmation Modal -->
-        <div v-if="showDeleteModal" class="modal-overlay" @click="closeDeleteModal">
-            <div class="modal-content" @click.stop>
-                <div class="modal-header">
-                    <h3>Confirm Deletion</h3>
-                    <button class="modal-close" @click="closeDeleteModal">×</button>
-                </div>
-                <div class="modal-body">
-                    <p>Are you sure you want to delete <strong>@{{ selectedSource?.Username }}</strong>?</p>
-                    <div class="delete-options">
-                        <KMCheckBox 
-                            message="Also delete all associated memes"
-                            v-model:boxChecked="deleteAssociatedMemes"
-                        />
-                    </div>
-                </div>
-                <div class="modal-actions">
-                    <KMButton 
-                        message="Cancel"
-                        @click="closeDeleteModal"
-                        class="cancel-button"
-                    />
-                    <KMButton 
-                        message="Delete"
-                        @click="confirmDeleteSource"
-                        class="delete-confirm-button"
-                        :disabled="isLoading"
-                    />
-                </div>
-            </div>
-        </div>
-        </div> <!-- End main-content -->
     </div>
 </template>
 
@@ -359,7 +298,6 @@ import { ref, onMounted, computed, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 import KMButton from '~/components/KMButton.vue';
-import KMCheckBox from '~/components/KMCheckBox.vue';
 import MemescraperOverviewSection from '~/components/MemescraperOverviewSection.vue';
 import Swal from 'sweetalert2';
 import Chart from 'chart.js/auto';
@@ -440,14 +378,9 @@ const router = useRouter();
 
 // Reactive data
 const analytics = ref<MemeScraperAnalytics | null>(null);
-const isLoading = ref<boolean>(true);
+const isLoading = ref<boolean>(false);
 const downloadChart = ref<HTMLCanvasElement | null>(null);
 let chartInstance: Chart | null = null;
-
-// Delete modal state
-const showDeleteModal = ref<boolean>(false);
-const selectedSource = ref<InstagramSource | null>(null);
-const deleteAssociatedMemes = ref<boolean>(false);
 
 // Navigation functions
 const navigateBack = (): void => {
@@ -457,10 +390,6 @@ const navigateBack = (): void => {
 // API functions
 const fetchAnalytics = async (): Promise<void> => {
     isLoading.value = true;
-    
-    // Ensure minimum loading time for better UX
-    const startTime = Date.now();
-    const minLoadingTime = 800; // 800ms minimum
     
     try {
         const response = await RequestGETFromKliveAPI('/memescraper/memeScraperAnalytics');
@@ -485,17 +414,7 @@ const fetchAnalytics = async (): Promise<void> => {
             color: '#ffffff'
         });
     } finally {
-        // Ensure minimum loading time has passed
-        const elapsedTime = Date.now() - startTime;
-        const remainingTime = Math.max(0, minLoadingTime - elapsedTime);
-        
-        if (remainingTime > 0) {
-            setTimeout(() => {
-                isLoading.value = false;
-            }, remainingTime);
-        } else {
-            isLoading.value = false;
-        }
+        isLoading.value = false;
     }
 };
 
@@ -593,62 +512,6 @@ const getNichePercentage = (count: number): number => {
     return maxCount > 0 ? (count / maxCount) * 100 : 0;
 };
 
-// Delete functionality
-const showDeleteConfirmation = (source: InstagramSource): void => {
-    selectedSource.value = source;
-    deleteAssociatedMemes.value = false;
-    showDeleteModal.value = true;
-};
-
-const closeDeleteModal = (): void => {
-    showDeleteModal.value = false;
-    selectedSource.value = null;
-    deleteAssociatedMemes.value = false;
-};
-
-const confirmDeleteSource = async (): Promise<void> => {
-    if (!selectedSource.value) return;
-
-    isLoading.value = true;
-    
-    try {
-        const response = await RequestGETFromKliveAPI(
-            `/memescraper/deleteInstagramSource?sourceAccountID=${selectedSource.value.AccountID}&deleteAssociatedMemes=${deleteAssociatedMemes.value ? 'true' : 'false'}`
-        );
-        
-        if (response.ok) {
-            Swal.fire({
-                icon: 'success',
-                title: 'Success',
-                text: `@${selectedSource.value.Username} has been deleted successfully.`,
-                confirmButtonColor: '#4d9e39',
-                background: '#161516',
-                color: '#ffffff'
-            });
-            
-            // Close modal
-            closeDeleteModal();
-            
-            // Refresh analytics data
-            await fetchAnalytics();
-        } else {
-            throw new Error('Failed to delete source');
-        }
-    } catch (error) {
-        console.error('Error deleting source:', error);
-        Swal.fire({
-            icon: 'error',
-            title: 'Error',
-            text: 'Failed to delete the Instagram source. Please try again.',
-            confirmButtonColor: '#4d9e39',
-            background: '#161516',
-            color: '#ffffff'
-        });
-    } finally {
-        isLoading.value = false;
-    }
-};
-
 // Lifecycle hooks
 onMounted(() => {
     fetchAnalytics();
@@ -658,6 +521,7 @@ onMounted(() => {
 <style scoped>
 .meme-scraper-container {
     padding: 24px;
+    background: linear-gradient(135deg, #0a0a0a 0%, #161516 100%);
     min-height: 100vh;
     color: #ffffff;
 }
@@ -931,28 +795,6 @@ onMounted(() => {
     align-items: center;
 }
 
-.source-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.delete-button {
-    background: rgba(220, 53, 69, 0.2);
-    border: 1px solid rgba(220, 53, 69, 0.3);
-    color: #dc3545;
-    padding: 8px 12px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 1rem;
-    transition: all 0.3s ease;
-}
-
-.delete-button:hover {
-    background: rgba(220, 53, 69, 0.3);
-    transform: scale(1.05);
-}
-
 .status-badge {
     padding: 4px 12px;
     border-radius: 20px;
@@ -1117,259 +959,6 @@ onMounted(() => {
     to { transform: rotate(360deg); }
 }
 
-@keyframes fadeIn {
-    from { 
-        opacity: 0; 
-        transform: translateY(20px); 
-    }
-    to { 
-        opacity: 1; 
-        transform: translateY(0); 
-    }
-}
-
-.fade-in {
-    animation: fadeIn 0.6s ease-out;
-}
-
-/* Loading Screen Styles */
-.loading-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.9);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 9999;
-    backdrop-filter: blur(10px);
-    overflow: hidden;
-}
-
-.loading-content {
-    text-align: center;
-    padding: 30px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 20px;
-    border: 1px solid rgba(77, 158, 57, 0.3);
-    backdrop-filter: blur(10px);
-    max-width: 350px;
-    width: 85%;
-    max-height: 80vh;
-    overflow: hidden;
-}
-
-.loading-spinner {
-    width: 50px;
-    height: 50px;
-    border: 3px solid rgba(77, 158, 57, 0.2);
-    border-top: 3px solid #4d9e39;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 16px auto;
-}
-
-.loading-title {
-    color: #4d9e39;
-    font-size: 1.3rem;
-    font-weight: 600;
-    margin: 0 0 8px 0;
-}
-
-.loading-subtitle {
-    color: #cccccc;
-    font-size: 0.9rem;
-    margin: 0;
-    opacity: 0.8;
-}
-
-.loading-tips {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-top: 24px;
-}
-
-.loading-tip {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 8px 16px;
-    background: rgba(77, 158, 57, 0.1);
-    border-radius: 8px;
-    border: 1px solid rgba(77, 158, 57, 0.2);
-}
-
-.tip-icon {
-    font-size: 1.2rem;
-}
-
-.tip-text {
-    color: #cccccc;
-    font-size: 0.9rem;
-    flex: 1;
-}
-
-/* Pulse animation for loading text */
-@keyframes pulse {
-    0%, 100% { opacity: 0.8; }
-    50% { opacity: 1; }
-}
-
-.loading-subtitle {
-    animation: pulse 2s infinite;
-}
-
-/* Staggered animation for loading tips */
-.loading-tip:nth-child(1) { animation: pulse 2s infinite 0s; }
-.loading-tip:nth-child(2) { animation: pulse 2s infinite 0.5s; }
-.loading-tip:nth-child(3) { animation: pulse 2s infinite 1s; }
-
-/* Refresh Loading Styles */
-.refresh-loading-overlay {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    z-index: 998;
-    background: rgba(77, 158, 57, 0.9);
-    border-radius: 12px;
-    padding: 16px 20px;
-    border: 1px solid rgba(77, 158, 57, 0.3);
-    backdrop-filter: blur(10px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.refresh-loading-content {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.refresh-spinner {
-    width: 20px;
-    height: 20px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-top: 2px solid #ffffff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
-.refresh-text {
-    color: #ffffff;
-    font-size: 0.9rem;
-    font-weight: 500;
-}
-
-/* Modal Styles */
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.8);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-    backdrop-filter: blur(5px);
-}
-
-.modal-content {
-    background: #161516;
-    border-radius: 16px;
-    padding: 0;
-    max-width: 500px;
-    width: 90%;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-}
-
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 24px 24px 0 24px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    padding-bottom: 16px;
-    margin-bottom: 24px;
-}
-
-.modal-header h3 {
-    color: #dc3545;
-    margin: 0;
-    font-size: 1.3rem;
-    font-weight: 600;
-}
-
-.modal-close {
-    background: none;
-    border: none;
-    color: #cccccc;
-    font-size: 1.5rem;
-    cursor: pointer;
-    padding: 0;
-    width: 30px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    transition: all 0.3s ease;
-}
-
-.modal-close:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #ffffff;
-}
-
-.modal-body {
-    padding: 0 24px 24px 24px;
-}
-
-.modal-body p {
-    color: #ffffff;
-    margin: 0 0 16px 0;
-    font-size: 1rem;
-}
-
-.delete-options {
-    margin: 16px 0;
-}
-
-.modal-actions {
-    display: flex;
-    gap: 12px;
-    justify-content: flex-end;
-    padding: 16px 24px 24px 24px;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.cancel-button {
-    background: rgba(255, 255, 255, 0.1) !important;
-    color: #cccccc !important;
-}
-
-.cancel-button:hover {
-    background: rgba(255, 255, 255, 0.2) !important;
-}
-
-.delete-confirm-button {
-    background: #dc3545 !important;
-    color: #ffffff !important;
-}
-
-.delete-confirm-button:hover {
-    background: #c82333 !important;
-}
-
-.delete-confirm-button:disabled {
-    background: rgba(220, 53, 69, 0.5) !important;
-    cursor: not-allowed;
-}
-
 @media (max-width: 768px) {
     .page-header {
         flex-direction: column;
@@ -1388,39 +977,6 @@ onMounted(() => {
     .niche-item {
         grid-template-columns: 1fr;
         gap: 8px;
-    }
-    
-    .modal-content {
-        margin: 20px;
-        width: calc(100% - 40px);
-    }
-    
-    .modal-actions {
-        flex-direction: column;
-    }
-    
-    .loading-content {
-        margin: 20px;
-        width: calc(100% - 40px);
-        padding: 30px 20px;
-    }
-    
-    .loading-tips {
-        gap: 8px;
-    }
-    
-    .loading-tip {
-        padding: 6px 12px;
-    }
-    
-    .refresh-loading-overlay {
-        top: 10px;
-        right: 10px;
-        padding: 12px 16px;
-    }
-    
-    .refresh-text {
-        font-size: 0.8rem;
     }
 }
 </style>

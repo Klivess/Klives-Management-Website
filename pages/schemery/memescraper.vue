@@ -365,58 +365,86 @@
                     <button class="modal-close" @click="closeAddSourceModal">×</button>
                 </div>
                 <div class="modal-body">
-                    <div class="form-group">
-                        <label for="username">Instagram Username</label>
-                        <input 
-                            id="username"
-                            type="text" 
-                            v-model="newSourceData.username"
-                            placeholder="Enter username (without @)"
-                            class="form-input"
-                            :disabled="isSubmittingSource"
-                        />
-                    </div>
-
-                    <div class="form-group">
-                        <div class="checkbox-group">
-                            <KMCheckBox 
-                                message="Download Reels"
-                                v-model:boxChecked="newSourceData.downloadReels"
-                                :disabled="isSubmittingSource"
-                            />
-                            <KMCheckBox 
-                                message="Download Posts"
-                                v-model:boxChecked="newSourceData.downloadPosts"
-                                :disabled="isSubmittingSource"
-                            />
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="niches">Niches</label>
-                        <div class="niches-input">
-                            <input 
-                                id="niches"
-                                type="text" 
-                                v-model="newNicheInput"
-                                placeholder="Enter a niche and press Enter"
-                                class="form-input"
-                                @keydown.enter.prevent="addNiche"
-                                :disabled="isSubmittingSource"
-                            />
-                        </div>
-                        <div class="niches-list" v-if="newSourceData.niches.length > 0">
-                            <div 
-                                v-for="(niche, index) in newSourceData.niches" 
-                                :key="index"
-                                class="niche-tag"
-                            >
-                                <span>{{ niche }}</span>
-                                <button 
-                                    @click="removeNiche(index)"
-                                    class="niche-remove"
+                    <div class="form-container">
+                        <!-- Left side: Form -->
+                        <div class="form-section">
+                            <div class="form-group">
+                                <label for="username">Instagram Username</label>
+                                <input 
+                                    id="username"
+                                    type="text" 
+                                    v-model="newSourceData.username"
+                                    placeholder="Enter username (without @)"
+                                    class="form-input"
                                     :disabled="isSubmittingSource"
-                                >×</button>
+                                />
+                            </div>
+
+                            <div class="form-group">
+                                <label>Content Types</label>
+                                <div class="checkbox-group">
+                                    <KMCheckBox 
+                                        message="Download Reels"
+                                        v-model:boxChecked="newSourceData.downloadReels"
+                                        :disabled="isSubmittingSource"
+                                    />
+                                    <KMCheckBox 
+                                        message="Download Posts"
+                                        v-model:boxChecked="newSourceData.downloadPosts"
+                                        :disabled="isSubmittingSource"
+                                    />
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="niches">Niches</label>
+                                <div class="niches-input">
+                                    <input 
+                                        id="niches"
+                                        type="text" 
+                                        v-model="newNicheInput"
+                                        placeholder="Enter a niche and press Enter"
+                                        class="form-input"
+                                        @keydown.enter.prevent="addNiche"
+                                        :disabled="isSubmittingSource"
+                                    />
+                                </div>
+                                <div class="niches-list" v-if="newSourceData.niches.length > 0">
+                                    <div 
+                                        v-for="(niche, index) in newSourceData.niches" 
+                                        :key="index"
+                                        class="niche-tag"
+                                    >
+                                        <span>{{ niche }}</span>
+                                        <button 
+                                            @click="removeNiche(index)"
+                                            class="niche-remove"
+                                            :disabled="isSubmittingSource"
+                                        >×</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right side: Existing Niches -->
+                        <div class="existing-niches-section">
+                            <h4>Existing Niches</h4>
+                            <div class="existing-niches-container">
+                                <div v-if="existingNiches.length > 0" class="existing-niches-list">
+                                    <div 
+                                        v-for="niche in existingNiches" 
+                                        :key="niche.name"
+                                        class="existing-niche-item"
+                                        @click="addExistingNiche(niche.name)"
+                                        :class="{ 'disabled': newSourceData.niches.includes(niche.name) }"
+                                    >
+                                        <span class="niche-name">{{ niche.name }}</span>
+                                        <span class="niche-count">{{ niche.count }}</span>
+                                    </div>
+                                </div>
+                                <div v-else class="no-niches-message">
+                                    <p>No existing niches found. Create your first niche using the form!</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -444,7 +472,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
-import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
+import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import KMButton from '~/components/KMButton.vue';
 import KMCheckBox from '~/components/KMCheckBox.vue';
 import MemescraperOverviewSection from '~/components/MemescraperOverviewSection.vue';
@@ -558,6 +586,29 @@ const isFormValid = computed((): boolean => {
            (newSourceData.value.downloadReels || newSourceData.value.downloadPosts);
 });
 
+const existingNiches = computed((): { name: string; count: number }[] => {
+    if (!analytics.value?.InstagramSources) return [];
+    
+    const nicheCount: { [key: string]: number } = {};
+    
+    // Go through all Instagram sources and collect their niches
+    analytics.value.InstagramSources.forEach(source => {
+        if (source.Niches) {
+            source.Niches.forEach(niche => {
+                const nicheName = niche.NicheTagName;
+                if (nicheName) {
+                    nicheCount[nicheName] = (nicheCount[nicheName] || 0) + 1;
+                }
+            });
+        }
+    });
+    
+    // Convert to array and sort by count (descending)
+    return Object.entries(nicheCount)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count);
+});
+
 // Add source modal functions
 const closeAddSourceModal = (): void => {
     showAddSourceModal.value = false;
@@ -583,42 +634,50 @@ const removeNiche = (index: number): void => {
     newSourceData.value.niches.splice(index, 1);
 };
 
+const addExistingNiche = (niche: string): void => {
+    if (!newSourceData.value.niches.includes(niche) && !isSubmittingSource.value) {
+        newSourceData.value.niches.push(niche);
+    }
+};
+
 const submitNewSource = async (): Promise<void> => {
     if (!isFormValid.value) return;
     
     isSubmittingSource.value = true;
     
     try {
-        const response = await fetch('/api/kliveapi', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                endpoint: '/memescraper/addInstagramSource',
-                method: 'POST',
-                data: {
-                    username: newSourceData.value.username.trim(),
-                    downloadReels: newSourceData.value.downloadReels,
-                    downloadPosts: newSourceData.value.downloadPosts,
-                    niches: newSourceData.value.niches
-                }
-            })
-        });
+        // Prepare the data in the exact format required
+        const requestData = {
+            username: newSourceData.value.username.trim(),
+            downloadReels: newSourceData.value.downloadReels,
+            downloadPosts: newSourceData.value.downloadPosts,
+            niches: newSourceData.value.niches
+        };
+        
+        const response = await RequestPOSTFromKliveAPI(
+            '/memescraper/addInstagramSource', 
+            JSON.stringify(requestData)
+        );
         
         if (response.ok) {
             await Swal.fire({
                 icon: 'success',
                 title: 'Success!',
-                text: `Instagram source @${newSourceData.value.username} has been added successfully.`,
+                text: `Instagram source @${newSourceData.value.username} has been added successfully. Refreshing analytics...`,
                 confirmButtonColor: '#4d9e39',
                 background: '#161516',
-                color: '#ffffff'
+                color: '#ffffff',
+                timer: 2000,
+                timerProgressBar: true,
+                showConfirmButton: false
             });
             
             closeAddSourceModal();
-            // Refresh analytics to show new source
-            await fetchAnalytics();
+            
+            // Small delay to ensure backend has processed the new source
+            setTimeout(async () => {
+                await fetchAnalytics();
+            }, 500);
         } else {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.message || 'Failed to add Instagram source');
@@ -1556,8 +1615,116 @@ onMounted(() => {
 
 /* Add Source Modal Styles */
 .add-source-modal {
-    max-width: 500px;
-    width: 90%;
+    max-width: 800px;
+    width: 95%;
+}
+
+.form-container {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 30px;
+    align-items: start;
+}
+
+.form-section {
+    flex: 1;
+}
+
+.existing-niches-section {
+    border-left: 1px solid rgba(77, 158, 57, 0.3);
+    padding-left: 20px;
+}
+
+.existing-niches-section h4 {
+    color: #4d9e39;
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0 0 15px 0;
+}
+
+.existing-niches-container {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.existing-niches-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.existing-niche-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(77, 158, 57, 0.1);
+    border: 1px solid rgba(77, 158, 57, 0.3);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.existing-niche-item:hover:not(.disabled) {
+    background: rgba(77, 158, 57, 0.2);
+    border-color: rgba(77, 158, 57, 0.5);
+    transform: translateX(2px);
+}
+
+.existing-niche-item.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: rgba(156, 163, 175, 0.1);
+    border-color: rgba(156, 163, 175, 0.3);
+}
+
+.niche-name {
+    color: #ffffff;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.niche-count {
+    background: rgba(77, 158, 57, 0.3);
+    color: #4d9e39;
+    padding: 2px 6px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    min-width: 20px;
+    text-align: center;
+}
+
+.no-niches-message {
+    text-align: center;
+    padding: 20px;
+    color: rgba(255, 255, 255, 0.6);
+    font-style: italic;
+}
+
+.no-niches-message p {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+/* Custom scrollbar for existing niches */
+.existing-niches-container::-webkit-scrollbar {
+    width: 4px;
+}
+
+.existing-niches-container::-webkit-scrollbar-track {
+    background: rgba(77, 158, 57, 0.1);
+    border-radius: 2px;
+}
+
+.existing-niches-container::-webkit-scrollbar-thumb {
+    background: rgba(77, 158, 57, 0.3);
+    border-radius: 2px;
+}
+
+.existing-niches-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(77, 158, 57, 0.5);
 }
 
 .form-group {
@@ -1693,6 +1860,22 @@ onMounted(() => {
         width: calc(100% - 40px);
     }
     
+    .form-container {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .existing-niches-section {
+        border-left: none;
+        border-top: 1px solid rgba(77, 158, 57, 0.3);
+        padding-left: 0;
+        padding-top: 20px;
+    }
+    
+    .add-source-modal {
+        max-width: 95%;
+    }
+
     .modal-actions {
         flex-direction: column;
     }

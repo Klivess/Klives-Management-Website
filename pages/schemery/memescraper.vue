@@ -12,11 +12,17 @@
                 <h1 class="page-title">Meme Scraper Analytics</h1>
                 <p class="page-subtitle">Instagram content analytics and performance insights</p>
             </div>
-            <div class="header-right" style="width: 200px;">
+            <div class="header-right" style="width: 600px; display: flex; gap: 10px;">
+                <KMButton 
+                    message="➕ Add Source"
+                    @click="showAddSourceModal = true"
+                    style="flex: 1;"
+                />
                 <KMButton 
                     message="🔄 Refresh"
                     @click="fetchAnalytics"
                     :class="{ 'spinning': isLoading }"
+                    style="flex: 1;"
                 />
             </div>
         </div>
@@ -350,6 +356,87 @@
                 </div>
             </div>
         </div>
+
+        <!-- Add Instagram Source Modal -->
+        <div v-if="showAddSourceModal" class="modal-overlay" @click="closeAddSourceModal">
+            <div class="modal-content add-source-modal" @click.stop>
+                <div class="modal-header">
+                    <h3>Add New Instagram Source</h3>
+                    <button class="modal-close" @click="closeAddSourceModal">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="username">Instagram Username</label>
+                        <input 
+                            id="username"
+                            type="text" 
+                            v-model="newSourceData.username"
+                            placeholder="Enter username (without @)"
+                            class="form-input"
+                            :disabled="isSubmittingSource"
+                        />
+                    </div>
+
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <KMCheckBox 
+                                message="Download Reels"
+                                v-model:boxChecked="newSourceData.downloadReels"
+                                :disabled="isSubmittingSource"
+                            />
+                            <KMCheckBox 
+                                message="Download Posts"
+                                v-model:boxChecked="newSourceData.downloadPosts"
+                                :disabled="isSubmittingSource"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="niches">Niches</label>
+                        <div class="niches-input">
+                            <input 
+                                id="niches"
+                                type="text" 
+                                v-model="newNicheInput"
+                                placeholder="Enter a niche and press Enter"
+                                class="form-input"
+                                @keydown.enter.prevent="addNiche"
+                                :disabled="isSubmittingSource"
+                            />
+                        </div>
+                        <div class="niches-list" v-if="newSourceData.niches.length > 0">
+                            <div 
+                                v-for="(niche, index) in newSourceData.niches" 
+                                :key="index"
+                                class="niche-tag"
+                            >
+                                <span>{{ niche }}</span>
+                                <button 
+                                    @click="removeNiche(index)"
+                                    class="niche-remove"
+                                    :disabled="isSubmittingSource"
+                                >×</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <KMButton 
+                        message="Cancel"
+                        @click="closeAddSourceModal"
+                        class="cancel-button"
+                        :disabled="isSubmittingSource"
+                    />
+                    <KMButton
+                        :message="isSubmittingSource ? 'Adding...' : 'Add Source'"
+                        @click="submitNewSource"
+                        class="submit-button"
+                        :disabled="!isFormValid || isSubmittingSource"
+                    />
+                </div>
+            </div>
+        </div>
         </div> <!-- End main-content -->
     </div>
 </template>
@@ -449,9 +536,106 @@ const showDeleteModal = ref<boolean>(false);
 const selectedSource = ref<InstagramSource | null>(null);
 const deleteAssociatedMemes = ref<boolean>(false);
 
+// Add source modal state
+const showAddSourceModal = ref<boolean>(false);
+const newSourceData = ref({
+    username: '',
+    downloadReels: true,
+    downloadPosts: false,
+    niches: [] as string[]
+});
+const newNicheInput = ref<string>('');
+const isSubmittingSource = ref<boolean>(false);
+
 // Navigation functions
 const navigateBack = (): void => {
     router.push('/schemes');
+};
+
+// Computed properties
+const isFormValid = computed((): boolean => {
+    return newSourceData.value.username.trim() !== '' && 
+           (newSourceData.value.downloadReels || newSourceData.value.downloadPosts);
+});
+
+// Add source modal functions
+const closeAddSourceModal = (): void => {
+    showAddSourceModal.value = false;
+    // Reset form data
+    newSourceData.value = {
+        username: '',
+        downloadReels: true,
+        downloadPosts: false,
+        niches: []
+    };
+    newNicheInput.value = '';
+};
+
+const addNiche = (): void => {
+    const niche = newNicheInput.value.trim();
+    if (niche && !newSourceData.value.niches.includes(niche)) {
+        newSourceData.value.niches.push(niche);
+        newNicheInput.value = '';
+    }
+};
+
+const removeNiche = (index: number): void => {
+    newSourceData.value.niches.splice(index, 1);
+};
+
+const submitNewSource = async (): Promise<void> => {
+    if (!isFormValid.value) return;
+    
+    isSubmittingSource.value = true;
+    
+    try {
+        const response = await fetch('/api/kliveapi', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                endpoint: '/memescraper/addInstagramSource',
+                method: 'POST',
+                data: {
+                    username: newSourceData.value.username.trim(),
+                    downloadReels: newSourceData.value.downloadReels,
+                    downloadPosts: newSourceData.value.downloadPosts,
+                    niches: newSourceData.value.niches
+                }
+            })
+        });
+        
+        if (response.ok) {
+            await Swal.fire({
+                icon: 'success',
+                title: 'Success!',
+                text: `Instagram source @${newSourceData.value.username} has been added successfully.`,
+                confirmButtonColor: '#4d9e39',
+                background: '#161516',
+                color: '#ffffff'
+            });
+            
+            closeAddSourceModal();
+            // Refresh analytics to show new source
+            await fetchAnalytics();
+        } else {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || 'Failed to add Instagram source');
+        }
+    } catch (error) {
+        console.error('Error adding Instagram source:', error);
+        await Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: error instanceof Error ? error.message : 'Failed to add Instagram source. Please try again.',
+            confirmButtonColor: '#4d9e39',
+            background: '#161516',
+            color: '#ffffff'
+        });
+    } finally {
+        isSubmittingSource.value = false;
+    }
 };
 
 // API functions
@@ -1367,6 +1551,120 @@ onMounted(() => {
 
 .delete-confirm-button:disabled {
     background: rgba(220, 53, 69, 0.5) !important;
+    cursor: not-allowed;
+}
+
+/* Add Source Modal Styles */
+.add-source-modal {
+    max-width: 500px;
+    width: 90%;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    color: #4d9e39;
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 0.95rem;
+}
+
+.form-input {
+    width: 100%;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(77, 158, 57, 0.3);
+    border-radius: 8px;
+    color: #ffffff;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #4d9e39;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 0 2px rgba(77, 158, 57, 0.2);
+}
+
+.form-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.form-input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.checkbox-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.niches-input {
+    position: relative;
+}
+
+.niches-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.niche-tag {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: rgba(77, 158, 57, 0.2);
+    border: 1px solid rgba(77, 158, 57, 0.4);
+    border-radius: 20px;
+    color: #ffffff;
+    font-size: 0.9rem;
+}
+
+.niche-remove {
+    background: none;
+    border: none;
+    color: #ffffff;
+    cursor: pointer;
+    font-size: 1.2rem;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+
+.niche-remove:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #ff4444;
+}
+
+.niche-remove:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.submit-button {
+    background: #4d9e39 !important;
+    color: #ffffff !important;
+}
+
+.submit-button:hover:not(:disabled) {
+    background: #3a7a2b !important;
+}
+
+.submit-button:disabled {
+    background: rgba(77, 158, 57, 0.5) !important;
     cursor: not-allowed;
 }
 

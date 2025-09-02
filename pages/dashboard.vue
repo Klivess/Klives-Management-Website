@@ -12,7 +12,7 @@
         </div>
 
         <!-- Quick Actions Grid -->
-        <KMInfoGrid columns="4" rows="1" rowHeight="180" style="padding-bottom: 30px;">
+        <KMInfoGrid columns="3" rows="1" rowHeight="180" style="padding-bottom: 30px;">
             <QuickActionCard
                 title="Bot Logs"
                 description="Monitor system events and bot activities"
@@ -21,28 +21,27 @@
                 variant="info"
                 to="/administration/botlogs"
             />
-            <QuickActionCard
-                title="KliveTech Devices"
-                description="Control connected gadgets and IoT devices"
-                icon="🔧"
-                :value="kliveTechStats.hasAccess ? kliveTechStats.connectedDevices : (kliveTechStats.connectedDevices === 'Restricted' ? null : kliveTechStats.connectedDevices)"
-                format="count"
-                :actionText="kliveTechStats.hasAccess ? 'Manage Devices' : (kliveTechStats.connectedDevices === 'Restricted' ? 'Access Restricted' : 'Manage Devices')"
-                :variant="kliveTechStats.hasAccess ? 'success' : (kliveTechStats.connectedDevices === 'Restricted' ? 'danger' : 'success')"
-                :to="kliveTechStats.hasAccess ? '/klivetech' : (kliveTechStats.connectedDevices === 'Restricted' ? null : '/klivetech')"
-                :onClick="kliveTechStats.hasAccess ? null : (kliveTechStats.connectedDevices === 'Restricted' ? showAccessDeniedMessage : null)"
-            />
-            <QuickActionCard
-                title="User Profiles"
-                description="Manage user accounts and permissions"
-                icon="👥"
-                :value="adminStats.hasAccess ? adminStats.totalProfiles : (adminStats.totalProfiles === 'Restricted' ? null : adminStats.totalProfiles)"
-                format="count"
-                :actionText="adminStats.hasAccess ? 'Manage Users' : (adminStats.totalProfiles === 'Restricted' ? 'Access Restricted' : 'Manage Users')"
-                :variant="adminStats.hasAccess ? 'warning' : (adminStats.totalProfiles === 'Restricted' ? 'danger' : 'warning')"
-                :to="adminStats.hasAccess ? '/admin' : (adminStats.totalProfiles === 'Restricted' ? null : '/admin')"
-                :onClick="adminStats.hasAccess ? null : (adminStats.totalProfiles === 'Restricted' ? showAccessDeniedMessage : null)"
-            />
+            <div class="data-zone" :class="{ 'zone-loading': loadingStates.kliveTech, 'zone-error': errorStates.kliveTech }">
+                <div v-if="loadingStates.kliveTech" class="loading-overlay">
+                    <div class="loading-spinner"></div>
+                    <span>Loading KliveTech...</span>
+                </div>
+                <div v-if="errorStates.kliveTech" class="error-overlay">
+                    <span>ERROR</span>
+                    <button @click="retryKliveTechStats" class="retry-btn">Retry</button>
+                </div>
+                <QuickActionCard
+                    title="KliveTech Devices"
+                    description="Control connected gadgets and IoT devices"
+                    icon="🔧"
+                    :value="kliveTechStats.hasAccess ? kliveTechStats.connectedDevices : (kliveTechStats.connectedDevices === 'Restricted' ? null : kliveTechStats.connectedDevices)"
+                    format="count"
+                    :actionText="kliveTechStats.hasAccess ? 'Manage Devices' : (kliveTechStats.connectedDevices === 'Restricted' ? 'Access Restricted' : 'Manage Devices')"
+                    :variant="kliveTechStats.hasAccess ? 'success' : (kliveTechStats.connectedDevices === 'Restricted' ? 'danger' : 'success')"
+                    :to="kliveTechStats.hasAccess ? '/klivetech' : (kliveTechStats.connectedDevices === 'Restricted' ? null : '/klivetech')"
+                    :onClick="kliveTechStats.hasAccess ? null : (kliveTechStats.connectedDevices === 'Restricted' ? showAccessDeniedMessage : null)"
+                />
+            </div>
             <QuickActionCard
                 title="Scheduled Tasks"
                 description="View and manage bot task schedules"
@@ -56,9 +55,25 @@
         <!-- Schemes Performance Overview -->
         <KMInfoGrid columns="1" rows="1" rowHeight="210">
             <KMInfoBox caption="Active Schemes Performance">
-                <div class="schemes-overview">
+                <div class="data-zone schemes-overview" :class="{ 'zone-loading': loadingStates.cs2 || loadingStates.memescraper, 'zone-error': errorStates.cs2 && errorStates.memescraper }">
+                    <div v-if="loadingStates.cs2 || loadingStates.memescraper" class="loading-overlay">
+                        <div class="loading-spinner"></div>
+                        <span>Loading Schemes...</span>
+                    </div>
+                    <div v-if="errorStates.cs2 && errorStates.memescraper" class="error-overlay">
+                        <span>ERROR</span>
+                        <button @click="retryCS2Stats(); retryMemescraperStats()" class="retry-btn">Retry</button>
+                    </div>
                     <div class="scheme-cards">
-                        <div class="scheme-card cs2-card" @click="navigateToScheme('/schemery/cs2arbitragebot')">
+                        <div class="scheme-card cs2-card" @click="navigateToScheme('/schemery/cs2arbitragebot')"
+                             :class="{ 'card-loading': loadingStates.cs2, 'card-error': errorStates.cs2 }">
+                            <div v-if="loadingStates.cs2" class="card-loading-overlay">
+                                <div class="loading-spinner-small"></div>
+                            </div>
+                            <div v-if="errorStates.cs2" class="card-error-overlay">
+                                <span>ERROR</span>
+                                <button @click.stop="retryCS2Stats" class="retry-btn-small">↻</button>
+                            </div>
                             <div class="scheme-header">
                                 <h3>CS2 Arbitrage Bot</h3>
                                 <div class="scheme-status active">Active</div>
@@ -79,7 +94,15 @@
                             </div>
                         </div>
                         
-                        <div class="scheme-card memescraper-card" @click="memescraperStats.hasAccess ? navigateToScheme('/schemery/memescraper') : showAccessDeniedMessage()">
+                        <div class="scheme-card memescraper-card" @click="memescraperStats.hasAccess ? navigateToScheme('/schemery/memescraper') : showAccessDeniedMessage()"
+                             :class="{ 'card-loading': loadingStates.memescraper, 'card-error': errorStates.memescraper }">
+                            <div v-if="loadingStates.memescraper" class="card-loading-overlay">
+                                <div class="loading-spinner-small"></div>
+                            </div>
+                            <div v-if="errorStates.memescraper" class="card-error-overlay">
+                                <span>ERROR</span>
+                                <button @click.stop="retryMemescraperStats" class="retry-btn-small">↻</button>
+                            </div>
                             <div class="scheme-header">
                                 <h3>Meme Scraper</h3>
                                 <div :class="['scheme-status', memescraperStats.hasAccess ? 'active' : 'restricted']">
@@ -132,112 +155,18 @@
             </KMInfoBox>
         </KMInfoGrid>
 
-        <!-- Bot Operations and KliveTech Status -->
-        <KMInfoGrid columns="2" rows="1" rowHeight="420">
-            <KMInfoBox caption="Bot Operations">
-                <div class="bot-operations">
-                    <div class="bot-stats">
-                        <h4>Bot Statistics</h4>
-                        <div class="bot-metrics">
-                            <CS2MetricCard
-                                :value="botStats.activeBots === 'Restricted' ? 'Restricted' : botStats.activeBots"
-                                label="Active Bots"
-                                format="count"
-                                :variant="botStats.activeBots === 'Restricted' ? 'danger' : 'success'"
-                            />
-                            <CS2MetricCard
-                                :value="botStats.totalOperations === 'Restricted' ? 'Restricted' : botStats.totalOperations"
-                                label="Total Operations"
-                                format="count"
-                                :variant="botStats.totalOperations === 'Restricted' ? 'danger' : 'info'"
-                            />
-                            <CS2MetricCard
-                                :value="botStats.completedTasks === 'Restricted' ? 'Restricted' : botStats.completedTasks"
-                                label="Completed Tasks"
-                                format="count"
-                                :variant="botStats.completedTasks === 'Restricted' ? 'danger' : 'success'"
-                            />
-                            <CS2MetricCard
-                                :value="botStats.successfulOperations === 'Restricted' ? 'Restricted' : `${Math.round(botStats.successfulOperations / Math.max(botStats.totalOperations, 1) * 100)}%`"
-                                label="Success Rate"
-                                format="text"
-                                :variant="botStats.successfulOperations === 'Restricted' ? 'danger' : 
-                                    (botStats.successfulOperations / Math.max(botStats.totalOperations, 1) > 0.8 ? 'success' : 
-                                     botStats.successfulOperations / Math.max(botStats.totalOperations, 1) > 0.5 ? 'warning' : 'danger')"
-                            />
-                        </div>
-                    </div>
-                    <div class="recent-activity">
-                        <h4>Recent Activity</h4>
-                        <div class="activity-list" v-if="recentActivities.length > 0">
-                            <div v-for="activity in recentActivities" :key="activity.id" 
-                                 :class="['activity-item', { 'restricted': systemStats.totalLogs === 'Restricted' && activity.id === 1 }]">
-                                <span class="activity-time">{{ formatTime(activity.time) }}</span>
-                                <span class="activity-text">{{ activity.description }}</span>
-                            </div>
-                        </div>
-                        <div v-else class="no-activity">
-                            <span class="no-data-text">No recent activity data available</span>
-                        </div>
-                    </div>
-                </div>
-            </KMInfoBox>
-            
-            <KMInfoBox caption="KliveTech Network">
-                <div class="klivetech-overview">
-                    <div class="device-stats">
-                        <CS2MetricCard
-                            :value="kliveTechStats.connectedDevices === 'Restricted' ? 'Restricted' : kliveTechStats.connectedDevices"
-                            label="Connected Devices"
-                            format="count"
-                            :variant="kliveTechStats.connectedDevices === 'Restricted' ? 'danger' : 'success'"
-                        />
-                        <CS2MetricCard
-                            :value="kliveTechStats.onlineDevices === 'Restricted' ? 'Restricted' : kliveTechStats.onlineDevices"
-                            label="Online Devices"
-                            format="count"
-                            :variant="kliveTechStats.onlineDevices === 'Restricted' ? 'danger' : (kliveTechStats.onlineDevices === kliveTechStats.connectedDevices ? 'success' : 'warning')"
-                        />
-                    </div>
-                    <div class="device-actions">
-                        <KMButton 
-                            :message="kliveTechStats.connectedDevices === 'Restricted' ? 'Access Restricted' : 'Refresh All Devices'"
-                            :textColor="kliveTechStats.connectedDevices === 'Restricted' ? '#ef4444' : '#4d9e39'"
-                            @click="kliveTechStats.connectedDevices === 'Restricted' ? showAccessDeniedMessage : refreshKliveTechDevices"
-                            style="width: 100%; height: 50px; margin-bottom: 15px;"
-                        />
-                        <KMButton 
-                            :message="kliveTechStats.connectedDevices === 'Restricted' ? 'Access Restricted' : 'View Device Dashboard'"
-                            :textColor="kliveTechStats.connectedDevices === 'Restricted' ? '#ef4444' : '#4d9e39'"
-                            @click="kliveTechStats.connectedDevices === 'Restricted' ? showAccessDeniedMessage : navigateToScheme('/klivetech')"
-                            style="width: 100%; height: 50px;"
-                        />
-                    </div>
-                </div>
-            </KMInfoBox>
-        </KMInfoGrid>
-
         <!-- System Administration -->
-        <KMInfoGrid columns="3" rows="1" rowHeight="300">
-            <KMInfoBox caption="Administration">
-                <div class="admin-section">                <CS2MetricCard
-                    :value="adminStats.totalProfiles === 'Restricted' ? 'Restricted' : adminStats.totalProfiles"
-                    label="User Profiles"
-                    format="count"
-                    :variant="adminStats.totalProfiles === 'Restricted' ? 'danger' : 'info'"
-                />                <div class="admin-actions">
-                    <KMButton 
-                        :message="adminStats.totalProfiles === 'Restricted' ? 'Access Restricted' : 'Manage Profiles'"
-                        :textColor="adminStats.totalProfiles === 'Restricted' ? '#ef4444' : '#4d9e39'"
-                        @click="adminStats.totalProfiles === 'Restricted' ? showAccessDeniedMessage() : navigateToScheme('/admin')"
-                        style="width: 100%; height: 40px; margin-top: 10px;"
-                    />
-                </div>
-                </div>
-            </KMInfoBox>
-            
+        <KMInfoGrid columns="1" rows="1" rowHeight="300">
             <KMInfoBox caption="Log Analytics">
-                <div class="log-section">
+                <div class="data-zone log-section" :class="{ 'zone-loading': loadingStates.logs, 'zone-error': errorStates.logs }">
+                    <div v-if="loadingStates.logs" class="loading-overlay">
+                        <div class="loading-spinner"></div>
+                        <span>Loading Logs...</span>
+                    </div>
+                    <div v-if="errorStates.logs" class="error-overlay">
+                        <span>ERROR</span>
+                        <button @click="retryLogs" class="retry-btn">Retry</button>
+                    </div>
                     <div class="log-metrics">
                         <CS2MetricCard
                             :value="systemStats.totalLogs === 'Restricted' ? 'Restricted' : systemStats.totalLogs"
@@ -295,6 +224,20 @@ export default {
             error: null,
             lastUpdate: 'Never',
             loadInterval: null,
+            completedLoads: 0,
+            totalLoads: 3, // CS2, Memescraper, KliveTech (removed BotStats and Admin)
+            loadingStates: {
+                cs2: false,
+                memescraper: false,
+                kliveTech: false,
+                logs: false
+            },
+            errorStates: {
+                cs2: false,
+                memescraper: false,
+                kliveTech: false,
+                logs: false
+            },
             systemStats: {
                 totalUptime: 'Loading...',
                 totalLogs: 0,
@@ -307,7 +250,8 @@ export default {
             cs2Stats: {
                 successRate: 0,
                 itemsScanned: 0,
-                bestFind: 0
+                bestFind: 0,
+                hasAccess: true
             },
             memescraperStats: {
                 totalSources: 0,
@@ -318,21 +262,9 @@ export default {
                 topPerformingSource: 'N/A',
                 hasAccess: true
             },
-            botStats: {
-                activeBots: 0,
-                scheduledTasks: 0,
-                completedTasks: 0,
-                totalOperations: 0,
-                successfulOperations: 0,
-                hasAccess: true
-            },
             kliveTechStats: {
                 connectedDevices: 0,
                 onlineDevices: 0,
-                hasAccess: true
-            },
-            adminStats: {
-                totalProfiles: 0,
                 hasAccess: true
             },
             recentActivities: []
@@ -342,27 +274,19 @@ export default {
         async loadDashboardData() {
             this.loading = true;
             this.error = null;
+            this.completedLoads = 0;
             
             try {
-                // Load general bot statistics
-                await this.loadGeneralStats();
+                // Load general bot statistics (minimal required data)
+                this.loadGeneralStats();
                 
-                // Load CS2 analytics
-                await this.loadCS2Stats();
+                // Start all data zone loading immediately and asynchronously
+                // Don't wait for any of them - let each zone update independently
+                this.loadCS2Stats();
+                this.loadMemescraperStats(); 
+                this.loadKliveTechStats();
+                this.loadRecentActivity(); // Only for logs now
                 
-                // Load Meme Scraper stats
-                await this.loadMemescraperStats();
-                
-                // Load KliveTech device data
-                await this.loadKliveTechStats();
-                
-                // Load bot logs for activity feed
-                await this.loadRecentActivity();
-                
-                // Load admin stats
-                await this.loadAdminStats();
-                
-                this.lastUpdate = new Date().toLocaleString();
             } catch (err) {
                 console.error('Dashboard data loading error:', err);
                 this.error = err;
@@ -370,6 +294,30 @@ export default {
             } finally {
                 this.loading = false;
             }
+        },
+        
+        trackLoadCompletion() {
+            this.completedLoads++;
+            if (this.completedLoads >= this.totalLoads) {
+                this.lastUpdate = new Date().toLocaleString();
+            }
+        },
+        
+        // Individual retry methods that can be called from error overlays
+        retryCS2Stats() {
+            this.loadCS2Stats();
+        },
+        
+        retryMemescraperStats() {
+            this.loadMemescraperStats();
+        },
+        
+        retryKliveTechStats() {
+            this.loadKliveTechStats();
+        },
+        
+        retryLogs() {
+            this.loadRecentActivity();
         },
         
         async loadGeneralStats() {
@@ -387,6 +335,9 @@ export default {
         },
         
         async loadCS2Stats() {
+            this.loadingStates.cs2 = true;
+            this.errorStates.cs2 = false;
+            
             try {
                 const response = await RequestGETFromKliveAPI('/cs2arbitragebot/getscanalytics', false, false);
                 if (response.ok) {
@@ -397,7 +348,9 @@ export default {
                         bestFind: Math.round(((data.HighestPredictedGainFoundSoFar - 1) * 100 || 0) * 100) / 100
                     };
                 } else {
-                    // No fallback data - use zeros
+                    // API returned an error status (404, 500, etc.)
+                    console.log('CS2 stats API returned error status:', response.status);
+                    this.errorStates.cs2 = true;
                     this.cs2Stats = {
                         successRate: 0,
                         itemsScanned: 0,
@@ -405,16 +358,23 @@ export default {
                     };
                 }
             } catch (error) {
-                console.log('CS2 stats API unavailable');
+                console.log('CS2 stats API unavailable:', error);
+                this.errorStates.cs2 = true;
                 this.cs2Stats = {
                     successRate: 0,
                     itemsScanned: 0,
                     bestFind: 0
                 };
+            } finally {
+                this.loadingStates.cs2 = false;
+                this.trackLoadCompletion();
             }
         },
         
         async loadMemescraperStats() {
+            this.loadingStates.memescraper = true;
+            this.errorStates.memescraper = false;
+            
             try {
                 const response = await RequestGETFromKliveAPI('/memescraper/memeScraperAnalytics', false, false);
                 if (response.ok) {
@@ -502,6 +462,7 @@ export default {
                 } else {
                     // API not available or other error
                     console.log('Meme Scraper analytics API returned status:', response.status);
+                    this.errorStates.memescraper = true;
                     this.memescraperStats = {
                         totalSources: 0,
                         totalMemes: 0,
@@ -514,6 +475,7 @@ export default {
                 }
             } catch (error) {
                 console.log('Meme Scraper analytics API unavailable:', error);
+                this.errorStates.memescraper = true;
                 this.memescraperStats = {
                     totalSources: 0,
                     totalMemes: 0,
@@ -523,10 +485,16 @@ export default {
                     topPerformingSource: 'N/A',
                     hasAccess: true
                 };
+            } finally {
+                this.loadingStates.memescraper = false;
+                this.trackLoadCompletion();
             }
         },
         
         async loadKliveTechStats() {
+            this.loadingStates.kliveTech = true;
+            this.errorStates.kliveTech = false;
+            
             try {
                 const response = await RequestGETFromKliveAPI('/klivetech/GetAllGadgets', false, false);
                 if (response.ok) {
@@ -546,6 +514,7 @@ export default {
                     console.log('KliveTech access denied - insufficient permissions');
                 } else {
                     // No fallback data
+                    this.errorStates.kliveTech = true;
                     this.kliveTechStats = {
                         connectedDevices: 0,
                         onlineDevices: 0,
@@ -553,16 +522,23 @@ export default {
                     };
                 }
             } catch (error) {
-                console.log('KliveTech API unavailable');
+                console.log('KliveTech API unavailable:', error);
+                this.errorStates.kliveTech = true;
                 this.kliveTechStats = {
                     connectedDevices: 0,
                     onlineDevices: 0,
                     hasAccess: true
                 };
+            } finally {
+                this.loadingStates.kliveTech = false;
+                this.trackLoadCompletion();
             }
         },
         
         async loadRecentActivity() {
+            this.loadingStates.logs = true;
+            this.errorStates.logs = false;
+            
             try {
                 const response = await RequestGETFromKliveAPI('/api/logs', false, false);
                 if (response.ok) {
@@ -578,9 +554,6 @@ export default {
                     this.systemStats.totalLogs = logs.length;
                     this.systemStats.totalErrors = logs.filter(log => log.type === 1).length;
                     this.systemStats.logsAccessible = true;
-                    
-                    // Calculate bot operation statistics from logs
-                    this.calculateBotStats(logs);
                 } else if (response.status === 401) {
                     // User doesn't have permission to view logs
                     this.recentActivities = [
@@ -589,121 +562,25 @@ export default {
                     this.systemStats.totalLogs = 'Restricted';
                     this.systemStats.totalErrors = 'Restricted';
                     this.systemStats.logsAccessible = false;
-                    this.botStats = {
-                        activeBots: 'Restricted',
-                        scheduledTasks: 'Restricted',
-                        completedTasks: 'Restricted',
-                        totalOperations: 'Restricted',
-                        successfulOperations: 'Restricted',
-                        hasAccess: false
-                    };
                     console.log('Logs access denied - insufficient permissions');
                 } else {
                     // No real logs available
+                    this.errorStates.logs = true;
                     this.recentActivities = [];
                     this.systemStats.totalLogs = 0;
                     this.systemStats.totalErrors = 0;
                     this.systemStats.logsAccessible = true;
-                    this.botStats = {
-                        activeBots: 0,
-                        scheduledTasks: 0,
-                        completedTasks: 0,
-                        totalOperations: 0,
-                        successfulOperations: 0,
-                        hasAccess: true
-                    };
                 }
             } catch (error) {
-                console.log('Logs API unavailable');
+                console.log('Logs API unavailable:', error);
+                this.errorStates.logs = true;
                 this.recentActivities = [];
                 this.systemStats.totalLogs = 0;
                 this.systemStats.totalErrors = 0;
                 this.systemStats.logsAccessible = true;
-                this.botStats = {
-                    activeBots: 0,
-                    scheduledTasks: 0,
-                    completedTasks: 0,
-                    totalOperations: 0,
-                    successfulOperations: 0,
-                    hasAccess: true
-                };
-            }
-        },
-        
-        calculateBotStats(logs) {
-            // Extract unique bot services from logs
-            const botServices = [...new Set(logs.map(log => log.serviceName))].filter(name => 
-                name && (name.toLowerCase().includes('bot') || 
-                        name.toLowerCase().includes('agent') ||
-                        name.toLowerCase().includes('scheduler') ||
-                        name.toLowerCase().includes('arbitrage'))
-            );
-            
-            // Count operations by looking for operation-type messages
-            const operationLogs = logs.filter(log => 
-                log.message && (
-                    log.message.toLowerCase().includes('completed') ||
-                    log.message.toLowerCase().includes('executed') ||
-                    log.message.toLowerCase().includes('processed') ||
-                    log.message.toLowerCase().includes('finished') ||
-                    log.message.toLowerCase().includes('started') ||
-                    log.message.toLowerCase().includes('scanning') ||
-                    log.message.toLowerCase().includes('searching')
-                )
-            );
-            
-            // Count successful operations (non-error logs with completion keywords)
-            const successfulOps = operationLogs.filter(log => 
-                log.type !== 1 && (
-                    log.message.toLowerCase().includes('completed') ||
-                    log.message.toLowerCase().includes('finished') ||
-                    log.message.toLowerCase().includes('success')
-                )
-            );
-            
-            // Count scheduled/task-related logs
-            const scheduledLogs = logs.filter(log => 
-                log.message && (
-                    log.message.toLowerCase().includes('scheduled') ||
-                    log.message.toLowerCase().includes('task') ||
-                    log.message.toLowerCase().includes('queue')
-                )
-            );
-            
-            this.botStats = {
-                activeBots: botServices.length,
-                scheduledTasks: scheduledLogs.length,
-                completedTasks: successfulOps.length,
-                totalOperations: operationLogs.length,
-                successfulOperations: successfulOps.length,
-                hasAccess: true
-            };
-        },
-        
-        async loadAdminStats() {
-            try {
-                const response = await RequestGETFromKliveAPI('/KMProfiles/GetAllProfiles', false, false);
-                if (response.ok) {
-                    const profiles = await response.json();
-                    this.adminStats.totalProfiles = profiles.length;
-                    this.adminStats.hasAccess = true;
-                } else if (response.status === 401) {
-                    // User doesn't have permission to view profiles
-                    this.adminStats.totalProfiles = 'Restricted';
-                    this.adminStats.hasAccess = false;
-                    console.log('Admin stats access denied - insufficient permissions');
-                } else {
-                    // Other error, no data available
-                    this.adminStats.totalProfiles = 'Unavailable';
-                    this.adminStats.hasAccess = false;
-                }
-                
-                // Bot stats are now calculated from real log data in loadRecentActivity()
-            } catch (error) {
-                console.log('Admin stats loading failed:', error);
-                this.adminStats.totalProfiles = 'Error';
-                this.adminStats.hasAccess = false;
-                // Bot stats are now calculated from real log data in loadRecentActivity()
+            } finally {
+                this.loadingStates.logs = false;
+                this.trackLoadCompletion();
             }
         },
         
@@ -972,78 +849,6 @@ export default {
     color: #fbbf24;
 }
 
-/* Bot Operations */
-.bot-operations {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}
-
-.bot-stats {
-    background: rgba(77, 158, 57, 0.05);
-    border-radius: 8px;
-    padding: 15px;
-    border: 1px solid rgba(77, 158, 57, 0.2);
-}
-
-.bot-stats h4 {
-    color: #4d9e39;
-    font-size: 1.1rem;
-    margin: 0 0 12px 0;
-}
-
-.bot-metrics {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 15px;
-    margin-bottom: 15px;
-}
-
-.operation-stats {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 15px;
-}
-
-.recent-activity {
-    flex: 1;
-}
-
-.recent-activity h4 {
-    color: #4d9e39;
-    font-size: 1.1rem;
-    margin: 0 0 12px 0;
-}
-
-.activity-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    max-height: 150px;
-    overflow-y: auto;
-}
-
-.activity-item {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 8px 12px;
-    background: rgba(77, 158, 57, 0.05);
-    border-radius: 8px;
-    border-left: 3px solid #4d9e39;
-}
-
-.activity-time {
-    color: #969696;
-    font-size: 0.75rem;
-}
-
-.activity-text {
-    color: #ffffff;
-    font-size: 0.85rem;
-}
-
 /* KliveTech Overview */
 .klivetech-overview {
     height: 100%;
@@ -1065,17 +870,14 @@ export default {
     justify-content: flex-end;
 }
 
-/* Admin Sections */
-.admin-section,
-.log-section,
-.quick-actions {
+/* Log Section */
+.log-section {
     height: 100%;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
 }
 
-.admin-actions,
 .log-actions {
     margin-top: auto;
 }
@@ -1085,14 +887,6 @@ export default {
     grid-template-columns: 1fr 1fr;
     gap: 15px;
     margin-bottom: 15px;
-}
-
-.action-buttons {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    height: 100%;
-    justify-content: center;
 }
 
 .no-activity,
@@ -1174,14 +968,8 @@ export default {
         grid-template-columns: 1fr;
     }
     
-    .operation-stats,
-    .device-stats,
-    .bot-metrics {
+    .device-stats {
         grid-template-columns: 1fr;
-    }
-    
-    .bot-stats {
-        margin-bottom: 15px;
     }
     
     .system-health-grid {
@@ -1250,14 +1038,140 @@ button:focus {
     margin-top: 8px;
 }
 
-/* Activity item styling for restricted access */
-.activity-item.restricted {
-    border-left-color: #ef4444;
-    background: rgba(239, 68, 68, 0.05);
+/* Data Zone Loading and Error States */
+.data-zone {
+    position: relative;
+    height: 100%;
 }
 
-.activity-item.restricted .activity-text {
+.zone-loading .loading-overlay,
+.zone-error .error-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(32, 31, 32, 0.95);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+    border-radius: 12px;
+}
+
+.loading-overlay {
+    color: #4d9e39;
+}
+
+.error-overlay {
     color: #ef4444;
-    font-style: italic;
+    background: rgba(239, 68, 68, 0.15);
+    border: 2px solid rgba(239, 68, 68, 0.4);
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(77, 158, 57, 0.3);
+    border-top: 3px solid #4d9e39;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 10px;
+}
+
+.loading-spinner-small {
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(77, 158, 57, 0.3);
+    border-top: 2px solid #4d9e39;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.retry-btn {
+    margin-top: 10px;
+    padding: 8px 16px;
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.3s ease;
+}
+
+.retry-btn:hover {
+    background: #dc2626;
+}
+
+.retry-btn-small {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 20px;
+    height: 20px;
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.3s ease;
+}
+
+.retry-btn-small:hover {
+    background: #dc2626;
+}
+
+/* Card-level loading and error states */
+.card-loading {
+    opacity: 0.7;
+    position: relative;
+}
+
+.card-error {
+    opacity: 0.6;
+    position: relative;
+    border-color: rgba(239, 68, 68, 0.6) !important;
+}
+
+.card-loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(32, 31, 32, 0.9);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 12px;
+    z-index: 5;
+}
+
+.card-error-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(239, 68, 68, 0.2);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    border-radius: 12px;
+    z-index: 5;
+    color: #ef4444;
+    font-weight: bold;
 }
 </style>

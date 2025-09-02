@@ -90,7 +90,7 @@
         <!-- Download Activity Chart -->
         <MemescraperOverviewSection 
             title="Download Activity"
-            subtitle="Daily meme download trends over time"
+            subtitle="Daily and cumulative meme download trends over time"
         >
             <div class="chart-container">
                 <canvas ref="downloadChart" class="download-chart"></canvas>
@@ -535,6 +535,7 @@ interface MemeScraperAnalytics {
     TotalViewCount: number;
     AverageViewCountPerReel: number;
     MemesDownloadedPerDay: Record<string, number>;
+    CumulativeDownloadedMemesPerDay: Record<string, number>;
     ReelsDownloadedPerSource: Record<string, number>;
     MostActiveDownloadDay: string;
     InactiveSources: InstagramSource[];
@@ -756,21 +757,39 @@ const updateDownloadChart = (): void => {
 
     // Prepare chart data
     const dates = Object.keys(analytics.value.MemesDownloadedPerDay).sort();
-    const counts = dates.map(date => analytics.value!.MemesDownloadedPerDay[date]);
+    const dailyCounts = dates.map(date => analytics.value!.MemesDownloadedPerDay[date]);
+    const cumulativeCounts = dates.map(date => analytics.value!.CumulativeDownloadedMemesPerDay?.[date] || 0);
+
+    const datasets = [{
+        label: 'Daily Downloads',
+        data: dailyCounts,
+        borderColor: '#4d9e39',
+        backgroundColor: 'rgba(77, 158, 57, 0.1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.4,
+        yAxisID: 'y'
+    }];
+
+    // Only add cumulative data if it exists
+    if (analytics.value.CumulativeDownloadedMemesPerDay) {
+        datasets.push({
+            label: 'Cumulative Downloads',
+            data: cumulativeCounts,
+            borderColor: '#ff6b35',
+            backgroundColor: 'rgba(255, 107, 53, 0.1)',
+            borderWidth: 2,
+            fill: false,
+            tension: 0.4,
+            yAxisID: 'y1'
+        });
+    }
 
     chartInstance = new Chart(ctx, {
         type: 'line',
         data: {
             labels: dates.map(date => new Date(date).toLocaleDateString()),
-            datasets: [{
-                label: 'Memes Downloaded',
-                data: counts,
-                borderColor: '#4d9e39',
-                backgroundColor: 'rgba(77, 158, 57, 0.1)',
-                borderWidth: 2,
-                fill: true,
-                tension: 0.4
-            }]
+            datasets: datasets
         },
         options: {
             responsive: true,
@@ -792,11 +811,36 @@ const updateDownloadChart = (): void => {
                     }
                 },
                 y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
                     ticks: {
                         color: '#ffffff'
                     },
                     grid: {
                         color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    title: {
+                        display: true,
+                        text: 'Daily Downloads',
+                        color: '#4d9e39'
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: analytics.value.CumulativeDownloadedMemesPerDay ? true : false,
+                    position: 'right',
+                    ticks: {
+                        color: '#ffffff'
+                    },
+                    grid: {
+                        drawOnChartArea: false,
+                        color: 'rgba(255, 255, 255, 0.1)'
+                    },
+                    title: {
+                        display: true,
+                        text: 'Cumulative Downloads',
+                        color: '#ff6b35'
                     }
                 }
             }

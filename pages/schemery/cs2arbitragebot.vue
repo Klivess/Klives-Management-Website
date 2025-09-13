@@ -260,9 +260,9 @@
                     icon="💰"
                 />
                 <CS2MetricCard
-                    :value="analyticsData.HighestPredictedGainFoundSoFar"
-                    label="Best Find"
-                    format="gain-percentage"
+                    :value="analyticsData.CurrentExpectedReturnCoefficientOfSteamToCSFloat"
+                    label="Current Expected Return Coefficient of Steam To CSFloat"
+                    format="number"
                     variant="warning"
                     icon="🏆"
                     :highlight="true"
@@ -542,6 +542,7 @@ interface AnalyticsData {
     FirstListingDateRecorded: string;
     AnalyticsGeneratedAt: string;
     AllPurchasedItems: PurchasedItem[];
+    CurrentExpectedReturnCoefficientOfSteamToCSFloat: number;
 }
 
 const analyticsData = ref<AnalyticsData>({
@@ -570,6 +571,7 @@ const analyticsData = ref<AnalyticsData>({
     FirstListingDateRecorded: new Date().toISOString(),
     AnalyticsGeneratedAt: new Date().toISOString(),
     AllPurchasedItems: [],
+    CurrentExpectedReturnCoefficientOfSteamToCSFloat: 0,
 });
 
 const isLoading = ref(false);

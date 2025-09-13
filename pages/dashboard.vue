@@ -55,15 +55,7 @@
         <!-- Schemes Performance Overview -->
         <KMInfoGrid columns="1" rows="1" rowHeight="210">
             <KMInfoBox caption="Active Schemes Performance">
-                <div class="data-zone schemes-overview" :class="{ 'zone-loading': loadingStates.cs2 || loadingStates.memescraper, 'zone-error': errorStates.cs2 && errorStates.memescraper }">
-                    <div v-if="loadingStates.cs2 || loadingStates.memescraper" class="loading-overlay">
-                        <div class="loading-spinner"></div>
-                        <span>Loading Schemes...</span>
-                    </div>
-                    <div v-if="errorStates.cs2 && errorStates.memescraper" class="error-overlay">
-                        <span>ERROR</span>
-                        <button @click="retryCS2Stats(); retryMemescraperStats()" class="retry-btn">Retry</button>
-                    </div>
+                <div class="data-zone schemes-overview">
                     <div class="scheme-cards">
                         <div class="scheme-card cs2-card" @click="navigateToScheme('/schemery/cs2arbitragebot')"
                              :class="{ 'card-loading': loadingStates.cs2, 'card-error': errorStates.cs2 }">

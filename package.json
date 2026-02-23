@@ -10,6 +10,7 @@
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
+    "@fortawesome/fontawesome-free": "^7.2.0",
     "chart.js": "^4.5.0",
     "cors": "^2.8.5",
     "nuxt": "^3.12.4",
@@ -19,6 +20,7 @@
     "vue-sweetalert2": "^5.0.11"
   },
   "devDependencies": {
-    "sass": "^1.77.8"
+    "sass": "^1.77.8",
+    "vue-tsc": "^2.2.12"
   }
 }

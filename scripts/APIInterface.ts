@@ -57,7 +57,7 @@ async function RequestGETFromKliveAPI(query: string, redirectToDashboardIfUnauth
     return res;
 }
 
-async function RequestPOSTFromKliveAPI(query: string, content = "", redirectToDashboardIfUnauthorized = true) {
+async function RequestPOSTFromKliveAPI(query: string, content: BodyInit | null = "", redirectToDashboardIfUnauthorized = true) {
     const pass = GetLocalPassword();
     let response;
     response = await fetch(KliveAPIUrl + query, {

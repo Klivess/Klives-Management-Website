@@ -12,8 +12,8 @@
         <NuxtLink to="/schemes">
           <KMButton message="Schemes"></KMButton>
         </NuxtLink>
-        <NuxtLink to="/storage">
-          <KMButton message="Storage"></KMButton>
+        <NuxtLink to="/klivecloud">
+          <KMButton message="Klive cloud"></KMButton>
         </NuxtLink>
         <NuxtLink to="/klivetech">
           <KMButton message="KliveTech"></KMButton>

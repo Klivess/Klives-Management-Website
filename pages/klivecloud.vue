@@ -72,10 +72,10 @@
         </select>
 
         <button class="action-btn upload-btn" @click="triggerFileUpload">
-          📄 Upload File
+         Upload File
         </button>
         <button class="action-btn folder-btn" @click="promptCreateFolder">
-          📁 New Folder
+          New Folder
         </button>
         <input
           type="file"
@@ -85,7 +85,7 @@
           @change="handleFileUpload"
         />
         <button class="action-btn refresh-btn" @click="refreshCurrentFolder">
-          🔄 Refresh
+          Refresh
         </button>
       </div>
     </div>
@@ -164,7 +164,14 @@
           @contextmenu.prevent="showContextMenu($event, item)"
         >
           <div class="item-icon">
-            {{ getItemIcon(item) }}
+            <img 
+                v-if="previewUrls.has(item.ItemID)" 
+                :src="previewUrls.get(item.ItemID)" 
+                class="item-preview-img" 
+                loading="lazy" 
+                alt="Preview"
+            />
+            <span v-else>{{ getItemIcon(item) }}</span>
           </div>
           <div class="item-details">
             <div class="item-name" :title="item.Name">{{ item.Name }}</div>
@@ -181,6 +188,14 @@
           <div class="item-actions-hover">
             <button
                 v-if="item.ItemType === 'File'"
+                @click.stop="shareItem(item)"
+                title="Share"
+                class="share-btn"
+            >
+                🔗
+            </button>
+            <button
+                v-if="item.ItemType === 'File'"
                 @click.stop="downloadFile(item)"
                 title="Download"
             >
@@ -192,12 +207,64 @@
           </div>
         </div>
       </div>
+
+      <!-- Share Links Section -->
+      <div v-if="sharedLinks.length > 0" class="shared-links-section">
+          <!-- ... existing share links code ... -->
+          <h3 class="section-title">Active Share Links ({{ sharedLinks.length }})</h3>
+          <div class="shared-links-grid">
+              <div v-for="link in sharedLinks" :key="link.ShareCode" class="shared-link-card">
+                  <div class="link-details">
+                      <div class="link-name" :title="link.ItemName">{{ link.ItemName || 'Loading item info...' }}</div>
+                      <div class="link-path" v-if="link.ItemPath" :title="link.ItemPath">{{ link.ItemPath.replace(/\\/g, '/') }}</div>
+                      <div class="link-meta">
+                          <span class="code">Code: {{ link.ShareCode.substring(0, 8) }}...</span>
+                          <span v-if="link.ExpirationDate">Exp: {{ formatDate(link.ExpirationDate) }}</span>
+                          <span v-else>No Expiration</span>
+                      </div>
+                  </div>
+                  <div class="link-actions">
+                      <button @click="copyShareLink(link.ShareCode)" title="Copy Link" class="copy-btn">📋</button>
+                      <button @click="deleteSharedLink(link.ShareCode)" title="Delete Link" class="delete-link-btn">🗑️</button>
+                  </div>
+              </div>
+          </div>
+      </div>
+
+    </div>
+
+    <!-- Upload Progress Panel -->
+    <div v-if="activeUploads.length > 0" class="upload-panel" :class="{ 'minimized': !isUploadPanelOpen }">
+        <div class="upload-header" @click="isUploadPanelOpen = !isUploadPanelOpen">
+            <span>{{ activeUploads.filter(u => ['uploading', 'finalizing'].includes(u.status)).length }} files uploading</span>
+            <div class="upload-controls">
+                 <button v-if="isUploadPanelOpen" @click.stop="clearCompletedUploads" title="Clear Completed" class="clear-btn">🧹</button>
+                 <button class="toggle-btn">{{ isUploadPanelOpen ? '▼' : '▲' }}</button>
+            </div>
+        </div>
+        <div v-if="isUploadPanelOpen" class="upload-list">
+            <div v-for="task in activeUploads" :key="task.id" class="upload-item">
+                <div class="upload-info">
+                    <div class="upload-name" :title="task.fileName">{{ task.fileName }}</div>
+                    <div class="upload-status">
+                        <span v-if="task.status === 'uploading'">{{ task.progress }}%</span>
+                        <span v-else>{{ task.status }}</span>
+                    </div>
+                </div>
+                <div class="upload-progress-bar">
+                    <div class="progress-fill" :style="{ width: task.progress + '%', backgroundColor: getStatusColor(task.status) }"></div>
+                </div>
+                <div class="upload-action" v-if="task.status === 'uploading'">
+                     <button @click="cancelUpload(task)" title="Cancel">❌</button>
+                </div>
+            </div>
+        </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, reactive, watch, nextTick, computed } from 'vue';
 import Swal from 'sweetalert2';
 import {
   RequestGETFromKliveAPI,
@@ -234,6 +301,17 @@ interface DriveInfo {
     DriveFormat: string;
 }
 
+interface ShareLink {
+    ShareCode: string;
+    ItemID: string;
+    CreatedByUserID: string;
+    CreatedDate: string;
+    ExpirationDate?: string;
+    // Enriched fields for display
+    ItemName?: string;
+    ItemPath?: string;
+}
+
 // State
 const items = ref<CloudItem[]>([]);
 const currentPath = ref<CloudItem[]>([]); // Breadcrumb trail (folders)
@@ -244,6 +322,17 @@ const passwordCookie = useCookie('password');
 const isDragging = ref(false);
 const selectedPermission = ref(1);
 const driveInfo = ref<DriveInfo | null>(null);
+
+// Share Links State
+const sharedLinks = ref<ShareLink[]>([]);
+const loadingSharedLinks = ref(false);
+
+// Preview System
+const previewUrls = reactive(new Map<string, string>());
+const failedPreviews = reactive(new Set<string>());
+let observer: IntersectionObserver | null = null;
+const supportedPreviewExtensions = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'mp4', 'webm', 'mov', 'avi', 'mkv']);
+const supportedVideoExtensions = new Set(['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm', 'm4v', 'mpg', 'mpeg', '3gp']);
 
 // Selection State
 const selectedItems = ref(new Set<string>());
@@ -368,7 +457,10 @@ const checkIntersections = (currentClientX: number, currentClientY: number) => {
 
 const setItemRef = (el: Element | ComponentPublicInstance | null, id: string) => {
     if (el) {
-        itemRefs.set(id, el as HTMLElement);
+        const hEl = el as HTMLElement;
+        itemRefs.set(id, hEl);
+        hEl.dataset.itemId = id; 
+        if (observer) observer.observe(hEl);
     } else {
         itemRefs.delete(id);
     }
@@ -475,63 +567,115 @@ const deleteItemAPI = async (itemID: string) => {
     }
 }
 
-// We need a custom upload function because RequestPOSTFromKliveAPI assumes string body usually (based on my read, but let's see if we can reuse or need raw fetch)
-// The docs says "The raw file bytes must be sent as the request body."
-// RequestPOSTFromKliveAPI takes `content` which is passed to body. If I pass a Blob/File, fetch handles it.
+// Upload State
+interface UploadTask {
+    id: string;
+    fileName: string;
+    progress: number;
+    status: 'pending' | 'uploading' | 'finalizing' | 'completed' | 'error' | 'canceled';
+    xhr?: XMLHttpRequest;
+}
+const activeUploads = ref<UploadTask[]>([]);
+const isUploadPanelOpen = ref(false);
+
 const uploadFileAPI = async (file: File) => {
+    // Check if file with same name is already uploading
+    if(activeUploads.value.some(u => (u.status === 'uploading' || u.status === 'finalizing') && u.fileName === file.name)) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Already uploading',
+            text: `File "${file.name}" is already being uploaded.`
+        });
+        return;
+    }
+
     const parentID = getCurrentFolderID();
     const params = new URLSearchParams({
         fileName: file.name,
         permissionLevel: selectedPermission.value.toString()
     });
-    if (parentID) params.append('parentFolderID', parentID);
-
-    // Use manual fetch for file upload
-    const password = passwordCookie.value || '';
-
-    const query = `/KliveCloud/UploadFile?${params.toString()}`;
-    
-    // Show uploading swal
-    Swal.fire({
-        title: 'Uploading...',
-        text: 'Please wait while your file is being uploaded',
-        allowOutsideClick: false,
-        didOpen: () => {
-            Swal.showLoading();
-        }
-    });
-
-    try {
-        // Prepare array buffer from file to ensure raw bytes are sent
-        // const buffer = await file.arrayBuffer(); // No longer needed
-        
-        // Use RequestPOSTFromKliveAPI which handles authorization and error checking.
-        // We pass the File object directly as body. Fetch API handles File objects by streaming them.
-        // We do NOT set/override Content-Type here, letting the browser set it based on the file.
-        // This avoids issues where manual Content-Type might conflict with browser's handling of File body.
-        
-        const response = await RequestPOSTFromKliveAPI(query, file);
-        
-        if (response.ok) {
-            Swal.close();
-            Swal.fire({
-                icon: 'success',
-                title: 'File Uploaded',
-                toast: true,
-                position: 'top-end',
-                showConfirmButton: false,
-                timer: 3000
-            });
-            refreshCurrentFolder();
-        } else {
-            const text = await response.text();
-            Swal.close();
-            Swal.fire('Error', `Upload failed: ${text}`, 'error');
-        }
-    } catch (e: any) {
-        Swal.close();
-        Swal.fire('Error', e.message, 'error');
+    if (parentID) {
+        params.append('parentFolderID', parentID);
     }
+
+    const uploadId = Math.random().toString(36).substring(7);
+    const task = reactive<UploadTask>({
+        id: uploadId,
+        fileName: file.name,
+        progress: 0,
+        status: 'uploading'
+    });
+    
+    activeUploads.value.push(task);
+    isUploadPanelOpen.value = true;
+
+    // Use XMLHttpRequest for progress events
+    return new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        task.xhr = xhr;
+
+        const password = passwordCookie.value || '';
+        const query = `${KliveAPIUrl}/KliveCloud/UploadFile?${params.toString()}`;
+
+        xhr.open('POST', query, true);
+        xhr.setRequestHeader('Authorization', password);
+        // Do NOT set Content-Type so browser sets boundary? Wait, for raw binary, we don't need boundary.
+        // But if we just send the file, browser might set type.
+        // API expects raw bytes. So we don't need multipart.
+
+        xhr.upload.onprogress = (e: ProgressEvent) => {
+            if (e.lengthComputable) {
+                const percent = Math.round((e.loaded / e.total) * 100);
+                task.progress = percent;
+                if (percent === 100) {
+                    task.status = 'finalizing';
+                }
+            }
+        };
+
+        xhr.onload = () => {
+            if (xhr.status === 200) {
+                task.status = 'completed';
+                task.progress = 100;
+                
+                // Refresh folder content if this upload finished successfully
+                // We debounce this slightly or just call it.
+                refreshCurrentFolder(); 
+                resolve();
+            } else {
+                task.status = 'error';
+                // Try to read error text
+                const errorText = xhr.responseText || 'Upload failed';
+                console.error("Upload error:", errorText);
+                reject(new Error(errorText));
+            }
+        };
+
+        xhr.onerror = () => {
+            task.status = 'error';
+            reject(new Error('Network error'));
+        };
+
+        xhr.onabort = () => {
+            task.status = 'canceled';
+            resolve();
+        };
+
+        // Send raw file
+        xhr.send(file);
+    });
+};
+
+const cancelUpload = (task: UploadTask) => {
+    if (task.status === 'uploading' && task.xhr) {
+        task.xhr.abort();
+    }
+    task.status = 'canceled';
+};
+
+const clearCompletedUploads = () => {
+    activeUploads.value = activeUploads.value.filter(t => ['uploading', 'pending', 'finalizing'].includes(t.status));
+    if (activeUploads.value.length === 0) isUploadPanelOpen.value = false;
 };
 
 const downloadFileAPI = async (item: CloudItem) => {
@@ -652,27 +796,228 @@ const handleItemClick = (item: CloudItem, event?: MouseEvent) => {
     selectedItems.value.clear(); // Clear selection on navigation
   } else {
     // Maybe preview or details? For now ask if download
+    const ext = item.Name.split('.').pop()?.toLowerCase();
+    if (ext && supportedVideoExtensions.has(ext)) {
+        playVideo(item);
+    } else if (ext && supportedPreviewExtensions.has(ext)) {
+        showPreviewPopup(item);
+    } else {
+        // Standard details popup
+        Swal.fire({
+            title: item.Name,
+            html: `
+                <p style="margin: 0; padding: 4px;">Size: <b>${formatSize(item.FileSizeBytes)}</b></p>
+                <p style="margin: 0; padding: 4px;">Created: <b>${formatDate(item.CreatedDate)}</b></p>
+                <p style="margin: 0; padding: 4px;">Type: <b>${item.ItemType}</b></p>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'Download',
+            cancelButtonText: 'Close'
+        }).then((result) => {
+            if(result.isConfirmed) {
+                downloadFileAPI(item);
+            }
+        });
+    }
+  }
+};
+
+const getStatusColor = (status: string) => {
+    switch (status) {
+        case 'uploading': return '#4CAF50';
+        case 'finalizing': return '#2196F3'; // Blue for finalizing
+        case 'completed': return '#81c784';
+        case 'error': return '#e57373';
+        case 'canceled': return '#90a4ae';
+        default: return '#4CAF50';
+    }
+};
+
+const playVideo = (item: CloudItem) => {
+    const password = useCookie('klive_password').value || '';
+    const streamUrl = `${KliveAPIUrl}/KliveCloud/StreamVideo?itemID=${item.ItemID}&Authorization=${encodeURIComponent(password)}`;
+
     Swal.fire({
-        title: item.Name,
+        // title: item.Name, // Hide title to save space, or use custom header
         html: `
-            <p>Size: ${formatSize(item.FileSizeBytes)}</p>
-            <p>Created: ${formatDate(item.CreatedDate)}</p>
-            <p>Type: ${item.ItemType}</p>
+            <div style="position: relative; padding-top: 56.25%; width: 100%;">
+                <video 
+                    controls 
+                    autoplay 
+                    style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 4px; background: #000;" 
+                    crossorigin="use-credentials"
+                >
+                    <source src="${streamUrl}" type="${getVideoMimeType(item.Name)}">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+            <div style="margin-top: 10px; color: #aaa; font-size: 0.9em; text-align: left;">
+                ${item.Name} (${formatSize(item.FileSizeBytes)})
+            </div>
         `,
-        showCancelButton: true,
-        confirmButtonText: 'Download',
-        cancelButtonText: 'Close'
-    }).then((result) => {
-        if(result.isConfirmed) {
-            downloadFileAPI(item);
+        width: '600px', // Standard width
+        showConfirmButton: false, // Hide useless confirm button for video play
+        showCloseButton: true,
+        background: '#1a1a1a',
+        customClass: {
+            popup: 'video-popup',
+            htmlContainer: 'video-popup-container'
+        },
+        willClose: () => {
+             // Stop video playing logic handled by removing from DOM automatically
+        }
+    }); 
+};
+
+const getVideoMimeType = (filename: string): string => {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    switch (ext) {
+        case 'mp4': return 'video/mp4';
+        case 'mkv': return 'video/x-matroska';
+        case 'avi': return 'video/x-msvideo';
+        case 'mov': return 'video/quicktime';
+        case 'wmv': return 'video/x-ms-wmv';
+        case 'flv': return 'video/x-flv';
+        case 'webm': return 'video/webm';
+        case 'm4v': return 'video/x-m4v';
+        case 'mpg': 
+        case 'mpeg': return 'video/mpeg';
+        case '3gp': return 'video/3gpp';
+        default: return 'video/mp4'; // Fallback
+    }
+};
+
+const showPreviewPopup = async (item: CloudItem) => {
+    // Show loading
+    Swal.fire({
+        title: 'Loading Preview...',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
         }
     });
 
-  }
+    try {
+        // Fetch large preview (e.g. 800px)
+        const response = await RequestGETFromKliveAPI(`/KliveCloud/GetPreview?itemID=${item.ItemID}&maxWidth=800&maxHeight=800`, false, false);
+        
+        let imageUrl = '';
+        if (response.ok) {
+            const blob = await response.blob();
+            imageUrl = URL.createObjectURL(blob);
+        } else {
+            // Fallback to error or maybe just show details without image
+            throw new Error('Preview fetch failed');
+        }
+
+        // Show actual popup
+        Swal.fire({
+            title: item.Name,
+            imageUrl: imageUrl,
+            imageAlt: 'File Preview',
+            // imageWidth: '100%', // Let swal handle it or set max
+            imageHeight: 'auto',
+            html: `
+                <div style="margin-top: 10px; text-align: left; font-size: 0.9em;">
+                    <p style="margin: 4px 0;">Size: <b>${formatSize(item.FileSizeBytes)}</b></p>
+                    <p style="margin: 4px 0;">Modified: <b>${formatDate(item.ModifiedDate)}</b></p>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'Download',
+            cancelButtonText: 'Close',
+            width: '600px', // Wider popup for image
+            willClose: () => {
+                // Revoke URL to prevent memory leak
+                if (imageUrl) URL.revokeObjectURL(imageUrl);
+            }
+        }).then((result) => {
+            if(result.isConfirmed) {
+                downloadFileAPI(item);
+            }
+        });
+
+    } catch (e) {
+        // Fallback if preview fails
+        Swal.fire({
+            title: item.Name,
+            text: 'Preview unavailable.',
+            html: `
+                <p>Size: ${formatSize(item.FileSizeBytes)}</p>
+                <p>Created: ${formatDate(item.CreatedDate)}</p>
+                <p>Type: ${item.ItemType}</p>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'Download',
+            cancelButtonText: 'Close'
+        }).then((result) => {
+            if(result.isConfirmed) {
+                downloadFileAPI(item);
+            }
+        });
+    }
 };
 
 const downloadFile = (item: CloudItem) => {
     downloadFileAPI(item);
+};
+
+const shareItem = async (item: CloudItem) => {
+    // Generate Share Link
+    Swal.fire({
+        title: 'Creating Share Link...',
+        text: 'Please wait',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+
+    try {
+        const query = `/KliveCloud/CreateShareLink?itemID=${item.ItemID}`;
+        const response = await RequestPOSTFromKliveAPI(query);
+        
+        if (response.ok) {
+            const data = await response.json();
+            const shareUrl = `${window.location.origin}/shared/${data.ShareCode}`;
+            
+            // Refresh the shared links list so the new link appears immediately
+            fetchSharedLinks();
+            
+            Swal.fire({
+                title: 'Share Link Created!',
+                html: `
+                    <p>Anyone with this link can download the file:</p>
+                    <input type="text" value="${shareUrl}" class="swal2-input" readonly id="share-link-input">
+                `,
+                icon: 'success',
+                showCancelButton: true,
+                confirmButtonText: 'Copy Link',
+                cancelButtonText: 'Close'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const input = document.getElementById('share-link-input') as HTMLInputElement;
+                    if (input) {
+                        input.select();
+                        navigator.clipboard.writeText(input.value);
+                        Swal.fire({
+                            title: 'Copied!',
+                            toast: true,
+                            position: 'top-end',
+                            showConfirmButton: false,
+                            timer: 2000,
+                            icon: 'success'
+                        });
+                    }
+                }
+            });
+        } else {
+            const text = await response.text();
+            Swal.fire('Error', `Failed to create share link: ${text}`, 'error');
+        }
+    } catch (e: any) {
+        Swal.fire('Error', e.message, 'error');
+    }
 };
 
 const deleteItem = (item: CloudItem) => {
@@ -780,6 +1125,89 @@ const formatSize = (bytes: number) => {
 
 const formatDate = (dateStr: string) => {
   return new Date(dateStr).toLocaleDateString() + ' ' + new Date(dateStr).toLocaleTimeString();
+};
+
+// --- Share Management ---
+
+const fetchSharedLinks = async () => {
+    loadingSharedLinks.value = true;
+    try {
+        const response = await RequestGETFromKliveAPI('/KliveCloud/ListShareLinks');
+        if (response.ok) {
+            const links: ShareLink[] = await response.json();
+            
+            // Enrich links with item metadata if necessary
+            // We fetch item info for each link to get Name
+            const enrichedLinks: ShareLink[] = [];
+            
+            // Limit concurrency? 
+            // For now, simple loop is fine unless user has hundreds of links
+            for (const link of links) {
+                try {
+                    const itemRes = await RequestGETFromKliveAPI(`/KliveCloud/GetItemInfo?itemID=${link.ItemID}`, false, false);
+                    if (itemRes.ok) {
+                        const item: CloudItem = await itemRes.json();
+                        link.ItemName = item.Name;
+                        link.ItemPath = item.RelativePath || item.Name; // Use RelativePath if available for full context
+                    } else {
+                        link.ItemName = 'Unknown / Deleted';
+                    }
+                } catch {
+                     link.ItemName = 'Error retrieving info';
+                }
+                enrichedLinks.push(link);
+            }
+            
+            sharedLinks.value = enrichedLinks;
+        }
+    } catch (e) { console.error(e); }
+    finally { loadingSharedLinks.value = false; }
+};
+
+const deleteSharedLink = async (code: string) => {
+    const result = await Swal.fire({
+        title: 'Delete Share Link?',
+        text: "This link will stop working immediately.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Yes, delete it!'
+    });
+
+    if (result.isConfirmed) {
+        try {
+            const response = await RequestPOSTFromKliveAPI(`/KliveCloud/DeleteShareLink?code=${code}`);
+            if(response.ok) {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Link Deleted',
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 2000
+                });
+                fetchSharedLinks();
+            } else {
+                Swal.fire('Error', 'Failed to delete link', 'error');
+            }
+        } catch (e: any) {
+            Swal.fire('Error', e.message, 'error');
+        }
+    }
+};
+
+const copyShareLink = (code: string) => {
+    const url = `${window.location.origin}/shared/${code}`;
+    navigator.clipboard.writeText(url);
+    Swal.fire({
+        icon: 'success',
+        title: 'Copied!',
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 1500
+    });
 };
 
 const triggerFileUpload = () => {
@@ -906,9 +1334,75 @@ const showContextMenu = (event: MouseEvent, item: CloudItem) => {
 
 // Lifecycle
 onMounted(() => {
-  fetchItems();
-  fetchDriveInfo();
+    fetchItems();
+    fetchDriveInfo();
+    fetchSharedLinks();
+
+    // Setup Intersection Observer for lazy loading previews
+    observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const target = entry.target as HTMLElement;
+                const id = target.dataset.itemId;
+                if (id) {
+                    loadPreview(id);
+                    // Once visible, we keep observing? 
+                    // If we unobserve, user scrolls away and back, we don't need to do anything as it's cached.
+                    // But if fetch failed, maybe retry? 
+                    // Let's unobserve to save perf.
+                    observer?.unobserve(target);
+                }
+            }
+        });
+    }, {
+        root: null, // viewport
+        rootMargin: '200px' // Preload 200px before appearing
+    });
 });
+
+onUnmounted(() => {
+    if (observer) observer.disconnect();
+    // Revoke all object URLs to free memory
+    previewUrls.forEach(url => URL.revokeObjectURL(url));
+    previewUrls.clear();
+});
+
+const pendingPreviews = new Set<string>();
+
+const loadPreview = async (id: string) => {
+    // Check cache
+    if (previewUrls.has(id) || failedPreviews.has(id) || pendingPreviews.has(id)) return;
+    
+    pendingPreviews.add(id);
+
+    const item = items.value.find(i => i.ItemID === id);
+    if (!item || item.ItemType !== 'File') {
+        pendingPreviews.delete(id);
+        return;
+    }
+
+    // Check extension
+    const ext = item.Name.split('.').pop()?.toLowerCase();
+    if (!ext || !supportedPreviewExtensions.has(ext)) {
+        pendingPreviews.delete(id);
+        return;
+    }
+
+    try {
+        const response = await RequestGETFromKliveAPI(`/KliveCloud/GetPreview?itemID=${id}`, false, false);
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            previewUrls.set(id, url);
+        } else {
+            failedPreviews.add(id);
+        }
+    } catch (e) {
+        failedPreviews.add(id);
+    } finally {
+        pendingPreviews.delete(id);
+    }
+};
 </script>
 
 <style scoped lang="scss">
@@ -1159,6 +1653,21 @@ onMounted(() => {
   .item-icon {
     font-size: 3rem;
     margin-bottom: 10px;
+    height: 64px;
+    width: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    /* Ensure emoji is centered too */
+    line-height: 1;
+
+    .item-preview-img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        border-radius: 4px;
+    }
   }
 
   .item-details {
@@ -1215,6 +1724,10 @@ onMounted(() => {
           &.delete-btn:hover {
               background: #bf616a;
           }
+
+          &.share-btn:hover {
+              background: #ebcb8b;
+          }
       }
   }
 }
@@ -1256,5 +1769,207 @@ onMounted(() => {
   border-color: #4CAF50;
   background-color: #3b4252;
   box-shadow: 0 0 8px rgba(76, 175, 80, 0.4);
+}
+
+.shared-links-section {
+    margin-top: 30px;
+    border-top: 1px solid #333;
+    padding-top: 20px;
+
+    .section-title {
+        color: #ebcb8b;
+        margin-bottom: 15px;
+    }
+
+    .shared-links-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 15px;
+    }
+
+    .shared-link-card {
+        background: #252525;
+        border: 1px solid #3a3a3a;
+        padding: 12px;
+        border-radius: 6px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        
+        .link-details {
+            flex: 1;
+            overflow: hidden;
+
+            .link-name {
+                font-weight: bold;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                margin-bottom: 2px;
+                color: #88c0d0;
+            }
+            
+            .link-path {
+                font-size: 0.75rem;
+                color: #aaa;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                margin-bottom: 4px;
+            }
+
+            .link-meta {
+                font-size: 0.7rem;
+                color: #666;
+                display: flex;
+                gap: 8px;
+
+                .code {
+                    font-family: monospace;
+                    background: #111;
+                    padding: 2px 4px;
+                    border-radius: 3px;
+                }
+            }
+        }
+
+        .link-actions {
+            display: flex;
+            gap: 5px;
+            margin-left: 10px;
+
+            button {
+               background: #333;
+               border: none;
+               color: white;
+               padding: 6px;
+               border-radius: 4px;
+               cursor: pointer;
+               transition: background 0.2s;
+
+               &:hover { background: #444; }
+
+               &.delete-link-btn:hover { background: #bf616a; }
+               &.copy-btn:hover { background: #5e81ac; }
+            }
+        }
+    }
+}
+
+/* Upload Panel */
+.upload-panel {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 350px;
+    background: #252525;
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+    z-index: 10000;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    max-height: 400px;
+    transition: all 0.3s ease;
+
+    &.minimized {
+        height: 40px; /* Header height only */
+    }
+
+    .upload-header {
+        background: #333;
+        padding: 10px 15px;
+        color: #fff;
+        font-weight: bold;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        height: 40px;
+
+        &:hover {
+            background: #444;
+        }
+
+        .upload-controls {
+            display: flex;
+            gap: 5px;
+
+            button {
+                background: none;
+                border: none;
+                color: #aaa;
+                cursor: pointer;
+                padding: 2px 5px;
+                
+                &:hover { color: #fff; }
+            }
+        }
+    }
+
+    .upload-list {
+        overflow-y: auto;
+        flex: 1;
+        padding: 10px;
+    }
+
+    .upload-item {
+        background: #1e1e1e;
+        border-bottom: 1px solid #333;
+        padding: 8px;
+        margin-bottom: 5px;
+        border-radius: 4px;
+        position: relative;
+        
+        &:last-child { margin-bottom: 0; }
+
+        .upload-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9em;
+            margin-bottom: 4px;
+            
+            .upload-name {
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 70%;
+            }
+            
+            .upload-status {
+                color: #888;
+                font-size: 0.8em;
+            }
+        }
+
+        .upload-progress-bar {
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+            overflow: hidden;
+            
+            .progress-fill {
+                height: 100%;
+                transition: width 0.2s;
+            }
+        }
+
+        .upload-action {
+             position: absolute;
+             right: 5px;
+             top: 5px;
+             
+             button {
+                 background: none;
+                 border: none;
+                 cursor: pointer;
+                 font-size: 10px;
+                 opacity: 0.6;
+                 
+                 &:hover { opacity: 1; }
+             }
+        }
+    }
 }
 </style>

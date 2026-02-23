@@ -11,7 +11,7 @@ export default{
     async mounted (){
         console.log("AuthenticationManager");
         while(true){
-            if(this.$route.path != "/"){
+            if(this.$route.path != "/" && !this.$route.path.toString().includes("/shared/")){
                 await VerifyLogin();
                 await new Promise(r => setTimeout(r, 2000));
             }

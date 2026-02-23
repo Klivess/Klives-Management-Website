@@ -834,8 +834,7 @@ const getStatusColor = (status: string) => {
 };
 
 const playVideo = (item: CloudItem) => {
-    const password = useCookie('klive_password').value || '';
-    const streamUrl = `${KliveAPIUrl}/KliveCloud/StreamVideo?itemID=${item.ItemID}&Authorization=${encodeURIComponent(password)}`;
+    const streamUrl = `${KliveAPIUrl}/KliveCloud/StreamVideo?itemID=${item.ItemID}`;
 
     Swal.fire({
         // title: item.Name, // Hide title to save space, or use custom header

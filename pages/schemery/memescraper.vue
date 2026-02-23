@@ -56,7 +56,7 @@
                     <div class="metric-icon">📱</div>
                     <div class="metric-info">
                         <h3>Total Sources</h3>
-                        <p class="metric-value">{{ analytics?.InstagramSources?.length || 0 }}</p>
+                        <p class="metric-value">{{ analytics?.TotalInstagramSources || 0 }}</p>
                         <span class="metric-label">Instagram accounts monitored</span>
                     </div>
                 </div>
@@ -64,7 +64,7 @@
                     <div class="metric-icon">🎬</div>
                     <div class="metric-info">
                         <h3>Reels Downloaded</h3>
-                        <p class="metric-value">{{ analytics?.InstagramReelsDownloaded?.length || 0 }}</p>
+                        <p class="metric-value">{{ formatNumber(analytics?.TotalReelsDownloaded || 0) }}</p>
                         <span class="metric-label">Content pieces collected</span>
                     </div>
                 </div>
@@ -532,6 +532,8 @@ interface InstagramReel {
 interface MemeScraperAnalytics {
     InstagramSources: InstagramSource[];
     InstagramReelsDownloaded: InstagramReel[];
+    TotalInstagramSources: number;
+    TotalReelsDownloaded: number;
     TotalViewCount: number;
     AverageViewCountPerReel: number;
     MemesDownloadedPerDay: Record<string, number>;

@@ -36,9 +36,9 @@
             </template>
         </div>
         
-        <button class="download-btn" @click="downloadFile">
-          📥 Download File
-        </button>
+        <a :href="downloadUrl" class="download-btn">
+            Download File
+        </a>
       </div>
     </div>
   </div>
@@ -70,46 +70,6 @@ interface SharedFileInfo {
 const route = useRoute();
 const code = route.params.code as string;
 
-const loading = ref(true);
-const error = ref('');
-const fileInfo = ref<SharedFileInfo | null>(null);
-
-const downloadUrl = computed(() => {
-    return `${KliveAPIUrl}/KliveCloud/DownloadShared?code=${code}`;
-});
-
-onMounted(async () => {
-    if (!code) {
-        error.value = 'Missing share code.';
-        loading.value = false;
-        return;
-    }
-
-    try {
-        const response = await RequestGETFromKliveAPI(`/KliveCloud/GetSharedItemInfo?code=${code}`, false, false);
-        
-        if (!response.ok) {
-            if (response.status === 404) throw new Error('File not found or link deleted.');
-            if (response.status === 410) throw new Error('Link expired.');
-            const text = await response.text();
-            throw new Error(text || 'Failed to retrieve file info.');
-        }
-
-        const data: SharedFileInfo = await response.json();
-        fileInfo.value = data;
-
-    } catch (e: any) {
-        error.value = e.message;
-    } finally {
-        loading.value = false;
-    }
-});
-
-const downloadFile = () => {
-     if (!code) return;
-     window.location.href = downloadUrl.value;
-};
-
 const getIcon = (name: string) => {
   const ext = name.split('.').pop()?.toLowerCase();
 
@@ -140,6 +100,73 @@ const formatSize = (bytes: number) => {
 const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString();
 };
+
+const downloadUrl = computed(() => {
+    return `${KliveAPIUrl}/KliveCloud/DownloadShared?code=${code}`;
+});
+
+// Use SSR-compatible fetch
+const { data: fileInfo, pending: loading, error: fetchError } = await useFetch<SharedFileInfo>(
+    `${KliveAPIUrl}/KliveCloud/GetSharedItemInfo?code=${code}`,
+    {
+        key: `shared-file-${code}`,
+        onResponseError({ response }) {
+             // We can map status here if needed, but error object handles it
+        }
+    }
+);
+
+const error = computed(() => {
+    if (!fetchError.value) return '';
+    if (fetchError.value.statusCode === 404) return 'File not found or link deleted.';
+    if (fetchError.value.statusCode === 410) return 'Link expired.';
+    return 'Failed to retrieve file info.';
+});
+
+const fileName = computed(() => fileInfo.value?.Name || 'Shared File');
+const isImage = computed(() => fileInfo.value?.IsImage || false);
+const isVideo = computed(() => fileInfo.value?.IsVideo || false);
+
+// Inject Meta Tags for Discord/Social Embeds
+if (fileInfo.value) {
+    const rawUrl = downloadUrl.value;
+    const item = fileInfo.value;
+    
+    const baseMeta = {
+        title: item.Name,
+        description: `Shared via KliveCloud • ${formatSize(item.FileSizeBytes)}`,
+        ogTitle: item.Name,
+        ogDescription: `Download or view ${item.Name} on KliveCloud`,
+        ogSiteName: 'KliveCloud',
+        themeColor: '#4CAF50',
+    };
+
+    if (isImage.value) {
+        useServerSeoMeta({
+            ...baseMeta,
+            ogType: 'website',
+            ogImage: rawUrl,
+            twitterCard: 'summary_large_image',
+            twitterImage: rawUrl
+        });
+    } else if (isVideo.value) {
+        useServerSeoMeta({
+            ...baseMeta,
+            ogType: 'video.other',
+            ogVideo: rawUrl,
+            ogVideoType: 'video/mp4',
+            ogVideoWidth: 1280,
+            ogVideoHeight: 720,
+            twitterCard: 'player',
+            twitterPlayer: rawUrl,
+            twitterPlayerWidth: 1280,
+            twitterPlayerHeight: 720
+        });
+    } else {
+        useServerSeoMeta(baseMeta);
+    }
+}
+
 
 </script>
 
@@ -198,9 +225,10 @@ const formatDate = (dateStr: string) => {
 }
 
 .download-btn {
+    display: inline-block;
     background: #4CAF50;
     color: white;
-    border: none;
+    text-decoration: none;
     padding: 12px 24px;
     font-size: 1.1rem;
     border-radius: 6px;
@@ -208,6 +236,7 @@ const formatDate = (dateStr: string) => {
     transition: background 0.2s, transform 0.1s;
     width: 100%;
     font-weight: bold;
+    box-sizing: border-box;
 }
 
 .download-btn:hover {

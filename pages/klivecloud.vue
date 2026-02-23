@@ -332,7 +332,6 @@ const previewUrls = reactive(new Map<string, string>());
 const failedPreviews = reactive(new Set<string>());
 let observer: IntersectionObserver | null = null;
 const supportedPreviewExtensions = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'mp4', 'webm', 'mov', 'avi', 'mkv']);
-const supportedVideoExtensions = new Set(['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm', 'm4v', 'mpg', 'mpeg', '3gp']);
 
 // Selection State
 const selectedItems = ref(new Set<string>());
@@ -797,9 +796,8 @@ const handleItemClick = (item: CloudItem, event?: MouseEvent) => {
   } else {
     // Maybe preview or details? For now ask if download
     const ext = item.Name.split('.').pop()?.toLowerCase();
-    if (ext && supportedVideoExtensions.has(ext)) {
-        playVideo(item);
-    } else if (ext && supportedPreviewExtensions.has(ext)) {
+    
+    if (ext && supportedPreviewExtensions.has(ext)) {
         showPreviewPopup(item);
     } else {
         // Standard details popup
@@ -830,59 +828,6 @@ const getStatusColor = (status: string) => {
         case 'error': return '#e57373';
         case 'canceled': return '#90a4ae';
         default: return '#4CAF50';
-    }
-};
-
-const playVideo = (item: CloudItem) => {
-    const streamUrl = `${KliveAPIUrl}/KliveCloud/StreamVideo?itemID=${item.ItemID}`;
-
-    Swal.fire({
-        // title: item.Name, // Hide title to save space, or use custom header
-        html: `
-            <div style="position: relative; padding-top: 56.25%; width: 100%;">
-                <video 
-                    controls 
-                    autoplay 
-                    style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 4px; background: #000;" 
-                    crossorigin="use-credentials"
-                >
-                    <source src="${streamUrl}" type="${getVideoMimeType(item.Name)}">
-                    Your browser does not support the video tag.
-                </video>
-            </div>
-            <div style="margin-top: 10px; color: #aaa; font-size: 0.9em; text-align: left;">
-                ${item.Name} (${formatSize(item.FileSizeBytes)})
-            </div>
-        `,
-        width: '600px', // Standard width
-        showConfirmButton: false, // Hide useless confirm button for video play
-        showCloseButton: true,
-        background: '#1a1a1a',
-        customClass: {
-            popup: 'video-popup',
-            htmlContainer: 'video-popup-container'
-        },
-        willClose: () => {
-             // Stop video playing logic handled by removing from DOM automatically
-        }
-    }); 
-};
-
-const getVideoMimeType = (filename: string): string => {
-    const ext = filename.split('.').pop()?.toLowerCase();
-    switch (ext) {
-        case 'mp4': return 'video/mp4';
-        case 'mkv': return 'video/x-matroska';
-        case 'avi': return 'video/x-msvideo';
-        case 'mov': return 'video/quicktime';
-        case 'wmv': return 'video/x-ms-wmv';
-        case 'flv': return 'video/x-flv';
-        case 'webm': return 'video/webm';
-        case 'm4v': return 'video/x-m4v';
-        case 'mpg': 
-        case 'mpeg': return 'video/mpeg';
-        case '3gp': return 'video/3gpp';
-        default: return 'video/mp4'; // Fallback
     }
 };
 

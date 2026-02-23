@@ -431,8 +431,8 @@ export default {
                     }
                     
                     this.memescraperStats = {
-                        totalSources: analytics.InstagramSources?.length || 0,
-                        totalMemes: analytics.InstagramReelsDownloaded?.length || 0,
+                        totalSources: analytics.TotalInstagramSources || 0,
+                        totalMemes: analytics.TotalReelsDownloaded || 0,
                         activeNiches: Object.keys(analytics.TopNichesByDownload || {}).length,
                         todayDownloads: todayDownloads,
                         avgDownloadsPerDay: avgDownloadsPerDay,

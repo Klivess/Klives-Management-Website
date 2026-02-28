@@ -11,45 +11,90 @@
             </div>
         </div>
 
-        <!-- Quick Actions Grid -->
-        <KMInfoGrid columns="3" rows="1" rowHeight="180" style="padding-bottom: 30px;">
-            <QuickActionCard
-                title="Bot Logs"
-                description="Monitor system events and bot activities"
-                icon="📋"
-                actionText="View Logs"
-                variant="info"
-                to="/administration/botlogs"
-            />
-            <div class="data-zone" :class="{ 'zone-loading': loadingStates.kliveTech, 'zone-error': errorStates.kliveTech }">
-                <div v-if="loadingStates.kliveTech" class="loading-overlay">
-                    <div class="loading-spinner"></div>
-                    <span>Loading KliveTech...</span>
-                </div>
-                <div v-if="errorStates.kliveTech" class="error-overlay">
-                    <span>ERROR</span>
-                    <button @click="retryKliveTechStats" class="retry-btn">Retry</button>
-                </div>
-                <QuickActionCard
-                    title="KliveTech Devices"
-                    description="Control connected gadgets and IoT devices"
-                    icon="🔧"
-                    :value="kliveTechStats.hasAccess ? kliveTechStats.connectedDevices : (kliveTechStats.connectedDevices === 'Restricted' ? null : kliveTechStats.connectedDevices)"
-                    format="count"
-                    :actionText="kliveTechStats.hasAccess ? 'Manage Devices' : (kliveTechStats.connectedDevices === 'Restricted' ? 'Access Restricted' : 'Manage Devices')"
-                    :variant="kliveTechStats.hasAccess ? 'success' : (kliveTechStats.connectedDevices === 'Restricted' ? 'danger' : 'success')"
-                    :to="kliveTechStats.hasAccess ? '/klivetech' : (kliveTechStats.connectedDevices === 'Restricted' ? null : '/klivetech')"
-                    :onClick="kliveTechStats.hasAccess ? null : (kliveTechStats.connectedDevices === 'Restricted' ? showAccessDeniedMessage : null)"
-                />
+        <!-- Service Health Dots -->
+        <div class="service-health-bar">
+            <span class="shb-label">Services</span>
+            <div class="shb-dots">
+                <div
+                    v-for="svc in frontpageStats.Services"
+                    :key="svc.Name"
+                    class="shb-dot"
+                    :class="svc.IsActive ? 'dot-on' : 'dot-off'"
+                    :title="svc.Name + ' — ' + svc.UptimeHumanized"
+                ></div>
             </div>
-            <QuickActionCard
-                title="Scheduled Tasks"
-                description="View and manage bot task schedules"
-                icon="⏰"
-                actionText="View Schedule"
-                variant="info"
-                to="/botSchedule"
-            />
+            <span class="shb-summary" v-if="frontpageStats.Services.length">
+                <span class="shb-count-ok">{{ frontpageStats.Services.filter(s => s.IsActive).length }}</span>/<span>{{ frontpageStats.Services.length }}</span> online
+            </span>
+        </div>
+
+        <!-- Server Status Summary -->
+        <KMInfoGrid columns="1" rows="1" rowHeight="140" style="padding-bottom: 0px;">
+            <KMInfoBox caption="Server Status">
+                <div class="data-zone server-stats-zone" :class="{ 'zone-loading': loadingStates.frontpage, 'zone-error': errorStates.frontpage }">
+                    <div v-if="loadingStates.frontpage" class="loading-overlay">
+                        <div class="loading-spinner"></div>
+                        <span>Loading Stats...</span>
+                    </div>
+                    <div v-if="errorStates.frontpage" class="error-overlay">
+                        <span>ERROR</span>
+                        <button @click="retryFrontpageStats" class="retry-btn">Retry</button>
+                    </div>
+                    <div class="server-stats-grid">
+                        <div class="server-stat">
+                            <span class="server-stat-value" :class="frontpageStats.BotUptimeHumanized !== 'N/A' ? 'stat-success' : ''">{{ frontpageStats.BotUptimeHumanized }}</span>
+                            <span class="server-stat-label">Bot Uptime</span>
+                        </div>
+                        <div class="server-stat">
+                            <span class="server-stat-value" :class="frontpageStats.CpuUsagePercentage > 85 ? 'stat-danger' : frontpageStats.CpuUsagePercentage > 60 ? 'stat-warning' : 'stat-success'">{{ frontpageStats.CpuUsagePercentage.toFixed(0) }}%</span>
+                            <span class="server-stat-label">CPU</span>
+                        </div>
+                        <div class="server-stat">
+                            <span class="server-stat-value" :class="frontpageStats.RamUsagePercentage > 85 ? 'stat-danger' : frontpageStats.RamUsagePercentage > 60 ? 'stat-warning' : 'stat-success'">{{ frontpageStats.RamUsedGB.toFixed(1) }}/{{ frontpageStats.RamTotalGB.toFixed(0) }}GB</span>
+                            <span class="server-stat-label">RAM ({{ frontpageStats.RamUsagePercentage.toFixed(0) }}%)</span>
+                        </div>
+                        <div class="server-stat">
+                            <span class="server-stat-value" :class="frontpageStats.TotalServicesActive === frontpageStats.TotalServicesRegistered ? 'stat-success' : 'stat-warning'">{{ frontpageStats.TotalServicesActive }}/{{ frontpageStats.TotalServicesRegistered }}</span>
+                            <span class="server-stat-label">Services</span>
+                        </div>
+                        <div class="server-stat">
+                            <span class="server-stat-value">{{ frontpageStats.TotalLogs.toLocaleString() }}</span>
+                            <span class="server-stat-label">Logs</span>
+                        </div>
+                        <div class="server-stat">
+                            <span class="server-stat-value" :class="frontpageStats.TotalErrorLogs > 0 ? 'stat-danger' : 'stat-success'">{{ frontpageStats.TotalErrorLogs }}</span>
+                            <span class="server-stat-label">Errors</span>
+                        </div>
+                        <div class="server-stat">
+                            <span class="server-stat-value">{{ frontpageStats.TotalScheduledTasks }}</span>
+                            <span class="server-stat-label">Tasks</span>
+                        </div>
+                    </div>
+                    <div class="server-stats-footer" v-if="frontpageStats.NextTaskScheduledSummary">
+                        <span class="footer-label">Next:</span>
+                        <span class="footer-value">{{ frontpageStats.NextTaskScheduledSummary }}</span>
+                    </div>
+                </div>
+            </KMInfoBox>
+        </KMInfoGrid>
+
+        <!-- Recent Errors -->
+        <KMInfoGrid columns="1" rows="1" :rowHeight="recentErrors.length > 0 ? 40 + recentErrors.length * 38 : 65" v-if="recentErrors.length > 0 || loadingStates.frontpage" style="padding-bottom: 0px;">
+            <KMInfoBox caption="Recent Errors">
+                <div class="recent-errors-zone">
+                    <div v-if="recentErrors.length === 0 && !loadingStates.frontpage" class="no-errors">
+                        <span class="no-errors-icon">✓</span> No errors recorded
+                    </div>
+                    <div v-else class="error-list">
+                        <div class="error-row" v-for="(err, i) in recentErrors" :key="i">
+                            <span class="err-dot"></span>
+                            <span class="err-service">{{ err.serviceName }}</span>
+                            <span class="err-msg">{{ err.message }}</span>
+                            <span class="err-time">{{ err.timeAgo }}</span>
+                        </div>
+                    </div>
+                </div>
+            </KMInfoBox>
         </KMInfoGrid>
 
         <!-- Schemes Performance Overview -->
@@ -146,44 +191,6 @@
                 </div>
             </KMInfoBox>
         </KMInfoGrid>
-
-        <!-- System Administration -->
-        <KMInfoGrid columns="1" rows="1" rowHeight="300">
-            <KMInfoBox caption="Log Analytics">
-                <div class="data-zone log-section" :class="{ 'zone-loading': loadingStates.logs, 'zone-error': errorStates.logs }">
-                    <div v-if="loadingStates.logs" class="loading-overlay">
-                        <div class="loading-spinner"></div>
-                        <span>Loading Logs...</span>
-                    </div>
-                    <div v-if="errorStates.logs" class="error-overlay">
-                        <span>ERROR</span>
-                        <button @click="retryLogs" class="retry-btn">Retry</button>
-                    </div>
-                    <div class="log-metrics">
-                        <CS2MetricCard
-                            :value="systemStats.totalLogs === 'Restricted' ? 'Restricted' : systemStats.totalLogs"
-                            label="Total Logs"
-                            format="count"
-                            :variant="systemStats.totalLogs === 'Restricted' ? 'danger' : 'info'"
-                        />
-                        <CS2MetricCard
-                            :value="systemStats.totalErrors === 'Restricted' ? 'Restricted' : systemStats.totalErrors"
-                            label="Error Logs"
-                            format="count"
-                            :variant="systemStats.totalErrors === 'Restricted' ? 'danger' : (typeof systemStats.totalErrors === 'number' && systemStats.totalErrors > 0 ? 'danger' : 'success')"
-                        />
-                    </div>
-                    <div class="log-actions">
-                        <KMButton 
-                            :message="systemStats.totalLogs === 'Restricted' ? 'Access Restricted' : 'View Logs'"
-                            :textColor="systemStats.totalLogs === 'Restricted' ? '#ef4444' : '#4d9e39'"
-                            @click="systemStats.totalLogs === 'Restricted' ? showAccessDeniedMessage() : navigateToScheme('/administration/botlogs')"
-                            style="width: 100%; height: 40px; margin-top: 10px;"
-                        />
-                    </div>
-                </div>
-            </KMInfoBox>
-        </KMInfoGrid>
     </div>
 </template>
 
@@ -217,18 +224,20 @@ export default {
             lastUpdate: 'Never',
             loadInterval: null,
             completedLoads: 0,
-            totalLoads: 3, // CS2, Memescraper, KliveTech (removed BotStats and Admin)
+            totalLoads: 3, // CS2, Memescraper, FrontpageStats
             loadingStates: {
                 cs2: false,
                 memescraper: false,
                 kliveTech: false,
-                logs: false
+                logs: false,
+                frontpage: false
             },
             errorStates: {
                 cs2: false,
                 memescraper: false,
                 kliveTech: false,
-                logs: false
+                logs: false,
+                frontpage: false
             },
             systemStats: {
                 totalUptime: 'Loading...',
@@ -259,7 +268,23 @@ export default {
                 onlineDevices: 0,
                 hasAccess: true
             },
-            recentActivities: []
+            recentActivities: [],
+            recentErrors: [],
+            frontpageStats: {
+                BotUptimeHumanized: 'N/A',
+                CpuUsagePercentage: 0,
+                RamUsagePercentage: 0,
+                RamUsedGB: 0,
+                RamTotalGB: 0,
+                TotalServicesActive: 0,
+                TotalServicesRegistered: 0,
+                TotalLogs: 0,
+                TotalErrorLogs: 0,
+                TotalScheduledTasks: 0,
+                NextTaskScheduledSummary: '',
+                lastOmnipotentUpdateHumanized: 'N/A',
+                Services: []
+            }
         }
     },
     methods: {
@@ -276,7 +301,7 @@ export default {
                 // Don't wait for any of them - let each zone update independently
                 this.loadCS2Stats();
                 this.loadMemescraperStats(); 
-                this.loadKliveTechStats();
+                this.loadFrontpageStats();
                 this.loadRecentActivity(); // Only for logs now
                 
             } catch (err) {
@@ -325,6 +350,66 @@ export default {
                 logsAccessible: true
             };
         },
+
+        async loadFrontpageStats() {
+            this.loadingStates.frontpage = true;
+            this.errorStates.frontpage = false;
+            try {
+                const response = await RequestGETFromKliveAPI('/GeneralBotStatistics/GetFrontpageStats', false, false);
+                if (response.ok) {
+                    const data = await response.json();
+                    this.frontpageStats = {
+                        BotUptimeHumanized: data.BotUptimeHumanized || 'N/A',
+                        CpuUsagePercentage: data.CpuUsagePercentage || 0,
+                        RamUsagePercentage: data.RamUsagePercentage || 0,
+                        RamUsedGB: data.RamUsedGB || 0,
+                        RamTotalGB: data.RamTotalGB || 0,
+                        TotalServicesActive: data.TotalServicesActive || 0,
+                        TotalServicesRegistered: data.TotalServicesRegistered || 0,
+                        TotalLogs: data.TotalLogs || 0,
+                        TotalErrorLogs: data.TotalErrorLogs || 0,
+                        TotalScheduledTasks: data.TotalScheduledTasks || 0,
+                        NextTaskScheduledSummary: data.NextTaskScheduledSummary || '',
+                        lastOmnipotentUpdateHumanized: data.lastOmnipotentUpdateHumanized || 'N/A',
+                        Services: data.Services || []
+                    };
+                    // Load recent errors from the logs API
+                    this.loadRecentErrors();
+                } else {
+                    this.errorStates.frontpage = true;
+                }
+            } catch (error) {
+                console.log('Frontpage stats API unavailable:', error);
+                this.errorStates.frontpage = true;
+            } finally {
+                this.loadingStates.frontpage = false;
+                this.trackLoadCompletion();
+            }
+        },
+
+        retryFrontpageStats() {
+            this.loadFrontpageStats();
+        },
+
+        async loadRecentErrors() {
+            try {
+                const response = await RequestGETFromKliveAPI('/api/logs?type=1&limit=5', false, false);
+                if (response.ok) {
+                    const logs = await response.json();
+                    const errorLogs = (Array.isArray(logs) ? logs : [])
+                        .filter(l => l.type === 1 || l.logType === 'Error' || l.LogType === 1)
+                        .slice(0, 5);
+                    this.recentErrors = errorLogs.map(l => ({
+                        serviceName: l.serviceName || l.ServiceName || 'Unknown',
+                        message: (l.message || l.Message || 'Error').substring(0, 120),
+                        timeAgo: this.formatTime(l.timestamp || l.Timestamp || new Date())
+                    }));
+                }
+            } catch (e) {
+                console.log('Recent errors unavailable:', e);
+            }
+        },
+
         
         async loadCS2Stats() {
             this.loadingStates.cs2 = true;
@@ -1165,5 +1250,222 @@ button:focus {
     z-index: 5;
     color: #ef4444;
     font-weight: bold;
+}
+
+/* Server Status Summary */
+.server-stats-zone {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.server-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+    padding: 0 5px;
+}
+
+.server-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 4px;
+    background: rgba(77, 158, 57, 0.05);
+    border-radius: 8px;
+    border: 1px solid rgba(77, 158, 57, 0.1);
+}
+
+.server-stat-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #ffffff;
+    line-height: 1.2;
+}
+
+.server-stat-value.stat-success { color: #22c55e; }
+.server-stat-value.stat-warning { color: #fbbf24; }
+.server-stat-value.stat-danger { color: #ef4444; }
+
+.server-stat-label {
+    font-size: 0.7rem;
+    color: #969696;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-align: center;
+}
+
+.server-stats-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 5px 12px;
+    background: rgba(77, 158, 57, 0.08);
+    border-radius: 6px;
+    font-size: 0.8rem;
+}
+
+.footer-label {
+    color: #969696;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.footer-value {
+    color: #4d9e39;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+    .server-stats-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+@media (max-width: 480px) {
+    .server-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Service Health Bar */
+.service-health-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    margin: 0 5px 8px 5px;
+    background: #161616;
+    border-radius: 12px;
+    border: 1px solid rgba(77, 158, 57, 0.15);
+}
+
+.shb-label {
+    color: #969696;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+.shb-dots {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    flex: 1;
+}
+
+.shb-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    cursor: default;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.shb-dot:hover {
+    transform: scale(1.4);
+}
+
+.shb-dot.dot-on {
+    background: #22c55e;
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+}
+
+.shb-dot.dot-off {
+    background: #ef4444;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+    animation: pulse-red 1.5s infinite;
+}
+
+@keyframes pulse-red {
+    0%, 100% { box-shadow: 0 0 6px rgba(239, 68, 68, 0.5); }
+    50% { box-shadow: 0 0 14px rgba(239, 68, 68, 0.9); }
+}
+
+.shb-summary {
+    color: #969696;
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+.shb-count-ok {
+    color: #22c55e;
+    font-weight: 700;
+}
+
+/* Recent Errors */
+.recent-errors-zone {
+    padding: 0 5px;
+}
+
+.no-errors {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #22c55e;
+    font-size: 0.85rem;
+    padding: 8px 12px;
+    background: rgba(34, 197, 94, 0.08);
+    border-radius: 6px;
+}
+
+.no-errors-icon {
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.error-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.error-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: rgba(239, 68, 68, 0.06);
+    border-left: 3px solid rgba(239, 68, 68, 0.5);
+}
+
+.err-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ef4444;
+    flex-shrink: 0;
+}
+
+.err-service {
+    color: #ef4444;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+    min-width: 100px;
+}
+
+.err-msg {
+    color: #cccccc;
+    font-size: 0.78rem;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.err-time {
+    color: #969696;
+    font-size: 0.72rem;
+    white-space: nowrap;
 }
 </style>

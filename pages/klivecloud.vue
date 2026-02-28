@@ -575,6 +575,7 @@ interface UploadTask {
     xhr?: XMLHttpRequest;
 }
 const activeUploads = ref<UploadTask[]>([]);
+const activeDownloads = ref<Set<string>>(new Set());
 const isUploadPanelOpen = ref(false);
 
 const uploadFileAPI = async (file: File) => {
@@ -679,12 +680,14 @@ const clearCompletedUploads = () => {
 
 const downloadFileAPI = async (item: CloudItem) => {
     try {
+        activeDownloads.value.add(item.ItemID);
          // Using RequestGETFromKliveAPI
         const response = await RequestGETFromKliveAPI(`/KliveCloud/DownloadFile?itemID=${item.ItemID}`, false, true);
         
         if (!response.ok) {
              const text = await response.text();
              Swal.fire('Download Error', text, 'error');
+             activeDownloads.value.delete(item.ItemID);
              return;
         }
 
@@ -697,8 +700,10 @@ const downloadFileAPI = async (item: CloudItem) => {
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
+        activeDownloads.value.delete(item.ItemID);
 
     } catch (e: any) {
+        activeDownloads.value.delete(item.ItemID);
         Swal.fire('Error', e.message, 'error');
     }
 }
@@ -1282,6 +1287,9 @@ onMounted(() => {
     fetchDriveInfo();
     fetchSharedLinks();
 
+    // Prevent tab closure if active uploads or downloads
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
     // Setup Intersection Observer for lazy loading previews
     observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
@@ -1305,11 +1313,24 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+    window.removeEventListener('beforeunload', handleBeforeUnload);
     if (observer) observer.disconnect();
     // Revoke all object URLs to free memory
     previewUrls.forEach(url => URL.revokeObjectURL(url));
     previewUrls.clear();
 });
+
+const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+    const hasActiveUploads = activeUploads.value.some(t => ['uploading', 'finalizing'].includes(t.status));
+    const hasActiveDownloads = activeDownloads.value.size > 0;
+    
+    if (hasActiveUploads || hasActiveDownloads) {
+        const message = "You have active transfers. If you leave, they will be canceled.";
+        event.preventDefault();
+        event.returnValue = message; // Standard required behavior for showing the prompt
+        return message;
+    }
+};
 
 const pendingPreviews = new Set<string>();
 

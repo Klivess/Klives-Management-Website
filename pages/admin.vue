@@ -361,7 +361,7 @@ export default {
         },
         restartAutoRefresh() {
             if (!this.refreshInterval) {
-                this.refreshInterval = setInterval(() => this.loadStats(), 30000);
+                this.refreshInterval = setInterval(() => this.loadStats(), 10000);
             }
         },
         formatBytes(bytes) {
@@ -373,7 +373,7 @@ export default {
     },
     mounted() {
         this.loadStats();
-        this.refreshInterval = setInterval(() => this.loadStats(), 30000);
+        this.refreshInterval = setInterval(() => this.loadStats(), 10000);
     },
     beforeUnmount() {
         if (this.refreshInterval) clearInterval(this.refreshInterval);

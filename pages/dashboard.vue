@@ -721,7 +721,7 @@ export default {
         // Set up auto-refresh every 30 seconds
         this.loadInterval = setInterval(() => {
             this.loadDashboardData();
-        }, 30000);
+        }, 10000);
     },
     beforeUnmount() {
         if (this.loadInterval) {

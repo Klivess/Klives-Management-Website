@@ -116,6 +116,27 @@
             </KMInfoBox>
         </KMInfoGrid>
 
+        <!-- Selenium Instances -->
+        <KMInfoGrid columns="1" rows="1" rowHeight="260">
+            <KMInfoBox caption="Selenium Instances">
+                <div class="selenium-header">
+                    <span class="selenium-count" v-if="seleniumInstances.length > 0">{{ seleniumInstances.length }} active instance{{ seleniumInstances.length !== 1 ? 's' : '' }}</span>
+                    <span class="selenium-count no-data" v-else>No active instances</span>
+                </div>
+                <div class="selenium-scroll">
+                    <div class="selenium-row" v-for="inst in seleniumInstances" :key="inst.objectID">
+                        <span class="svc-dot dot-on"></span>
+                        <div class="selenium-info">
+                            <span class="selenium-name">{{ inst.name }}</span>
+                            <span class="selenium-id">ID: {{ inst.objectID }}</span>
+                        </div>
+                        <span class="selenium-time">{{ humanizeSeleniumTime(inst.createdAt) }}</span>
+                    </div>
+                    <div v-if="seleniumInstances.length === 0" class="no-data">No Selenium browser instances are currently running</div>
+                </div>
+            </KMInfoBox>
+        </KMInfoGrid>
+
         <!-- Management -->
         <KMInfoGrid columns="2" rows="1" rowHeight="460">
             <KMInfoBox caption="Bot Utilities">
@@ -162,6 +183,7 @@ export default {
             statsError: false,
             botUpdating: false,
             refreshInterval: null,
+            seleniumInstances: [],
             stats: {
                 TimeStatisticsGenerated: '',
                 lastOmnipotentUpdate: '',
@@ -238,6 +260,29 @@ export default {
             } finally {
                 this.statsLoading = false;
             }
+        },
+        async loadSeleniumInstances() {
+            try {
+                const response = await RequestGETFromKliveAPI('/seleniumManager/getAllSeleniumInstances', false, false);
+                if (response.ok) {
+                    this.seleniumInstances = await response.json();
+                }
+            } catch (e) {
+                console.error('Failed to load Selenium instances:', e);
+            }
+        },
+        humanizeSeleniumTime(dateStr) {
+            if (!dateStr) return '';
+            const created = new Date(dateStr);
+            const now = new Date();
+            const diffMs = now - created;
+            const diffSec = Math.floor(diffMs / 1000);
+            if (diffSec < 60) return diffSec + 's ago';
+            const diffMin = Math.floor(diffSec / 60);
+            if (diffMin < 60) return diffMin + 'm ago';
+            const diffHr = Math.floor(diffMin / 60);
+            if (diffHr < 24) return diffHr + 'h ' + (diffMin % 60) + 'm ago';
+            return Math.floor(diffHr / 24) + 'd ' + (diffHr % 24) + 'h ago';
         },
         goToCreateProfile() {
             window.location.replace('/createprofile');
@@ -373,7 +418,8 @@ export default {
     },
     mounted() {
         this.loadStats();
-        this.refreshInterval = setInterval(() => this.loadStats(), 10000);
+        this.loadSeleniumInstances();
+        this.refreshInterval = setInterval(() => { this.loadStats(); this.loadSeleniumInstances(); }, 10000);
     },
     beforeUnmount() {
         if (this.refreshInterval) clearInterval(this.refreshInterval);
@@ -660,6 +706,84 @@ export default {
 .clr-success-bg { background-color: #22c55e; }
 .clr-warning-bg { background-color: #fbbf24; }
 .clr-danger-bg { background-color: #ef4444; }
+
+/* Selenium Instances */
+.selenium-header {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 8px;
+    padding: 0 5px;
+}
+
+.selenium-count {
+    font-size: 0.8rem;
+    color: #4d9e39;
+    font-weight: 600;
+}
+
+.selenium-scroll {
+    overflow-y: auto;
+    max-height: 190px;
+    padding: 0 5px;
+}
+
+.selenium-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(77, 158, 57, 0.12);
+    margin-bottom: 6px;
+    transition: background 0.15s ease;
+}
+
+.selenium-row:hover {
+    background: rgba(77, 158, 57, 0.06);
+}
+
+.selenium-info {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+
+.selenium-name {
+    color: #ffffff;
+    font-size: 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.selenium-id {
+    color: #969696;
+    font-size: 0.7rem;
+    font-family: monospace;
+}
+
+.selenium-time {
+    color: #969696;
+    font-size: 0.78rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.selenium-scroll::-webkit-scrollbar {
+    width: 4px;
+}
+
+.selenium-scroll::-webkit-scrollbar-track {
+    background: rgba(77, 158, 57, 0.1);
+    border-radius: 2px;
+}
+
+.selenium-scroll::-webkit-scrollbar-thumb {
+    background: rgba(77, 158, 57, 0.3);
+    border-radius: 2px;
+}
 
 /* Scrollbar */
 .services-scroll::-webkit-scrollbar,

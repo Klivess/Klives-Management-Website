@@ -143,6 +143,9 @@
                 <NuxtLink to="/administration/botlogs">
                     <KMButton message="Bot Logs" style="height: 100px; width: 100%; margin-top: 30px;" />
                 </NuxtLink>
+                <NuxtLink to="/klivelink">
+                    <KMButton message="KliveLink" style="height: 100px; width: 100%; margin-top: 15px;" />
+                </NuxtLink>
                 <div class="update-bot-area">
                     <KMButton
                         :message="botUpdating ? 'Updating...' : 'Update Bot'"

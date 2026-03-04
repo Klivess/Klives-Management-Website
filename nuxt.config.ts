@@ -3,6 +3,11 @@ export default defineNuxtConfig({
   compatibilityDate: '2024-04-03',
   devtools: { enabled: true },
   ssr: true,
+  nitro: {
+    experimental: {
+      websocket: true
+    }
+  },
   routeRules: {
     '/': {prerender: true},
     '/administration/**': {ssr: false}, // Disable SSR for admin routes

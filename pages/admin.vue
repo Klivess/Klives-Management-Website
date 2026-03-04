@@ -409,7 +409,7 @@ export default {
         },
         restartAutoRefresh() {
             if (!this.refreshInterval) {
-                this.refreshInterval = setInterval(() => this.loadStats(), 10000);
+                this.refreshInterval = setInterval(() => { this.loadStats(); this.loadSeleniumInstances(); }, 10000);
             }
         },
         formatBytes(bytes) {

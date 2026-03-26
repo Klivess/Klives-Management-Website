@@ -16,7 +16,7 @@
             <KMInfoBox caption="Bot Uptime">
                 <div class="admin-metric">
                     <div class="metric-big clr-success">{{ stats.BotUptimeHumanized }}</div>
-                    <div class="metric-sub">Heartbeat {{ stats.lastOmnipotentUpdateHumanized }}</div>
+                    <div class="metric-sub">Last updated from Github {{ stats.lastOmnipotentUpdateHumanized }}</div>
                 </div>
             </KMInfoBox>
             <KMInfoBox caption="CPU Usage">
@@ -66,6 +66,49 @@
                     <div class="detail-row"><span class="dl">Omni Messages</span><span class="dv">{{ stats.TotalOmniDiscordMessagesLogged.toLocaleString() }}</span></div>
                     <div class="detail-row"><span class="dl">Omni Media</span><span class="dv">{{ (stats.TotalOmniDiscordImagesLogged + stats.TotalOmniDiscordVideosLogged + stats.TotalOmniDiscordFilesLogged).toLocaleString() }} files</span></div>
                 </div>
+            </KMInfoBox>
+        </KMInfoGrid>
+
+        <!-- Uptime Statistics -->
+        <KMInfoGrid columns="1" rows="1" rowHeight="180">
+            <KMInfoBox caption="System Uptime Statistics">
+                <div class="uptime-container" v-if="!uptimeStats.loading && !uptimeStats.error">
+                    <div class="uptime-stats-row">
+                        <div class="u-stat">
+                            <span class="u-val clr-success">{{ formatUptimeDuration(uptimeStats.TotalUptimeSeconds) }}</span>
+                            <span class="u-lbl">Total Uptime</span>
+                        </div>
+                        <div class="u-stat">
+                            <span class="u-val clr-danger">{{ formatUptimeDuration(uptimeStats.TotalOutageSeconds) }}</span>
+                            <span class="u-lbl">Total Outage</span>
+                        </div>
+                        <div class="u-stat">
+                            <span class="u-val clr-accent">{{ formatUptimeDuration(uptimeStats.CurrentUptimeSeconds) }}</span>
+                            <span class="u-lbl">Current Uptime</span>
+                        </div>
+                        <div class="u-stat">
+                            <span class="u-val">{{ uptimeStats.TotalPeriods }}</span>
+                            <span class="u-lbl">History Periods</span>
+                        </div>
+                    </div>
+                    
+                    <div class="uptime-chart-wrapper">
+                        <div class="uptime-timeline">
+                            <div v-for="(block, index) in computedUptimeTimeline" :key="index" 
+                                 class="uptime-block" 
+                                 :class="block.status" 
+                                 :style="{ width: block.widthPct + '%' }"
+                                 :title="block.tooltip">
+                            </div>
+                        </div>
+                        <div class="uptime-legend">
+                            <span>Older</span>
+                            <span>Recent Activity</span>
+                        </div>
+                    </div>
+                </div>
+                <div v-else-if="uptimeStats.loading" class="no-data">Loading uptime statistics...</div>
+                <div v-else class="no-data clr-danger">Failed to load uptime statistics</div>
             </KMInfoBox>
         </KMInfoGrid>
 
@@ -190,6 +233,16 @@ export default {
         return {
             statsLoading: false,
             statsError: false,
+            uptimeStats: {
+                TotalUptimeSeconds: 0,
+                AverageUptimeHours: 0,
+                CurrentUptimeSeconds: 0,
+                TotalOutageSeconds: 0,
+                TotalPeriods: 0,
+                Periods: [],
+                loading: true,
+                error: false
+            },
             botUpdating: false,
             refreshInterval: null,
             seleniumInstances: [],
@@ -249,6 +302,56 @@ export default {
                 const isFilter = ni.Name.includes('Filter') || ni.Name.includes('QoS') || ni.Name.includes('WFP');
                 return hasTraffic && !isFilter;
             });
+        },
+        computedUptimeTimeline() {
+            if (!this.uptimeStats.Periods || this.uptimeStats.Periods.length === 0) return [];
+            
+            const periods = this.uptimeStats.Periods;
+            const blocks = [];
+            const firstTime = new Date(periods[0].StartTime).getTime();
+            
+            // Add a synthetic 'LastKnownUpTime' to the final period using CurrentUptimeSeconds if missing
+            let lastTime = new Date(periods[periods.length - 1].LastKnownUpTime).getTime();
+            if (isNaN(lastTime)) {
+                lastTime = Date.now();
+            }
+
+            const totalTime = lastTime - firstTime || 1;
+
+            for (let i = 0; i < periods.length; i++) {
+                const p = periods[i];
+                const start = new Date(p.StartTime).getTime();
+                
+                let end = new Date(p.LastKnownUpTime).getTime();
+                if (isNaN(end) && i === periods.length - 1) {
+                    end = Date.now();
+                }
+
+                const duration = end - start;
+                const wPct = (duration / totalTime) * 100;
+                
+                blocks.push({
+                    status: 'up',
+                    duration: duration,
+                    widthPct: Math.max(wPct, 0.1), // Give min visibility
+                    tooltip: `Uptime: ${new Date(start).toLocaleString()} - ${new Date(end).toLocaleString()}`
+                });
+
+                if (i < periods.length - 1) {
+                    const nextStart = new Date(periods[i+1].StartTime).getTime();
+                    const gap = nextStart - end;
+                    if (gap > 0) {
+                        const gapPct = (gap / totalTime) * 100;
+                        blocks.push({
+                            status: 'down',
+                            duration: gap,
+                            widthPct: Math.max(gapPct, 0.1),
+                            tooltip: `Outage: ${new Date(end).toLocaleString()} - ${new Date(nextStart).toLocaleString()}`
+                        });
+                    }
+                }
+            }
+            return blocks;
         }
     },
     methods: {
@@ -268,6 +371,24 @@ export default {
                 this.statsError = true;
             } finally {
                 this.statsLoading = false;
+            }
+        },
+        async loadUptimeStats() {
+            this.uptimeStats.loading = true;
+            this.uptimeStats.error = false;
+            try {
+                const response = await RequestGETFromKliveAPI('/System/UptimeStatistics', false, false);
+                if (response.ok) {
+                    const data = await response.json();
+                    this.uptimeStats = { ...this.uptimeStats, ...data, loading: false };
+                } else {
+                    this.uptimeStats.error = true;
+                    this.uptimeStats.loading = false;
+                }
+            } catch (e) {
+                console.error('Failed to load uptime stats:', e);
+                this.uptimeStats.error = true;
+                this.uptimeStats.loading = false;
             }
         },
         async loadSeleniumInstances() {
@@ -415,7 +536,7 @@ export default {
         },
         restartAutoRefresh() {
             if (!this.refreshInterval) {
-                this.refreshInterval = setInterval(() => { this.loadStats(); this.loadSeleniumInstances(); }, 10000);
+                this.refreshInterval = setInterval(() => { this.loadStats(); this.loadSeleniumInstances(); this.loadUptimeStats(); }, 10000);
             }
         },
         formatBytes(bytes) {
@@ -423,12 +544,23 @@ export default {
             const units = ['B', 'KB', 'MB', 'GB', 'TB'];
             const i = Math.floor(Math.log(bytes) / Math.log(1024));
             return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
+        },
+        formatUptimeDuration(seconds) {
+            if (seconds === undefined || seconds === null) return '0s';
+            const d = Math.floor(seconds / 86400);
+            const h = Math.floor((seconds % 86400) / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            if (d > 0) return `${d}d ${h}h`;
+            if (h > 0) return `${h}h ${m}m`;
+            if (m > 0) return `${m}m`;
+            return `${Math.floor(seconds)}s`;
         }
     },
     mounted() {
         this.loadStats();
         this.loadSeleniumInstances();
-        this.refreshInterval = setInterval(() => { this.loadStats(); this.loadSeleniumInstances(); }, 10000);
+        this.loadUptimeStats();
+        this.refreshInterval = setInterval(() => { this.loadStats(); this.loadSeleniumInstances(); this.loadUptimeStats(); }, 10000);
     },
     beforeUnmount() {
         if (this.refreshInterval) clearInterval(this.refreshInterval);
@@ -560,6 +692,81 @@ export default {
     height: 1px;
     background: rgba(77, 158, 57, 0.15);
     margin: 2px 0;
+}
+
+/* Uptime Statistics */
+.uptime-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    height: 100%;
+}
+
+.uptime-stats-row {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.u-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.u-val {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.u-lbl {
+    font-size: 0.8rem;
+    color: #969696;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.uptime-chart-wrapper {
+    width: 100%;
+    padding: 0 10px;
+}
+
+.uptime-timeline {
+    display: flex;
+    height: 24px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.uptime-block {
+    height: 100%;
+}
+
+.uptime-block.up {
+    background-color: rgba(77, 158, 57, 0.8);
+}
+
+.uptime-block.up:hover {
+    background-color: rgba(77, 158, 57, 1);
+}
+
+.uptime-block.down {
+    background-color: rgba(239, 68, 68, 0.8);
+}
+
+.uptime-block.down:hover {
+    background-color: rgba(239, 68, 68, 1);
+}
+
+.uptime-legend {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: #707070;
 }
 
 /* Disk Statistics */

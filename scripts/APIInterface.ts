@@ -57,16 +57,22 @@ async function RequestGETFromKliveAPI(query: string, redirectToDashboardIfUnauth
     return res;
 }
 
-async function RequestPOSTFromKliveAPI(query: string, content: BodyInit | null = "", redirectToDashboardIfUnauthorized = true) {
+async function RequestPOSTFromKliveAPI(query: string, content: BodyInit | null = "", redirectToDashboardIfUnauthorized = true, isJson = false) {
     const pass = GetLocalPassword();
     let response;
+    
+    const headers: Record<string, string> = {
+        "Authorization": pass,
+    };
+    if (isJson) {
+        headers["Content-Type"] = "application/json";
+    }
+
     response = await fetch(KliveAPIUrl + query, {
         method: "POST",
         mode: 'cors',
         body: content,
-        headers: {
-            "Authorization": pass,
-        }
+        headers: headers
     });
     if (response.status === 401) {
         // Unauthorized access, handle accordingly

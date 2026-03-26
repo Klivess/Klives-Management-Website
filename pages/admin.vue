@@ -138,17 +138,23 @@
         </KMInfoGrid>
 
         <!-- Management -->
-        <KMInfoGrid columns="2" rows="1" rowHeight="460">
+        <KMInfoGrid columns="2" rows="1" rowHeight="520">
             <KMInfoBox caption="Bot Utilities">
                 <NuxtLink to="/administration/botlogs">
-                    <KMButton message="Bot Logs" style="height: 100px; width: 100%; margin-top: 30px;" />
+                    <KMButton message="BOT LOGS" style="height: 100px; width: 100%; margin-top: 30px;" />
                 </NuxtLink>
                 <NuxtLink to="/klivelink">
-                    <KMButton message="KliveLink" style="height: 100px; width: 100%; margin-top: 15px;" />
+                    <KMButton message="KLIVELINK" style="height: 100px; width: 100%; margin-top: 15px;" />
+                </NuxtLink>
+                <NuxtLink to="/administration/omnisettings">
+                    <KMButton
+                        message="OMNISETTINGS"
+                        style="height: 100px; width: 100%; margin-top: 15px;"
+                    />
                 </NuxtLink>
                 <div class="update-bot-area">
                     <KMButton
-                        :message="botUpdating ? 'Updating...' : 'Update Bot'"
+                        :message="botUpdating ? 'UPDATING...' : 'UPDATE BOT'"
                         :textColor="botUpdating ? '#969696' : '#ef4444'"
                         style="height: 100px; width: 100%; margin-top: 15px;"
                         :onclick="updateBot"
@@ -160,8 +166,8 @@
                 </div>
             </KMInfoBox>
             <KMInfoBox caption="Manage Profiles">
-                <AdminKMProfileList style="height: 280px;" />
-                <KMButton style="height: 100px; margin-top: 30px;" message="Create New Profile" :onclick="goToCreateProfile" />
+                <AdminKMProfileList style="height: 350px;" />
+                <KMButton style="height: 100px; margin-top: 25px;" message="Create New Profile" :onclick="goToCreateProfile" />
             </KMInfoBox>
         </KMInfoGrid>
     </div>

@@ -162,15 +162,33 @@
                             </div>
                         </div>
                         
-                        <div class="scheme-card inactive-card">
+                        <div class="scheme-card omnitrader-card" @click="omniTraderStats.hasAccess ? navigateToScheme('/schemery/omnitrader') : showAccessDeniedMessage()"
+                             :class="{ 'card-loading': loadingStates.omnitrader, 'card-error': errorStates.omnitrader }">
+                            <div v-if="loadingStates.omnitrader" class="card-loading-overlay">
+                                <div class="loading-spinner-small"></div>
+                            </div>
+                            <div v-if="errorStates.omnitrader" class="card-error-overlay">
+                                <span>ERROR</span>
+                                <button @click.stop="retryOmniTraderStats" class="retry-btn-small">↻</button>
+                            </div>
                             <div class="scheme-header">
                                 <h3>OmniTrader</h3>
-                                <div class="scheme-status inactive">Development</div>
+                                <div :class="['scheme-status', omniTraderStats.hasAccess ? 'simulator' : 'restricted']">
+                                    {{ omniTraderStats.hasAccess ? 'Simulator' : 'Restricted' }}
+                                </div>
                             </div>
                             <div class="scheme-metrics">
                                 <div class="metric">
-                                    <span class="metric-label">Status</span>
-                                    <span class="metric-value">In Development</span>
+                                    <span class="metric-label">Sim Deployments</span>
+                                    <span class="metric-value">{{ omniTraderStats.activeDeployments === 'Restricted' ? 'Restricted' : omniTraderStats.activeDeployments }}</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Avg Win Rate</span>
+                                    <span class="metric-value success">{{ omniTraderStats.avgWinRate === 'Restricted' ? 'Restricted' : omniTraderStats.avgWinRate.toFixed(1) + '%' }}</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Best Sim PnL</span>
+                                    <span class="metric-value profit">{{ omniTraderStats.bestPnL === 'Restricted' ? 'Restricted' : (omniTraderStats.bestPnL >= 0 ? '+' : '') + omniTraderStats.bestPnL.toFixed(2) + '%' }}</span>
                                 </div>
                             </div>
                         </div>
@@ -224,10 +242,11 @@ export default {
             lastUpdate: 'Never',
             loadInterval: null,
             completedLoads: 0,
-            totalLoads: 3, // CS2, Memescraper, FrontpageStats
+            totalLoads: 4, // CS2, Memescraper, OmniTrader, FrontpageStats
             loadingStates: {
                 cs2: false,
                 memescraper: false,
+                omnitrader: false,
                 kliveTech: false,
                 logs: false,
                 frontpage: false
@@ -235,6 +254,7 @@ export default {
             errorStates: {
                 cs2: false,
                 memescraper: false,
+                omnitrader: false,
                 kliveTech: false,
                 logs: false,
                 frontpage: false
@@ -261,6 +281,12 @@ export default {
                 todayDownloads: 0,
                 avgDownloadsPerDay: 0,
                 topPerformingSource: 'N/A',
+                hasAccess: true
+            },
+            omniTraderStats: {
+                activeDeployments: 0,
+                avgWinRate: 0,
+                bestPnL: 0,
                 hasAccess: true
             },
             kliveTechStats: {
@@ -301,6 +327,7 @@ export default {
                 // Don't wait for any of them - let each zone update independently
                 this.loadCS2Stats();
                 this.loadMemescraperStats(); 
+                this.loadOmniTraderStats();
                 this.loadFrontpageStats();
                 this.loadRecentActivity(); // Only for logs now
                 
@@ -327,6 +354,10 @@ export default {
         
         retryMemescraperStats() {
             this.loadMemescraperStats();
+        },
+
+        retryOmniTraderStats() {
+            this.loadOmniTraderStats();
         },
         
         retryKliveTechStats() {
@@ -564,6 +595,72 @@ export default {
                 };
             } finally {
                 this.loadingStates.memescraper = false;
+                this.trackLoadCompletion();
+            }
+        },
+
+        async loadOmniTraderStats() {
+            this.loadingStates.omnitrader = true;
+            this.errorStates.omnitrader = false;
+
+            try {
+                const [statusResponse, deployedResponse] = await Promise.all([
+                    RequestGETFromKliveAPI('/omniTrader/status', false, false),
+                    RequestGETFromKliveAPI('/omniTrader/strategies/deployed', false, false)
+                ]);
+
+                if (statusResponse.status === 401 || deployedResponse.status === 401) {
+                    this.omniTraderStats = {
+                        activeDeployments: 'Restricted',
+                        avgWinRate: 'Restricted',
+                        bestPnL: 'Restricted',
+                        hasAccess: false
+                    };
+                    console.log('OmniTrader analytics access denied - insufficient permissions');
+                } else if (statusResponse.ok && deployedResponse.ok) {
+                    const status = await statusResponse.json();
+                    const deployed = await deployedResponse.json();
+                    const deployments = Array.isArray(deployed) ? deployed : [];
+
+                    const activeDeployments = Number.isFinite(status?.DeployedCount)
+                        ? status.DeployedCount
+                        : deployments.length;
+
+                    let avgWinRate = 0;
+                    let bestPnL = 0;
+
+                    if (deployments.length > 0) {
+                        avgWinRate = deployments.reduce((sum, d) => sum + (Number(d.WinRate) || 0), 0) / deployments.length;
+                        bestPnL = Math.max(...deployments.map(d => Number(d.TotalPnLPercent) || 0));
+                    }
+
+                    this.omniTraderStats = {
+                        activeDeployments,
+                        avgWinRate,
+                        bestPnL,
+                        hasAccess: true
+                    };
+                } else {
+                    console.log('OmniTrader analytics API returned status:', statusResponse.status, deployedResponse.status);
+                    this.errorStates.omnitrader = true;
+                    this.omniTraderStats = {
+                        activeDeployments: 0,
+                        avgWinRate: 0,
+                        bestPnL: 0,
+                        hasAccess: true
+                    };
+                }
+            } catch (error) {
+                console.log('OmniTrader analytics API unavailable:', error);
+                this.errorStates.omnitrader = true;
+                this.omniTraderStats = {
+                    activeDeployments: 0,
+                    avgWinRate: 0,
+                    bestPnL: 0,
+                    hasAccess: true
+                };
+            } finally {
+                this.loadingStates.omnitrader = false;
                 this.trackLoadCompletion();
             }
         },
@@ -842,6 +939,15 @@ export default {
     box-shadow: 0 8px 25px rgba(139, 92, 246, 0.2);
 }
 
+.scheme-card.omnitrader-card {
+    border-color: rgba(245, 158, 11, 0.4);
+}
+
+.scheme-card.omnitrader-card:hover {
+    border-color: rgba(245, 158, 11, 0.75);
+    box-shadow: 0 8px 25px rgba(245, 158, 11, 0.2);
+}
+
 .scheme-card.inactive-card {
     border-color: rgba(156, 163, 175, 0.3);
     opacity: 0.7;
@@ -893,6 +999,12 @@ export default {
     background: rgba(239, 68, 68, 0.2);
     color: #ef4444;
     border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.scheme-status.simulator {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
 .scheme-metrics {

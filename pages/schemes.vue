@@ -40,20 +40,20 @@
             </div>
         </div>
 
-        <!-- In Development -->
-        <div class="section-label">In Development</div>
+        <!-- Simulator & In Development -->
+        <div class="section-label">Simulator & In Development</div>
         <div class="schemes-grid">
-            <div class="scheme-card dev" @click="$router.push('/schemery/omnitrader')">
+            <div class="scheme-card sim" @click="$router.push('/schemery/omnitrader')">
                 <div class="card-accent accent-amber"></div>
                 <div class="card-body">
                     <div class="card-top">
                         <span class="card-icon">📈</span>
-                        <span class="card-badge badge-dev">Development</span>
+                        <span class="card-badge badge-sim">Simulator</span>
                     </div>
                     <h2 class="card-title">OmniTrader</h2>
-                    <p class="card-desc">Algorithmic trading bot that analyses market patterns and executes trades autonomously.</p>
+                    <p class="card-desc">Runs strategy deployment and analytics in simulator mode with backtesting workflows. Live exchange deployment is coming later.</p>
                     <div class="card-footer">
-                        <span class="card-action">View Details →</span>
+                        <span class="card-action">Open Simulator →</span>
                     </div>
                 </div>
             </div>
@@ -160,9 +160,18 @@ definePageMeta({ layout: 'navbar' });
     border-color: rgba(156, 163, 175, 0.15);
 }
 
+.scheme-card.sim {
+    border-color: rgba(245, 158, 11, 0.25);
+}
+
 .scheme-card.dev:hover {
     opacity: 0.9;
     border-color: rgba(156, 163, 175, 0.4);
+}
+
+.scheme-card.sim:hover {
+    border-color: rgba(245, 158, 11, 0.6);
+    box-shadow: 0 10px 30px rgba(245, 158, 11, 0.2);
 }
 
 /* Card Accent Strip */
@@ -214,6 +223,12 @@ definePageMeta({ layout: 'navbar' });
     background: rgba(156, 163, 175, 0.15);
     color: #9ca3af;
     border: 1px solid rgba(156, 163, 175, 0.3);
+}
+
+.badge-sim {
+    background: rgba(245, 158, 11, 0.16);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.35);
 }
 
 .card-title {

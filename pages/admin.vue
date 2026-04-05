@@ -70,41 +70,77 @@
         </KMInfoGrid>
 
         <!-- Uptime Statistics -->
-        <KMInfoGrid columns="1" rows="1" rowHeight="180">
+        <KMInfoGrid columns="1" rows="1" rowHeight="260">
             <KMInfoBox caption="System Uptime Statistics">
                 <div class="uptime-container" v-if="!uptimeStats.loading && !uptimeStats.error">
-                    <div class="uptime-stats-row">
-                        <div class="u-stat">
-                            <span class="u-val clr-success">{{ formatUptimeDuration(uptimeStats.TotalUptimeSeconds) }}</span>
-                            <span class="u-lbl">Total Uptime</span>
+                    <div class="uptime-controls">
+                        <div class="uptime-range-buttons">
+                            <button
+                                v-for="option in uptimeRangeOptions"
+                                :key="option.value"
+                                class="uptime-range-btn"
+                                :class="{ active: selectedUptimeRange === option.value }"
+                                @click="setUptimeRange(option.value)"
+                                :title="option.description"
+                            >
+                                {{ option.label }}
+                            </button>
                         </div>
-                        <div class="u-stat">
-                            <span class="u-val clr-danger">{{ formatUptimeDuration(uptimeStats.TotalOutageSeconds) }}</span>
-                            <span class="u-lbl">Total Outage</span>
-                        </div>
-                        <div class="u-stat">
-                            <span class="u-val clr-accent">{{ formatUptimeDuration(uptimeStats.CurrentUptimeSeconds) }}</span>
-                            <span class="u-lbl">Current Uptime</span>
-                        </div>
-                        <div class="u-stat">
-                            <span class="u-val">{{ uptimeStats.TotalPeriods }}</span>
-                            <span class="u-lbl">History Periods</span>
+                        <div class="uptime-window-label">
+                            {{ uptimeRangeSummary.windowLabel }}
                         </div>
                     </div>
-                    
+
+                    <div class="uptime-stats-row">
+                        <div class="u-stat">
+                            <span class="u-val clr-success">{{ formatUptimeDuration(uptimeRangeSummary.upMs / 1000) }}</span>
+                            <span class="u-lbl">Range Uptime</span>
+                        </div>
+                        <div class="u-stat">
+                            <span class="u-val clr-danger">{{ formatUptimeDuration(uptimeRangeSummary.downMs / 1000) }}</span>
+                            <span class="u-lbl">Range Outage</span>
+                        </div>
+                        <div class="u-stat">
+                            <span class="u-val clr-accent">{{ uptimeRangeSummary.availabilityText }}</span>
+                            <span class="u-lbl">Availability</span>
+                        </div>
+                        <div class="u-stat">
+                            <span class="u-val">{{ uptimeRangeSummary.visiblePeriods }}</span>
+                            <span class="u-lbl">Visible Periods</span>
+                        </div>
+                    </div>
+
                     <div class="uptime-chart-wrapper">
-                        <div class="uptime-timeline">
-                            <div v-for="(block, index) in computedUptimeTimeline" :key="index" 
-                                 class="uptime-block" 
-                                 :class="block.status" 
-                                 :style="{ width: block.widthPct + '%' }"
-                                 :title="block.tooltip">
+                        <div class="uptime-timeline" @mouseleave="clearHoveredUptimeBlock">
+                            <div
+                                v-for="block in computedUptimeTimeline"
+                                :key="block.id"
+                                class="uptime-block"
+                                :class="block.status"
+                                :style="block.style"
+                                :title="block.tooltip"
+                                @mouseenter="setHoveredUptimeBlock(block)"
+                            >
                             </div>
                         </div>
                         <div class="uptime-legend">
-                            <span>Older</span>
-                            <span>Recent Activity</span>
+                            <span>{{ uptimeRangeSummary.startLabel }}</span>
+                            <span class="uptime-availability">Window {{ uptimeRangeSummary.totalLabel }}</span>
+                            <span>{{ uptimeRangeSummary.endLabel }}</span>
                         </div>
+                    </div>
+
+                    <div class="uptime-hover-panel" v-if="hoveredUptimeBlock">
+                        <span class="hover-pill" :class="hoveredUptimeBlock.status === 'up' ? 'hover-pill-up' : 'hover-pill-down'">
+                            {{ hoveredUptimeBlock.statusLabel }}
+                        </span>
+                        <span class="hover-detail">Start: {{ formatDateTime(hoveredUptimeBlock.start) }}</span>
+                        <span class="hover-detail">End: {{ formatDateTime(hoveredUptimeBlock.end) }}</span>
+                        <span class="hover-detail">Duration: {{ hoveredUptimeBlock.durationText }}</span>
+                        <span class="hover-detail">Window Share: {{ hoveredUptimeBlock.percentageText }}</span>
+                    </div>
+                    <div class="uptime-hover-empty" v-else>
+                        Hover a timeline segment for exact start/end, duration, and window share.
                     </div>
                 </div>
                 <div v-else-if="uptimeStats.loading" class="no-data">Loading uptime statistics...</div>
@@ -243,6 +279,15 @@ export default {
                 loading: true,
                 error: false
             },
+            uptimeRangeOptions: [
+                { label: '1D', value: '1d', ms: 24 * 60 * 60 * 1000, description: 'Last 24 hours' },
+                { label: '3D', value: '3d', ms: 3 * 24 * 60 * 60 * 1000, description: 'Last 3 days' },
+                { label: '7D', value: '7d', ms: 7 * 24 * 60 * 60 * 1000, description: 'Last 7 days' },
+                { label: '30D', value: '30d', ms: 30 * 24 * 60 * 60 * 1000, description: 'Last 30 days' },
+                { label: 'ALL', value: 'all', ms: null, description: 'All time history' }
+            ],
+            selectedUptimeRange: '7d',
+            hoveredUptimeBlock: null,
             botUpdating: false,
             refreshInterval: null,
             seleniumInstances: [],
@@ -304,57 +349,171 @@ export default {
             });
         },
         computedUptimeTimeline() {
-            if (!this.uptimeStats.Periods || this.uptimeStats.Periods.length === 0) return [];
-            
-            const periods = this.uptimeStats.Periods;
-            const blocks = [];
-            const firstTime = new Date(periods[0].StartTime).getTime();
-            
-            // Add a synthetic 'LastKnownUpTime' to the final period using CurrentUptimeSeconds if missing
-            let lastTime = new Date(periods[periods.length - 1].LastKnownUpTime).getTime();
-            if (isNaN(lastTime)) {
-                lastTime = Date.now();
-            }
+            if (!Array.isArray(this.uptimeStats.Periods) || this.uptimeStats.Periods.length === 0) return [];
 
-            const totalTime = lastTime - firstTime || 1;
+            const now = Date.now();
+            const normalizedPeriods = this.uptimeStats.Periods
+                .map((period, index) => {
+                    const start = new Date(period.StartTime).getTime();
+                    if (!Number.isFinite(start)) {
+                        return null;
+                    }
 
-            for (let i = 0; i < periods.length; i++) {
-                const p = periods[i];
-                const start = new Date(p.StartTime).getTime();
-                
-                let end = new Date(p.LastKnownUpTime).getTime();
-                if (isNaN(end) && i === periods.length - 1) {
-                    end = Date.now();
+                    let end = new Date(period.LastKnownUpTime).getTime();
+                    if (!Number.isFinite(end) || end < start) {
+                        end = index === this.uptimeStats.Periods.length - 1 ? now : start;
+                    }
+
+                    return {
+                        start,
+                        end: Math.max(end, start)
+                    };
+                })
+                .filter(Boolean)
+                .sort((a, b) => a.start - b.start);
+
+            if (normalizedPeriods.length === 0) return [];
+
+            const firstPeriodStart = normalizedPeriods[0].start;
+            const selectedRange = this.uptimeRangeOptions.find(option => option.value === this.selectedUptimeRange);
+            const requestedWindowStart = selectedRange && selectedRange.ms ? now - selectedRange.ms : firstPeriodStart;
+            const windowStart = Math.max(firstPeriodStart, requestedWindowStart);
+            const windowEnd = now;
+            const windowDuration = Math.max(windowEnd - windowStart, 1);
+
+            const clippedUpPeriods = normalizedPeriods
+                .map(period => ({
+                    start: Math.max(period.start, windowStart),
+                    end: Math.min(period.end, windowEnd)
+                }))
+                .filter(period => period.end > period.start);
+
+            const timelineBlocks = [];
+            let cursor = windowStart;
+
+            for (const period of clippedUpPeriods) {
+                if (period.start > cursor) {
+                    timelineBlocks.push({
+                        status: 'down',
+                        start: cursor,
+                        end: period.start
+                    });
                 }
 
-                const duration = end - start;
-                const wPct = (duration / totalTime) * 100;
-                
-                blocks.push({
+                timelineBlocks.push({
                     status: 'up',
-                    duration: duration,
-                    widthPct: Math.max(wPct, 0.1), // Give min visibility
-                    tooltip: `Uptime: ${new Date(start).toLocaleString()} - ${new Date(end).toLocaleString()}`
+                    start: period.start,
+                    end: period.end
                 });
 
-                if (i < periods.length - 1) {
-                    const nextStart = new Date(periods[i+1].StartTime).getTime();
-                    const gap = nextStart - end;
-                    if (gap > 0) {
-                        const gapPct = (gap / totalTime) * 100;
-                        blocks.push({
-                            status: 'down',
-                            duration: gap,
-                            widthPct: Math.max(gapPct, 0.1),
-                            tooltip: `Outage: ${new Date(end).toLocaleString()} - ${new Date(nextStart).toLocaleString()}`
-                        });
-                    }
-                }
+                cursor = Math.max(cursor, period.end);
             }
-            return blocks;
+
+            if (cursor < windowEnd) {
+                timelineBlocks.push({
+                    status: 'down',
+                    start: cursor,
+                    end: windowEnd
+                });
+            }
+
+            return timelineBlocks
+                .map((block, index) => {
+                    const durationMs = block.end - block.start;
+                    if (durationMs <= 0) {
+                        return null;
+                    }
+
+                    const statusLabel = block.status === 'up' ? 'Online' : 'Outage';
+                    const percentageOfWindow = (durationMs / windowDuration) * 100;
+                    const durationText = this.formatUptimeDuration(durationMs / 1000);
+
+                    return {
+                        id: `${block.status}-${index}-${block.start}`,
+                        status: block.status,
+                        statusLabel,
+                        start: block.start,
+                        end: block.end,
+                        durationMs,
+                        durationText,
+                        percentageText: percentageOfWindow.toFixed(2) + '%',
+                        style: {
+                            flexGrow: Math.max(Math.round(durationMs / 1000), 1),
+                            flexBasis: '0'
+                        },
+                        tooltip: `${statusLabel}\nStart: ${this.formatDateTime(block.start)}\nEnd: ${this.formatDateTime(block.end)}\nDuration: ${durationText}\nWindow Share: ${percentageOfWindow.toFixed(2)}%`
+                    };
+                })
+                .filter(Boolean);
+        },
+        uptimeRangeSummary() {
+            const blocks = this.computedUptimeTimeline;
+            if (blocks.length === 0) {
+                return {
+                    upMs: 0,
+                    downMs: 0,
+                    totalMs: 0,
+                    availabilityText: '0.00%',
+                    visiblePeriods: 0,
+                    startLabel: 'No data',
+                    endLabel: 'No data',
+                    totalLabel: '0s',
+                    windowLabel: 'No uptime history available'
+                };
+            }
+
+            const upMs = blocks
+                .filter(block => block.status === 'up')
+                .reduce((sum, block) => sum + block.durationMs, 0);
+            const downMs = blocks
+                .filter(block => block.status === 'down')
+                .reduce((sum, block) => sum + block.durationMs, 0);
+            const totalMs = upMs + downMs;
+            const availabilityPct = totalMs > 0 ? (upMs / totalMs) * 100 : 0;
+            const selectedRange = this.uptimeRangeOptions.find(option => option.value === this.selectedUptimeRange);
+
+            return {
+                upMs,
+                downMs,
+                totalMs,
+                availabilityText: availabilityPct.toFixed(2) + '%',
+                visiblePeriods: blocks.filter(block => block.status === 'up').length,
+                startLabel: this.formatTimelineTick(blocks[0].start),
+                endLabel: this.formatTimelineTick(blocks[blocks.length - 1].end),
+                totalLabel: this.formatUptimeDuration(totalMs / 1000),
+                windowLabel: (selectedRange ? selectedRange.description : 'Custom range') + ' view'
+            };
         }
     },
     methods: {
+        setUptimeRange(rangeValue) {
+            if (this.selectedUptimeRange === rangeValue) return;
+            this.selectedUptimeRange = rangeValue;
+            this.hoveredUptimeBlock = null;
+        },
+        setHoveredUptimeBlock(block) {
+            this.hoveredUptimeBlock = block;
+        },
+        clearHoveredUptimeBlock() {
+            this.hoveredUptimeBlock = null;
+        },
+        formatDateTime(value) {
+            if (value === undefined || value === null) return 'N/A';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return 'N/A';
+            return date.toLocaleString();
+        },
+        formatTimelineTick(value) {
+            if (value === undefined || value === null) return 'N/A';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return 'N/A';
+            return date.toLocaleString([], {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        },
         async loadStats() {
             this.statsLoading = true;
             this.statsError = false;
@@ -698,75 +857,184 @@ export default {
 .uptime-container {
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    gap: 10px;
     height: 100%;
+    min-height: 0;
+    padding: 0 4px;
+}
+
+.uptime-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.uptime-range-buttons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.uptime-range-btn {
+    border: 1px solid rgba(77, 158, 57, 0.25);
+    background: rgba(255, 255, 255, 0.03);
+    color: #b5b5b5;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.uptime-range-btn:hover {
+    border-color: rgba(77, 158, 57, 0.55);
+    color: #ffffff;
+}
+
+.uptime-range-btn.active {
+    background: rgba(77, 158, 57, 0.2);
+    border-color: rgba(77, 158, 57, 0.75);
+    color: #d7ffd0;
+    box-shadow: 0 0 10px rgba(77, 158, 57, 0.25);
+}
+
+.uptime-window-label {
+    color: #969696;
+    font-size: 0.74rem;
+    text-align: right;
 }
 
 .uptime-stats-row {
-    display: flex;
-    justify-content: space-around;
-    align-items: center;
-    margin-bottom: 20px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
 }
 
 .u-stat {
     display: flex;
     flex-direction: column;
     align-items: center;
+    padding: 6px 4px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(77, 158, 57, 0.1);
 }
 
 .u-val {
-    font-size: 1.4rem;
+    font-size: 1rem;
     font-weight: 700;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
+    line-height: 1.2;
+    text-align: center;
 }
 
 .u-lbl {
-    font-size: 0.8rem;
+    font-size: 0.68rem;
     color: #969696;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.4px;
+    text-align: center;
 }
 
 .uptime-chart-wrapper {
     width: 100%;
-    padding: 0 10px;
+    min-width: 0;
 }
 
 .uptime-timeline {
     display: flex;
-    height: 24px;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
+    align-items: stretch;
+    height: 18px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 6px;
     overflow: hidden;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .uptime-block {
     height: 100%;
+    cursor: crosshair;
+    transition: filter 0.15s ease;
+    min-width: 1px;
+}
+
+.uptime-block:hover {
+    filter: brightness(1.15);
 }
 
 .uptime-block.up {
-    background-color: rgba(77, 158, 57, 0.8);
-}
-
-.uptime-block.up:hover {
-    background-color: rgba(77, 158, 57, 1);
+    background-color: rgba(77, 158, 57, 0.9);
 }
 
 .uptime-block.down {
-    background-color: rgba(239, 68, 68, 0.8);
-}
-
-.uptime-block.down:hover {
-    background-color: rgba(239, 68, 68, 1);
+    background-color: rgba(239, 68, 68, 0.85);
 }
 
 .uptime-legend {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.72rem;
+    color: #777777;
+}
+
+.uptime-legend span:last-child {
+    text-align: right;
+}
+
+.uptime-availability {
+    color: #4d9e39;
+    font-weight: 600;
+}
+
+.uptime-hover-panel,
+.uptime-hover-empty {
+    min-height: 30px;
+    border-radius: 8px;
+    border: 1px solid rgba(77, 158, 57, 0.18);
+    background: rgba(77, 158, 57, 0.06);
+    padding: 6px 10px;
     display: flex;
-    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.uptime-hover-empty {
+    color: #8a8a8a;
     font-size: 0.75rem;
-    color: #707070;
+    font-style: italic;
+}
+
+.hover-pill {
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.hover-pill-up {
+    color: #22c55e;
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.hover-pill-down {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.hover-detail {
+    color: #d5d5d5;
+    font-size: 0.74rem;
 }
 
 /* Disk Statistics */
@@ -1027,6 +1295,24 @@ export default {
 
     .admin-title {
         font-size: 2rem;
+    }
+
+    .uptime-stats-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .uptime-window-label {
+        width: 100%;
+        text-align: left;
+    }
+
+    .uptime-legend {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+
+    .uptime-legend span:last-child {
+        text-align: left;
     }
 }
 

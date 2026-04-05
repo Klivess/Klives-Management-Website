@@ -38,6 +38,21 @@
                     </div>
                 </div>
             </div>
+
+            <div class="scheme-card active" @click="$router.push('/schemery/omnigram')">
+                <div class="card-accent accent-instagram"></div>
+                <div class="card-body">
+                    <div class="card-top">
+                        <span class="card-icon">IG</span>
+                        <span class="card-badge badge-auto">Automation</span>
+                    </div>
+                    <h2 class="card-title">OmniGram</h2>
+                    <p class="card-desc">Managed Instagram automation with account onboarding, autonomous posting, campaign scheduling, and reliability analytics.</p>
+                    <div class="card-footer">
+                        <span class="card-action">Open Command Panel →</span>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Simulator & In Development -->
@@ -184,6 +199,7 @@ definePageMeta({ layout: 'navbar' });
 .accent-purple { background: linear-gradient(to bottom, #8b5cf6, #a78bfa); }
 .accent-amber { background: linear-gradient(to bottom, #f59e0b, #fbbf24); }
 .accent-red { background: linear-gradient(to bottom, #ef4444, #f87171); }
+.accent-instagram { background: linear-gradient(to bottom, #f97316, #fb7185); }
 
 /* Card Body */
 .card-body {
@@ -229,6 +245,12 @@ definePageMeta({ layout: 'navbar' });
     background: rgba(245, 158, 11, 0.16);
     color: #fbbf24;
     border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.badge-auto {
+    background: rgba(249, 115, 22, 0.18);
+    color: #fdba74;
+    border: 1px solid rgba(249, 115, 22, 0.38);
 }
 
 .card-title {

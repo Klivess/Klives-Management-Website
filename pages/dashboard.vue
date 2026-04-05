@@ -193,6 +193,37 @@
                             </div>
                         </div>
 
+                        <div class="scheme-card omnigram-card" @click="omniGramStats.hasAccess ? navigateToScheme('/schemery/omnigram') : showAccessDeniedMessage()"
+                             :class="{ 'card-loading': loadingStates.omnigram, 'card-error': errorStates.omnigram }">
+                            <div v-if="loadingStates.omnigram" class="card-loading-overlay">
+                                <div class="loading-spinner-small"></div>
+                            </div>
+                            <div v-if="errorStates.omnigram" class="card-error-overlay">
+                                <span>ERROR</span>
+                                <button @click.stop="retryOmniGramStats" class="retry-btn-small">↻</button>
+                            </div>
+                            <div class="scheme-header">
+                                <h3>OmniGram</h3>
+                                <div :class="['scheme-status', omniGramStats.hasAccess ? 'automated' : 'restricted']">
+                                    {{ omniGramStats.hasAccess ? 'Automation' : 'Restricted' }}
+                                </div>
+                            </div>
+                            <div class="scheme-metrics">
+                                <div class="metric">
+                                    <span class="metric-label">Managed Accounts</span>
+                                    <span class="metric-value">{{ omniGramStats.managedAccounts === 'Restricted' ? 'Restricted' : omniGramStats.managedAccounts }}</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Success Rate</span>
+                                    <span class="metric-value success">{{ omniGramStats.successRate === 'Restricted' ? 'Restricted' : omniGramStats.successRate.toFixed(1) + '%' }}</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Failed Posts</span>
+                                    <span class="metric-value" :class="omniGramStats.failedPosts === 'Restricted' || omniGramStats.failedPosts === 0 ? 'success' : ''">{{ omniGramStats.failedPosts === 'Restricted' ? 'Restricted' : omniGramStats.failedPosts }}</span>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="scheme-card inactive-card">
                             <div class="scheme-header">
                                 <h3>OmniTube Bot</h3>
@@ -242,11 +273,12 @@ export default {
             lastUpdate: 'Never',
             loadInterval: null,
             completedLoads: 0,
-            totalLoads: 4, // CS2, Memescraper, OmniTrader, FrontpageStats
+            totalLoads: 6, // CS2, Memescraper, OmniTrader, OmniGram, FrontpageStats, Logs
             loadingStates: {
                 cs2: false,
                 memescraper: false,
                 omnitrader: false,
+                omnigram: false,
                 kliveTech: false,
                 logs: false,
                 frontpage: false
@@ -255,6 +287,7 @@ export default {
                 cs2: false,
                 memescraper: false,
                 omnitrader: false,
+                omnigram: false,
                 kliveTech: false,
                 logs: false,
                 frontpage: false
@@ -287,6 +320,12 @@ export default {
                 activeDeployments: 0,
                 avgWinRate: 0,
                 bestPnL: 0,
+                hasAccess: true
+            },
+            omniGramStats: {
+                managedAccounts: 0,
+                successRate: 0,
+                failedPosts: 0,
                 hasAccess: true
             },
             kliveTechStats: {
@@ -328,6 +367,7 @@ export default {
                 this.loadCS2Stats();
                 this.loadMemescraperStats(); 
                 this.loadOmniTraderStats();
+                this.loadOmniGramStats();
                 this.loadFrontpageStats();
                 this.loadRecentActivity(); // Only for logs now
                 
@@ -358,6 +398,10 @@ export default {
 
         retryOmniTraderStats() {
             this.loadOmniTraderStats();
+        },
+
+        retryOmniGramStats() {
+            this.loadOmniGramStats();
         },
         
         retryKliveTechStats() {
@@ -664,6 +708,60 @@ export default {
                 this.trackLoadCompletion();
             }
         },
+
+        async loadOmniGramStats() {
+            this.loadingStates.omnigram = true;
+            this.errorStates.omnigram = false;
+
+            try {
+                const [accountsResponse, overviewResponse, healthResponse] = await Promise.all([
+                    RequestGETFromKliveAPI('/omnigram/accounts/list', false, false),
+                    RequestGETFromKliveAPI('/omnigram/analytics/overview', false, false),
+                    RequestGETFromKliveAPI('/omnigram/health', false, false)
+                ]);
+
+                if (accountsResponse.status === 401 || overviewResponse.status === 401 || healthResponse.status === 401) {
+                    this.omniGramStats = {
+                        managedAccounts: 'Restricted',
+                        successRate: 'Restricted',
+                        failedPosts: 'Restricted',
+                        hasAccess: false
+                    };
+                    console.log('OmniGram analytics access denied - insufficient permissions');
+                } else if (accountsResponse.ok && overviewResponse.ok && healthResponse.ok) {
+                    const accounts = await accountsResponse.json();
+                    const overview = await overviewResponse.json();
+
+                    this.omniGramStats = {
+                        managedAccounts: Array.isArray(accounts) ? accounts.length : 0,
+                        successRate: Number(overview?.SuccessRate) || 0,
+                        failedPosts: Number(overview?.Failed) || 0,
+                        hasAccess: true
+                    };
+                } else {
+                    console.log('OmniGram analytics API returned status:', accountsResponse.status, overviewResponse.status, healthResponse.status);
+                    this.errorStates.omnigram = true;
+                    this.omniGramStats = {
+                        managedAccounts: 0,
+                        successRate: 0,
+                        failedPosts: 0,
+                        hasAccess: true
+                    };
+                }
+            } catch (error) {
+                console.log('OmniGram analytics API unavailable:', error);
+                this.errorStates.omnigram = true;
+                this.omniGramStats = {
+                    managedAccounts: 0,
+                    successRate: 0,
+                    failedPosts: 0,
+                    hasAccess: true
+                };
+            } finally {
+                this.loadingStates.omnigram = false;
+                this.trackLoadCompletion();
+            }
+        },
         
         async loadKliveTechStats() {
             this.loadingStates.kliveTech = true;
@@ -948,6 +1046,15 @@ export default {
     box-shadow: 0 8px 25px rgba(245, 158, 11, 0.2);
 }
 
+.scheme-card.omnigram-card {
+    border-color: rgba(249, 115, 22, 0.45);
+}
+
+.scheme-card.omnigram-card:hover {
+    border-color: rgba(251, 113, 133, 0.75);
+    box-shadow: 0 8px 25px rgba(251, 113, 133, 0.2);
+}
+
 .scheme-card.inactive-card {
     border-color: rgba(156, 163, 175, 0.3);
     opacity: 0.7;
@@ -1005,6 +1112,12 @@ export default {
     background: rgba(245, 158, 11, 0.2);
     color: #fbbf24;
     border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.scheme-status.automated {
+    background: rgba(249, 115, 22, 0.2);
+    color: #fdba74;
+    border: 1px solid rgba(249, 115, 22, 0.35);
 }
 
 .scheme-metrics {

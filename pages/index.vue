@@ -1,8 +1,12 @@
 <!--Login page-->
 <template>
     <div style="height: 100%; width: 100%;" v-on:keyup.enter="onLoginSubmit" v-on:load="AttemptLoginWithCookie">
-        <div style="display: grid; justify-content: center; grid-template-rows: 2fr 5fr 5fr; margin-top: 17.5%;">
+    <div style="display: grid; justify-content: center; grid-template-rows: 2fr auto 5fr 5fr; margin-top: 17.5%;">
             <span style="text-align: center;">Klives Management</span>
+      <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; margin-bottom: 8px;">
+        <span :style="{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: serverStatusColor, boxShadow: `0 0 8px ${serverStatusColor}` }"></span>
+        <span style="font-size: 12px;">Server: {{ serverStatusLabel }}</span>
+      </div>
             <KMInputBox v-model:value="password" style="width: 300px; height: 50px; text-align: center;" type="password" placeholder="Password" />
             <div style="justify-content: center; display: flex;">
                 <KMButton ref="LoginButton" @click="onLoginSubmit" style="width: 250px; height:70px;" v-model:message="buttonText"></KMButton>
@@ -27,10 +31,45 @@ export default {
   data(){
     return {
         password: '',
-        buttonText: 'Login'
+        buttonText: 'Login',
+        serverStatus: 'checking',
+        serverStatusInterval: null,
     }
   },
+  computed: {
+    serverStatusLabel() {
+      if (this.serverStatus === 'online') {
+        return 'Online';
+      }
+      if (this.serverStatus === 'offline') {
+        return 'Offline';
+      }
+      return 'Checking...';
+    },
+    serverStatusColor() {
+      if (this.serverStatus === 'online') {
+        return '#4d9e39';
+      }
+      if (this.serverStatus === 'offline') {
+        return '#d9534f';
+      }
+      return '#f0ad4e';
+    },
+  },
   methods: {
+    async checkServerStatus() {
+      try {
+        const res = await fetch(`${KliveAPIUrl}/ping`, {
+          method: 'GET',
+          mode: 'cors',
+          cache: 'no-store',
+        });
+        this.serverStatus = res.ok ? 'online' : 'offline';
+      }
+      catch (e) {
+        this.serverStatus = 'offline';
+      }
+    },
     AttemptLoginWithCookie() {
       const cook = useCookie('password');
       if(cook.value!=""&&cook.value!=null&&cook.value!=undefined&&cook.value!="undefined"){
@@ -68,8 +107,15 @@ export default {
       }
     },
   },
-  async mounted(){
+  mounted(){
+      this.checkServerStatus();
+      this.serverStatusInterval = setInterval(() => this.checkServerStatus(), 10000);
       this.AttemptLoginWithCookie();
+    },
+  beforeUnmount() {
+      if (this.serverStatusInterval) {
+        clearInterval(this.serverStatusInterval);
+      }
     },
 }
 </script>

@@ -44,7 +44,7 @@
                 <div class="card-body">
                     <div class="card-top">
                         <span class="card-icon">IG</span>
-                        <span class="card-badge badge-auto">Automation</span>
+                        <span class="card-badge badge-active">Active</span>
                     </div>
                     <h2 class="card-title">OmniGram</h2>
                     <p class="card-desc">Managed Instagram automation with account onboarding, autonomous posting, campaign scheduling, and reliability analytics.</p>

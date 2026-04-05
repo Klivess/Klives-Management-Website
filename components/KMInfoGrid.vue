@@ -40,10 +40,16 @@ export default{
             gridTemplateColumns += "1fr ";
         }
         console.log(gridTemplateColumns);
-        //Form string to put in grid template rows, there must be x rows of 225px
+        // Allow numeric row heights (px) and direct CSS values such as auto, minmax(...), etc.
+        const rowHeightValue = this.rowHeight.toString().trim();
+        const normalizedRowHeight = /^-?\d+(\.\d+)?$/.test(rowHeightValue)
+            ? `${rowHeightValue}px`
+            : rowHeightValue;
+
+        // Form string to put in grid template rows
         let gridTemplateRows = "";
         for(let i = 0; i < Number(this.rows); i++){
-            gridTemplateRows += this.rowHeight.toString()+"px ";
+            gridTemplateRows += normalizedRowHeight + " ";
         }
         console.log(gridTemplateRows);
 

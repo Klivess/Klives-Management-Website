@@ -2,7 +2,7 @@
     <div class="omnigram-page">
         <div class="page-header panel-shell">
             <div class="header-left">
-                <KMButton style="width: 220px;" message="Back To Schemes" @click="navigateBack" />
+                <KMButton class="back-nav-btn" style="width: 320px;" message="Back To Schemes" @click="navigateBack" />
             </div>
 
             <div class="header-center">
@@ -78,26 +78,54 @@
                             <span>Use MemeScraper as media source</span>
                         </label>
 
-                        <label v-if="accountForm.useMemeScraperSource">
-                            <span>MemeScraper Source Account ID</span>
-                            <input v-model.trim="accountForm.memeScraperSourceAccountId" type="text" placeholder="1234567890" autocomplete="off" />
-                        </label>
+                        <div class="niche-selector" v-if="accountForm.useMemeScraperSource">
+                            <div class="niche-selector-header">
+                                <span>Preferred Meme Niches</span>
+                                <button type="button" class="inline-link-btn" @click="clearSelectedNiches" :disabled="accountForm.memeNiches.length === 0">Clear</button>
+                            </div>
+
+                            <div class="niche-menu" v-if="allMemeNiches.length > 0">
+                                <button
+                                    type="button"
+                                    class="niche-menu-item"
+                                    :class="{ active: isNicheSelected(niche.NicheTagName) }"
+                                    v-for="niche in allMemeNiches"
+                                    :key="niche.NicheTagName"
+                                    @click="toggleMemeNiche(niche.NicheTagName)"
+                                >
+                                    {{ niche.NicheTagName }}
+                                </button>
+                            </div>
+                            <div class="niche-menu-empty" v-else-if="nichesLoading">Loading saved MemeScraper niches...</div>
+                            <div class="niche-menu-empty" v-else>No saved niches were returned from MemeScraper.</div>
+
+                            <small class="field-helper">Click niches to add or remove them from account media mapping.</small>
+                        </div>
+
+                        <div class="niche-preview" v-if="accountForm.memeNiches.length > 0">
+                            <span class="niche-chip" v-for="niche in accountForm.memeNiches" :key="niche">{{ niche }}</span>
+                        </div>
 
                         <label class="toggle-row">
                             <input v-model="accountForm.autonomousPostingEnabled" type="checkbox" />
                             <span>Enable autonomous posting lifecycle</span>
                         </label>
 
-                        <div class="input-row split" v-if="accountForm.autonomousPostingEnabled">
+                        <div class="input-row split autonomous-input-row" v-if="accountForm.autonomousPostingEnabled">
                             <label>
                                 <span>Autonomous Interval (minutes)</span>
                                 <input v-model.number="accountForm.autonomousPostingIntervalMinutes" type="number" min="1" step="1" />
                             </label>
                             <label>
-                                <span>Autonomous Caption Prompt</span>
-                                <input v-model.trim="accountForm.autonomousCaptionPrompt" type="text" placeholder="Write a short meme-style influencer caption" />
+                                <span>Autonomous Random Offset (+/- minutes)</span>
+                                <input v-model.number="accountForm.autonomousPostingRandomOffsetMinutes" type="number" min="0" step="1" />
                             </label>
                         </div>
+
+                        <label v-if="accountForm.autonomousPostingEnabled">
+                            <span>Autonomous Caption Prompt</span>
+                            <input v-model.trim="accountForm.autonomousCaptionPrompt" type="text" placeholder="Write a short meme-style influencer caption" />
+                        </label>
 
                         <div class="form-actions">
                             <button type="submit" class="command-btn" :disabled="commandBusy">
@@ -152,7 +180,7 @@
                             </label>
 
                             <label>
-                                <span>Schedule (UTC)</span>
+                                <span>Schedule (UTC, optional)</span>
                                 <input v-model="scheduleForm.scheduledForUtcLocal" type="datetime-local" />
                             </label>
                         </div>
@@ -167,9 +195,22 @@
                             <textarea v-model.trim="scheduleForm.aiCaptionPrompt" rows="3" placeholder="Write a punchy meme caption with hashtags"></textarea>
                         </label>
 
-                        <label>
+                        <label class="toggle-row">
+                            <input v-model="scheduleForm.useDirectUpload" type="checkbox" />
+                            <span>Upload media bytes directly (stored in OmniGramUploadsDirectory)</span>
+                        </label>
+
+                        <label v-if="scheduleForm.useDirectUpload">
+                            <span>Upload Media File</span>
+                            <input type="file" accept="image/*,video/*" @change="onUploadFileChanged" />
+                            <small class="field-helper" v-if="scheduleUploadFile">{{ scheduleUploadFile.name }} · {{ formatBytes(scheduleUploadFile.size) }}</small>
+                            <small class="field-helper" v-else>No media file selected.</small>
+                        </label>
+
+                        <label v-else>
                             <span>Manual Media Path (optional)</span>
                             <input v-model.trim="scheduleForm.mediaPath" type="text" placeholder="C:/Media/launch.jpg" />
+                            <small class="field-helper">Leave empty to let OmniGram resolve media from mapped MemeScraper niches.</small>
                         </label>
 
                         <div class="form-actions">
@@ -206,11 +247,11 @@
                         <div class="account-meta">
                             <span>
                                 Source:
-                                {{ account.UseMemeScraperSource ? (account.MemeScraperSourceAccountId || 'Configured') : 'Manual' }}
+                                {{ account.UseMemeScraperSource ? accountNicheSummary(account) : 'Manual' }}
                             </span>
                             <span>
                                 Auto:
-                                {{ account.AutonomousPostingEnabled ? ((account.AutonomousPostingIntervalMinutes || 0) + 'm') : 'Off' }}
+                                {{ account.AutonomousPostingEnabled ? ((account.AutonomousPostingIntervalMinutes || 0) + 'm ± ' + (account.AutonomousPostingRandomOffsetMinutes || 0) + 'm') : 'Off' }}
                             </span>
                             <span>
                                 Auth:
@@ -305,9 +346,10 @@ interface OmniGramAccount {
     Username: string;
     Status: number | string;
     UseMemeScraperSource?: boolean;
-    MemeScraperSourceAccountId?: string | null;
+    PreferredMemeNiches?: string[] | null;
     AutonomousPostingEnabled?: boolean;
     AutonomousPostingIntervalMinutes?: number | null;
+    AutonomousPostingRandomOffsetMinutes?: number | null;
     LastAuthenticatedUtc?: string | null;
 }
 
@@ -349,13 +391,20 @@ interface OmniGramHealth {
     ManagerUptime?: string;
 }
 
+interface MemeScraperNiche {
+    NicheTagName: string;
+    CreatedAt?: string;
+    LastUpdated?: string;
+}
+
 interface OmniGramAccountForm {
     username: string;
     password: string;
     useMemeScraperSource: boolean;
-    memeScraperSourceAccountId: string;
+    memeNiches: string[];
     autonomousPostingEnabled: boolean;
     autonomousPostingIntervalMinutes: number;
+    autonomousPostingRandomOffsetMinutes: number;
     autonomousCaptionPrompt: string;
 }
 
@@ -366,6 +415,7 @@ interface OmniGramScheduleForm {
     captionMode: 'User' | 'AI';
     userCaption: string;
     aiCaptionPrompt: string;
+    useDirectUpload: boolean;
     mediaPath: string;
     scheduledForUtcLocal: string;
 }
@@ -382,6 +432,8 @@ const posts = ref<OmniGramPost[]>([]);
 const events = ref<OmniGramEvent[]>([]);
 const overview = ref<OmniGramOverview | null>(null);
 const health = ref<OmniGramHealth | null>(null);
+const allMemeNiches = ref<MemeScraperNiche[]>([]);
+const nichesLoading = ref(false);
 
 let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -390,9 +442,10 @@ function createDefaultAccountForm(): OmniGramAccountForm {
         username: '',
         password: '',
         useMemeScraperSource: true,
-        memeScraperSourceAccountId: '',
+        memeNiches: [],
         autonomousPostingEnabled: true,
         autonomousPostingIntervalMinutes: 240,
+        autonomousPostingRandomOffsetMinutes: 45,
         autonomousCaptionPrompt: 'Write a short meme-style influencer caption with CTA and hashtags'
     };
 }
@@ -405,6 +458,7 @@ function createDefaultScheduleForm(): OmniGramScheduleForm {
         captionMode: 'AI',
         userCaption: '',
         aiCaptionPrompt: 'Write a punchy meme caption with 3 hashtags',
+        useDirectUpload: false,
         mediaPath: '',
         scheduledForUtcLocal: ''
     };
@@ -412,6 +466,7 @@ function createDefaultScheduleForm(): OmniGramScheduleForm {
 
 const accountForm = ref<OmniGramAccountForm>(createDefaultAccountForm());
 const scheduleForm = ref<OmniGramScheduleForm>(createDefaultScheduleForm());
+const scheduleUploadFile = ref<File | null>(null);
 
 const serviceOnline = computed(() => Boolean(health.value?.Service));
 const activeAccounts = computed(() => accounts.value.filter(account => accountStatusLabel(account.Status) === 'Active'));
@@ -425,10 +480,63 @@ function navigateBack() {
     router.push('/schemes');
 }
 
+function normalizeNicheName(value: string) {
+    return value.trim().toLowerCase();
+}
+
+function isNicheSelected(nicheName: string) {
+    const normalized = normalizeNicheName(nicheName);
+    return accountForm.value.memeNiches.some(existing => normalizeNicheName(existing) === normalized);
+}
+
+function toggleMemeNiche(nicheName: string) {
+    const normalized = normalizeNicheName(nicheName);
+    const index = accountForm.value.memeNiches.findIndex(existing => normalizeNicheName(existing) === normalized);
+
+    if (index >= 0) {
+        accountForm.value.memeNiches.splice(index, 1);
+        return;
+    }
+
+    accountForm.value.memeNiches.push(nicheName.trim());
+}
+
+function clearSelectedNiches() {
+    accountForm.value.memeNiches = [];
+}
+
+function accountNicheSummary(account: OmniGramAccount): string {
+    const niches = Array.isArray(account.PreferredMemeNiches)
+        ? account.PreferredMemeNiches.filter(Boolean)
+        : [];
+
+    if (niches.length === 0) {
+        return 'No niches mapped';
+    }
+
+    return niches.length > 3
+        ? `${niches.slice(0, 3).join(', ')} +${niches.length - 3}`
+        : niches.join(', ');
+}
+
 function shortId(value?: string | null) {
     if (!value) return 'N/A';
     if (value.length <= 12) return value;
     return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+function onUploadFileChanged(event: Event) {
+    const target = event.target as HTMLInputElement;
+    const file = target?.files && target.files.length > 0 ? target.files[0] : null;
+    scheduleUploadFile.value = file;
+}
+
+function formatBytes(bytes: number) {
+    if (!bytes || bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    const value = bytes / Math.pow(1024, index);
+    return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 function formatDateTime(value?: string | null) {
@@ -544,6 +652,25 @@ async function loadHealth() {
     health.value = payload || null;
 }
 
+async function loadSavedNiches() {
+    nichesLoading.value = true;
+
+    try {
+        const response = await RequestGETFromKliveAPI('/memescraper/getAllSavedNiches', false, false);
+        if (!response.ok) throw new Error(await readApiError(response));
+
+        const payload = await response.json();
+        const raw = Array.isArray(payload) ? payload : [];
+
+        allMemeNiches.value = raw
+            .filter((item: unknown): item is MemeScraperNiche => Boolean(item && typeof item === 'object' && 'NicheTagName' in item))
+            .filter(item => Boolean(item.NicheTagName && item.NicheTagName.trim().length > 0))
+            .sort((a, b) => a.NicheTagName.localeCompare(b.NicheTagName));
+    } finally {
+        nichesLoading.value = false;
+    }
+}
+
 async function loadAllPanels(showSpinner = false) {
     if (showSpinner) {
         isLoading.value = true;
@@ -554,7 +681,8 @@ async function loadAllPanels(showSpinner = false) {
         loadPosts(),
         loadEvents(),
         loadOverview(),
-        loadHealth()
+        loadHealth(),
+        loadSavedNiches()
     ]);
 
     const failureCount = results.filter(result => result.status === 'rejected').length;
@@ -582,11 +710,11 @@ async function submitAccount() {
         return;
     }
 
-    if (accountForm.value.useMemeScraperSource && !accountForm.value.memeScraperSourceAccountId) {
+    if (accountForm.value.useMemeScraperSource && accountForm.value.memeNiches.length === 0) {
         Swal.fire({
             icon: 'warning',
-            title: 'Source required',
-            text: 'A MemeScraper source account id is required when source mode is enabled.',
+            title: 'Niches required',
+            text: 'At least one MemeScraper niche is required when source mode is enabled.',
             confirmButtonColor: '#f97316',
             background: '#15171d',
             color: '#ffffff'
@@ -606,6 +734,18 @@ async function submitAccount() {
         return;
     }
 
+    if (accountForm.value.autonomousPostingEnabled && accountForm.value.autonomousPostingRandomOffsetMinutes < 0) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Invalid random offset',
+            text: 'Autonomous random offset must be zero or greater.',
+            confirmButtonColor: '#f97316',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+        return;
+    }
+
     commandBusy.value = true;
 
     try {
@@ -613,12 +753,15 @@ async function submitAccount() {
             username: accountForm.value.username,
             password: accountForm.value.password,
             useMemeScraperSource: accountForm.value.useMemeScraperSource,
-            memeScraperSourceAccountId: accountForm.value.useMemeScraperSource
-                ? accountForm.value.memeScraperSourceAccountId
-                : null,
+            memeNiches: accountForm.value.useMemeScraperSource
+                ? accountForm.value.memeNiches
+                : [],
             autonomousPostingEnabled: accountForm.value.autonomousPostingEnabled,
             autonomousPostingIntervalMinutes: accountForm.value.autonomousPostingEnabled
                 ? accountForm.value.autonomousPostingIntervalMinutes
+                : null,
+            autonomousPostingRandomOffsetMinutes: accountForm.value.autonomousPostingEnabled
+                ? accountForm.value.autonomousPostingRandomOffsetMinutes
                 : null,
             autonomousCaptionPrompt: accountForm.value.autonomousPostingEnabled
                 ? accountForm.value.autonomousCaptionPrompt
@@ -694,11 +837,11 @@ async function scheduleCampaign() {
         return;
     }
 
-    if (!scheduleForm.value.scheduledForUtcLocal) {
+    if (scheduleForm.value.useDirectUpload && !scheduleUploadFile.value) {
         Swal.fire({
             icon: 'warning',
-            title: 'Schedule required',
-            text: 'Pick a UTC schedule datetime.',
+            title: 'Upload required',
+            text: 'Select a media file for direct upload scheduling mode.',
             confirmButtonColor: '#f97316',
             background: '#15171d',
             color: '#ffffff'
@@ -706,17 +849,21 @@ async function scheduleCampaign() {
         return;
     }
 
-    const scheduledDate = new Date(scheduleForm.value.scheduledForUtcLocal);
-    if (Number.isNaN(scheduledDate.getTime())) {
-        Swal.fire({
-            icon: 'warning',
-            title: 'Invalid datetime',
-            text: 'Provided schedule datetime is not valid.',
-            confirmButtonColor: '#f97316',
-            background: '#15171d',
-            color: '#ffffff'
-        });
-        return;
+    let scheduledForUtc: string | null = null;
+    if (scheduleForm.value.scheduledForUtcLocal) {
+        const scheduledDate = new Date(scheduleForm.value.scheduledForUtcLocal);
+        if (Number.isNaN(scheduledDate.getTime())) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Invalid datetime',
+                text: 'Provided schedule datetime is not valid.',
+                confirmButtonColor: '#f97316',
+                background: '#15171d',
+                color: '#ffffff'
+            });
+            return;
+        }
+        scheduledForUtc = scheduledDate.toISOString();
     }
 
     commandBusy.value = true;
@@ -726,31 +873,80 @@ async function scheduleCampaign() {
         const captionMode = scheduleForm.value.captionMode === 'User' ? 0 : 1;
         const target = scheduleForm.value.target === 'Feed' ? 0 : scheduleForm.value.target === 'Reel' ? 1 : 2;
 
-        const payload = {
-            dispatchMode,
-            accountId: dispatchMode === 0 ? scheduleForm.value.accountId : null,
-            target,
-            captionMode,
-            userCaption: captionMode === 0 ? scheduleForm.value.userCaption : null,
-            aiCaptionPrompt: captionMode === 1 ? scheduleForm.value.aiCaptionPrompt : null,
-            mediaPath: scheduleForm.value.mediaPath || null,
-            scheduledForUtc: scheduledDate.toISOString()
-        };
+        if (scheduleForm.value.useDirectUpload) {
+            const params = new URLSearchParams();
+            params.set('fileName', scheduleUploadFile.value!.name);
+            params.set('dispatchMode', String(dispatchMode));
+            params.set('target', String(target));
+            params.set('captionMode', String(captionMode));
 
-        const response = await RequestPOSTFromKliveAPI('/omnigram/posts/schedule', JSON.stringify(payload), false, true);
+            if (dispatchMode === 0) {
+                params.set('accountId', scheduleForm.value.accountId);
+            }
 
-        if (!response.ok) {
-            throw new Error(await readApiError(response));
+            if (captionMode === 0 && scheduleForm.value.userCaption) {
+                params.set('userCaption', scheduleForm.value.userCaption);
+            }
+
+            if (captionMode === 1 && scheduleForm.value.aiCaptionPrompt) {
+                params.set('aiCaptionPrompt', scheduleForm.value.aiCaptionPrompt);
+            }
+
+            if (scheduledForUtc) {
+                params.set('scheduledForUtc', scheduledForUtc);
+            }
+
+            const response = await RequestPOSTFromKliveAPI(
+                `/omnigram/posts/schedule?${params.toString()}`,
+                scheduleUploadFile.value,
+                false,
+                false
+            );
+
+            if (!response.ok) {
+                throw new Error(await readApiError(response));
+            }
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Campaign scheduled with upload',
+                text: 'Media bytes were accepted and will be persisted in OmniGram uploads storage.',
+                confirmButtonColor: '#22c55e',
+                background: '#15171d',
+                color: '#ffffff'
+            });
+
+            scheduleUploadFile.value = null;
+        } else {
+            const payload: Record<string, unknown> = {
+                dispatchMode,
+                target,
+                captionMode,
+                accountId: dispatchMode === 0 ? scheduleForm.value.accountId : null,
+                userCaption: captionMode === 0 ? scheduleForm.value.userCaption : null,
+                aiCaptionPrompt: captionMode === 1 ? scheduleForm.value.aiCaptionPrompt : null,
+                mediaPath: scheduleForm.value.mediaPath || null
+            };
+
+            if (scheduledForUtc) {
+                payload.scheduledForUtc = scheduledForUtc;
+            }
+
+            const response = await RequestPOSTFromKliveAPI('/omnigram/posts/schedule', JSON.stringify(payload), false, true);
+
+            if (!response.ok) {
+                throw new Error(await readApiError(response));
+            }
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Campaign scheduled',
+                text: 'OmniGram accepted the scheduling request.',
+                confirmButtonColor: '#22c55e',
+                background: '#15171d',
+                color: '#ffffff'
+            });
         }
-
-        Swal.fire({
-            icon: 'success',
-            title: 'Campaign scheduled',
-            text: 'OmniGram accepted the scheduling request.',
-            confirmButtonColor: '#22c55e',
-            background: '#15171d',
-            color: '#ffffff'
-        });
 
         await loadAllPanels(false);
     } catch (error) {
@@ -881,6 +1077,25 @@ onBeforeUnmount(() => {
     border-color: rgba(148, 163, 184, 0.28);
 }
 
+.header-left {
+    display: flex;
+    align-items: center;
+}
+
+.back-nav-btn {
+    width: 420px;
+    height: 46px;
+}
+
+.back-nav-btn :deep(button) {
+    letter-spacing: 0.08rem;
+    padding: 0 12px;
+}
+
+.back-nav-btn :deep(button a) {
+    font-size: 0.8rem;
+}
+
 .header-right {
     display: flex;
     justify-content: flex-end;
@@ -888,26 +1103,28 @@ onBeforeUnmount(() => {
 
 .primary-btn,
 .command-btn {
-    border: 0;
+    border: 1px solid rgba(77, 158, 57, 0.36);
     border-radius: 10px;
     padding: 10px 14px;
     font-size: 0.85rem;
     font-weight: 700;
-    color: #fff;
-    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    color: #d8f7d0;
+    background: linear-gradient(180deg, rgba(77, 158, 57, 0.28), rgba(77, 158, 57, 0.16));
     cursor: pointer;
-    transition: transform 0.2s ease, filter 0.2s ease;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
 
 .primary-btn:disabled,
 .command-btn:disabled {
-    opacity: 0.55;
+    opacity: 0.5;
     cursor: not-allowed;
 }
 
 .primary-btn:hover:not(:disabled),
 .command-btn:hover:not(:disabled) {
-    filter: brightness(1.08);
+    border-color: rgba(98, 206, 71, 0.55);
+    background: linear-gradient(180deg, rgba(77, 158, 57, 0.38), rgba(77, 158, 57, 0.22));
     transform: translateY(-1px);
 }
 
@@ -1022,6 +1239,7 @@ onBeforeUnmount(() => {
     display: flex;
     flex-direction: column;
     gap: 5px;
+    min-width: 0;
 }
 
 .command-form label > span {
@@ -1031,10 +1249,120 @@ onBeforeUnmount(() => {
     letter-spacing: 0.45px;
 }
 
+.field-helper {
+    color: #94a3b8;
+    font-size: 0.72rem;
+    line-height: 1.35;
+}
+
+.niche-selector {
+    border-radius: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    background: rgba(2, 6, 23, 0.42);
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.niche-selector-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.niche-selector-header > span {
+    color: var(--text-muted);
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.45px;
+}
+
+.inline-link-btn {
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background: rgba(148, 163, 184, 0.12);
+    color: #cbd5e1;
+    border-radius: 8px;
+    padding: 4px 8px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.inline-link-btn:hover:not(:disabled) {
+    border-color: rgba(148, 163, 184, 0.42);
+    background: rgba(148, 163, 184, 0.2);
+}
+
+.inline-link-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.niche-menu {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.niche-menu-item {
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background: rgba(148, 163, 184, 0.12);
+    color: #dbeafe;
+    padding: 5px 10px;
+    font-size: 0.72rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.niche-menu-item:hover {
+    border-color: rgba(98, 206, 71, 0.45);
+    background: rgba(77, 158, 57, 0.2);
+}
+
+.niche-menu-item.active {
+    border-color: rgba(98, 206, 71, 0.62);
+    background: rgba(77, 158, 57, 0.32);
+    color: #d8f7d0;
+}
+
+.niche-menu-empty {
+    border-radius: 8px;
+    border: 1px dashed rgba(148, 163, 184, 0.32);
+    padding: 10px;
+    color: #94a3b8;
+    font-size: 0.75rem;
+    text-align: center;
+}
+
+.niche-preview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: -2px;
+}
+
+.niche-chip {
+    border-radius: 999px;
+    border: 1px solid rgba(251, 146, 60, 0.42);
+    background: rgba(249, 115, 22, 0.16);
+    color: #fdba74;
+    padding: 3px 8px;
+    font-size: 0.7rem;
+    line-height: 1;
+}
+
 .command-form input,
 .command-form select,
 .command-form textarea {
     width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
     border-radius: 8px;
     border: 1px solid rgba(148, 163, 184, 0.3);
     background: rgba(2, 6, 23, 0.72);
@@ -1068,6 +1396,7 @@ onBeforeUnmount(() => {
     font-size: 0.8rem !important;
     letter-spacing: 0;
     text-transform: none !important;
+    line-height: 1.35;
 }
 
 .input-row {
@@ -1077,6 +1406,10 @@ onBeforeUnmount(() => {
 
 .input-row.split {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.autonomous-input-row {
+    column-gap: 14px;
 }
 
 .form-actions {
@@ -1090,9 +1423,9 @@ onBeforeUnmount(() => {
 }
 
 .command-btn.ghost {
-    border: 1px solid rgba(251, 146, 60, 0.35);
-    color: #fdba74;
-    background: rgba(249, 115, 22, 0.12);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    color: #cbd5e1;
+    background: rgba(148, 163, 184, 0.12);
 }
 
 .empty-state {

@@ -98,7 +98,7 @@
         </KMInfoGrid>
 
         <!-- Schemes Performance Overview -->
-        <KMInfoGrid columns="1" rows="1" rowHeight="210">
+        <KMInfoGrid columns="1" rows="1" rowHeight="auto">
             <KMInfoBox caption="Active Schemes Performance">
                 <div class="data-zone schemes-overview">
                     <div class="scheme-cards">
@@ -204,8 +204,8 @@
                             </div>
                             <div class="scheme-header">
                                 <h3>OmniGram</h3>
-                                <div :class="['scheme-status', omniGramStats.hasAccess ? 'automated' : 'restricted']">
-                                    {{ omniGramStats.hasAccess ? 'Automation' : 'Restricted' }}
+                                <div :class="['scheme-status', omniGramStats.hasAccess ? 'active' : 'restricted']">
+                                    {{ omniGramStats.hasAccess ? 'Active' : 'Restricted' }}
                                 </div>
                             </div>
                             <div class="scheme-metrics">

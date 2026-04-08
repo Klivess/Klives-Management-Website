@@ -7,7 +7,7 @@
 
             <div class="header-center">
                 <h1 class="page-title">OmniGram Command Panel</h1>
-                <p class="page-subtitle">Managed Instagram automation, campaign dispatching, and reliability telemetry</p>
+                <p class="page-subtitle">{{ pageSubtitleText }}</p>
                 <div class="header-status-row">
                     <span class="header-pill" :class="serviceOnline ? 'ok' : 'warn'">
                         {{ serviceOnline ? 'Service Online' : 'Service Unreachable' }}
@@ -53,35 +53,77 @@
             </article>
         </div>
 
-        <div class="panel-grid">
+        <div class="subpage-nav panel-shell">
+            <button
+                type="button"
+                v-for="link in subPageLinks"
+                :key="link.view"
+                class="subpage-link"
+                :class="{ active: activePageView === link.view }"
+                @click="navigateToSubPage(link.view)"
+            >
+                <span class="subpage-link-title">{{ link.label }}</span>
+                <small class="subpage-link-hint">{{ link.hint }}</small>
+            </button>
+        </div>
+
+        <div class="panel-grid" v-if="isCommandPage">
             <section class="panel-shell command-panel">
                 <div class="panel-head">
-                    <h2>Command Center</h2>
-                    <span>Commander controls</span>
+                    <h2>{{ commandPanelHeading }}</h2>
+                    <span>{{ commandPanelHint }}</span>
                 </div>
 
-                <div class="form-card">
-                    <h3>Add Or Update Managed Account</h3>
-                    <form class="command-form" @submit.prevent="submitAccount">
+                <div class="form-card" v-if="activePageView === 'add-managed-account'">
+                    <h3>Onboard New Managed Account</h3>
+                    <form class="command-form" @submit.prevent="submitOnboardAccount">
                         <label>
                             <span>Instagram Username</span>
-                            <input v-model.trim="accountForm.username" type="text" placeholder="my_instagram_account" autocomplete="off" required />
+                            <input v-model.trim="onboardForm.username" type="text" placeholder="my_instagram_account" autocomplete="off" required />
                         </label>
 
                         <label>
                             <span>Password</span>
-                            <input v-model="accountForm.password" type="password" placeholder="Instagram password" autocomplete="new-password" required />
+                            <input v-model="onboardForm.password" type="password" placeholder="Instagram password" autocomplete="new-password" required />
+                        </label>
+
+                        <small class="field-helper">
+                            Uses /omnigram/accounts/add and returns live verification details from backend.
+                        </small>
+
+                        <div class="form-actions">
+                            <button type="submit" class="command-btn" :disabled="commandBusy">
+                                {{ commandBusy ? 'Onboarding...' : 'Onboard Account' }}
+                            </button>
+                            <button type="button" class="command-btn ghost" :disabled="commandBusy" @click="resetOnboardForm">
+                                Clear
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="form-card" v-if="activePageView === 'update-managed-account-settings'">
+                    <h3>Account Runtime Settings</h3>
+                    <form class="command-form" @submit.prevent="submitAccountSettings">
+                        <label>
+                            <span>Managed Account</span>
+                            <select v-model="settingsForm.accountId" @change="hydrateSettingsFromAccount(settingsForm.accountId)">
+                                <option value="">Select account</option>
+                                <option v-for="account in accounts" :key="account.AccountId" :value="account.AccountId">
+                                    {{ account.Username }}
+                                </option>
+                            </select>
                         </label>
 
                         <label class="toggle-row">
-                            <input v-model="accountForm.useMemeScraperSource" type="checkbox" />
+                            <input v-model="settingsForm.useMemeScraperSource" type="checkbox" />
                             <span>Use MemeScraper as media source</span>
                         </label>
 
-                        <div class="niche-selector" v-if="accountForm.useMemeScraperSource">
+                        <div class="niche-selector" v-if="settingsForm.useMemeScraperSource">
                             <div class="niche-selector-header">
                                 <span>Preferred Meme Niches</span>
-                                <button type="button" class="inline-link-btn" @click="clearSelectedNiches" :disabled="accountForm.memeNiches.length === 0">Clear</button>
+                                <button type="button" class="inline-link-btn" @click="clearSelectedNiches" :disabled="settingsForm.memeNiches.length === 0">Clear</button>
                             </div>
 
                             <div class="niche-menu" v-if="allMemeNiches.length > 0">
@@ -102,43 +144,117 @@
                             <small class="field-helper">Click niches to add or remove them from account media mapping.</small>
                         </div>
 
-                        <div class="niche-preview" v-if="accountForm.memeNiches.length > 0">
-                            <span class="niche-chip" v-for="niche in accountForm.memeNiches" :key="niche">{{ niche }}</span>
+                        <div class="niche-preview" v-if="settingsForm.memeNiches.length > 0">
+                            <span class="niche-chip" v-for="niche in settingsForm.memeNiches" :key="niche">{{ niche }}</span>
                         </div>
 
                         <label class="toggle-row">
-                            <input v-model="accountForm.autonomousPostingEnabled" type="checkbox" />
+                            <input v-model="settingsForm.autonomousPostingEnabled" type="checkbox" />
                             <span>Enable autonomous posting lifecycle</span>
                         </label>
 
-                        <div class="input-row split autonomous-input-row" v-if="accountForm.autonomousPostingEnabled">
+                        <div class="input-row split autonomous-input-row" v-if="settingsForm.autonomousPostingEnabled">
                             <label>
                                 <span>Autonomous Interval (minutes)</span>
-                                <input v-model.number="accountForm.autonomousPostingIntervalMinutes" type="number" min="1" step="1" />
+                                <input v-model.number="settingsForm.autonomousPostingIntervalMinutes" type="number" min="1" step="1" />
                             </label>
                             <label>
                                 <span>Autonomous Random Offset (+/- minutes)</span>
-                                <input v-model.number="accountForm.autonomousPostingRandomOffsetMinutes" type="number" min="0" step="1" />
+                                <input v-model.number="settingsForm.autonomousPostingRandomOffsetMinutes" type="number" min="0" step="1" />
                             </label>
                         </div>
 
-                        <label v-if="accountForm.autonomousPostingEnabled">
+                        <label v-if="settingsForm.autonomousPostingEnabled">
                             <span>Autonomous Caption Prompt</span>
-                            <input v-model.trim="accountForm.autonomousCaptionPrompt" type="text" placeholder="Write a short meme-style influencer caption" />
+                            <input v-model.trim="settingsForm.autonomousCaptionPrompt" type="text" placeholder="Write a short meme-style influencer caption" />
                         </label>
 
                         <div class="form-actions">
                             <button type="submit" class="command-btn" :disabled="commandBusy">
-                                {{ commandBusy ? 'Saving Account...' : 'Save Managed Account' }}
+                                {{ commandBusy ? 'Saving Settings...' : 'Save Runtime Settings' }}
                             </button>
-                            <button type="button" class="command-btn ghost" :disabled="commandBusy" @click="resetAccountForm">
-                                Reset
+                            <button type="button" class="command-btn ghost" :disabled="commandBusy" @click="hydrateSettingsFromAccount(settingsForm.accountId)">
+                                Reload From Account
                             </button>
                         </div>
                     </form>
                 </div>
 
-                <div class="form-card">
+                <div class="form-card compact-grid" v-if="activePageView === 'profile-and-media-actions'">
+                    <div>
+                        <h3>Update Instagram Profile</h3>
+                        <form class="command-form" @submit.prevent="submitProfileUpdate">
+                            <label>
+                                <span>Managed Account</span>
+                                <select v-model="profileForm.accountId">
+                                    <option value="">Select account</option>
+                                    <option v-for="account in accounts" :key="`profile-${account.AccountId}`" :value="account.AccountId">
+                                        {{ account.Username }}
+                                    </option>
+                                </select>
+                            </label>
+
+                            <label>
+                                <span>Display Name</span>
+                                <input v-model.trim="profileForm.displayName" type="text" placeholder="Optional" />
+                            </label>
+
+                            <label>
+                                <span>Bio</span>
+                                <textarea v-model.trim="profileForm.bio" rows="3" placeholder="Optional"></textarea>
+                            </label>
+
+                            <label>
+                                <span>Website</span>
+                                <input v-model.trim="profileForm.website" type="text" placeholder="https://example.com (optional)" />
+                            </label>
+
+                            <div class="form-actions">
+                                <button type="submit" class="command-btn" :disabled="commandBusy">
+                                    {{ commandBusy ? 'Updating...' : 'Update Profile' }}
+                                </button>
+                                <button type="button" class="command-btn ghost" :disabled="commandBusy" @click="resetProfileForm">
+                                    Reset
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div>
+                        <h3>Delete Instagram Media</h3>
+                        <form class="command-form" @submit.prevent="deleteInstagramMedia">
+                            <label>
+                                <span>Managed Account</span>
+                                <select v-model="deleteMediaForm.accountId">
+                                    <option value="">Select account</option>
+                                    <option v-for="account in accounts" :key="`delete-${account.AccountId}`" :value="account.AccountId">
+                                        {{ account.Username }}
+                                    </option>
+                                </select>
+                            </label>
+
+                            <label>
+                                <span>Instagram Media ID</span>
+                                <input v-model.trim="deleteMediaForm.instagramMediaId" type="text" placeholder="17900000000000000" required />
+                            </label>
+
+                            <small class="field-helper">
+                                Calls /omnigram/posts/deleteFromInstagram and removes a media object from the linked account.
+                            </small>
+
+                            <div class="form-actions">
+                                <button type="submit" class="command-btn danger" :disabled="commandBusy">
+                                    {{ commandBusy ? 'Deleting...' : 'Delete Media' }}
+                                </button>
+                                <button type="button" class="command-btn ghost" :disabled="commandBusy" @click="resetDeleteMediaForm">
+                                    Reset
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="form-card" v-if="activePageView === 'schedule-post-campaign'">
                     <h3>Schedule Post Campaign</h3>
                     <form class="command-form" @submit.prevent="scheduleCampaign">
                         <div class="input-row split">
@@ -258,6 +374,39 @@
                                 {{ formatDateTime(account.LastAuthenticatedUtc) }}
                             </span>
                         </div>
+
+                        <div class="account-action-row">
+                            <button
+                                type="button"
+                                class="inline-link-btn danger-link"
+                                :disabled="commandBusy"
+                                @click="deleteManagedAccount(account.AccountId, account.Username)"
+                            >
+                                {{ commandBusy ? 'Deleting...' : 'Delete Managed Account' }}
+                            </button>
+                        </div>
+
+                        <div
+                            class="account-auth-debug"
+                            v-if="account.LastAuthenticationError || account.LastAuthenticationGuidance"
+                        >
+                            <p v-if="account.LastAuthenticationError">
+                                Auth error: {{ account.LastAuthenticationError }}
+                            </p>
+                            <p v-if="account.LastAuthenticationGuidance">
+                                Guidance: {{ account.LastAuthenticationGuidance }}
+                            </p>
+
+                            <button
+                                v-if="accountStatusLabel(account.Status) === 'Needs Verification'"
+                                type="button"
+                                class="inline-link-btn"
+                                :disabled="liveBusy"
+                                @click="retryVerificationForAccount(account.AccountId, account.Username)"
+                            >
+                                {{ liveBusy ? 'Retrying...' : 'Retry Verification' }}
+                            </button>
+                        </div>
                     </article>
                 </div>
 
@@ -270,7 +419,49 @@
             </section>
         </div>
 
-        <div class="panel-grid secondary">
+        <div class="panel-grid secondary" v-if="isAnalyticsPage">
+            <section class="panel-shell">
+                <div class="panel-head">
+                    <h2>Live Account Snapshot</h2>
+                    <span>GET /omnigram/accounts/live</span>
+                </div>
+
+                <form class="command-form inline-form" @submit.prevent="requestLiveAccountSnapshot">
+                    <label>
+                        <span>Managed Account</span>
+                        <select v-model="liveAccountForm.accountId">
+                            <option value="">Select account</option>
+                            <option v-for="account in accounts" :key="`live-${account.AccountId}`" :value="account.AccountId">
+                                {{ account.Username }}
+                            </option>
+                        </select>
+                    </label>
+
+                    <button type="submit" class="command-btn" :disabled="liveBusy || !liveAccountForm.accountId">
+                        {{ liveBusy ? 'Loading Live...' : 'Load Live Snapshot' }}
+                    </button>
+                </form>
+
+                <div v-if="!liveAccountData" class="empty-state">No live account payload loaded yet.</div>
+                <pre v-else class="json-view">{{ liveAccountDataText }}</pre>
+            </section>
+
+            <section class="panel-shell">
+                <div class="panel-head">
+                    <h2>Fleet Live Analytics</h2>
+                    <span>GET /omnigram/accounts/liveAnalytics</span>
+                </div>
+
+                <div class="form-actions single-row">
+                    <button class="command-btn" :disabled="liveAnalyticsBusy" @click="refreshLiveAnalytics">
+                        {{ liveAnalyticsBusy ? 'Refreshing...' : 'Refresh Fleet Analytics' }}
+                    </button>
+                </div>
+
+                <div v-if="!liveAnalyticsData" class="empty-state">No fleet live analytics payload loaded yet.</div>
+                <pre v-else class="json-view">{{ liveAnalyticsDataText }}</pre>
+            </section>
+
             <section class="panel-shell">
                 <div class="panel-head">
                     <h2>Recent Post Queue</h2>
@@ -334,12 +525,20 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import KMButton from '~/components/KMButton.vue';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import Swal from 'sweetalert2';
 
-definePageMeta({ layout: 'navbar' });
+definePageMeta({
+    layout: 'navbar',
+    alias: [
+        '/schemery/omnigram/add-managed-account',
+        '/schemery/omnigram/update-managed-account-settings',
+        '/schemery/omnigram/profile-and-media-actions',
+        '/schemery/omnigram/schedule-post-campaign'
+    ]
+});
 
 interface OmniGramAccount {
     AccountId: string;
@@ -350,7 +549,11 @@ interface OmniGramAccount {
     AutonomousPostingEnabled?: boolean;
     AutonomousPostingIntervalMinutes?: number | null;
     AutonomousPostingRandomOffsetMinutes?: number | null;
+    AutonomousCaptionPrompt?: string | null;
     LastAuthenticatedUtc?: string | null;
+    LastAuthenticationError?: string | null;
+    LastAuthenticationGuidance?: string | null;
+    CheckpointRequired?: boolean | null;
 }
 
 interface OmniGramPost {
@@ -397,15 +600,35 @@ interface MemeScraperNiche {
     LastUpdated?: string;
 }
 
-interface OmniGramAccountForm {
+interface OmniGramOnboardForm {
     username: string;
     password: string;
+}
+
+interface OmniGramSettingsForm {
+    accountId: string;
     useMemeScraperSource: boolean;
     memeNiches: string[];
     autonomousPostingEnabled: boolean;
     autonomousPostingIntervalMinutes: number;
     autonomousPostingRandomOffsetMinutes: number;
     autonomousCaptionPrompt: string;
+}
+
+interface OmniGramProfileForm {
+    accountId: string;
+    displayName: string;
+    bio: string;
+    website: string;
+}
+
+interface OmniGramDeleteMediaForm {
+    accountId: string;
+    instagramMediaId: string;
+}
+
+interface OmniGramLiveAccountForm {
+    accountId: string;
 }
 
 interface OmniGramScheduleForm {
@@ -420,10 +643,68 @@ interface OmniGramScheduleForm {
     scheduledForUtcLocal: string;
 }
 
+interface OmniGramAddAccountResponse {
+    AccountId?: string | null;
+    Username?: string | null;
+    CheckpointRequired?: boolean | null;
+    LastAuthenticationError?: string | null;
+    LastAuthenticationGuidance?: string | null;
+    LiveVerification?: unknown | null;
+}
+
+interface OmniGramDeleteAccountResponse {
+    Success?: boolean;
+    success?: boolean;
+}
+
+type OmniGramPageView =
+    | 'analytics'
+    | 'add-managed-account'
+    | 'update-managed-account-settings'
+    | 'profile-and-media-actions'
+    | 'schedule-post-campaign';
+
+interface OmniGramSubPageLink {
+    view: OmniGramPageView;
+    label: string;
+    hint: string;
+}
+
 const router = useRouter();
+const route = useRoute();
+
+const subPageLinks: ReadonlyArray<OmniGramSubPageLink> = [
+    {
+        view: 'analytics',
+        label: 'Analytics',
+        hint: 'Live telemetry and queue health'
+    },
+    {
+        view: 'add-managed-account',
+        label: 'Add Account',
+        hint: 'Onboard and verify Instagram account'
+    },
+    {
+        view: 'update-managed-account-settings',
+        label: 'Update Settings',
+        hint: 'Manage runtime posting configuration'
+    },
+    {
+        view: 'profile-and-media-actions',
+        label: 'Profile & Media',
+        hint: 'Update profile and remove media'
+    },
+    {
+        view: 'schedule-post-campaign',
+        label: 'Schedule Campaign',
+        hint: 'Queue dispatch plans and uploads'
+    }
+];
 
 const isLoading = ref(false);
 const commandBusy = ref(false);
+const liveBusy = ref(false);
+const liveAnalyticsBusy = ref(false);
 const panelError = ref('');
 const lastRefresh = ref('never');
 
@@ -433,20 +714,50 @@ const events = ref<OmniGramEvent[]>([]);
 const overview = ref<OmniGramOverview | null>(null);
 const health = ref<OmniGramHealth | null>(null);
 const allMemeNiches = ref<MemeScraperNiche[]>([]);
+const liveAccountData = ref<unknown | null>(null);
+const liveAnalyticsData = ref<unknown | null>(null);
 const nichesLoading = ref(false);
 
 let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
-function createDefaultAccountForm(): OmniGramAccountForm {
+function createDefaultOnboardForm(): OmniGramOnboardForm {
     return {
         username: '',
-        password: '',
+        password: ''
+    };
+}
+
+function createDefaultSettingsForm(): OmniGramSettingsForm {
+    return {
+        accountId: '',
         useMemeScraperSource: true,
         memeNiches: [],
         autonomousPostingEnabled: true,
         autonomousPostingIntervalMinutes: 240,
         autonomousPostingRandomOffsetMinutes: 45,
         autonomousCaptionPrompt: 'Write a short meme-style influencer caption with CTA and hashtags'
+    };
+}
+
+function createDefaultProfileForm(): OmniGramProfileForm {
+    return {
+        accountId: '',
+        displayName: '',
+        bio: '',
+        website: ''
+    };
+}
+
+function createDefaultDeleteMediaForm(): OmniGramDeleteMediaForm {
+    return {
+        accountId: '',
+        instagramMediaId: ''
+    };
+}
+
+function createDefaultLiveAccountForm(): OmniGramLiveAccountForm {
+    return {
+        accountId: ''
     };
 }
 
@@ -464,9 +775,78 @@ function createDefaultScheduleForm(): OmniGramScheduleForm {
     };
 }
 
-const accountForm = ref<OmniGramAccountForm>(createDefaultAccountForm());
+const onboardForm = ref<OmniGramOnboardForm>(createDefaultOnboardForm());
+const settingsForm = ref<OmniGramSettingsForm>(createDefaultSettingsForm());
+const profileForm = ref<OmniGramProfileForm>(createDefaultProfileForm());
+const deleteMediaForm = ref<OmniGramDeleteMediaForm>(createDefaultDeleteMediaForm());
+const liveAccountForm = ref<OmniGramLiveAccountForm>(createDefaultLiveAccountForm());
 const scheduleForm = ref<OmniGramScheduleForm>(createDefaultScheduleForm());
 const scheduleUploadFile = ref<File | null>(null);
+
+function parsePageView(value: unknown): OmniGramPageView | null {
+    if (typeof value !== 'string') return null;
+
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'analytics') return 'analytics';
+    if (normalized === 'add-managed-account') return 'add-managed-account';
+    if (normalized === 'update-managed-account-settings') return 'update-managed-account-settings';
+    if (normalized === 'profile-and-media-actions') return 'profile-and-media-actions';
+    if (normalized === 'schedule-post-campaign') return 'schedule-post-campaign';
+
+    return null;
+}
+
+const activePageView = computed<OmniGramPageView>(() => {
+    const queryView = parsePageView(route.query.view);
+    if (queryView) {
+        return queryView;
+    }
+
+    const normalizedPath = route.path.replace(/\/+$/, '').toLowerCase();
+
+    if (normalizedPath.endsWith('/add-managed-account')) return 'add-managed-account';
+    if (normalizedPath.endsWith('/update-managed-account-settings')) return 'update-managed-account-settings';
+    if (normalizedPath.endsWith('/profile-and-media-actions')) return 'profile-and-media-actions';
+    if (normalizedPath.endsWith('/schedule-post-campaign')) return 'schedule-post-campaign';
+
+    return 'analytics';
+});
+
+function navigateToSubPage(view: OmniGramPageView) {
+    if (view === 'analytics') {
+        router.push({ path: '/schemery/omnigram', query: {} });
+        return;
+    }
+
+    router.push({ path: '/schemery/omnigram', query: { view } });
+}
+
+const isAnalyticsPage = computed(() => activePageView.value === 'analytics');
+const isCommandPage = computed(() => !isAnalyticsPage.value);
+
+const pageSubtitleText = computed(() => {
+    if (isAnalyticsPage.value) {
+        return 'Managed Instagram analytics workspace with queue health, event stream, and live account telemetry';
+    }
+
+    return 'Managed Instagram command workspace with focused controls on dedicated sub pages';
+});
+
+const commandPanelHeading = computed(() => {
+    if (activePageView.value === 'add-managed-account') return 'Onboard New Managed Account';
+    if (activePageView.value === 'update-managed-account-settings') return 'Account Runtime Settings';
+    if (activePageView.value === 'profile-and-media-actions') return 'Profile & Media Actions';
+    if (activePageView.value === 'schedule-post-campaign') return 'Schedule Post Campaign';
+    return 'Command Center';
+});
+
+const commandPanelHint = computed(() => {
+    if (activePageView.value === 'add-managed-account') return 'Credential onboarding and account verification';
+    if (activePageView.value === 'update-managed-account-settings') return 'Automation and source configuration';
+    if (activePageView.value === 'profile-and-media-actions') return 'Profile updates and media cleanup';
+    if (activePageView.value === 'schedule-post-campaign') return 'Dispatch, captioning, and upload controls';
+    return 'Commander controls';
+});
 
 const serviceOnline = computed(() => Boolean(health.value?.Service));
 const activeAccounts = computed(() => accounts.value.filter(account => accountStatusLabel(account.Status) === 'Active'));
@@ -475,6 +855,8 @@ const failedCount = computed(() => Number(overview.value?.Failed || 0));
 const totalPostsText = computed(() => Number(overview.value?.TotalPosts || 0).toLocaleString());
 const successRateText = computed(() => `${Number(overview.value?.SuccessRate || 0).toFixed(2)}%`);
 const byAccountRows = computed(() => (Array.isArray(overview.value?.ByAccount) ? overview.value?.ByAccount || [] : []).slice(0, 6));
+const liveAccountDataText = computed(() => JSON.stringify(liveAccountData.value, null, 2));
+const liveAnalyticsDataText = computed(() => JSON.stringify(liveAnalyticsData.value, null, 2));
 
 function navigateBack() {
     router.push('/schemes');
@@ -484,25 +866,97 @@ function normalizeNicheName(value: string) {
     return value.trim().toLowerCase();
 }
 
+function asNonEmptyText(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+}
+
+function isCheckpointRequiredError(value: unknown): boolean {
+    const text = asNonEmptyText(value);
+    if (!text) return false;
+    return text.toLowerCase().includes('checkpoint_required');
+}
+
+function extractLiveVerificationError(liveVerification: unknown): string | null {
+    if (!liveVerification || typeof liveVerification !== 'object') {
+        return null;
+    }
+
+    const payload = liveVerification as Record<string, unknown>;
+    return asNonEmptyText(payload.error) || asNonEmptyText(payload.Error);
+}
+
+function findAccountByUsername(username: string) {
+    const normalized = username.trim().toLowerCase();
+    if (!normalized) return undefined;
+
+    return accounts.value.find(account => account.Username.trim().toLowerCase() === normalized);
+}
+
+function getAccountById(accountId: string) {
+    return accounts.value.find(account => account.AccountId === accountId);
+}
+
 function isNicheSelected(nicheName: string) {
     const normalized = normalizeNicheName(nicheName);
-    return accountForm.value.memeNiches.some(existing => normalizeNicheName(existing) === normalized);
+    return settingsForm.value.memeNiches.some(existing => normalizeNicheName(existing) === normalized);
 }
 
 function toggleMemeNiche(nicheName: string) {
     const normalized = normalizeNicheName(nicheName);
-    const index = accountForm.value.memeNiches.findIndex(existing => normalizeNicheName(existing) === normalized);
+    const index = settingsForm.value.memeNiches.findIndex(existing => normalizeNicheName(existing) === normalized);
 
     if (index >= 0) {
-        accountForm.value.memeNiches.splice(index, 1);
+        settingsForm.value.memeNiches.splice(index, 1);
         return;
     }
 
-    accountForm.value.memeNiches.push(nicheName.trim());
+    settingsForm.value.memeNiches.push(nicheName.trim());
 }
 
 function clearSelectedNiches() {
-    accountForm.value.memeNiches = [];
+    settingsForm.value.memeNiches = [];
+}
+
+function hydrateSettingsFromAccount(accountId: string) {
+    const account = getAccountById(accountId);
+    if (!account) {
+        return;
+    }
+
+    settingsForm.value.accountId = account.AccountId;
+    settingsForm.value.useMemeScraperSource = Boolean(account.UseMemeScraperSource);
+    settingsForm.value.memeNiches = Array.isArray(account.PreferredMemeNiches)
+        ? account.PreferredMemeNiches.filter((value): value is string => Boolean(value && value.trim().length > 0))
+        : [];
+    settingsForm.value.autonomousPostingEnabled = Boolean(account.AutonomousPostingEnabled);
+    settingsForm.value.autonomousPostingIntervalMinutes = Math.max(1, Number(account.AutonomousPostingIntervalMinutes || 240));
+    settingsForm.value.autonomousPostingRandomOffsetMinutes = Math.max(0, Number(account.AutonomousPostingRandomOffsetMinutes || 0));
+    settingsForm.value.autonomousCaptionPrompt = account.AutonomousCaptionPrompt || createDefaultSettingsForm().autonomousCaptionPrompt;
+}
+
+function syncAccountSelectors() {
+    const validIds = new Set(accounts.value.map(account => account.AccountId));
+    const fallbackId = accounts.value.length > 0 ? accounts.value[0].AccountId : '';
+
+    const normalizeSelector = (value: string) => (validIds.has(value) ? value : fallbackId);
+
+    const nextSettingsId = normalizeSelector(settingsForm.value.accountId);
+    if (nextSettingsId !== settingsForm.value.accountId) {
+        settingsForm.value.accountId = nextSettingsId;
+        if (nextSettingsId) {
+            hydrateSettingsFromAccount(nextSettingsId);
+        }
+    }
+
+    profileForm.value.accountId = normalizeSelector(profileForm.value.accountId);
+    deleteMediaForm.value.accountId = normalizeSelector(deleteMediaForm.value.accountId);
+    liveAccountForm.value.accountId = normalizeSelector(liveAccountForm.value.accountId);
+
+    if (scheduleForm.value.dispatchMode === 'SingleAccount') {
+        scheduleForm.value.accountId = normalizeSelector(scheduleForm.value.accountId);
+    }
 }
 
 function accountNicheSummary(account: OmniGramAccount): string {
@@ -547,9 +1001,12 @@ function formatDateTime(value?: string | null) {
 }
 
 function accountStatusLabel(status: unknown): string {
-    if (status === 0 || `${status}`.toLowerCase() === 'active') return 'Active';
-    if (status === 1 || `${status}`.toLowerCase() === 'disabled') return 'Disabled';
-    if (status === 2 || `${status}`.toLowerCase() === 'authfailed') return 'Auth Failed';
+    const normalized = `${status ?? ''}`.replace(/[\s_-]+/g, '').toLowerCase();
+
+    if (status === 0 || normalized === 'active') return 'Active';
+    if (status === 1 || normalized === 'disabled') return 'Disabled';
+    if (status === 2 || normalized === 'authfailed') return 'Auth Failed';
+    if (status === 3 || normalized === 'needsverification') return 'Needs Verification';
     return 'Unknown';
 }
 
@@ -557,7 +1014,7 @@ function accountStatusClass(status: unknown) {
     const label = accountStatusLabel(status);
     if (label === 'Active') return 'status-ok';
     if (label === 'Auth Failed') return 'status-danger';
-    if (label === 'Disabled') return 'status-warn';
+    if (label === 'Disabled' || label === 'Needs Verification') return 'status-warn';
     return 'status-muted';
 }
 
@@ -602,6 +1059,24 @@ function seedDefaultScheduleTime() {
     scheduleForm.value.scheduledForUtcLocal = toLocalDateTimeInput(nextWindow);
 }
 
+function resetOnboardForm() {
+    onboardForm.value = createDefaultOnboardForm();
+}
+
+function resetProfileForm() {
+    profileForm.value = createDefaultProfileForm();
+    if (accounts.value.length > 0) {
+        profileForm.value.accountId = accounts.value[0].AccountId;
+    }
+}
+
+function resetDeleteMediaForm() {
+    deleteMediaForm.value = createDefaultDeleteMediaForm();
+    if (accounts.value.length > 0) {
+        deleteMediaForm.value.accountId = accounts.value[0].AccountId;
+    }
+}
+
 async function readApiError(response: Response): Promise<string> {
     const raw = await response.text();
     if (!raw) return `Request failed with status ${response.status}.`;
@@ -617,11 +1092,26 @@ async function readApiError(response: Response): Promise<string> {
     }
 }
 
+async function fetchLiveAccountPayload(accountId: string) {
+    const response = await RequestGETFromKliveAPI(`/omnigram/accounts/live?accountId=${encodeURIComponent(accountId)}`, false, false);
+    if (!response.ok) throw new Error(await readApiError(response));
+    const payload = await response.json();
+    liveAccountData.value = payload || null;
+}
+
+async function fetchLiveAnalyticsPayload() {
+    const response = await RequestGETFromKliveAPI('/omnigram/accounts/liveAnalytics', false, false);
+    if (!response.ok) throw new Error(await readApiError(response));
+    const payload = await response.json();
+    liveAnalyticsData.value = payload || null;
+}
+
 async function loadAccounts() {
     const response = await RequestGETFromKliveAPI('/omnigram/accounts/list', false, false);
     if (!response.ok) throw new Error(await readApiError(response));
     const payload = await response.json();
     accounts.value = Array.isArray(payload) ? payload : [];
+    syncAccountSelectors();
 }
 
 async function loadPosts() {
@@ -682,10 +1172,17 @@ async function loadAllPanels(showSpinner = false) {
         loadEvents(),
         loadOverview(),
         loadHealth(),
-        loadSavedNiches()
+        loadSavedNiches(),
+        fetchLiveAnalyticsPayload()
     ]);
 
-    const failureCount = results.filter(result => result.status === 'rejected').length;
+    let failureCount = results.filter(result => result.status === 'rejected').length;
+
+    if (liveAccountForm.value.accountId) {
+        const liveResult = await Promise.allSettled([fetchLiveAccountPayload(liveAccountForm.value.accountId)]);
+        failureCount += liveResult.filter(result => result.status === 'rejected').length;
+    }
+
     panelError.value = failureCount > 0
         ? `Partial telemetry loaded. ${failureCount} request${failureCount > 1 ? 's' : ''} failed.`
         : '';
@@ -697,8 +1194,8 @@ async function loadAllPanels(showSpinner = false) {
     }
 }
 
-async function submitAccount() {
-    if (!accountForm.value.username || !accountForm.value.password) {
+async function submitOnboardAccount() {
+    if (!onboardForm.value.username || !onboardForm.value.password) {
         Swal.fire({
             icon: 'warning',
             title: 'Missing credentials',
@@ -710,7 +1207,235 @@ async function submitAccount() {
         return;
     }
 
-    if (accountForm.value.useMemeScraperSource && accountForm.value.memeNiches.length === 0) {
+    commandBusy.value = true;
+
+    try {
+        const requestedUsername = onboardForm.value.username.trim();
+        const payload = {
+            username: requestedUsername,
+            password: onboardForm.value.password
+        };
+
+        const response = await RequestPOSTFromKliveAPI('/omnigram/accounts/add', JSON.stringify(payload), false, true);
+
+        if (!response.ok) {
+            throw new Error(await readApiError(response));
+        }
+
+        const rawData = await response.json().catch(() => ({}));
+        const data = (rawData && typeof rawData === 'object' ? rawData : {}) as OmniGramAddAccountResponse;
+        const hasLiveVerification = data.LiveVerification !== null && data.LiveVerification !== undefined;
+        const liveVerificationError = extractLiveVerificationError(data.LiveVerification);
+        const checkpointRequired = Boolean(data.CheckpointRequired)
+            || isCheckpointRequiredError(data.LastAuthenticationError)
+            || isCheckpointRequiredError(liveVerificationError);
+
+        resetOnboardForm();
+        await loadAllPanels(false);
+
+        const accountFromResponse = asNonEmptyText(data.AccountId);
+        const accountFromList = accountFromResponse ? getAccountById(accountFromResponse) : findAccountByUsername(requestedUsername);
+        const onboardedAccountId = accountFromList?.AccountId || accountFromResponse;
+        const onboardingGuidance = asNonEmptyText(data.LastAuthenticationGuidance)
+            || asNonEmptyText(accountFromList?.LastAuthenticationGuidance)
+            || 'Open Instagram app, approve the login challenge, and confirm "This was me".';
+        const onboardingAuthError = asNonEmptyText(data.LastAuthenticationError)
+            || asNonEmptyText(liveVerificationError)
+            || asNonEmptyText(accountFromList?.LastAuthenticationError);
+
+        if (checkpointRequired) {
+            const checkpointMessage = [
+                onboardingGuidance,
+                'Open Instagram app and confirm "This was me", then retry live verification.',
+                onboardingAuthError ? `Instagram error: ${onboardingAuthError}` : ''
+            ].filter(Boolean).join('\n\n');
+
+            const action = await Swal.fire({
+                icon: 'warning',
+                title: 'Verification required',
+                text: checkpointMessage,
+                confirmButtonText: 'Retry',
+                showCancelButton: true,
+                cancelButtonText: 'Later',
+                confirmButtonColor: '#f97316',
+                cancelButtonColor: '#334155',
+                background: '#15171d',
+                color: '#ffffff'
+            });
+
+            if (action.isConfirmed) {
+                if (!onboardedAccountId) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Account saved, retry unavailable',
+                        text: 'Managed account was saved but account id could not be resolved. Refresh and retry from Managed Accounts.',
+                        confirmButtonColor: '#f97316',
+                        background: '#15171d',
+                        color: '#ffffff'
+                    });
+                } else {
+                    await retryVerificationForAccount(onboardedAccountId, accountFromList?.Username || requestedUsername);
+                }
+            }
+
+            return;
+        }
+
+        Swal.fire({
+            icon: 'success',
+            title: 'Account onboarded',
+            text: hasLiveVerification
+                ? 'Managed account onboarded. Backend returned live verification payload.'
+                : 'Managed account onboarded successfully.',
+            confirmButtonColor: '#22c55e',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+    } catch (error) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Onboarding failed',
+            text: error instanceof Error ? error.message : 'Unable to onboard managed account.',
+            confirmButtonColor: '#ef4444',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+    } finally {
+        commandBusy.value = false;
+    }
+}
+
+async function retryVerificationForAccount(accountId: string, username?: string) {
+    liveBusy.value = true;
+    liveAccountForm.value.accountId = accountId;
+
+    try {
+        await fetchLiveAccountPayload(accountId);
+        await loadAllPanels(false);
+
+        const refreshedAccount = getAccountById(accountId);
+        const status = refreshedAccount ? accountStatusLabel(refreshedAccount.Status) : 'Unknown';
+        const liveVerificationError = extractLiveVerificationError(liveAccountData.value);
+        const verified = status === 'Active' && !isCheckpointRequiredError(liveVerificationError);
+
+        Swal.fire({
+            icon: verified ? 'success' : 'info',
+            title: verified ? 'Verification complete' : 'Verification still pending',
+            text: verified
+                ? `${username || refreshedAccount?.Username || 'Managed account'} is now authenticated and live data was refreshed.`
+                : [
+                    'Live verification check ran. If challenge is still pending, confirm "This was me" in Instagram and retry.',
+                    liveVerificationError ? `Live error: ${liveVerificationError}` : ''
+                ].filter(Boolean).join('\n\n'),
+            confirmButtonColor: verified ? '#22c55e' : '#f97316',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+    } catch (error) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Retry failed',
+            text: error instanceof Error ? error.message : 'Unable to complete live verification retry.',
+            confirmButtonColor: '#ef4444',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+    } finally {
+        liveBusy.value = false;
+    }
+}
+
+async function deleteManagedAccount(accountId: string, username?: string) {
+    const confirmation = await Swal.fire({
+        icon: 'warning',
+        title: `Delete ${username || 'managed account'}?`,
+        text: 'This will remove the account from OmniGram management and stop autonomous scheduling for it.',
+        confirmButtonText: 'Delete Account',
+        cancelButtonText: 'Cancel',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#334155',
+        background: '#15171d',
+        color: '#ffffff'
+    });
+
+    if (!confirmation.isConfirmed) {
+        return;
+    }
+
+    commandBusy.value = true;
+
+    try {
+        const response = await RequestPOSTFromKliveAPI(
+            '/omnigram/accounts/delete',
+            JSON.stringify({ accountId }),
+            false,
+            true
+        );
+
+        if (!response.ok) {
+            throw new Error(await readApiError(response));
+        }
+
+        const raw = await response.json().catch(() => null);
+        const payload = (raw && typeof raw === 'object' ? raw : {}) as OmniGramDeleteAccountResponse;
+        const success = Boolean(payload.Success ?? payload.success);
+
+        if (!success) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Delete not confirmed',
+                text: 'OmniGram responded, but did not confirm deletion success.',
+                confirmButtonColor: '#f97316',
+                background: '#15171d',
+                color: '#ffffff'
+            });
+            return;
+        }
+
+        if (liveAccountForm.value.accountId === accountId) {
+            liveAccountForm.value.accountId = '';
+            liveAccountData.value = null;
+        }
+
+        await loadAllPanels(false);
+
+        Swal.fire({
+            icon: 'success',
+            title: 'Managed account deleted',
+            text: `${username || 'Account'} was removed from OmniGram successfully.`,
+            confirmButtonColor: '#22c55e',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+    } catch (error) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Delete failed',
+            text: error instanceof Error ? error.message : 'Unable to delete managed account.',
+            confirmButtonColor: '#ef4444',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+    } finally {
+        commandBusy.value = false;
+    }
+}
+
+async function submitAccountSettings() {
+    if (!settingsForm.value.accountId) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Select account',
+            text: 'Choose a managed account to update settings.',
+            confirmButtonColor: '#f97316',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+        return;
+    }
+
+    if (settingsForm.value.useMemeScraperSource && settingsForm.value.memeNiches.length === 0) {
         Swal.fire({
             icon: 'warning',
             title: 'Niches required',
@@ -722,7 +1447,7 @@ async function submitAccount() {
         return;
     }
 
-    if (accountForm.value.autonomousPostingEnabled && accountForm.value.autonomousPostingIntervalMinutes <= 0) {
+    if (settingsForm.value.autonomousPostingEnabled && settingsForm.value.autonomousPostingIntervalMinutes <= 0) {
         Swal.fire({
             icon: 'warning',
             title: 'Invalid interval',
@@ -734,7 +1459,7 @@ async function submitAccount() {
         return;
     }
 
-    if (accountForm.value.autonomousPostingEnabled && accountForm.value.autonomousPostingRandomOffsetMinutes < 0) {
+    if (settingsForm.value.autonomousPostingEnabled && settingsForm.value.autonomousPostingRandomOffsetMinutes < 0) {
         Swal.fire({
             icon: 'warning',
             title: 'Invalid random offset',
@@ -750,36 +1475,31 @@ async function submitAccount() {
 
     try {
         const payload = {
-            username: accountForm.value.username,
-            password: accountForm.value.password,
-            useMemeScraperSource: accountForm.value.useMemeScraperSource,
-            memeNiches: accountForm.value.useMemeScraperSource
-                ? accountForm.value.memeNiches
-                : [],
-            autonomousPostingEnabled: accountForm.value.autonomousPostingEnabled,
-            autonomousPostingIntervalMinutes: accountForm.value.autonomousPostingEnabled
-                ? accountForm.value.autonomousPostingIntervalMinutes
+            accountId: settingsForm.value.accountId,
+            useMemeScraperSource: settingsForm.value.useMemeScraperSource,
+            memeNiches: settingsForm.value.useMemeScraperSource ? settingsForm.value.memeNiches : [],
+            autonomousPostingEnabled: settingsForm.value.autonomousPostingEnabled,
+            autonomousPostingIntervalMinutes: settingsForm.value.autonomousPostingEnabled
+                ? settingsForm.value.autonomousPostingIntervalMinutes
                 : null,
-            autonomousPostingRandomOffsetMinutes: accountForm.value.autonomousPostingEnabled
-                ? accountForm.value.autonomousPostingRandomOffsetMinutes
+            autonomousPostingRandomOffsetMinutes: settingsForm.value.autonomousPostingEnabled
+                ? settingsForm.value.autonomousPostingRandomOffsetMinutes
                 : null,
-            autonomousCaptionPrompt: accountForm.value.autonomousPostingEnabled
-                ? accountForm.value.autonomousCaptionPrompt
+            autonomousCaptionPrompt: settingsForm.value.autonomousPostingEnabled
+                ? settingsForm.value.autonomousCaptionPrompt
                 : null
         };
 
-        const response = await RequestPOSTFromKliveAPI('/omnigram/accounts/add', JSON.stringify(payload), false, true);
+        const response = await RequestPOSTFromKliveAPI('/omnigram/accounts/updateSettings', JSON.stringify(payload), false, true);
 
         if (!response.ok) {
             throw new Error(await readApiError(response));
         }
 
-        accountForm.value.password = '';
-
         Swal.fire({
             icon: 'success',
-            title: 'Account saved',
-            text: 'Managed OmniGram account was added or updated successfully.',
+            title: 'Settings updated',
+            text: 'Runtime settings were updated successfully for selected account.',
             confirmButtonColor: '#22c55e',
             background: '#15171d',
             color: '#ffffff'
@@ -789,14 +1509,188 @@ async function submitAccount() {
     } catch (error) {
         Swal.fire({
             icon: 'error',
-            title: 'Account save failed',
-            text: error instanceof Error ? error.message : 'Unable to save managed account.',
+            title: 'Settings update failed',
+            text: error instanceof Error ? error.message : 'Unable to update account settings.',
             confirmButtonColor: '#ef4444',
             background: '#15171d',
             color: '#ffffff'
         });
     } finally {
         commandBusy.value = false;
+    }
+}
+
+async function submitProfileUpdate() {
+    if (!profileForm.value.accountId) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Select account',
+            text: 'Choose a managed account before updating profile.',
+            confirmButtonColor: '#f97316',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+        return;
+    }
+
+    if (!profileForm.value.displayName && !profileForm.value.bio && !profileForm.value.website) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'No profile fields set',
+            text: 'Provide at least one field (display name, bio, website) to update profile.',
+            confirmButtonColor: '#f97316',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+        return;
+    }
+
+    commandBusy.value = true;
+
+    try {
+        const payload = {
+            accountId: profileForm.value.accountId,
+            displayName: profileForm.value.displayName || null,
+            bio: profileForm.value.bio || null,
+            website: profileForm.value.website || null
+        };
+
+        const response = await RequestPOSTFromKliveAPI('/omnigram/accounts/updateProfile', JSON.stringify(payload), false, true);
+
+        if (!response.ok) {
+            throw new Error(await readApiError(response));
+        }
+
+        Swal.fire({
+            icon: 'success',
+            title: 'Profile update queued',
+            text: 'OmniGram accepted the profile update request.',
+            confirmButtonColor: '#22c55e',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+
+        await loadAllPanels(false);
+    } catch (error) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Profile update failed',
+            text: error instanceof Error ? error.message : 'Unable to update Instagram profile.',
+            confirmButtonColor: '#ef4444',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+    } finally {
+        commandBusy.value = false;
+    }
+}
+
+async function deleteInstagramMedia() {
+    if (!deleteMediaForm.value.accountId || !deleteMediaForm.value.instagramMediaId) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Missing input',
+            text: 'Managed account and Instagram media id are required.',
+            confirmButtonColor: '#f97316',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+        return;
+    }
+
+    const confirmation = await Swal.fire({
+        icon: 'warning',
+        title: 'Delete media from Instagram?',
+        text: 'This will call OmniGram deleteFromInstagram for the provided media id.',
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#334155',
+        showCancelButton: true,
+        background: '#15171d',
+        color: '#ffffff'
+    });
+
+    if (!confirmation.isConfirmed) {
+        return;
+    }
+
+    commandBusy.value = true;
+
+    try {
+        const payload = {
+            accountId: deleteMediaForm.value.accountId,
+            instagramMediaId: deleteMediaForm.value.instagramMediaId
+        };
+
+        const response = await RequestPOSTFromKliveAPI('/omnigram/posts/deleteFromInstagram', JSON.stringify(payload), false, true);
+
+        if (!response.ok) {
+            throw new Error(await readApiError(response));
+        }
+
+        Swal.fire({
+            icon: 'success',
+            title: 'Media delete accepted',
+            text: 'OmniGram accepted delete request for the Instagram media id.',
+            confirmButtonColor: '#22c55e',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+
+        resetDeleteMediaForm();
+        await loadAllPanels(false);
+    } catch (error) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Media delete failed',
+            text: error instanceof Error ? error.message : 'Unable to delete Instagram media.',
+            confirmButtonColor: '#ef4444',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+    } finally {
+        commandBusy.value = false;
+    }
+}
+
+async function requestLiveAccountSnapshot() {
+    if (!liveAccountForm.value.accountId) {
+        return;
+    }
+
+    liveBusy.value = true;
+
+    try {
+        await fetchLiveAccountPayload(liveAccountForm.value.accountId);
+    } catch (error) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Live snapshot failed',
+            text: error instanceof Error ? error.message : 'Unable to load account live payload.',
+            confirmButtonColor: '#ef4444',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+    } finally {
+        liveBusy.value = false;
+    }
+}
+
+async function refreshLiveAnalytics() {
+    liveAnalyticsBusy.value = true;
+
+    try {
+        await fetchLiveAnalyticsPayload();
+    } catch (error) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Live analytics failed',
+            text: error instanceof Error ? error.message : 'Unable to load fleet live analytics.',
+            confirmButtonColor: '#ef4444',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+    } finally {
+        liveAnalyticsBusy.value = false;
     }
 }
 
@@ -961,10 +1855,6 @@ async function scheduleCampaign() {
     } finally {
         commandBusy.value = false;
     }
-}
-
-function resetAccountForm() {
-    accountForm.value = createDefaultAccountForm();
 }
 
 onMounted(async () => {
@@ -1177,6 +2067,55 @@ onBeforeUnmount(() => {
     font-size: 0.72rem;
 }
 
+.subpage-nav {
+    margin: 0 12px 14px;
+    padding: 10px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+    border: 1px solid var(--panel-border-soft);
+}
+
+.subpage-link {
+    appearance: none;
+    border-radius: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    background: rgba(15, 23, 42, 0.45);
+    padding: 10px;
+    text-decoration: none;
+    text-align: left;
+    width: 100%;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.subpage-link:hover {
+    border-color: rgba(249, 115, 22, 0.56);
+    background: rgba(249, 115, 22, 0.14);
+    transform: translateY(-1px);
+}
+
+.subpage-link.active {
+    border-color: rgba(251, 146, 60, 0.7);
+    background: linear-gradient(180deg, rgba(249, 115, 22, 0.3), rgba(249, 115, 22, 0.12));
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.subpage-link-title {
+    color: #ffedd5;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.subpage-link-hint {
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    line-height: 1.3;
+}
+
 .panel-grid {
     margin: 0 12px 14px;
     display: grid;
@@ -1223,6 +2162,16 @@ onBeforeUnmount(() => {
     margin-top: 10px;
 }
 
+.form-card.compact-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.form-card.compact-grid > div {
+    min-width: 0;
+}
+
 .form-card h3 {
     margin: 0 0 10px;
     color: #fcd5ce;
@@ -1233,6 +2182,14 @@ onBeforeUnmount(() => {
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+
+.inline-form {
+    margin-bottom: 10px;
+}
+
+.inline-form .command-btn {
+    max-width: 230px;
 }
 
 .command-form label {
@@ -1428,6 +2385,37 @@ onBeforeUnmount(() => {
     background: rgba(148, 163, 184, 0.12);
 }
 
+.command-btn.danger {
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #fecaca;
+    background: linear-gradient(180deg, rgba(239, 68, 68, 0.28), rgba(239, 68, 68, 0.15));
+}
+
+.command-btn.danger:hover:not(:disabled) {
+    border-color: rgba(248, 113, 113, 0.64);
+    background: linear-gradient(180deg, rgba(239, 68, 68, 0.38), rgba(239, 68, 68, 0.2));
+}
+
+.form-actions.single-row .command-btn {
+    max-width: 240px;
+}
+
+.json-view {
+    margin: 0;
+    border-radius: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(2, 6, 23, 0.6);
+    color: #cbd5e1;
+    font-family: Consolas, Monaco, monospace;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    padding: 10px;
+    max-height: 300px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 .empty-state {
     border-radius: 10px;
     border: 1px dashed rgba(148, 163, 184, 0.36);
@@ -1481,6 +2469,45 @@ onBeforeUnmount(() => {
 .account-meta span {
     font-size: 0.72rem;
     color: #cbd5e1;
+}
+
+.account-action-row {
+    margin-top: 8px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.inline-link-btn.danger-link {
+    border-color: rgba(239, 68, 68, 0.42);
+    background: rgba(239, 68, 68, 0.16);
+    color: #fecaca;
+}
+
+.inline-link-btn.danger-link:hover:not(:disabled) {
+    border-color: rgba(248, 113, 113, 0.6);
+    background: rgba(239, 68, 68, 0.24);
+}
+
+.account-auth-debug {
+    margin-top: 8px;
+    border-radius: 8px;
+    border: 1px dashed rgba(251, 191, 36, 0.38);
+    background: rgba(245, 158, 11, 0.1);
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.account-auth-debug p {
+    margin: 0;
+    color: #fde68a;
+    font-size: 0.72rem;
+    line-height: 1.35;
+}
+
+.account-auth-debug .inline-link-btn {
+    align-self: flex-start;
 }
 
 .mini-grid {
@@ -1623,8 +2650,16 @@ th {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .subpage-nav {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .panel-grid,
     .panel-grid.secondary {
+        grid-template-columns: 1fr;
+    }
+
+    .form-card.compact-grid {
         grid-template-columns: 1fr;
     }
 
@@ -1653,9 +2688,18 @@ th {
         grid-template-columns: 1fr;
     }
 
+    .subpage-nav {
+        grid-template-columns: 1fr;
+    }
+
     .input-row.split,
     .mini-grid {
         grid-template-columns: 1fr;
+    }
+
+    .inline-form .command-btn,
+    .form-actions.single-row .command-btn {
+        max-width: none;
     }
 }
 </style>

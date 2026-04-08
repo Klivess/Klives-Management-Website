@@ -53,6 +53,21 @@
                     </div>
                 </div>
             </div>
+
+            <div class="scheme-card active" @click="$router.push('/schemery/omnitumblr')">
+                <div class="card-accent accent-tumblr"></div>
+                <div class="card-body">
+                    <div class="card-top">
+                        <span class="card-icon">TB</span>
+                        <span class="card-badge badge-active">Active</span>
+                    </div>
+                    <h2 class="card-title">OmniTumblr</h2>
+                    <p class="card-desc">Managed Tumblr automation with account onboarding, live verification snapshots, campaign scheduling, and event analytics.</p>
+                    <div class="card-footer">
+                        <span class="card-action">Open Command Panel →</span>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Simulator & In Development -->
@@ -200,6 +215,7 @@ definePageMeta({ layout: 'navbar' });
 .accent-amber { background: linear-gradient(to bottom, #f59e0b, #fbbf24); }
 .accent-red { background: linear-gradient(to bottom, #ef4444, #f87171); }
 .accent-instagram { background: linear-gradient(to bottom, #f97316, #fb7185); }
+.accent-tumblr { background: linear-gradient(to bottom, #2ab8ff, #4ade80); }
 
 /* Card Body */
 .card-body {

@@ -249,6 +249,13 @@
                 <KMButton style="height: 100px; margin-top: 25px;" message="Create New Profile" :onclick="goToCreateProfile" />
             </KMInfoBox>
         </KMInfoGrid>
+
+        <!-- Terminal CLI -->
+        <KMInfoGrid columns="1" rows="1" rowHeight="550">
+            <div style="height: 100%; width: 100%;">
+                <TerminalUI />
+            </div>
+        </KMInfoGrid>
     </div>
 </template>
 
@@ -260,11 +267,12 @@ definePageMeta({ layout: 'navbar' });
 import KMInfoGrid from '~/components/KMInfoGrid.vue';
 import KMInfoBox from '~/components/KMInfoBox.vue';
 import KMButton from '~/components/KMButton.vue';
+import TerminalUI from '~/components/Admin/TerminalUI.vue';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import Swal from 'sweetalert2';
 
 export default {
-    components: { KMInfoGrid, KMInfoBox, KMButton },
+    components: { KMInfoGrid, KMInfoBox, KMButton, TerminalUI },
     data() {
         return {
             statsLoading: false,

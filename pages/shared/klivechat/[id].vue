@@ -4,7 +4,7 @@
             <h1 style="color: white; margin-bottom: 20px;">Room: {{ roomName }}</h1>
             <KMInfoBox title="Share Link" :description="currentUrl" style="margin-bottom: 20px; width: 100%; max-width: 600px;" />
 
-            <div style="display: flex; gap: 15px; margin-bottom: 30px;">
+            <div style="display: flex; gap: 15px; margin-bottom: 30px; flex-wrap: wrap;">
                 <KMButton 
                     @click="toggleMute" 
                     :style="{ padding: '0 20px', minWidth: '120px', height: '40px', background: isMuted ? '#cc3333' : '#33cc33' }" 
@@ -16,6 +16,11 @@
                     :message="isVideo ? 'Video Off' : 'Video On'"
                 />
                 <KMButton 
+                    @click="toggleScreenShare" 
+                    :style="{ padding: '0 20px', minWidth: '120px', height: '40px', background: isScreenSharing ? '#cc3333' : '#33cc33' }" 
+                    :message="isScreenSharing ? 'Stop Screen' : 'Share Screen'"
+                />
+                <KMButton 
                     @click="leaveRoom" 
                     style="padding: 0 20px; min-width: 120px; height: 40px; background: #666;" 
                     message="Leave Room"
@@ -23,23 +28,28 @@
             </div>
 
             <h3 style="color: white; margin-bottom: 15px;">Participants ({{ peersState.length + 1 }})</h3>
-            <div style="display: grid; gap: 15px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));">
-                <div style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px; border: 1px solid #4d9e39;">
+            <div :class="['participant-grid', { 'has-focus': focusedPeerId !== null }]">
+                <div :class="['participant-card', { 'focused': focusedPeerId === 'local' }]" 
+                     @click="toggleFocus('local')"
+                     style="border: 1px solid #4d9e39;">
                     <div style="font-weight: bold; color: white; display: flex; justify-content: space-between;">
                         You ({{ myName }})
                         <canvas ref="localVisualizer" width="60" height="20" style="border-radius: 3px; background: rgba(0,0,0,0.5);"></canvas>
                     </div>
                     <div style="font-size: 0.8em; color: #aaa; margin-bottom: 10px;">{{ isMuted ? 'Muted' : 'Speaking' }}</div>
-                    <video ref="localVideo" autoplay playsinline muted style="width: 100%; border-radius: 4px; background: transparent; max-height: 200px; object-fit: cover;"></video>
+                    <video ref="localVideo" class="participant-video" autoplay playsinline muted style="background: transparent;"></video>
                 </div>
                 
-                <div v-for="peer in peersState" :key="peer.id" style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);">
+                <div v-for="peer in peersState" :key="peer.id" 
+                     :class="['participant-card', { 'focused': focusedPeerId === peer.id }]" 
+                     @click="toggleFocus(peer.id)"
+                     style="border: 1px solid rgba(255, 255, 255, 0.1);">
                     <div style="font-weight: bold; color: white; display: flex; justify-content: space-between;">
                         {{ peer.name || 'Anonymous' }}
                         <canvas :ref="(el) => setPeerVisualizerRef(el, peer.id)" width="60" height="20" style="border-radius: 3px; background: rgba(0,0,0,0.5);"></canvas>
                     </div>
                     <div style="font-size: 0.8em; color: #aaa; margin-bottom: 10px;">Connected</div>
-                    <video :ref="(el) => setAudioRef(el, peer.id)" autoplay playsinline style="width: 100%; border-radius: 4px; background: transparent; max-height: 200px; object-fit: cover;"></video>
+                    <video :ref="(el) => setAudioRef(el, peer.id)" class="participant-video" autoplay playsinline style="background: transparent;"></video>
                 </div>
             </div>
         </div>
@@ -54,6 +64,15 @@ import Swal from 'sweetalert2';
 import { KliveAPIUrl, RequestGETFromKliveAPI } from '../../../scripts/APIInterface';
 
 const layoutName = ref('empty');
+const focusedPeerId = ref(null);
+
+function toggleFocus(id) {
+    if (focusedPeerId.value === id) {
+        focusedPeerId.value = null; // Unfocus if already focused
+    } else {
+        focusedPeerId.value = id; // Focus new
+    }
+}
 
 const route = useRoute();
 const router = useRouter();
@@ -69,6 +88,7 @@ const roomName = ref('Loading...');
 const currentUrl = ref('');
 const isMuted = ref(false);
 const isVideo = ref(false); // Initially off to save bandwidth unless wanted
+const isScreenSharing = ref(false);
 const peersState = ref([]); 
 const audioRefs = {};
 
@@ -372,6 +392,16 @@ async function toggleVideo() {
     if (isVideo.value) {
         // Turn on video
         try {
+            // Turn off screen share if it was on
+            if (isScreenSharing.value) {
+                isScreenSharing.value = false;
+                const videoTracks = localStream.getVideoTracks();
+                videoTracks.forEach(t => {
+                    t.stop();
+                    localStream.removeTrack(t);
+                });
+            }
+
             const newStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
             const videoTrack = newStream.getVideoTracks()[0];
             localStream.addTrack(videoTrack);
@@ -411,8 +441,93 @@ async function toggleVideo() {
     }
 }
 
+async function toggleScreenShare() {
+    if (isScreenSharing.value) {
+        // Turn off screen share
+        isScreenSharing.value = false;
+        
+        const videoTracks = localStream.getVideoTracks();
+        videoTracks.forEach(t => {
+            t.enabled = false;
+            t.stop();
+            localStream.removeTrack(t);
+        });
+
+        // Revert to camera if isVideo was true
+        if (isVideo.value) {
+            try {
+                const newStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                const videoTrack = newStream.getVideoTracks()[0];
+                localStream.addTrack(videoTrack);
+                
+                Object.values(peerConnections).forEach(pc => {
+                    const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+                    if (sender) sender.replaceTrack(videoTrack);
+                });
+            } catch(e) {
+                console.error("Reverting to camera failed", e);
+                isVideo.value = false;
+            }
+        } else {
+            Object.values(peerConnections).forEach(pc => {
+                const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (sender) pc.removeTrack(sender);
+            });
+        }
+    } else {
+        // Turn on screen share
+        try {
+            const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+            const screenTrack = screenStream.getVideoTracks()[0];
+            
+            // Listen for native "Stop Sharing" button click from browser
+            screenTrack.onended = () => {
+                if (isScreenSharing.value) {
+                    toggleScreenShare();
+                }
+            };
+            
+            // Turn off camera flag implicitly if user decides to share screen
+            if (isVideo.value) {
+                isVideo.value = false;
+            }
+            
+            isScreenSharing.value = true;
+            
+            // Kill existing video tracks
+            const videoTracks = localStream.getVideoTracks();
+            videoTracks.forEach(t => {
+                t.stop();
+                localStream.removeTrack(t);
+            });
+
+            localStream.addTrack(screenTrack);
+            
+            Object.values(peerConnections).forEach(pc => {
+                const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+                if(sender) {
+                   sender.replaceTrack(screenTrack);
+                } else {
+                   pc.addTrack(screenTrack, localStream);
+                }
+            });
+            
+            if (localVideo.value) {
+                localVideo.value.srcObject = localStream;
+            }
+        } catch(e) {
+            console.error("Screen share access failed", e);
+            isScreenSharing.value = false; // Revert
+        }
+    }
+}
+
 function leaveRoom() {
-    router.push('/dashboard');
+    if (layoutName.value === 'empty') {
+        router.push('/');
+    } else {
+        router.push('/dashboard');
+    }
 }
 
 onMounted(() => {
@@ -436,5 +551,67 @@ onUnmounted(() => {
 <style scoped>
 video::-webkit-media-controls {
     display: none !important;
+}
+
+/* Grid Layout Styling */
+.participant-grid {
+    display: grid;
+    gap: 15px;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    align-items: start;
+}
+
+.participant-grid.has-focus {
+    /* Switch to flex wrap so the focused one takes the top row, rest wrap below */
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+}
+
+.participant-card {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 15px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.participant-grid.has-focus .participant-card:not(.focused) {
+    flex: 0 1 200px;
+    max-width: 250px;
+    padding: 10px;
+    order: 2; /* appear after the focused video */
+}
+
+.participant-card:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.participant-card.focused {
+    flex: 1 1 100% !important; /* Take full top row */
+    max-width: 100% !important;
+    background: transparent !important;
+    border: none !important;
+    order: 1; /* Always first */
+    padding: 0;
+    margin-bottom: 20px;
+}
+
+.participant-video {
+    width: 100%;
+    border-radius: 4px;
+    max-height: 200px;
+    object-fit: cover;
+    transition: all 0.3s ease;
+    background: transparent;
+}
+
+.participant-card.focused .participant-video {
+    max-height: 75vh;
+    height: 75vh;
+    object-fit: contain; /* Show entire camera/screen feed correctly scaled */
 }
 </style>

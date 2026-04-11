@@ -51,7 +51,7 @@ async function RequestGETFromKliveAPI(query: string, redirectToDashboardIfUnauth
             });
         }
         if(redirectToDashboardIfUnauthorized==true && process.client){
-            window.location.replace('/dashboard');
+            window.location.replace('/');
         }
     }
     return res;

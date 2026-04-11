@@ -18,6 +18,9 @@
         <NuxtLink to="/klivetech">
           <KMButton message="KliveTech"></KMButton>
         </NuxtLink>
+        <NuxtLink to="/klivechat">
+          <KMButton message="KliveChat"></KMButton>
+        </NuxtLink>
         <NuxtLink to="/botSchedule">
           <KMButton message="Bot Schedule"></KMButton>
         </NuxtLink>

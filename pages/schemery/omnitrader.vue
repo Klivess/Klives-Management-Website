@@ -1020,38 +1020,38 @@ const buildQuery = (params: Record<string, QueryValue>): string => {
 };
 
 const fetchStatus = async (): Promise<void> => {
-    status.value = await requestGet<OmniStatus>('/omniTrader/status');
+    status.value = await requestGet<OmniStatus>('/api/omnitrader/status');
 };
 
 const fetchAvailableStrategies = async (): Promise<void> => {
-    const data = await requestGet<StrategyMeta[]>('/omniTrader/strategies/available');
+    const data = await requestGet<StrategyMeta[]>('/api/omnitrader/strategies');
     availableStrategies.value = Array.isArray(data) ? data : [];
 };
 
 const fetchDeployedStrategies = async (): Promise<void> => {
-    const data = await requestGet<DeployedStrategy[]>('/omniTrader/strategies/deployed');
+    const data = await requestGet<DeployedStrategy[]>('/api/omnitrader/simulator/deployments');
     deployedStrategies.value = Array.isArray(data) ? data : [];
 };
 
 const fetchActivePersistent = async (): Promise<void> => {
-    const data = await requestGet<PersistentRegistration[]>('/omniTrader/simulator/active-persistent');
+    const data = await requestGet<PersistentRegistration[]>('/api/omnitrader/simulator/active');
     activePersistent.value = Array.isArray(data) ? data : [];
 };
 
 const fetchLiveAnalyticsAll = async (): Promise<void> => {
-    const data = await requestGet<Record<string, OmniBacktestResult>>('/omniTrader/analytics/live/all');
+    const data = await requestGet<Record<string, OmniBacktestResult>>('/api/omnitrader/analytics/live');
     liveAnalyticsByDeployment.value = data && typeof data === 'object' ? data : {};
 };
 
 const fetchPersistedAnalyticsAll = async (): Promise<void> => {
-    const data = await requestGet<Record<string, OmniBacktestResult>>('/omniTrader/analytics/persisted/all');
+    const data = await requestGet<Record<string, OmniBacktestResult>>('/api/omnitrader/analytics/persisted');
     persistedAnalyticsByStrategy.value = data && typeof data === 'object' ? data : {};
 };
 
 const loadLiveByDeployment = async (deploymentId: string): Promise<void> => {
     try {
         const query = buildQuery({ deploymentId });
-        const data = await requestGet<OmniBacktestResult>(`/omniTrader/analytics/live/byDeployment${query}`);
+        const data = await requestGet<OmniBacktestResult>(`/api/omnitrader/analytics/live/deployment${query}`);
         selectedDeploymentId.value = deploymentId;
         selectedDeploymentAnalytics.value = data;
     } catch (error) {
@@ -1070,8 +1070,8 @@ const loadStrategyInsight = async (strategyName: string): Promise<void> => {
     try {
         const query = buildQuery({ strategyName });
         const [insightResponse, persistedResponse] = await Promise.all([
-            requestGet<StrategyInsight>(`/omniTrader/analytics/strategyInsight${query}`),
-            requestGet<OmniBacktestResult>(`/omniTrader/analytics/persisted/byStrategy${query}`)
+            requestGet<StrategyInsight>(`/api/omnitrader/analytics/insight${query}`),
+            requestGet<OmniBacktestResult>(`/api/omnitrader/analytics/persisted/strategy${query}`)
         ]);
 
         strategyInsight.value = insightResponse;
@@ -1117,7 +1117,7 @@ const runBacktest = async (): Promise<void> => {
             slippageFraction: backtestForm.slippageFraction
         });
 
-        backtestRawResult.value = await requestPost<Record<string, any>>(`/omniTrader/backtest/run${query}`);
+        backtestRawResult.value = await requestPost<Record<string, any>>(`/api/omnitrader/backtest${query}`);
         await Promise.allSettled([fetchPersistedAnalyticsAll(), loadStrategyInsight(backtestForm.strategyName)]);
         showApiSuccess('Backtest Complete', `${backtestForm.strategyName} finished successfully.`);
     } catch (error) {
@@ -1146,7 +1146,7 @@ const submitDeploy = async (): Promise<void> => {
             slippageFraction: deployForm.slippageFraction
         });
 
-        const result = await requestPost<Record<string, any>>(`/omniTrader/simulator/deploy${query}`);
+        const result = await requestPost<Record<string, any>>(`/api/omnitrader/simulator/deploy${query}`);
         await Promise.allSettled([fetchStatus(), fetchDeployedStrategies(), fetchActivePersistent(), fetchLiveAnalyticsAll()]);
         await loadStrategyInsight(deployForm.strategyName);
         showApiSuccess('Strategy Deployed To Simulator', payloadMessage(result));
@@ -1178,7 +1178,7 @@ const handleUndeploy = async (deploymentId: string): Promise<void> => {
 
     try {
         const query = buildQuery({ deploymentId });
-        const result = await requestPost<Record<string, any>>(`/omniTrader/simulator/undeploy${query}`);
+        const result = await requestPost<Record<string, any>>(`/api/omnitrader/simulator/undeploy${query}`);
         await Promise.allSettled([fetchStatus(), fetchDeployedStrategies(), fetchActivePersistent(), fetchLiveAnalyticsAll()]);
 
         if (selectedDeploymentId.value === deploymentId) {
@@ -1214,7 +1214,7 @@ const handleUndeployAll = async (): Promise<void> => {
     undeployingAll.value = true;
 
     try {
-        const result = await requestPost<Record<string, any>>('/omniTrader/simulator/undeployAll');
+        const result = await requestPost<Record<string, any>>('/api/omnitrader/simulator/undeploy-all');
         await Promise.allSettled([fetchStatus(), fetchDeployedStrategies(), fetchActivePersistent(), fetchLiveAnalyticsAll()]);
         selectedDeploymentId.value = '';
         selectedDeploymentAnalytics.value = null;

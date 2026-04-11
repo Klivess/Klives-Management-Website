@@ -103,8 +103,16 @@ async function RequestPOSTFromKliveAPI(query: string, content: BodyInit | null =
 }
 
 function GetLocalPassword() {
-    const cook = useCookie('password').value;
-    return cook || "";
+    try {
+        const cook = useCookie('password').value;
+        return cook || "";
+    } catch (e) {
+        if (process.client) {
+            const match = document.cookie.match(/(?:^|; )password=([^;]*)/);
+            if (match) return decodeURIComponent(match[1]);
+        }
+        return "";
+    }
 }
 
 async function VerifyLogin() {

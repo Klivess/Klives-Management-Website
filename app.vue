@@ -7,9 +7,7 @@ import { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/
 <template>
   <NuxtLoadingIndicator />
     <NuxtLayout>
-      <keep-alive>
-        <AuthenticationManager/>
-      </keep-alive>
+      <AuthenticationManager />
       <NuxtPage/>
     </NuxtLayout>
 </template>

@@ -1,98 +1,177 @@
 <template>
-    <NuxtLayout :name="layoutName">
-        <div style="padding: 2rem; min-height: 100vh; background: #161516;">
-            <h1 style="color: white; margin-bottom: 20px;">Room: {{ roomName }}</h1>
-            <KMInfoBox title="Share Link" :description="currentUrl" style="margin-bottom: 20px; width: 100%; max-width: 600px;" />
+    <div class="klivechat-shell">
+        <div class="klivechat-grid"></div>
+        <div class="klivechat-aurora"></div>
 
-            <div style="display: flex; gap: 15px; margin-bottom: 30px; flex-wrap: wrap;">
-                <KMButton 
-                    @click="toggleMute" 
-                    :style="{ padding: '0 20px', minWidth: '120px', height: '40px', background: isMuted ? '#cc3333' : '#33cc33' }" 
-                    :message="isMuted ? 'Unmute' : 'Mute'"
-                />
-                <KMButton 
-                    @click="toggleVideo" 
-                    :style="{ padding: '0 20px', minWidth: '120px', height: '40px', background: isVideo ? '#cc3333' : '#33cc33' }" 
-                    :message="isVideo ? 'Video Off' : 'Video On'"
-                />
-                <KMButton 
-                    @click="toggleScreenShare" 
-                    :style="{ padding: '0 20px', minWidth: '120px', height: '40px', background: isScreenSharing ? '#cc3333' : '#33cc33' }" 
-                    :message="isScreenSharing ? 'Stop Screen' : 'Share Screen'"
-                />
-                <KMButton 
-                    @click="leaveRoom" 
-                    style="padding: 0 20px; min-width: 120px; height: 40px; background: #666;" 
-                    message="Leave Room"
-                />
-            </div>
+        <main class="klivechat-frame">
+            <section class="panel hero-panel">
+                <div class="hero-header">
+                    <div>
+                        <div class="eyebrow">KLIVECHAT / ROOM {{ roomId }}</div>
+                        <h1>{{ roomName }}</h1>
+                        <p>Share the room link, manage your microphone and camera, and keep the call aligned from a single dashboard-style surface.</p>
+                    </div>
 
-            <h3 style="color: white; margin-bottom: 15px;">Participants ({{ peersState.length + 1 }})</h3>
-            <div :class="['participant-grid', { 'has-focus': focusedPeerId !== null }]">
-                <div :class="['participant-card', { 'focused': focusedPeerId === 'local' }]" 
-                     @click="toggleFocus('local')"
-                     style="border: 1px solid #4d9e39;">
-                    <div style="font-weight: bold; color: white; display: flex; justify-content: space-between;">
-                        You ({{ myName }})
-                        <canvas ref="localVisualizer" width="60" height="20" style="border-radius: 3px; background: rgba(0,0,0,0.5);"></canvas>
+                    <div class="room-id-badge">
+                        ID {{ roomId }}
                     </div>
-                    <div style="font-size: 0.8em; color: #aaa; margin-bottom: 10px;">{{ isMuted ? 'Muted' : 'Speaking' }}</div>
-                    <video ref="localVideo" class="participant-video" autoplay playsinline muted style="background: transparent;"></video>
                 </div>
-                
-                <div v-for="peer in peersState" :key="peer.id" 
-                     :class="['participant-card', { 'focused': focusedPeerId === peer.id }]" 
-                     @click="toggleFocus(peer.id)"
-                     style="border: 1px solid rgba(255, 255, 255, 0.1);">
-                    <div style="font-weight: bold; color: white; display: flex; justify-content: space-between;">
-                        {{ peer.name || 'Anonymous' }}
-                        <canvas :ref="(el) => setPeerVisualizerRef(el, peer.id)" width="60" height="20" style="border-radius: 3px; background: rgba(0,0,0,0.5);"></canvas>
+
+                <div class="status-row">
+                    <span class="status-pill status-pill--active">YOU {{ myName || 'Loading...' }}</span>
+                    <span class="status-pill">{{ isMuted ? 'MIC MUTED' : 'MIC LIVE' }}</span>
+                    <span class="status-pill">{{ isVideo ? 'VIDEO ON' : 'VIDEO OFF' }}</span>
+                    <span class="status-pill">{{ isScreenSharing ? 'SCREEN SHARING' : 'NO SCREEN SHARE' }}</span>
+                </div>
+            </section>
+
+            <section class="panel link-panel">
+                <div class="panel-top">
+                    <div>
+                        <div class="eyebrow">SHARE LINK</div>
+                        <h2>Invite other people to this room</h2>
                     </div>
-                    <div style="font-size: 0.8em; color: #aaa; margin-bottom: 10px;">Connected</div>
-                    <video :ref="(el) => setAudioRef(el, peer.id)" class="participant-video" autoplay playsinline style="background: transparent;"></video>
+                    <div class="panel-note">COPY FROM THE BROWSER URL</div>
                 </div>
-            </div>
-        </div>
-    </NuxtLayout>
+
+                <div class="link-stack">
+                    <input class="link-input" :value="currentUrl" readonly />
+                    <div class="link-meta">
+                        <span>{{ currentUrl || 'Waiting for browser URL...' }}</span>
+                        <button class="ghost-button compact" type="button" @click="copyShareLink">COPY LINK</button>
+                    </div>
+                    <div v-if="copyStatus" class="status-pill status-pill--active">
+                        {{ copyStatus }}
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel controls-panel">
+                <div class="panel-top">
+                    <div>
+                        <div class="eyebrow">SESSION CONTROLS</div>
+                        <h2>Manage audio and media</h2>
+                    </div>
+                    <div class="panel-note">WEBCAM AND SCREEN SHARE READY</div>
+                </div>
+
+                <div class="control-strip">
+                    <button class="control-tile" type="button" :class="{ active: !isMuted }" @click="toggleMute">
+                        <span class="control-title">{{ isMuted ? 'Unmute mic' : 'Mute mic' }}</span>
+                        <span class="control-copy">Toggle your microphone without leaving the room.</span>
+                        <span class="control-chip">{{ isMuted ? 'OFF' : 'ON' }}</span>
+                    </button>
+
+                    <button class="control-tile" type="button" :class="{ active: isVideo }" @click="toggleVideo">
+                        <span class="control-title">{{ isVideo ? 'Disable camera' : 'Enable camera' }}</span>
+                        <span class="control-copy">Send your camera feed to the room when you need it.</span>
+                        <span class="control-chip">{{ isVideo ? 'LIVE' : 'OFF' }}</span>
+                    </button>
+
+                    <button class="control-tile" type="button" :class="{ active: isScreenSharing }" @click="toggleScreenShare">
+                        <span class="control-title">{{ isScreenSharing ? 'Stop screen share' : 'Share screen' }}</span>
+                        <span class="control-copy">Present a browser tab or desktop capture.</span>
+                        <span class="control-chip">{{ isScreenSharing ? 'LIVE' : 'OFF' }}</span>
+                    </button>
+
+                    <button class="control-tile danger" type="button" @click="leaveRoom">
+                        <span class="control-title">Leave room</span>
+                        <span class="control-copy">Cleanly disconnect and return to the main dashboard.</span>
+                        <span class="control-chip">EXIT</span>
+                    </button>
+                </div>
+            </section>
+
+            <section class="panel roster-panel">
+                <div class="panel-top">
+                    <div>
+                        <div class="eyebrow">PARTICIPANTS</div>
+                        <h2>{{ peersState.length + 1 }} connected</h2>
+                    </div>
+                    <div class="panel-note">{{ focusedPeerId ? 'FOCUS MODE' : 'GRID MODE' }}</div>
+                </div>
+
+                <div :class="['participant-grid', { 'has-focus': focusedPeerId !== null }]">
+                    <div
+                        :class="['participant-card', { focused: focusedPeerId === 'local' }]"
+                        @click="toggleFocus('local')"
+                    >
+                        <div class="participant-head">
+                            <div>
+                                <div class="participant-name">You · {{ myName }}</div>
+                                <div class="participant-state">{{ isMuted ? 'Muted' : 'Speaking' }}</div>
+                            </div>
+                            <canvas ref="localVisualizer" width="60" height="20" class="signal-meter"></canvas>
+                        </div>
+
+                        <div class="media-frame">
+                            <video ref="localVideo" class="participant-video" autoplay playsinline muted></video>
+                        </div>
+                    </div>
+
+                    <div
+                        v-for="peer in peersState"
+                        :key="peer.id"
+                        :class="['participant-card', { focused: focusedPeerId === peer.id }]"
+                        @click="toggleFocus(peer.id)"
+                    >
+                        <div class="participant-head">
+                            <div>
+                                <div class="participant-name">{{ peer.name || 'Anonymous' }}</div>
+                                <div class="participant-state">Connected</div>
+                            </div>
+                            <canvas :ref="(el) => setPeerVisualizerRef(el, peer.id)" width="60" height="20" class="signal-meter"></canvas>
+                        </div>
+
+                        <div class="media-frame">
+                            <video :ref="(el) => setAudioRef(el, peer.id)" class="participant-video" autoplay playsinline></video>
+                        </div>
+                    </div>
+
+                    <div v-if="peersState.length === 0" class="empty-room">
+                        No participants yet. Share the room link to bring someone in.
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
 </template>
 
 <script setup>
-definePageMeta({ layout: false });
-import { ref, onMounted, onUnmounted } from 'vue';
+definePageMeta({ layout: 'navbar' });
+
+import { onMounted, onUnmounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import Swal from 'sweetalert2';
 import { KliveAPIUrl, RequestGETFromKliveAPI } from '../../../scripts/APIInterface';
 
-const layoutName = ref('empty');
-const focusedPeerId = ref(null);
-
-function toggleFocus(id) {
-    if (focusedPeerId.value === id) {
-        focusedPeerId.value = null; // Unfocus if already focused
-    } else {
-        focusedPeerId.value = id; // Focus new
-    }
-}
-
 const route = useRoute();
 const router = useRouter();
-const roomId = route.params.id;
+const roomId = String(route.params.id);
+
+const layoutName = ref('navbar');
+const focusedPeerId = ref(null);
+const copyStatus = ref('');
+let copyStatusTimer = null;
+
+function toggleFocus(id) {
+    focusedPeerId.value = focusedPeerId.value === id ? null : id;
+}
 
 let wsUrl = KliveAPIUrl.replace('https', 'wss').replace('http', 'ws') + `/klivechat/ws?roomId=${roomId}`;
 let ws = null;
 let localStream = null;
-const peerConnections = {}; 
+const peerConnections = {};
 
 const myName = ref('');
 const roomName = ref('Loading...');
 const currentUrl = ref('');
 const isMuted = ref(false);
-const isVideo = ref(false); // Initially off to save bandwidth unless wanted
+const isVideo = ref(false);
 const isScreenSharing = ref(false);
-const peersState = ref([]); 
+const peersState = ref([]);
 const audioRefs = {};
 
-// Visualizer state
 const localVisualizer = ref(null);
 const peerVisualizers = {};
 let audioContext = null;
@@ -129,8 +208,7 @@ function setPeerVisualizerRef(el, id) {
 
 async function init() {
     currentUrl.value = window.location.href;
-    
-    // Load current profile name if logged in, else generate a random Guest name
+
     let lsName = '';
     try {
         const response = await RequestGETFromKliveAPI('/klivechat/me', false, false);
@@ -138,20 +216,20 @@ async function init() {
             const data = await response.json();
             lsName = data.name || '';
         }
-    } catch (e) {
-        console.error('Failed to parse my profile name:', e);
+    } catch (error) {
+        console.error('Failed to parse my profile name:', error);
     }
-    
-    if(!lsName || lsName.trim() === '') {
+
+    if (!lsName || lsName.trim() === '') {
         lsName = await getGuestName();
         layoutName.value = 'empty';
     } else {
         layoutName.value = 'navbar';
     }
-    
+
     myName.value = lsName;
-    wsUrl += "&name=" + encodeURIComponent(lsName);
-    
+    wsUrl += '&name=' + encodeURIComponent(lsName);
+
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isVideo.value });
         if (localVideo.value) {
@@ -159,8 +237,8 @@ async function init() {
         }
         setupLocalVisualizer();
         connectWebSocket();
-    } catch (e) {
-        console.error("Mic access denied", e);
+    } catch (error) {
+        console.error('Mic access denied', error);
         Swal.fire({
             title: 'Error',
             text: 'Microphone access is required to use KliveChat.',
@@ -181,14 +259,18 @@ async function getGuestName() {
         background: '#161516',
         color: '#fff',
         inputValidator: (value) => {
-            if (!value) return 'You need to write something!'
+            if (!value) return 'You need to write something!';
+            return undefined;
         }
     });
-    return name || 'Guest_' + Math.floor(Math.random()*1000);
+
+    return name || 'Guest_' + Math.floor(Math.random() * 1000);
 }
 
 function setupLocalVisualizer() {
-    if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
     const source = audioContext.createMediaStreamSource(localStream);
     localAnalyser = audioContext.createAnalyser();
     localAnalyser.fftSize = 64;
@@ -196,31 +278,30 @@ function setupLocalVisualizer() {
 }
 
 function setupPeerVisualizer(stream, id) {
-    if(!audioContext) return;
+    if (!audioContext) return;
+
     try {
         const source = audioContext.createMediaStreamSource(stream);
         const analyser = audioContext.createAnalyser();
         analyser.fftSize = 64;
         source.connect(analyser);
         peerAnalysers[id] = analyser;
-    } catch(e) {
-        console.error("Failed to setup peer visualizer, perhaps no audio track.", e);
+    } catch (error) {
+        console.error('Failed to setup peer visualizer, perhaps no audio track.', error);
     }
 }
 
 function renderVisualizers() {
     drawVisualizerLoop = requestAnimationFrame(renderVisualizers);
 
-    // Draw local
-    if(localVisualizer.value && localAnalyser) {
+    if (localVisualizer.value && localAnalyser) {
         drawCanvas(localVisualizer.value, localAnalyser, '#4d9e39');
     }
 
-    // Draw peers
-    for(let id in peerVisualizers) {
-        let canvas = peerVisualizers[id];
-        let analyser = peerAnalysers[id];
-        if(canvas && analyser) {
+    for (const id in peerVisualizers) {
+        const canvas = peerVisualizers[id];
+        const analyser = peerAnalysers[id];
+        if (canvas && analyser) {
             drawCanvas(canvas, analyser, '#33cc33');
         }
     }
@@ -230,18 +311,20 @@ function drawCanvas(canvas, analyser, color) {
     const ctx = canvas.getContext('2d');
     const width = canvas.width;
     const height = canvas.height;
-    
-    let dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(dataArray);
 
     let sum = 0;
-    for(let i=0; i<dataArray.length; i++) { sum += dataArray[i]; }
-    let average = sum / dataArray.length; // 0 to 255
+    for (let i = 0; i < dataArray.length; i++) {
+        sum += dataArray[i];
+    }
+
+    const average = sum / dataArray.length;
 
     ctx.clearRect(0, 0, width, height);
 
-    // Draw simple amplitude bar
-    let fillWidth = (average / 255) * width;
+    const fillWidth = (average / 255) * width;
     ctx.fillStyle = color;
     ctx.fillRect(0, 0, fillWidth, height);
 }
@@ -250,8 +333,10 @@ function connectWebSocket() {
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-        console.log("Connected to signaling server");
-        if(!drawVisualizerLoop) renderVisualizers();
+        console.log('Connected to signaling server');
+        if (!drawVisualizerLoop) {
+            renderVisualizers();
+        }
     };
 
     ws.onmessage = async (event) => {
@@ -260,7 +345,7 @@ function connectWebSocket() {
         switch (msg.type) {
             case 'room-info':
                 roomName.value = msg.payload.roomName;
-                msg.payload.users.forEach(u => addPeer(u.id, u.name));
+                msg.payload.users.forEach((user) => addPeer(user.id, user.name));
                 break;
             case 'user-joined':
                 addPeer(msg.payload.id, msg.payload.name);
@@ -285,18 +370,18 @@ function connectWebSocket() {
     };
 
     ws.onclose = () => {
-        console.log("Disconnected from signaling server");
+        console.log('Disconnected from signaling server');
     };
 }
 
 function addPeer(id, name) {
-    if (!peersState.value.find(p => p.id === id)) {
+    if (!peersState.value.find((peer) => peer.id === id)) {
         peersState.value.push({ id, name });
     }
 }
 
 function removePeer(id) {
-    peersState.value = peersState.value.filter(p => p.id !== id);
+    peersState.value = peersState.value.filter((peer) => peer.id !== id);
     if (peerConnections[id]) {
         peerConnections[id].close();
         delete peerConnections[id];
@@ -309,7 +394,7 @@ function removePeer(id) {
 function createPeerConnection(targetId) {
     const pc = new RTCPeerConnection(iceServers);
 
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
 
     pc.onicecandidate = (event) => {
         if (event.candidate) {
@@ -330,8 +415,8 @@ function createPeerConnection(targetId) {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             sendWSMessage('offer', targetId, pc.localDescription);
-        } catch (e) {
-            console.error("Negotiation failed", e);
+        } catch (error) {
+            console.error('Negotiation failed', error);
         }
     };
 
@@ -340,8 +425,7 @@ function createPeerConnection(targetId) {
 }
 
 async function createOffer(targetId) {
-    const pc = createPeerConnection(targetId);
-    // Negotiation needed event will handle the actual offer creation safely
+    createPeerConnection(targetId);
 }
 
 async function handleOffer(senderId, offer) {
@@ -369,8 +453,8 @@ async function handleIceCandidate(senderId, candidate) {
     }
 }
 
-async function handleRenegotiate(senderId) {
-     // A peer has asked us to process a newly attached stream track by triggering generic renegotiation
+async function handleRenegotiate() {
+    // Negotiation is handled by the peer connection event.
 }
 
 function sendWSMessage(type, targetId, payload) {
@@ -382,58 +466,56 @@ function sendWSMessage(type, targetId, payload) {
 function toggleMute() {
     if (localStream) {
         isMuted.value = !isMuted.value;
-        localStream.getAudioTracks().forEach(t => t.enabled = !isMuted.value);
+        localStream.getAudioTracks().forEach((track) => {
+            track.enabled = !isMuted.value;
+        });
     }
 }
 
 async function toggleVideo() {
     isVideo.value = !isVideo.value;
-    
+
     if (isVideo.value) {
-        // Turn on video
         try {
-            // Turn off screen share if it was on
             if (isScreenSharing.value) {
                 isScreenSharing.value = false;
                 const videoTracks = localStream.getVideoTracks();
-                videoTracks.forEach(t => {
-                    t.stop();
-                    localStream.removeTrack(t);
+                videoTracks.forEach((track) => {
+                    track.stop();
+                    localStream.removeTrack(track);
                 });
             }
 
             const newStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
             const videoTrack = newStream.getVideoTracks()[0];
             localStream.addTrack(videoTrack);
-            
-            // Add track to all connections
-            Object.values(peerConnections).forEach(pc => {
-                const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
-                if(sender) {
-                   sender.replaceTrack(videoTrack);
+
+            Object.values(peerConnections).forEach((pc) => {
+                const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+                if (sender) {
+                    sender.replaceTrack(videoTrack);
                 } else {
-                   pc.addTrack(videoTrack, localStream);
+                    pc.addTrack(videoTrack, localStream);
                 }
             });
-            
+
             if (localVideo.value) {
                 localVideo.value.srcObject = localStream;
             }
-        } catch(e) {
-            console.error("Camera access failed", e);
-            isVideo.value = false; // Revert
+        } catch (error) {
+            console.error('Camera access failed', error);
+            isVideo.value = false;
         }
     } else {
-        // Turn off video
         const videoTracks = localStream.getVideoTracks();
-        videoTracks.forEach(t => {
-            t.enabled = false;
-            t.stop();
-            localStream.removeTrack(t);
+        videoTracks.forEach((track) => {
+            track.enabled = false;
+            track.stop();
+            localStream.removeTrack(track);
         });
-        
-        Object.values(peerConnections).forEach(pc => {
-            const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+
+        Object.values(peerConnections).forEach((pc) => {
+            const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
             if (sender) {
                 pc.removeTrack(sender);
             }
@@ -443,82 +525,102 @@ async function toggleVideo() {
 
 async function toggleScreenShare() {
     if (isScreenSharing.value) {
-        // Turn off screen share
         isScreenSharing.value = false;
-        
+
         const videoTracks = localStream.getVideoTracks();
-        videoTracks.forEach(t => {
-            t.enabled = false;
-            t.stop();
-            localStream.removeTrack(t);
+        videoTracks.forEach((track) => {
+            track.enabled = false;
+            track.stop();
+            localStream.removeTrack(track);
         });
 
-        // Revert to camera if isVideo was true
         if (isVideo.value) {
             try {
                 const newStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                 const videoTrack = newStream.getVideoTracks()[0];
                 localStream.addTrack(videoTrack);
-                
-                Object.values(peerConnections).forEach(pc => {
-                    const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
-                    if (sender) sender.replaceTrack(videoTrack);
+
+                Object.values(peerConnections).forEach((pc) => {
+                    const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+                    if (sender) {
+                        sender.replaceTrack(videoTrack);
+                    }
                 });
-            } catch(e) {
-                console.error("Reverting to camera failed", e);
+            } catch (error) {
+                console.error('Reverting to camera failed', error);
                 isVideo.value = false;
             }
         } else {
-            Object.values(peerConnections).forEach(pc => {
-                const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
-                if (sender) pc.removeTrack(sender);
+            Object.values(peerConnections).forEach((pc) => {
+                const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+                if (sender) {
+                    pc.removeTrack(sender);
+                }
             });
         }
     } else {
-        // Turn on screen share
         try {
             const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
             const screenTrack = screenStream.getVideoTracks()[0];
-            
-            // Listen for native "Stop Sharing" button click from browser
+
             screenTrack.onended = () => {
                 if (isScreenSharing.value) {
                     toggleScreenShare();
                 }
             };
-            
-            // Turn off camera flag implicitly if user decides to share screen
+
             if (isVideo.value) {
                 isVideo.value = false;
             }
-            
+
             isScreenSharing.value = true;
-            
-            // Kill existing video tracks
+
             const videoTracks = localStream.getVideoTracks();
-            videoTracks.forEach(t => {
-                t.stop();
-                localStream.removeTrack(t);
+            videoTracks.forEach((track) => {
+                track.stop();
+                localStream.removeTrack(track);
             });
 
             localStream.addTrack(screenTrack);
-            
-            Object.values(peerConnections).forEach(pc => {
-                const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
-                if(sender) {
-                   sender.replaceTrack(screenTrack);
+
+            Object.values(peerConnections).forEach((pc) => {
+                const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+                if (sender) {
+                    sender.replaceTrack(screenTrack);
                 } else {
-                   pc.addTrack(screenTrack, localStream);
+                    pc.addTrack(screenTrack, localStream);
                 }
             });
-            
+
             if (localVideo.value) {
                 localVideo.value.srcObject = localStream;
             }
-        } catch(e) {
-            console.error("Screen share access failed", e);
-            isScreenSharing.value = false; // Revert
+        } catch (error) {
+            console.error('Screen share access failed', error);
+            isScreenSharing.value = false;
         }
+    }
+}
+
+async function copyShareLink() {
+    if (!currentUrl.value) {
+        currentUrl.value = window.location.href;
+    }
+
+    try {
+        await navigator.clipboard.writeText(currentUrl.value);
+        copyStatus.value = 'Link copied.';
+
+        if (copyStatusTimer) {
+            clearTimeout(copyStatusTimer);
+        }
+
+        copyStatusTimer = window.setTimeout(() => {
+            copyStatus.value = '';
+        }, 1800);
+    } catch (error) {
+        console.error('Copy failed', error);
+        copyStatus.value = 'Clipboard copy failed.';
     }
 }
 
@@ -531,87 +633,443 @@ function leaveRoom() {
 }
 
 onMounted(() => {
-    if(process.client) {
+    if (process.client) {
         init();
     }
 });
 
 onUnmounted(() => {
-    if (drawVisualizerLoop) cancelAnimationFrame(drawVisualizerLoop);
-    if (audioContext) audioContext.close();
-    
-    if (ws) ws.close();
-    if (localStream) {
-        localStream.getTracks().forEach(t => t.stop());
+    if (copyStatusTimer) {
+        clearTimeout(copyStatusTimer);
     }
-    Object.values(peerConnections).forEach(pc => pc.close());
+
+    if (drawVisualizerLoop) {
+        cancelAnimationFrame(drawVisualizerLoop);
+    }
+
+    if (audioContext) {
+        audioContext.close();
+    }
+
+    if (ws) {
+        ws.close();
+    }
+
+    if (localStream) {
+        localStream.getTracks().forEach((track) => track.stop());
+    }
+
+    Object.values(peerConnections).forEach((pc) => pc.close());
 });
 </script>
 
 <style scoped>
-video::-webkit-media-controls {
-    display: none !important;
+.klivechat-shell {
+    min-height: 100vh;
+    position: relative;
+    overflow: hidden;
+    padding: 28px clamp(16px, 3vw, 32px) 40px;
+    background: linear-gradient(180deg, #201f20 0%, #161616 100%);
 }
 
-/* Grid Layout Styling */
-.participant-grid {
+.klivechat-shell::before,
+.klivechat-shell::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.klivechat-shell::before {
+    background-image: linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+    background-size: 56px 56px;
+    opacity: 0.06;
+}
+
+.klivechat-shell::after {
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.28));
+}
+
+.klivechat-grid {
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(rgba(0, 0, 0, 0.16) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 0, 0, 0.16) 1px, transparent 1px);
+    background-size: 22px 22px;
+    opacity: 0.05;
+    pointer-events: none;
+}
+
+.klivechat-aurora {
+    position: absolute;
+    inset: -18% auto auto -10%;
+    width: 40vw;
+    height: 40vw;
+    min-width: 320px;
+    min-height: 320px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(77, 158, 57, 0.12) 0%, rgba(77, 158, 57, 0.04) 30%, transparent 70%);
+    filter: blur(22px);
+    pointer-events: none;
+}
+
+.klivechat-frame {
+    position: relative;
+    z-index: 1;
+    width: min(1500px, 100%);
+    margin: 0 auto;
     display: grid;
-    gap: 15px;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    align-items: start;
+    gap: 18px;
 }
 
-.participant-grid.has-focus {
-    /* Switch to flex wrap so the focused one takes the top row, rest wrap below */
+.panel {
+    background: rgba(22, 22, 22, 0.94);
+    border: 1px solid #2e2e2e;
+    border-radius: 22px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.hero-panel,
+.link-panel,
+.controls-panel,
+.roster-panel {
+    padding: 20px;
+}
+
+.eyebrow {
+    color: #4d9e39;
+    font-size: 0.74rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+}
+
+.hero-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.hero-header h1,
+.panel-top h2 {
+    margin: 0;
+    color: #f6fff3;
+    font-size: clamp(2rem, 4vw, 3.2rem);
+    line-height: 1.05;
+}
+
+.hero-header p,
+.panel-note,
+.link-meta,
+.participant-state {
+    color: #969696;
+}
+
+.hero-header p {
+    margin-top: 10px;
+    max-width: 58rem;
+    font-size: 1rem;
+}
+
+.room-id-badge {
+    align-self: center;
+    padding: 10px 12px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.18);
+    border: 1px solid #2e2e2e;
+    color: #4d9e39;
+    font-size: 0.78rem;
+    letter-spacing: 0.18em;
+    white-space: nowrap;
+}
+
+.status-row {
     display: flex;
     flex-wrap: wrap;
-    justify-content: center;
-    align-items: center;
+    gap: 10px;
+    margin-top: 18px;
 }
 
-.participant-card {
-    background: rgba(255, 255, 255, 0.05);
-    padding: 15px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.3s ease;
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border-radius: 999px;
+    border: 1px solid #2e2e2e;
+    background: rgba(0, 0, 0, 0.18);
+    color: #4d9e39;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.status-pill--active {
+    color: #ffffff;
+    border-color: #ffffff;
+    box-shadow: 0 0 5px rgba(255, 245, 245, 0.5);
+}
+
+.panel-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.panel-note {
+    padding-top: 6px;
+    font-size: 0.78rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.link-stack {
+    display: grid;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.link-input {
     width: 100%;
     box-sizing: border-box;
+    border: none;
+    background: #1d1d1d;
+    color: #4d9e39;
+    border-radius: 25px;
+    padding: 7px 12px;
+    font-family: 'Roboto';
+    font-size: 20px;
+    outline: none;
+    transition: 0.4s;
+}
+
+.link-input:hover,
+.link-input:focus {
+    border-bottom: 4px solid #4d9e39;
+}
+
+.link-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 0.88rem;
+}
+
+.ghost-button,
+.control-tile {
+    border: 2px solid #2e2e2e;
+    border-radius: 16px;
+    font: inherit;
+    cursor: pointer;
+    transition: background-color 0.2s cubic-bezier(0.19, 1, 0.22, 1), border 1s cubic-bezier(0.19, 1, 0.22, 1), color 0.6s cubic-bezier(0.19, 1, 0.22, 1), transform 0.2s ease;
+    user-select: none;
+}
+
+.ghost-button {
+    min-height: 38px;
+    padding: 0 14px;
+    letter-spacing: 0.2125rem;
+    line-height: 1;
+    text-transform: uppercase;
+    background: transparent;
+    color: #4d9e39;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ghost-button:hover,
+.control-tile:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-color: #fff;
+    box-shadow: 0 0 5px rgba(255, 245, 245, 0.8);
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+.control-strip {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    margin-top: 16px;
+}
+
+.control-tile {
+    min-height: 128px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 18px;
+    background: rgba(0, 0, 0, 0.12);
+    color: #4d9e39;
+}
+
+.control-tile.active {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: #fff;
+    color: #fff;
+}
+
+.control-tile.danger {
+    color: #cc3333;
+}
+
+.control-title {
+    color: inherit;
+    font-size: 1rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.control-copy {
+    font-size: 0.86rem;
+    line-height: 1.45;
+    text-align: left;
+}
+
+.control-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 68px;
+    padding: 7px 10px;
+    border-radius: 999px;
+    background: transparent;
+    border: 1px solid #2e2e2e;
+    color: #4d9e39;
+    font-size: 0.74rem;
+    letter-spacing: 0.12em;
+}
+
+.participant-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+    align-items: start;
+    margin-top: 16px;
 }
 
 .participant-grid.has-focus .participant-card:not(.focused) {
-    flex: 0 1 200px;
-    max-width: 250px;
-    padding: 10px;
-    order: 2; /* appear after the focused video */
+    opacity: 0.8;
+}
+
+.participant-card {
+    padding: 16px;
+    border-radius: 22px;
+    border: 1px solid #2e2e2e;
+    background: rgba(22, 22, 22, 0.96);
+    cursor: pointer;
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
 }
 
 .participant-card:hover {
-    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-2px);
+    border-color: #fff;
 }
 
 .participant-card.focused {
-    flex: 1 1 100% !important; /* Take full top row */
-    max-width: 100% !important;
-    background: transparent !important;
-    border: none !important;
-    order: 1; /* Always first */
-    padding: 0;
-    margin-bottom: 20px;
+    grid-column: 1 / -1;
+    border-color: #fff;
+    box-shadow: 0 0 5px rgba(255, 245, 245, 0.8);
+}
+
+.participant-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.participant-name {
+    color: #fff;
+    font-size: 0.98rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.participant-state {
+    margin-top: 4px;
+    font-size: 0.76rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.signal-meter {
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid #2e2e2e;
+}
+
+.media-frame {
+    overflow: hidden;
+    border-radius: 18px;
+    background: radial-gradient(circle at top, rgba(77, 158, 57, 0.08), rgba(0, 0, 0, 0.85));
+    border: 1px solid #2e2e2e;
 }
 
 .participant-video {
+    display: block;
     width: 100%;
-    border-radius: 4px;
-    max-height: 200px;
+    min-height: 240px;
+    max-height: 72vh;
     object-fit: cover;
-    transition: all 0.3s ease;
     background: transparent;
 }
 
 .participant-card.focused .participant-video {
-    max-height: 75vh;
-    height: 75vh;
-    object-fit: contain; /* Show entire camera/screen feed correctly scaled */
+    min-height: 50vh;
+    object-fit: contain;
+}
+
+.empty-room {
+    margin-top: 16px;
+    padding: 14px 16px;
+    border-radius: 18px;
+    border: 1px dashed #2e2e2e;
+    background: rgba(0, 0, 0, 0.16);
+    color: #969696;
+}
+
+@media (max-width: 920px) {
+    .hero-header,
+    .panel-top,
+    .link-meta {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .room-id-badge {
+        align-self: flex-start;
+    }
+
+    .participant-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 620px) {
+    .klivechat-shell {
+        padding-inline: 12px;
+    }
+
+    .hero-panel,
+    .link-panel,
+    .controls-panel,
+    .roster-panel {
+        padding: 18px;
+    }
+
+    .control-tile {
+        min-height: 112px;
+    }
+
+    .participant-video {
+        min-height: 180px;
+    }
 }
 </style>

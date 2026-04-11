@@ -127,7 +127,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
+import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 
 // State
 const currentCommand = ref('');
@@ -141,9 +142,7 @@ const outputContainer = ref(null);
 const inputField = ref(null);
 
 // Constants
-const API_BASE = 'https://klive.dev';
 const POLL_INTERVAL = 500; // Poll every 500ms for command status
-const AUTO_SCROLL_THRESHOLD = 100; // pixels from bottom
 
 // Computed
 const filteredHistory = computed(() => {
@@ -165,14 +164,7 @@ async function executeCommand() {
 
     try {
         // Send command to backend
-        const response = await fetch(`${API_BASE}/admin/terminal/execute`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'text/plain',
-                'Authorization': `Bearer ${await getAuthToken()}`
-            },
-            body: command
-        });
+        const response = await RequestPOSTFromKliveAPI('/admin/terminal/execute', command, false, false);
 
         if (!response.ok) {
             throw new Error(`API error: ${response.statusText}`);
@@ -235,12 +227,7 @@ async function pollCommandStatus(commandId, executionObj) {
         await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
 
         try {
-            const response = await fetch(`${API_BASE}/admin/terminal/status?commandId=${commandId}`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${await getAuthToken()}`
-                }
-            });
+            const response = await RequestGETFromKliveAPI(`/admin/terminal/status?commandId=${encodeURIComponent(commandId)}`, false, false);
 
             if (response.ok) {
                 const data = await response.json();
@@ -270,12 +257,7 @@ async function pollCommandStatus(commandId, executionObj) {
 
 async function loadCommandHistory() {
     try {
-        const response = await fetch(`${API_BASE}/admin/terminal/history?limit=50`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${await getAuthToken()}`
-            }
-        });
+        const response = await RequestGETFromKliveAPI('/admin/terminal/history?limit=50', false, false);
 
         if (response.ok) {
             commandHistory.value = await response.json();
@@ -295,12 +277,7 @@ async function clearHistory() {
     if (!confirm('Are you sure you want to clear command history?')) return;
 
     try {
-        await fetch(`${API_BASE}/admin/terminal/clear`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${await getAuthToken()}`
-            }
-        });
+        await RequestPOSTFromKliveAPI('/admin/terminal/clear', '', false, false);
 
         commandHistory.value = [];
         inputField.value?.focus();
@@ -371,11 +348,6 @@ function formatExecutionTime(execution) {
     }
 
     return `${Math.round((end - start))}ms`;
-}
-
-async function getAuthToken() {
-    // Get token from localStorage or auth system
-    return localStorage.getItem('auth_token') || '';
 }
 
 function saveCommandHistory() {

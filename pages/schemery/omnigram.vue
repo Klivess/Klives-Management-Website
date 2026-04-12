@@ -87,8 +87,13 @@
                             <input v-model="onboardForm.password" type="password" placeholder="Instagram password" autocomplete="new-password" required />
                         </label>
 
+                        <label class="toggle-row">
+                            <input v-model="onboardForm.includeLiveVerification" type="checkbox" />
+                            <span>Run live verification immediately after save</span>
+                        </label>
+
                         <small class="field-helper">
-                            Uses /omnigram/accounts/add and returns live verification details from backend.
+                            Uses /omnigram/accounts/add. Keep live verification off for faster onboarding, then use Retry Verification when ready.
                         </small>
 
                         <div class="form-actions">
@@ -388,17 +393,20 @@
 
                         <div
                             class="account-auth-debug"
-                            v-if="account.LastAuthenticationError || account.LastAuthenticationGuidance"
+                            v-if="accountNeedsVerificationDetails(account)"
                         >
+                            <p>
+                                Verification state: {{ accountVerificationStateLabel(account) }}
+                            </p>
                             <p v-if="account.LastAuthenticationError">
                                 Auth error: {{ account.LastAuthenticationError }}
                             </p>
-                            <p v-if="account.LastAuthenticationGuidance">
-                                Guidance: {{ account.LastAuthenticationGuidance }}
+                            <p v-if="accountVerificationGuidance(account)">
+                                Guidance: {{ accountVerificationGuidance(account) }}
                             </p>
 
                             <button
-                                v-if="accountStatusLabel(account.Status) === 'Needs Verification'"
+                                v-if="canRetryVerification(account.Status) || account.CheckpointRequired"
                                 type="button"
                                 class="inline-link-btn"
                                 :disabled="liveBusy"
@@ -603,6 +611,7 @@ interface MemeScraperNiche {
 interface OmniGramOnboardForm {
     username: string;
     password: string;
+    includeLiveVerification: boolean;
 }
 
 interface OmniGramSettingsForm {
@@ -649,6 +658,9 @@ interface OmniGramAddAccountResponse {
     CheckpointRequired?: boolean | null;
     LastAuthenticationError?: string | null;
     LastAuthenticationGuidance?: string | null;
+    VerificationState?: string | null;
+    VerificationGuidance?: string | null;
+    LiveVerificationRequested?: boolean | null;
     LiveVerification?: unknown | null;
 }
 
@@ -723,7 +735,8 @@ let refreshInterval: ReturnType<typeof setInterval> | null = null;
 function createDefaultOnboardForm(): OmniGramOnboardForm {
     return {
         username: '',
-        password: ''
+        password: '',
+        includeLiveVerification: false
     };
 }
 
@@ -887,6 +900,15 @@ function extractLiveVerificationError(liveVerification: unknown): string | null 
     return asNonEmptyText(payload.error) || asNonEmptyText(payload.Error);
 }
 
+function extractLiveVerificationGuidance(liveVerification: unknown): string | null {
+    if (!liveVerification || typeof liveVerification !== 'object') {
+        return null;
+    }
+
+    const payload = liveVerification as Record<string, unknown>;
+    return asNonEmptyText(payload.guidance) || asNonEmptyText(payload.Guidance);
+}
+
 function findAccountByUsername(username: string) {
     const normalized = username.trim().toLowerCase();
     if (!normalized) return undefined;
@@ -1016,6 +1038,47 @@ function accountStatusClass(status: unknown) {
     if (label === 'Auth Failed') return 'status-danger';
     if (label === 'Disabled' || label === 'Needs Verification') return 'status-warn';
     return 'status-muted';
+}
+
+function canRetryVerification(status: unknown): boolean {
+    const label = accountStatusLabel(status);
+    return label === 'Needs Verification' || label === 'Auth Failed';
+}
+
+function accountVerificationStateLabel(account: OmniGramAccount): string {
+    if (Boolean(account.CheckpointRequired)) return 'CheckpointRequired';
+
+    const label = accountStatusLabel(account.Status);
+    if (label === 'Active') return 'Verified';
+    if (label === 'Needs Verification') return 'NeedsVerification';
+    if (label === 'Auth Failed') return 'AuthFailed';
+    return label.replace(/\s+/g, '');
+}
+
+function accountVerificationGuidance(account: OmniGramAccount): string | null {
+    const stored = asNonEmptyText(account.LastAuthenticationGuidance);
+    if (stored) return stored;
+
+    if (Boolean(account.CheckpointRequired)) {
+        return 'Approve the Instagram challenge in the app, then retry verification.';
+    }
+
+    const label = accountStatusLabel(account.Status);
+    if (label === 'Needs Verification') {
+        return 'Run Retry Verification to perform a live check when the account is ready.';
+    }
+
+    if (label === 'Auth Failed') {
+        return 'Update credentials and retry onboarding or live verification.';
+    }
+
+    return null;
+}
+
+function accountNeedsVerificationDetails(account: OmniGramAccount): boolean {
+    return Boolean(account.LastAuthenticationError)
+        || Boolean(accountVerificationGuidance(account))
+        || accountVerificationStateLabel(account) !== 'Verified';
 }
 
 function postStatusLabel(status: unknown): string {
@@ -1211,12 +1274,18 @@ async function submitOnboardAccount() {
 
     try {
         const requestedUsername = onboardForm.value.username.trim();
+        const includeLiveVerification = onboardForm.value.includeLiveVerification;
         const payload = {
             username: requestedUsername,
             password: onboardForm.value.password
         };
 
-        const response = await RequestPOSTFromKliveAPI('/omnigram/accounts/add', JSON.stringify(payload), false, true);
+        const response = await RequestPOSTFromKliveAPI(
+            `/omnigram/accounts/add?includeLiveVerification=${includeLiveVerification ? 'true' : 'false'}`,
+            JSON.stringify(payload),
+            false,
+            true
+        );
 
         if (!response.ok) {
             throw new Error(await readApiError(response));
@@ -1224,6 +1293,7 @@ async function submitOnboardAccount() {
 
         const rawData = await response.json().catch(() => ({}));
         const data = (rawData && typeof rawData === 'object' ? rawData : {}) as OmniGramAddAccountResponse;
+        const liveVerificationRequested = Boolean(data.LiveVerificationRequested ?? includeLiveVerification);
         const hasLiveVerification = data.LiveVerification !== null && data.LiveVerification !== undefined;
         const liveVerificationError = extractLiveVerificationError(data.LiveVerification);
         const checkpointRequired = Boolean(data.CheckpointRequired)
@@ -1239,13 +1309,23 @@ async function submitOnboardAccount() {
         const onboardingGuidance = asNonEmptyText(data.LastAuthenticationGuidance)
             || asNonEmptyText(accountFromList?.LastAuthenticationGuidance)
             || 'Open Instagram app, approve the login challenge, and confirm "This was me".';
+        const verificationState = asNonEmptyText(data.VerificationState)
+            || (accountFromList && accountStatusLabel(accountFromList.Status) === 'Active' && !accountFromList.CheckpointRequired
+                ? 'Verified'
+                : checkpointRequired
+                    ? 'CheckpointRequired'
+                    : 'NeedsVerification');
+        const verificationGuidance = asNonEmptyText(data.VerificationGuidance)
+            || extractLiveVerificationGuidance(data.LiveVerification)
+            || onboardingGuidance;
         const onboardingAuthError = asNonEmptyText(data.LastAuthenticationError)
             || asNonEmptyText(liveVerificationError)
             || asNonEmptyText(accountFromList?.LastAuthenticationError);
 
         if (checkpointRequired) {
             const checkpointMessage = [
-                onboardingGuidance,
+                `State: ${verificationState}`,
+                verificationGuidance,
                 'Open Instagram app and confirm "This was me", then retry live verification.',
                 onboardingAuthError ? `Instagram error: ${onboardingAuthError}` : ''
             ].filter(Boolean).join('\n\n');
@@ -1281,12 +1361,55 @@ async function submitOnboardAccount() {
             return;
         }
 
+        if (verificationState !== 'Verified') {
+            const pendingMessage = [
+                `State: ${verificationState}`,
+                verificationGuidance,
+                onboardingAuthError ? `Instagram error: ${onboardingAuthError}` : '',
+                liveVerificationRequested
+                    ? 'Live verification ran but the account still needs follow-up.'
+                    : 'Live verification was skipped during onboarding. Use Retry Verification when ready.'
+            ].filter(Boolean).join('\n\n');
+
+            const action = await Swal.fire({
+                icon: 'info',
+                title: 'Account saved, verification pending',
+                text: pendingMessage,
+                confirmButtonText: 'Retry',
+                showCancelButton: true,
+                cancelButtonText: 'Later',
+                confirmButtonColor: '#f97316',
+                cancelButtonColor: '#334155',
+                background: '#15171d',
+                color: '#ffffff'
+            });
+
+            if (action.isConfirmed) {
+                if (!onboardedAccountId) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Retry unavailable',
+                        text: 'Managed account was saved but account id could not be resolved. Refresh and retry from Managed Accounts.',
+                        confirmButtonColor: '#f97316',
+                        background: '#15171d',
+                        color: '#ffffff'
+                    });
+                } else {
+                    await retryVerificationForAccount(onboardedAccountId, accountFromList?.Username || requestedUsername);
+                }
+            }
+
+            return;
+        }
+
         Swal.fire({
             icon: 'success',
             title: 'Account onboarded',
-            text: hasLiveVerification
-                ? 'Managed account onboarded. Backend returned live verification payload.'
-                : 'Managed account onboarded successfully.',
+            text: liveVerificationRequested
+                ? (hasLiveVerification
+                    ? 'Managed account onboarded and live verification payload was captured.'
+                    : 'Managed account onboarded and live verification was requested.')
+                : 'Managed account onboarded. Live verification was skipped for reliability; run Retry Verification when ready.',
             confirmButtonColor: '#22c55e',
             background: '#15171d',
             color: '#ffffff'

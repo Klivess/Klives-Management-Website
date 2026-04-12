@@ -151,8 +151,13 @@
                             <input v-model.trim="onboardForm.autonomousCaptionPrompt" type="text" placeholder="Write a short tumblr caption with hashtags" />
                         </label>
 
+                        <label class="toggle-row">
+                            <input v-model="onboardForm.includeLiveVerification" type="checkbox" />
+                            <span>Run live verification immediately after save</span>
+                        </label>
+
                         <small class="field-helper">
-                            Uses POST /omnitumblr/accounts/add and performs live Tumblr verification from backend.
+                            Uses POST /omnitumblr/accounts/add. Keep live verification off for faster onboarding, then retry verification when ready.
                         </small>
 
                         <div class="form-actions">
@@ -422,8 +427,20 @@
                             <button type="button" class="inline-link-btn" @click="setLiveAccount(account.AccountId)">Set Live Target</button>
                         </div>
 
-                        <div class="account-auth-debug" v-if="account.LastAuthenticationError">
-                            <p>Auth error: {{ account.LastAuthenticationError }}</p>
+                        <div class="account-auth-debug" v-if="accountNeedsVerificationDetails(account)">
+                            <p>Verification state: {{ accountVerificationStateLabel(account) }}</p>
+                            <p v-if="account.LastAuthenticationError">Auth error: {{ account.LastAuthenticationError }}</p>
+                            <p v-if="accountVerificationGuidance(account)">Guidance: {{ accountVerificationGuidance(account) }}</p>
+
+                            <button
+                                v-if="canRetryVerification(account.Status)"
+                                type="button"
+                                class="inline-link-btn"
+                                :disabled="liveBusy"
+                                @click="retryVerificationForAccount(account.AccountId, account.Email)"
+                            >
+                                {{ liveBusy ? 'Retrying...' : 'Retry Verification' }}
+                            </button>
                         </div>
                     </article>
                 </div>
@@ -695,6 +712,7 @@ interface OmniTumblrAccount {
     Status: number | string;
     LastAuthenticatedUtc?: string | null;
     LastAuthenticationError?: string | null;
+    LastAuthenticationGuidance?: string | null;
     UseMemeScraperSource?: boolean;
     PreferredMemeNiches?: string[] | null;
     AutonomousPostingEnabled?: boolean;
@@ -801,6 +819,7 @@ interface OmniTumblrOnboardForm {
     autonomousPostingIntervalMinutes: number;
     autonomousPostingRandomOffsetMinutes: number;
     autonomousCaptionPrompt: string;
+    includeLiveVerification: boolean;
 }
 
 interface OmniTumblrSettingsForm {
@@ -849,6 +868,18 @@ interface OmniTumblrOverviewFilter {
 interface DeleteResponse {
     Success?: boolean;
     success?: boolean;
+}
+
+interface OmniTumblrAddAccountResponse {
+    AccountId?: string | null;
+    Email?: string | null;
+    BlogName?: string | null;
+    LastAuthenticationError?: string | null;
+    LastAuthenticationGuidance?: string | null;
+    VerificationState?: string | null;
+    VerificationGuidance?: string | null;
+    LiveVerificationRequested?: boolean | null;
+    LiveVerification?: unknown | null;
 }
 
 const router = useRouter();
@@ -929,7 +960,8 @@ function createDefaultOnboardForm(): OmniTumblrOnboardForm {
         autonomousPostingEnabled: true,
         autonomousPostingIntervalMinutes: 240,
         autonomousPostingRandomOffsetMinutes: 30,
-        autonomousCaptionPrompt: 'Write a short tumblr caption with hashtags'
+        autonomousCaptionPrompt: 'Write a short tumblr caption with hashtags',
+        includeLiveVerification: false
     };
 }
 
@@ -1100,6 +1132,30 @@ function asText(value: unknown, fallback = 'N/A'): string {
     }
 
     return fallback;
+}
+
+function asNonEmptyText(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+}
+
+function extractLiveVerificationError(liveVerification: unknown): string | null {
+    if (!liveVerification || typeof liveVerification !== 'object') {
+        return null;
+    }
+
+    const payload = liveVerification as Record<string, unknown>;
+    return asNonEmptyText(payload.error) || asNonEmptyText(payload.Error);
+}
+
+function extractLiveVerificationGuidance(liveVerification: unknown): string | null {
+    if (!liveVerification || typeof liveVerification !== 'object') {
+        return null;
+    }
+
+    const payload = liveVerification as Record<string, unknown>;
+    return asNonEmptyText(payload.guidance) || asNonEmptyText(payload.Guidance);
 }
 
 const hasLiveSnapshot = computed(() => Boolean(liveAccountData.value));
@@ -1393,6 +1449,41 @@ function accountStatusClass(status: unknown) {
     return 'status-muted';
 }
 
+function canRetryVerification(status: unknown): boolean {
+    const label = accountStatusLabel(status);
+    return label === 'Needs Verification' || label === 'Auth Failed';
+}
+
+function accountVerificationStateLabel(account: OmniTumblrAccount): string {
+    const label = accountStatusLabel(account.Status);
+    if (label === 'Active') return 'Verified';
+    if (label === 'Needs Verification') return 'NeedsVerification';
+    if (label === 'Auth Failed') return 'AuthFailed';
+    return label.replace(/\s+/g, '');
+}
+
+function accountVerificationGuidance(account: OmniTumblrAccount): string | null {
+    const stored = asNonEmptyText(account.LastAuthenticationGuidance);
+    if (stored) return stored;
+
+    const label = accountStatusLabel(account.Status);
+    if (label === 'Needs Verification') {
+        return 'Retry live verification, then confirm account access in Tumblr if prompted.';
+    }
+
+    if (label === 'Auth Failed') {
+        return 'Recheck email/password and OAuth token credentials, then retry verification.';
+    }
+
+    return null;
+}
+
+function accountNeedsVerificationDetails(account: OmniTumblrAccount): boolean {
+    return accountStatusLabel(account.Status) !== 'Active'
+        || Boolean(account.LastAuthenticationError)
+        || Boolean(accountVerificationGuidance(account));
+}
+
 function postStatusLabel(status: unknown): string {
     const normalized = `${status ?? ''}`.replace(/[\s_-]+/g, '').toLowerCase();
     if (status === 0 || normalized === 'scheduled') return 'Scheduled';
@@ -1435,6 +1526,17 @@ function readAccountTokenSecret(account: OmniTumblrAccount): string {
 
 function getAccountById(accountId: string) {
     return accounts.value.find(account => account.AccountId === accountId);
+}
+
+function findAccountByIdentity(email: string, blogName: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedBlogName = blogName.trim().toLowerCase();
+
+    return accounts.value.find(account => {
+        const accountEmail = account.Email.trim().toLowerCase();
+        const accountBlogName = account.BlogName.trim().toLowerCase();
+        return accountEmail === normalizedEmail && accountBlogName === normalizedBlogName;
+    }) || accounts.value.find(account => account.Email.trim().toLowerCase() === normalizedEmail);
 }
 
 function setLiveAccount(accountId: string) {
@@ -1691,10 +1793,13 @@ async function submitOnboardAccount() {
     commandBusy.value = true;
 
     try {
+        const requestedEmail = onboardForm.value.email.trim();
+        const requestedBlogName = onboardForm.value.blogName.trim();
+        const includeLiveVerification = onboardForm.value.includeLiveVerification;
         const payload = {
-            email: onboardForm.value.email.trim(),
+            email: requestedEmail,
             password: onboardForm.value.password,
-            blogName: onboardForm.value.blogName.trim(),
+            blogName: requestedBlogName,
             oauthTokenKey: onboardForm.value.oauthTokenKey.trim(),
             oauthTokenSecret: onboardForm.value.oauthTokenSecret.trim(),
             useMemeScraperSource: onboardForm.value.useMemeScraperSource,
@@ -1705,19 +1810,91 @@ async function submitOnboardAccount() {
             autonomousCaptionPrompt: onboardForm.value.autonomousPostingEnabled ? onboardForm.value.autonomousCaptionPrompt : null
         };
 
-        const response = await RequestPOSTFromKliveAPI('/omnitumblr/accounts/add', JSON.stringify(payload), false, true);
+        const response = await RequestPOSTFromKliveAPI(
+            `/omnitumblr/accounts/add?includeLiveVerification=${includeLiveVerification ? 'true' : 'false'}`,
+            JSON.stringify(payload),
+            false,
+            true
+        );
 
         if (!response.ok) {
             throw new Error(await readApiError(response));
         }
 
+        const rawData = await response.json().catch(() => ({}));
+        const data = (rawData && typeof rawData === 'object' ? rawData : {}) as OmniTumblrAddAccountResponse;
+        const liveVerificationRequested = Boolean(data.LiveVerificationRequested ?? includeLiveVerification);
+        const hasLiveVerification = data.LiveVerification !== null && data.LiveVerification !== undefined;
+        const liveVerificationError = extractLiveVerificationError(data.LiveVerification);
+
         resetOnboardForm();
         await loadAllPanels(false);
+
+        const accountFromResponse = asNonEmptyText(data.AccountId);
+        const accountFromList = accountFromResponse
+            ? getAccountById(accountFromResponse)
+            : findAccountByIdentity(requestedEmail, requestedBlogName);
+        const onboardedAccountId = accountFromList?.AccountId || accountFromResponse;
+        const verificationState = asNonEmptyText(data.VerificationState)
+            || (accountFromList && accountStatusLabel(accountFromList.Status) === 'Active' ? 'Verified' : 'NeedsVerification');
+        const verificationGuidance = asNonEmptyText(data.VerificationGuidance)
+            || extractLiveVerificationGuidance(data.LiveVerification)
+            || asNonEmptyText(data.LastAuthenticationGuidance)
+            || (accountFromList ? accountVerificationGuidance(accountFromList) : null)
+            || 'Retry live verification once Tumblr credentials are confirmed.';
+        const onboardingAuthError = asNonEmptyText(data.LastAuthenticationError)
+            || asNonEmptyText(liveVerificationError)
+            || asNonEmptyText(accountFromList?.LastAuthenticationError);
+
+        if (verificationState !== 'Verified') {
+            const pendingMessage = [
+                `State: ${verificationState}`,
+                verificationGuidance,
+                onboardingAuthError ? `Tumblr error: ${onboardingAuthError}` : '',
+                liveVerificationRequested
+                    ? 'Live verification ran but the account still needs follow-up.'
+                    : 'Live verification was skipped during onboarding. Use Retry Verification when ready.'
+            ].filter(Boolean).join('\n\n');
+
+            const action = await Swal.fire({
+                icon: 'info',
+                title: 'Account saved, verification pending',
+                text: pendingMessage,
+                confirmButtonText: 'Retry',
+                showCancelButton: true,
+                cancelButtonText: 'Later',
+                confirmButtonColor: '#1d9bf0',
+                cancelButtonColor: '#334155',
+                background: '#15171d',
+                color: '#ffffff'
+            });
+
+            if (action.isConfirmed) {
+                if (!onboardedAccountId) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Retry unavailable',
+                        text: 'Managed account was saved but account id could not be resolved. Refresh and retry from Managed Accounts.',
+                        confirmButtonColor: '#1d9bf0',
+                        background: '#15171d',
+                        color: '#ffffff'
+                    });
+                } else {
+                    await retryVerificationForAccount(onboardedAccountId, accountFromList?.Email || requestedEmail);
+                }
+            }
+
+            return;
+        }
 
         Swal.fire({
             icon: 'success',
             title: 'Managed account onboarded',
-            text: 'OmniTumblr accepted the account and returned verification payload.',
+            text: liveVerificationRequested
+                ? (hasLiveVerification
+                    ? 'Managed account onboarded and live verification payload was captured.'
+                    : 'Managed account onboarded and live verification was requested.')
+                : 'Managed account onboarded. Live verification was skipped for reliability; run Retry Verification when ready.',
             confirmButtonColor: '#22c55e',
             background: '#15171d',
             color: '#ffffff'
@@ -1733,6 +1910,53 @@ async function submitOnboardAccount() {
         });
     } finally {
         commandBusy.value = false;
+    }
+}
+
+async function retryVerificationForAccount(accountId: string, email?: string) {
+    liveBusy.value = true;
+    liveAccountForm.value.accountId = accountId;
+
+    try {
+        await fetchLiveAccountPayload(accountId);
+        await loadAllPanels(false);
+
+        const refreshedAccount = getAccountById(accountId);
+        const status = refreshedAccount ? accountStatusLabel(refreshedAccount.Status) : 'Unknown';
+        const liveVerificationError = extractLiveVerificationError(liveAccountData.value);
+        const liveVerificationGuidance = extractLiveVerificationGuidance(liveAccountData.value)
+            || (refreshedAccount ? accountVerificationGuidance(refreshedAccount) : null)
+            || 'Retry in a moment. If this persists, re-check Tumblr credentials and blog mapping.';
+        const verified = status === 'Active' && !liveVerificationError;
+        const verificationState = refreshedAccount
+            ? accountVerificationStateLabel(refreshedAccount)
+            : 'NeedsVerification';
+
+        Swal.fire({
+            icon: verified ? 'success' : 'info',
+            title: verified ? 'Verification complete' : 'Verification still pending',
+            text: verified
+                ? `${email || refreshedAccount?.Email || 'Managed account'} is now authenticated and live data was refreshed.`
+                : [
+                    `State: ${status === 'Unknown' ? 'NeedsVerification' : verificationState}`,
+                    liveVerificationGuidance,
+                    liveVerificationError ? `Live error: ${liveVerificationError}` : ''
+                ].filter(Boolean).join('\n\n'),
+            confirmButtonColor: verified ? '#22c55e' : '#1d9bf0',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+    } catch (error) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Retry failed',
+            text: error instanceof Error ? error.message : 'Unable to complete live verification retry.',
+            confirmButtonColor: '#ef4444',
+            background: '#15171d',
+            color: '#ffffff'
+        });
+    } finally {
+        liveBusy.value = false;
     }
 }
 

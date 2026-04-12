@@ -1,45 +1,49 @@
 <template>
   <div class="agent-page">
-    <div class="agent-header">
-      <div class="agent-kicker">KLIVES MANAGEMENT :: KLIVEAGENT</div>
-      <h1>KLIVEAGENT COMMAND CENTRE</h1>
-      <p>Direct operations interface for KliveAgent. Run missions, stream outputs, and inspect model context, prompt data, and execution traces.</p>
-    </div>
+    <KMInfoGrid columns="1" rows="1" rowHeight="auto">
+      <KMInfoBox caption="KliveAgent Overview">
+        <div class="agent-header">
+          <div class="agent-kicker">KLIVES MANAGEMENT :: KLIVEAGENT</div>
+          <h1>KLIVEAGENT COMMAND CENTRE</h1>
+          <p>Direct operations interface for KliveAgent. Run missions, stream outputs, and inspect model context, prompt data, and execution traces.</p>
+        </div>
 
-    <div class="ops-strip">
-      <div class="ops-block">
-        <span class="ops-label">SERVICE HEALTH</span>
-        <div class="health-dots" v-if="serviceHealth.length > 0">
-          <span
-            v-for="service in serviceHealth"
-            :key="service.name"
-            class="health-dot"
-            :class="service.isActive ? 'dot-online' : 'dot-offline'"
-            :title="service.name + ' :: ' + (service.isActive ? 'ONLINE' : 'OFFLINE')"
-          ></span>
-        </div>
-        <div class="health-dots" v-else>
-          <span class="health-dot dot-unknown"></span>
-        </div>
-        <span class="ops-value" v-if="serviceHealth.length > 0">
-          <span class="clr-green">{{ onlineServiceCount }}</span>/<span>{{ serviceHealth.length }}</span> ONLINE
-        </span>
-        <span class="ops-value" v-else>NO DATA</span>
-      </div>
+        <div class="ops-strip">
+          <div class="ops-block">
+            <span class="ops-label">SERVICE HEALTH</span>
+            <div class="health-dots" v-if="serviceHealth.length > 0">
+              <span
+                v-for="service in serviceHealth"
+                :key="service.name"
+                class="health-dot"
+                :class="service.isActive ? 'dot-online' : 'dot-offline'"
+                :title="service.name + ' :: ' + (service.isActive ? 'ONLINE' : 'OFFLINE')"
+              ></span>
+            </div>
+            <div class="health-dots" v-else>
+              <span class="health-dot dot-unknown"></span>
+            </div>
+            <span class="ops-value" v-if="serviceHealth.length > 0">
+              <span class="clr-green">{{ onlineServiceCount }}</span>/<span>{{ serviceHealth.length }}</span> ONLINE
+            </span>
+            <span class="ops-value" v-else>NO DATA</span>
+          </div>
 
-      <div class="ops-block tags">
-        <span class="ops-label">AGENT STATUS</span>
-        <div class="tag-row">
-          <span class="tag" :class="isSending ? 'tag-active' : 'tag-idle'">{{ isSending ? 'ACTIVE' : 'IDLE' }}</span>
-          <span class="tag" :class="enableStreaming ? 'tag-active' : 'tag-idle'">STREAM {{ enableStreaming ? 'ON' : 'OFF' }}</span>
-          <span class="tag" :class="allowScriptExecution ? 'tag-warning' : 'tag-idle'">SCRIPTS {{ allowScriptExecution ? 'ENABLED' : 'BLOCKED' }}</span>
-          <span class="tag" :class="(lastResult && lastResult.usedFallback) ? 'tag-error' : 'tag-active'">{{ (lastResult && lastResult.usedFallback) ? 'FALLBACK' : 'DIRECT' }}</span>
+          <div class="ops-block tags">
+            <span class="ops-label">AGENT STATUS</span>
+            <div class="tag-row">
+              <span class="tag" :class="isSending ? 'tag-active' : 'tag-idle'">{{ isSending ? 'ACTIVE' : 'IDLE' }}</span>
+              <span class="tag" :class="enableStreaming ? 'tag-active' : 'tag-idle'">STREAM {{ enableStreaming ? 'ON' : 'OFF' }}</span>
+              <span class="tag" :class="allowScriptExecution ? 'tag-warning' : 'tag-idle'">SCRIPTS {{ allowScriptExecution ? 'ENABLED' : 'BLOCKED' }}</span>
+              <span class="tag" :class="(lastResult && lastResult.usedFallback) ? 'tag-error' : 'tag-active'">{{ (lastResult && lastResult.usedFallback) ? 'FALLBACK' : 'DIRECT' }}</span>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      </KMInfoBox>
+    </KMInfoGrid>
 
     <div class="agent-layout">
-      <section class="panel conversation-panel">
+      <KMInfoBox caption="Conversation" class="panel conversation-panel">
         <div class="panel-header">
           <h2>Conversation</h2>
           <div class="status-row">
@@ -94,14 +98,20 @@
           </div>
 
           <div class="composer-actions">
-            <button class="send" @click="sendMission" :disabled="isSending || !goalInput.trim()">{{ isSending ? 'Running...' : 'Send Mission' }}</button>
-            <button class="secondary" @click="clearConversation" :disabled="isSending">Clear Chat</button>
-            <button class="secondary" @click="loadRecentDecisions" :disabled="isSending || loadingDecisions">{{ loadingDecisions ? 'Loading...' : 'Refresh Decisions' }}</button>
+            <div class="action-button" :class="{ disabled: isSending || !goalInput.trim() }">
+              <KMButton :message="isSending ? 'Running...' : 'Send Mission'" @click="sendMission" />
+            </div>
+            <div class="action-button" :class="{ disabled: isSending }">
+              <KMButton message="Clear Chat" @click="clearConversation" />
+            </div>
+            <div class="action-button" :class="{ disabled: isSending || loadingDecisions }">
+              <KMButton :message="loadingDecisions ? 'Loading...' : 'Refresh Decisions'" @click="loadRecentDecisions" />
+            </div>
           </div>
         </div>
-      </section>
+      </KMInfoBox>
 
-      <section class="panel telemetry-panel">
+      <KMInfoBox caption="LLM Telemetry" class="panel telemetry-panel">
         <div class="panel-header">
           <h2>LLM Telemetry</h2>
           <span class="subtitle">Context, prompt, and action traces</span>
@@ -142,6 +152,7 @@
 
           <div class="telemetry-block">
             <h3>Context Used</h3>
+            <p class="context-line"><strong>Profile Scope:</strong> {{ lastResult.contextUsed?.requestingProfileScope || 'N/A' }}</p>
             <p class="context-line"><strong>Goal:</strong> {{ lastResult.contextUsed?.goal || 'N/A' }}</p>
             <p class="context-line"><strong>User Context:</strong> {{ lastResult.contextUsed?.userContext || 'None' }}</p>
 
@@ -208,7 +219,7 @@
             <span class="decision-meta">{{ formatDate(decision.requestedAtUtc) }}</span>
           </button>
         </div>
-      </section>
+      </KMInfoBox>
     </div>
   </div>
 </template>
@@ -219,19 +230,29 @@ definePageMeta({ layout: 'navbar' });
 
 <script>
 import { useCookie } from '#imports';
+import KMButton from '~/components/KMButton.vue';
+import KMInfoBox from '~/components/KMInfoBox.vue';
+import KMInfoGrid from '~/components/KMInfoGrid.vue';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import Swal from 'sweetalert2';
 
 export default {
+  components: {
+    KMButton,
+    KMInfoBox,
+    KMInfoGrid
+  },
   data() {
     return {
       goalInput: '',
       contextInput: '',
+      conversationId: '',
       allowScriptExecution: true,
       notifyOnCompletion: false,
       enableStreaming: true,
       isSending: false,
       streamStatus: '',
+      streamTimeoutMs: 190000,
       loadingDecisions: false,
       serviceHealth: [],
       healthRefreshHandle: null,
@@ -246,6 +267,7 @@ export default {
     }
   },
   mounted() {
+    this.initializeConversationId();
     this.loadRecentDecisions();
     this.loadServiceHealth();
     this.healthRefreshHandle = setInterval(() => {
@@ -267,6 +289,7 @@ export default {
       const payload = {
         goal: this.goalInput.trim(),
         context: this.contextInput.trim(),
+        conversationId: this.conversationId,
         allowScriptExecution: this.allowScriptExecution,
         notifyKlivesOnCompletion: this.notifyOnCompletion
       };
@@ -331,15 +354,32 @@ export default {
 
     async executeMissionStream(payload, assistantMessage) {
       const password = this.getPassword();
-      const response = await fetch('https://klive.dev/kliveagent/brain/execute-stream', {
-        method: 'POST',
-        mode: 'cors',
-        headers: {
-          Authorization: password,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
+      const controller = new AbortController();
+      const timeoutHandle = setTimeout(() => {
+        controller.abort();
+      }, this.streamTimeoutMs);
+
+      let response;
+      try {
+        response = await fetch('https://klive.dev/kliveagent/brain/execute-stream', {
+          method: 'POST',
+          mode: 'cors',
+          headers: {
+            Authorization: password,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+      } catch (error) {
+        if (error?.name === 'AbortError') {
+          throw new Error(`KliveAgent stream timed out after ${Math.round(this.streamTimeoutMs / 1000)} seconds.`);
+        }
+
+        throw error;
+      } finally {
+        clearTimeout(timeoutHandle);
+      }
 
       if (!response.ok || !response.body) {
         throw new Error(`Stream request failed (${response.status})`);
@@ -349,6 +389,7 @@ export default {
       const decoder = new TextDecoder();
       let buffer = '';
       let doneReceived = false;
+      const previousDecisionId = this.lastResult?.decisionId || '';
 
       this.streamStatus = 'Streaming tokens...';
 
@@ -381,7 +422,14 @@ export default {
         assistantMessage.raw = this.lastResult.finalResponse || this.lastResult.summary || '[No response generated]';
         assistantMessage.formatted = this.formatAgentText(assistantMessage.raw);
       }
-      this.streamStatus = 'Completed';
+
+      const receivedNewResult = Boolean(this.lastResult?.decisionId) && this.lastResult.decisionId !== previousDecisionId;
+      if (doneReceived || receivedNewResult || assistantMessage.raw.trim().length > 0) {
+        this.streamStatus = 'Completed';
+      } else {
+        this.streamStatus = 'Stream ended before completion signal.';
+      }
+
       await this.loadRecentDecisions();
     },
 
@@ -394,10 +442,11 @@ export default {
       const dataLines = [];
 
       for (const line of rawEvent.split('\n')) {
-        if (line.startsWith('event:')) {
-          eventName = line.slice(6).trim();
-        } else if (line.startsWith('data:')) {
-          dataLines.push(line.slice(5).trimStart());
+        const normalizedLine = line.replace(/^\uFEFF/, '');
+        if (normalizedLine.startsWith('event:')) {
+          eventName = normalizedLine.slice(6).trim();
+        } else if (normalizedLine.startsWith('data:')) {
+          dataLines.push(normalizedLine.slice(5).trimStart());
         }
       }
 
@@ -462,6 +511,34 @@ export default {
     clearConversation() {
       this.messages = [];
       this.streamStatus = '';
+      this.rotateConversationId();
+    },
+
+    initializeConversationId() {
+      if (!process.client) {
+        this.conversationId = `server-${Date.now()}`;
+        return;
+      }
+
+      const key = 'kliveagent-conversation-id';
+      const existing = localStorage.getItem(key);
+      if (existing) {
+        this.conversationId = existing;
+        return;
+      }
+
+      this.rotateConversationId();
+    },
+
+    rotateConversationId() {
+      const next = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+      this.conversationId = next;
+      if (process.client) {
+        localStorage.setItem('kliveagent-conversation-id', next);
+      }
     },
 
     async loadServiceHealth() {
@@ -509,7 +586,7 @@ export default {
           finalResponse: '',
           rawModelOutput: '',
           decision: { summary: '', shouldAct: false, confidence: 0, finalResponse: '', actions: [] },
-          contextUsed: { goal: '', userContext: '', promptUsed: '', memoryEntries: [], recentEventEntries: [], matchedRuleEntries: [] },
+          contextUsed: { requestingProfileScope: '', goal: '', userContext: '', promptUsed: '', memoryEntries: [], recentEventEntries: [], matchedRuleEntries: [] },
           actionResults: [],
           requestedAtUtc: null
         };
@@ -549,6 +626,7 @@ export default {
             : []
         },
         contextUsed: {
+          requestingProfileScope: contextRaw.RequestingProfileScope ?? contextRaw.requestingProfileScope ?? '',
           goal: contextRaw.Goal ?? contextRaw.goal ?? '',
           userContext: contextRaw.UserContext ?? contextRaw.userContext ?? '',
           promptUsed: contextRaw.PromptUsed ?? contextRaw.promptUsed ?? '',
@@ -645,28 +723,40 @@ export default {
 
 <style scoped>
 .agent-page {
-  --bg-main: #0d0d0d;
-  --bg-panel: #111111;
-  --bg-panel-2: #0f0f0f;
-  --line-main: #253325;
-  --line-soft: #242424;
-  --txt-main: #d7ddd7;
-  --txt-muted: #7f8a7f;
-  --phosphor: #00ff41;
-  --danger: #ff4444;
-  --warning: #ffb74d;
+  --bg-main: #201f20;
+  --bg-panel: #161616;
+  --bg-panel-2: #1c1c1c;
+  --line-main: #2e2e2e;
+  --line-soft: #2a2a2a;
+  --txt-main: #ffffff;
+  --txt-muted: #969696;
+  --phosphor: #4d9e39;
+  --phosphor-soft: #62ce47;
+  --danger: #d26868;
+  --warning: #d6b058;
   background: var(--bg-main);
   color: var(--txt-main);
   padding: 10px;
   min-height: calc(100vh - 88px);
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Roboto', sans-serif;
+}
+
+:deep(.infobox) {
+  background: var(--bg-panel);
+  border: 1px solid var(--line-main);
+}
+
+:deep(.caption) {
+  color: var(--txt-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 8px 10px;
 }
 
 .agent-header {
   margin-bottom: 10px;
-  padding: 12px 14px;
-  background: var(--bg-panel);
-  border: 1px solid var(--line-main);
+  padding: 8px 4px;
 }
 
 .agent-kicker {
@@ -777,8 +867,8 @@ export default {
 
 .tag-active {
   color: var(--phosphor);
-  border-color: #1f5b2d;
-  background: rgba(0, 255, 65, 0.08);
+  border-color: #3b7b2c;
+  background: rgba(77, 158, 57, 0.14);
 }
 
 .tag-idle {
@@ -787,14 +877,14 @@ export default {
 
 .tag-error {
   color: var(--danger);
-  border-color: #5e2121;
-  background: rgba(255, 68, 68, 0.08);
+  border-color: #7c3131;
+  background: rgba(210, 104, 104, 0.1);
 }
 
 .tag-warning {
   color: var(--warning);
-  border-color: #6b5523;
-  background: rgba(255, 183, 77, 0.08);
+  border-color: #71592b;
+  background: rgba(214, 176, 88, 0.12);
 }
 
 .agent-layout {
@@ -805,8 +895,8 @@ export default {
 }
 
 .panel {
-  border: 1px solid var(--line-main);
-  background: var(--bg-panel);
+  border: none;
+  background: transparent;
 }
 
 .panel-header {
@@ -851,8 +941,8 @@ export default {
 
 .status-pill.active {
   color: var(--phosphor);
-  border-color: #1f5b2d;
-  background: rgba(0, 255, 65, 0.08);
+  border-color: #3b7b2c;
+  background: rgba(77, 158, 57, 0.14);
 }
 
 .status-pill.idle {
@@ -887,7 +977,7 @@ export default {
 }
 
 .message.assistant {
-  border-left: 3px solid #66ff8f;
+  border-left: 3px solid var(--phosphor-soft);
 }
 
 .message-meta {
@@ -944,7 +1034,7 @@ export default {
   resize: vertical;
   min-height: 74px;
   border: 1px solid var(--line-main);
-  background: #0b0b0b;
+  background: #111111;
   color: var(--txt-main);
   padding: 8px;
   font-size: 0.88rem;
@@ -972,6 +1062,22 @@ export default {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 6px;
+}
+
+.action-button {
+  min-width: 180px;
+  height: 62px;
+  flex: 1 1 180px;
+}
+
+.action-button.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.action-button :deep(button[name='kmButton']) {
+  width: 100%;
+  height: 100%;
 }
 
 button {
@@ -1255,6 +1361,11 @@ button:hover:not(:disabled) {
   .composer-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .action-button {
+    min-width: 0;
+    width: 100%;
   }
 }
 </style>

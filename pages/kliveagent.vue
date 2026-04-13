@@ -91,6 +91,8 @@
             :disabled="isSending"
           ></textarea>
 
+          <KliveAgentVoiceRecorder :disabled="isSending" @voice-command="handleVoiceCommand" />
+
           <div class="controls">
             <label class="toggle"><input type="checkbox" v-model="allowScriptExecution" :disabled="isSending" /> Allow Script Execution</label>
             <label class="toggle"><input type="checkbox" v-model="notifyOnCompletion" :disabled="isSending" /> Notify Klives On Completion</label>
@@ -233,6 +235,7 @@ import { useCookie } from '#imports';
 import KMButton from '~/components/KMButton.vue';
 import KMInfoBox from '~/components/KMInfoBox.vue';
 import KMInfoGrid from '~/components/KMInfoGrid.vue';
+import KliveAgentVoiceRecorder from '~/components/KliveAgentVoiceRecorder.vue';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import Swal from 'sweetalert2';
 
@@ -240,7 +243,8 @@ export default {
   components: {
     KMButton,
     KMInfoBox,
-    KMInfoGrid
+    KMInfoGrid,
+    KliveAgentVoiceRecorder
   },
   data() {
     return {
@@ -333,6 +337,40 @@ export default {
         this.isSending = false;
         this.scrollMessagesToBottom();
       }
+    },
+
+    handleVoiceCommand(voiceData) {
+      // Extract transcript from voice command
+      const { transcript, diagnostics } = voiceData;
+
+      if (!transcript?.trim()) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'No Speech Detected',
+          text: 'Please try speaking again. The microphone may not have picked up your voice.',
+          confirmButtonColor: '#4d9e39',
+          background: '#161516',
+          color: '#ffffff'
+        });
+        return;
+      }
+
+      // Populate goal with transcribed text
+      this.goalInput = transcript;
+
+      // Optionally add voice diagnostics to context
+      const voiceContext = diagnostics
+        ? `[Voice Command]\nConfidence: ${Math.round(diagnostics.transcriptConfidence * 100)}%\nProcessing: ${diagnostics.totalDurationMs}ms`
+        : '[Voice Command Received]';
+
+      if (this.contextInput.trim()) {
+        this.contextInput = `${this.contextInput}\n\n${voiceContext}`;
+      } else {
+        this.contextInput = voiceContext;
+      }
+
+      // Automatically send the mission
+      this.sendMission();
     },
 
     async executeMissionStandard(payload, assistantMessage) {

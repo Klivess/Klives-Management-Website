@@ -193,68 +193,6 @@
                             </div>
                         </div>
 
-                        <div class="scheme-card omnigram-card" @click="omniGramStats.hasAccess ? navigateToScheme('/schemery/omnigram') : showAccessDeniedMessage()"
-                             :class="{ 'card-loading': loadingStates.omnigram, 'card-error': errorStates.omnigram }">
-                            <div v-if="loadingStates.omnigram" class="card-loading-overlay">
-                                <div class="loading-spinner-small"></div>
-                            </div>
-                            <div v-if="errorStates.omnigram" class="card-error-overlay">
-                                <span>ERROR</span>
-                                <button @click.stop="retryOmniGramStats" class="retry-btn-small">↻</button>
-                            </div>
-                            <div class="scheme-header">
-                                <h3>OmniGram</h3>
-                                <div :class="['scheme-status', omniGramStats.hasAccess ? 'active' : 'restricted']">
-                                    {{ omniGramStats.hasAccess ? 'Active' : 'Restricted' }}
-                                </div>
-                            </div>
-                            <div class="scheme-metrics">
-                                <div class="metric">
-                                    <span class="metric-label">Managed Accounts</span>
-                                    <span class="metric-value">{{ omniGramStats.managedAccounts === 'Restricted' ? 'Restricted' : omniGramStats.managedAccounts }}</span>
-                                </div>
-                                <div class="metric">
-                                    <span class="metric-label">Success Rate</span>
-                                    <span class="metric-value success">{{ omniGramStats.successRate === 'Restricted' ? 'Restricted' : omniGramStats.successRate.toFixed(1) + '%' }}</span>
-                                </div>
-                                <div class="metric">
-                                    <span class="metric-label">Failed Posts</span>
-                                    <span class="metric-value" :class="omniGramStats.failedPosts === 'Restricted' || omniGramStats.failedPosts === 0 ? 'success' : ''">{{ omniGramStats.failedPosts === 'Restricted' ? 'Restricted' : omniGramStats.failedPosts }}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="scheme-card omnitumblr-card" @click="omniTumblrStats.hasAccess ? navigateToScheme('/schemery/omnitumblr') : showAccessDeniedMessage()"
-                             :class="{ 'card-loading': loadingStates.omnitumblr, 'card-error': errorStates.omnitumblr }">
-                            <div v-if="loadingStates.omnitumblr" class="card-loading-overlay">
-                                <div class="loading-spinner-small"></div>
-                            </div>
-                            <div v-if="errorStates.omnitumblr" class="card-error-overlay">
-                                <span>ERROR</span>
-                                <button @click.stop="retryOmniTumblrStats" class="retry-btn-small">↻</button>
-                            </div>
-                            <div class="scheme-header">
-                                <h3>OmniTumblr</h3>
-                                <div :class="['scheme-status', omniTumblrStats.hasAccess ? 'active' : 'restricted']">
-                                    {{ omniTumblrStats.hasAccess ? 'Active' : 'Restricted' }}
-                                </div>
-                            </div>
-                            <div class="scheme-metrics">
-                                <div class="metric">
-                                    <span class="metric-label">Managed Accounts</span>
-                                    <span class="metric-value">{{ omniTumblrStats.managedAccounts === 'Restricted' ? 'Restricted' : omniTumblrStats.managedAccounts }}</span>
-                                </div>
-                                <div class="metric">
-                                    <span class="metric-label">Success Rate</span>
-                                    <span class="metric-value success">{{ omniTumblrStats.successRate === 'Restricted' ? 'Restricted' : omniTumblrStats.successRate.toFixed(1) + '%' }}</span>
-                                </div>
-                                <div class="metric">
-                                    <span class="metric-label">Failed Posts</span>
-                                    <span class="metric-value" :class="omniTumblrStats.failedPosts === 'Restricted' || omniTumblrStats.failedPosts === 0 ? 'success' : ''">{{ omniTumblrStats.failedPosts === 'Restricted' ? 'Restricted' : omniTumblrStats.failedPosts }}</span>
-                                </div>
-                            </div>
-                        </div>
-
                         <div class="scheme-card inactive-card">
                             <div class="scheme-header">
                                 <h3>OmniTube Bot</h3>
@@ -304,13 +242,11 @@ export default {
             lastUpdate: 'Never',
             loadInterval: null,
             completedLoads: 0,
-            totalLoads: 7, // CS2, Memescraper, OmniTrader, OmniGram, OmniTumblr, FrontpageStats, Logs
+            totalLoads: 5, // CS2, Memescraper, OmniTrader, FrontpageStats, Logs
             loadingStates: {
                 cs2: false,
                 memescraper: false,
                 omnitrader: false,
-                omnigram: false,
-                omnitumblr: false,
                 kliveTech: false,
                 logs: false,
                 frontpage: false
@@ -319,8 +255,6 @@ export default {
                 cs2: false,
                 memescraper: false,
                 omnitrader: false,
-                omnigram: false,
-                omnitumblr: false,
                 kliveTech: false,
                 logs: false,
                 frontpage: false
@@ -353,18 +287,6 @@ export default {
                 activeDeployments: 0,
                 avgWinRate: 0,
                 bestPnL: 0,
-                hasAccess: true
-            },
-            omniGramStats: {
-                managedAccounts: 0,
-                successRate: 0,
-                failedPosts: 0,
-                hasAccess: true
-            },
-            omniTumblrStats: {
-                managedAccounts: 0,
-                successRate: 0,
-                failedPosts: 0,
                 hasAccess: true
             },
             kliveTechStats: {
@@ -406,8 +328,6 @@ export default {
                 this.loadCS2Stats();
                 this.loadMemescraperStats(); 
                 this.loadOmniTraderStats();
-                this.loadOmniGramStats();
-                this.loadOmniTumblrStats();
                 this.loadFrontpageStats();
                 this.loadRecentActivity(); // Only for logs now
                 
@@ -440,14 +360,6 @@ export default {
             this.loadOmniTraderStats();
         },
 
-        retryOmniGramStats() {
-            this.loadOmniGramStats();
-        },
-
-        retryOmniTumblrStats() {
-            this.loadOmniTumblrStats();
-        },
-        
         retryKliveTechStats() {
             this.loadKliveTechStats();
         },
@@ -753,114 +665,6 @@ export default {
             }
         },
 
-        async loadOmniGramStats() {
-            this.loadingStates.omnigram = true;
-            this.errorStates.omnigram = false;
-
-            try {
-                const [accountsResponse, overviewResponse, healthResponse] = await Promise.all([
-                    RequestGETFromKliveAPI('/omnigram/accounts/list', false, false),
-                    RequestGETFromKliveAPI('/omnigram/analytics/overview', false, false),
-                    RequestGETFromKliveAPI('/omnigram/health', false, false)
-                ]);
-
-                if (accountsResponse.status === 401 || overviewResponse.status === 401 || healthResponse.status === 401) {
-                    this.omniGramStats = {
-                        managedAccounts: 'Restricted',
-                        successRate: 'Restricted',
-                        failedPosts: 'Restricted',
-                        hasAccess: false
-                    };
-                    console.log('OmniGram analytics access denied - insufficient permissions');
-                } else if (accountsResponse.ok && overviewResponse.ok && healthResponse.ok) {
-                    const accounts = await accountsResponse.json();
-                    const overview = await overviewResponse.json();
-
-                    this.omniGramStats = {
-                        managedAccounts: Array.isArray(accounts) ? accounts.length : 0,
-                        successRate: Number(overview?.SuccessRate) || 0,
-                        failedPosts: Number(overview?.Failed) || 0,
-                        hasAccess: true
-                    };
-                } else {
-                    console.log('OmniGram analytics API returned status:', accountsResponse.status, overviewResponse.status, healthResponse.status);
-                    this.errorStates.omnigram = true;
-                    this.omniGramStats = {
-                        managedAccounts: 0,
-                        successRate: 0,
-                        failedPosts: 0,
-                        hasAccess: true
-                    };
-                }
-            } catch (error) {
-                console.log('OmniGram analytics API unavailable:', error);
-                this.errorStates.omnigram = true;
-                this.omniGramStats = {
-                    managedAccounts: 0,
-                    successRate: 0,
-                    failedPosts: 0,
-                    hasAccess: true
-                };
-            } finally {
-                this.loadingStates.omnigram = false;
-                this.trackLoadCompletion();
-            }
-        },
-
-        async loadOmniTumblrStats() {
-            this.loadingStates.omnitumblr = true;
-            this.errorStates.omnitumblr = false;
-
-            try {
-                const [accountsResponse, overviewResponse, healthResponse] = await Promise.all([
-                    RequestGETFromKliveAPI('/omnitumblr/accounts/list', false, false),
-                    RequestGETFromKliveAPI('/omnitumblr/analytics/overview', false, false),
-                    RequestGETFromKliveAPI('/omnitumblr/health', false, false)
-                ]);
-
-                if (accountsResponse.status === 401 || overviewResponse.status === 401 || healthResponse.status === 401) {
-                    this.omniTumblrStats = {
-                        managedAccounts: 'Restricted',
-                        successRate: 'Restricted',
-                        failedPosts: 'Restricted',
-                        hasAccess: false
-                    };
-                    console.log('OmniTumblr analytics access denied - insufficient permissions');
-                } else if (accountsResponse.ok && overviewResponse.ok && healthResponse.ok) {
-                    const accounts = await accountsResponse.json();
-                    const overview = await overviewResponse.json();
-
-                    this.omniTumblrStats = {
-                        managedAccounts: Array.isArray(accounts) ? accounts.length : 0,
-                        successRate: Number(overview?.SuccessRate) || 0,
-                        failedPosts: Number(overview?.Failed) || 0,
-                        hasAccess: true
-                    };
-                } else {
-                    console.log('OmniTumblr analytics API returned status:', accountsResponse.status, overviewResponse.status, healthResponse.status);
-                    this.errorStates.omnitumblr = true;
-                    this.omniTumblrStats = {
-                        managedAccounts: 0,
-                        successRate: 0,
-                        failedPosts: 0,
-                        hasAccess: true
-                    };
-                }
-            } catch (error) {
-                console.log('OmniTumblr analytics API unavailable:', error);
-                this.errorStates.omnitumblr = true;
-                this.omniTumblrStats = {
-                    managedAccounts: 0,
-                    successRate: 0,
-                    failedPosts: 0,
-                    hasAccess: true
-                };
-            } finally {
-                this.loadingStates.omnitumblr = false;
-                this.trackLoadCompletion();
-            }
-        },
-        
         async loadKliveTechStats() {
             this.loadingStates.kliveTech = true;
             this.errorStates.kliveTech = false;
@@ -1142,24 +946,6 @@ export default {
 .scheme-card.omnitrader-card:hover {
     border-color: rgba(245, 158, 11, 0.75);
     box-shadow: 0 8px 25px rgba(245, 158, 11, 0.2);
-}
-
-.scheme-card.omnigram-card {
-    border-color: rgba(249, 115, 22, 0.45);
-}
-
-.scheme-card.omnigram-card:hover {
-    border-color: rgba(251, 113, 133, 0.75);
-    box-shadow: 0 8px 25px rgba(251, 113, 133, 0.2);
-}
-
-.scheme-card.omnitumblr-card {
-    border-color: rgba(249, 115, 22, 0.45);
-}
-
-.scheme-card.omnitumblr-card:hover {
-    border-color: rgba(251, 146, 60, 0.72);
-    box-shadow: 0 8px 25px rgba(249, 115, 22, 0.2);
 }
 
 .scheme-card.inactive-card {

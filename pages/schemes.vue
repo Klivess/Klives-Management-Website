@@ -39,35 +39,6 @@
                 </div>
             </div>
 
-            <div class="scheme-card active" @click="$router.push('/schemery/omnigram')">
-                <div class="card-accent accent-instagram"></div>
-                <div class="card-body">
-                    <div class="card-top">
-                        <span class="card-icon">IG</span>
-                        <span class="card-badge badge-active">Active</span>
-                    </div>
-                    <h2 class="card-title">OmniGram</h2>
-                    <p class="card-desc">Managed Instagram automation with account onboarding, autonomous posting, campaign scheduling, and reliability analytics.</p>
-                    <div class="card-footer">
-                        <span class="card-action">Open Command Panel →</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="scheme-card active" @click="$router.push('/schemery/omnitumblr')">
-                <div class="card-accent accent-tumblr"></div>
-                <div class="card-body">
-                    <div class="card-top">
-                        <span class="card-icon">TB</span>
-                        <span class="card-badge badge-active">Active</span>
-                    </div>
-                    <h2 class="card-title">OmniTumblr</h2>
-                    <p class="card-desc">Managed Tumblr automation with account onboarding, live verification snapshots, campaign scheduling, and event analytics.</p>
-                    <div class="card-footer">
-                        <span class="card-action">Open Command Panel →</span>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <!-- Simulator & In Development -->

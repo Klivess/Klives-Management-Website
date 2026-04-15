@@ -3,15 +3,15 @@
         <!-- Header -->
         <div class="og-header">
             <div class="og-header-left">
-                <KMButton style="width: 260px;" message="Back To Schemes" @click="$router.push('/schemes')" />
+                <KMButton style="width: 360px;" message="Back To Schemes" @click="$router.push('/schemes')" />
             </div>
             <div class="og-header-center">
                 <h1 class="og-title">OmniGram Command Center</h1>
                 <p class="og-subtitle">Fleet management &bull; {{ stats?.TotalAccounts || 0 }} accounts &bull; {{ stats?.TotalFollowers ? formatNumber(stats.TotalFollowers) : '0' }} total followers</p>
             </div>
             <div class="og-header-right">
-                <KMButton message="➕ Add Account" @click="showAddAccount" style="width: 180px;" />
-                <KMButton message="🔄 Refresh" @click="refreshAll" style="width: 140px;" />
+                <KMButton message="➕ Add Account" @click="showAddAccount" style="width: 280px;" />
+                <KMButton message="🔄 Refresh" @click="refreshAll" style="width: 240px;" />
             </div>
         </div>
 
@@ -485,6 +485,10 @@
                                 <label>Min interval (min):</label>
                                 <input type="number" v-model.number="editConfig.MinIntervalMinutes" class="og-input sm" min="30" max="1440" />
                             </div>
+                            <div class="config-row-sm">
+                                <label>Random offset (±min):</label>
+                                <input type="number" v-model.number="editConfig.ScheduleRandomOffsetMinutes" class="og-input sm" min="0" max="120" />
+                            </div>
                         </div>
                         <div class="config-row">
                             <label>Preferred Post Hours (UTC)</label>
@@ -503,11 +507,161 @@
                 </div>
 
                 <div class="og-config-actions">
-                    <KMButton message="💾 Save Configuration" @click="saveAccountConfig" style="width: 280px;" />
+                    <KMButton message="💾 Save Configuration" @click="saveAccountConfig" style="width: 380px;" />
                     <button class="og-btn-sm danger-btn" @click="resetUsedContent">Reset Used Content Tracking</button>
                 </div>
             </div>
             <div v-else-if="!configAccountId" class="og-empty">Select an account above to configure its content settings.</div>
+        </div>
+
+        <!-- ═══════════════ TAB: Profile Editor ═══════════════ -->
+        <div v-show="statsLoaded && activeTab === 'profile'" class="og-panel fade-in">
+            <div class="og-section-header">
+                <h2>Profile Editor</h2>
+                <select v-model="profileAccountId" @change="loadProfile" class="og-select">
+                    <option value="">— Select Account —</option>
+                    <option v-for="acc in accounts" :key="acc.AccountId" :value="acc.AccountId">@{{ acc.Username }}</option>
+                </select>
+            </div>
+
+            <div v-if="profileAccountId && profileData" class="og-profile-editor">
+                <div class="og-profile-columns">
+                    <!-- Edit Form -->
+                    <div class="og-profile-form">
+                        <h3>Edit Profile</h3>
+                        <div class="config-row">
+                            <label>Full Name</label>
+                            <input v-model="profileForm.fullName" class="og-input" placeholder="Full Name" />
+                        </div>
+                        <div class="config-row">
+                            <label>Username</label>
+                            <input v-model="profileForm.newUsername" class="og-input" placeholder="Username" />
+                        </div>
+                        <div class="config-row">
+                            <label>Biography</label>
+                            <textarea v-model="profileForm.biography" class="og-input og-textarea" rows="4" placeholder="Bio..."></textarea>
+                        </div>
+                        <div class="config-row">
+                            <label>Website URL</label>
+                            <input v-model="profileForm.url" class="og-input" placeholder="https://..." />
+                        </div>
+                        <div class="config-row">
+                            <label>Email</label>
+                            <input v-model="profileForm.email" class="og-input" placeholder="email@example.com" />
+                        </div>
+                        <div class="config-row">
+                            <label>Phone</label>
+                            <input v-model="profileForm.phone" class="og-input" placeholder="+1 234 567 890" />
+                        </div>
+                        <div class="og-config-actions">
+                            <KMButton message="💾 Save Profile" @click="saveProfile" style="width: 240px;" />
+                        </div>
+
+                        <h3 style="margin-top: 24px;">Profile Picture</h3>
+                        <p class="og-hint">Only JPEG/JPG files are accepted by Instagram.</p>
+                        <div class="config-row">
+                            <input type="file" accept=".jpg,.jpeg" @change="onProfilePicSelected" ref="profilePicInput" class="og-input" />
+                        </div>
+                        <div v-if="profilePicPreview" class="og-profile-pic-preview">
+                            <img :src="profilePicPreview" alt="Preview" class="og-pfp-preview-img" />
+                            <KMButton message="📤 Upload Profile Picture" @click="uploadProfilePic" style="width: 280px;" />
+                        </div>
+                    </div>
+
+                    <!-- Live Preview -->
+                    <div class="og-profile-preview">
+                        <h3>Preview</h3>
+                        <div class="ig-profile-card">
+                            <div class="ig-pfp-wrap">
+                                <img :src="profilePicPreview || profileData.ProfilePicUrl || '/placeholder-pfp.png'" class="ig-pfp" />
+                            </div>
+                            <div class="ig-profile-info">
+                                <div class="ig-username">{{ profileForm.newUsername || profileData.Username }}</div>
+                                <div class="ig-stats-row">
+                                    <span><strong>{{ profileData.MediaCount || 0 }}</strong> posts</span>
+                                    <span><strong>{{ formatNumber(profileData.FollowerCount || 0) }}</strong> followers</span>
+                                    <span><strong>{{ formatNumber(profileData.FollowingCount || 0) }}</strong> following</span>
+                                </div>
+                                <div class="ig-fullname">{{ profileForm.fullName || profileData.FullName || '' }}</div>
+                                <div class="ig-bio">{{ profileForm.biography || profileData.Biography || '' }}</div>
+                                <div v-if="profileForm.url" class="ig-website">🔗 {{ profileForm.url }}</div>
+                            </div>
+                        </div>
+                        <p v-if="profileData.IsLive" class="og-hint" style="color: #4d9e39;">✓ Live data from Instagram</p>
+                        <p v-else class="og-hint" style="color: #e0a030;">⚠ Cached data — account may not be logged in</p>
+                    </div>
+                </div>
+            </div>
+            <div v-else-if="!profileAccountId" class="og-empty">Select an account above to edit its Instagram profile.</div>
+        </div>
+
+        <!-- ═══════════════ TAB: Draft Post ═══════════════ -->
+        <div v-show="statsLoaded && activeTab === 'draft'" class="og-panel fade-in">
+            <div class="og-section-header">
+                <h2>Draft & Schedule Post</h2>
+            </div>
+
+            <div class="og-draft-composer">
+                <div class="og-draft-columns">
+                    <!-- Compose Form -->
+                    <div class="og-draft-form">
+                        <div class="config-row">
+                            <label>Content Type</label>
+                            <select v-model="draftForm.contentType" class="og-select">
+                                <option value="Photo">📷 Photo</option>
+                                <option value="Reel">🎬 Reel</option>
+                                <option value="Story">📖 Story</option>
+                                <option value="Carousel">🎠 Carousel</option>
+                            </select>
+                        </div>
+                        <div class="config-row">
+                            <label>Caption</label>
+                            <textarea v-model="draftForm.caption" class="og-input og-textarea" rows="5" placeholder="Write your caption..."></textarea>
+                        </div>
+                        <div class="config-row">
+                            <label>Hashtags (comma separated)</label>
+                            <input v-model="draftForm.hashtags" class="og-input" placeholder="#nature, #photography, #instagood" />
+                        </div>
+                        <div class="config-row">
+                            <label>Media Files</label>
+                            <input type="file" multiple @change="onDraftMediaSelected" ref="draftMediaInput" class="og-input" />
+                            <div v-if="draftMediaFiles.length" class="og-draft-media-list">
+                                <div v-for="(file, idx) in draftMediaFiles" :key="idx" class="og-draft-media-item">
+                                    <span>{{ file.name }}</span>
+                                    <button class="og-btn-xs" @click="removeDraftMedia(idx)">✕</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="config-row">
+                            <label>Schedule Time</label>
+                            <input type="datetime-local" v-model="draftForm.scheduledTime" class="og-input" />
+                        </div>
+                    </div>
+
+                    <!-- Account Selection -->
+                    <div class="og-draft-targets">
+                        <h3>Target Accounts</h3>
+                        <p class="og-hint">Select which accounts to post to:</p>
+                        <div class="og-draft-account-list">
+                            <label v-for="acc in accounts" :key="acc.AccountId" class="og-draft-account-row" :class="{ disabled: acc.IsPaused || acc.LoginStatus !== 'LoggedIn' }">
+                                <input type="checkbox" :value="acc.AccountId" v-model="draftForm.selectedAccounts" :disabled="acc.IsPaused || acc.LoginStatus !== 'LoggedIn'" />
+                                <span class="og-draft-acc-name">@{{ acc.Username }}</span>
+                                <span class="og-draft-acc-followers">{{ formatNumber(acc.FollowerCount) }}</span>
+                                <span class="status-pill" :class="getStatusClass(acc.LoginStatus)">{{ acc.LoginStatus }}</span>
+                            </label>
+                        </div>
+                        <div class="og-draft-select-actions">
+                            <button class="og-btn-sm" @click="selectAllDraftAccounts">Select All Active</button>
+                            <button class="og-btn-sm" @click="draftForm.selectedAccounts = []">Deselect All</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="og-draft-submit">
+                    <p v-if="draftForm.selectedAccounts.length">{{ draftForm.selectedAccounts.length }} account(s) selected</p>
+                    <KMButton :message="`📤 Schedule ${draftForm.contentType} to ${draftForm.selectedAccounts.length} account(s)`" @click="submitDraft" style="width: 660px;" />
+                </div>
+            </div>
         </div>
     </div>
 </template>
@@ -551,12 +705,34 @@ const candidateCaptionsText = ref('');
 const hashtagsText = ref('');
 const preferredHoursText = ref('');
 
+// Profile Editor
+const profileAccountId = ref('');
+const profileData = ref<any>(null);
+const profileForm = ref({ fullName: '', newUsername: '', biography: '', url: '', email: '', phone: '' });
+const profilePicPreview = ref<string | null>(null);
+const profilePicInput = ref<HTMLInputElement | null>(null);
+let profilePicFile: File | null = null;
+
+// Draft Post
+const draftForm = ref({
+    contentType: 'Photo',
+    caption: '',
+    hashtags: '',
+    scheduledTime: '',
+    selectedAccounts: [] as string[],
+});
+const draftMediaFiles = ref<File[]>([]);
+const draftMediaInput = ref<HTMLInputElement | null>(null);
+const draftUploadedPaths = ref<string[]>([]);
+
 const tabs = computed(() => [
     { id: 'overview', icon: '🏠', label: 'Fleet Overview', badge: null },
     { id: 'accounts', icon: '👥', label: 'Accounts', badge: accounts.value.length || null },
     { id: 'queue', icon: '📋', label: 'Post Queue', badge: queue.value.length || null },
     { id: 'analytics', icon: '📊', label: 'Analytics', badge: null },
     { id: 'config', icon: '⚙️', label: 'Content Config', badge: null },
+    { id: 'profile', icon: '🖼️', label: 'Profile Editor', badge: null },
+    { id: 'draft', icon: '✏️', label: 'Draft Post', badge: null },
 ]);
 
 const filteredPosts = computed(() => {
@@ -581,42 +757,42 @@ async function refreshAll() {
 async function loadStats() {
     try {
         const r = await RequestGETFromKliveAPI('/omnigram/dashboard-stats');
-        if (r) stats.value = JSON.parse(r);
+        if (r?.ok) stats.value = await r.json();
     } catch (e) { console.error('Stats:', e); }
 }
 
 async function loadAccounts() {
     try {
         const r = await RequestGETFromKliveAPI('/omnigram/accounts');
-        if (r) accounts.value = JSON.parse(r);
+        if (r?.ok) accounts.value = await r.json();
     } catch (e) { console.error('Accounts:', e); }
 }
 
 async function loadQueue() {
     try {
         const r = await RequestGETFromKliveAPI('/omnigram/queue');
-        if (r) queue.value = JSON.parse(r);
+        if (r?.ok) queue.value = await r.json();
     } catch (e) { console.error('Queue:', e); }
 }
 
 async function loadPosts() {
     try {
         const r = await RequestGETFromKliveAPI('/omnigram/posts');
-        if (r) posts.value = JSON.parse(r);
+        if (r?.ok) posts.value = await r.json();
     } catch (e) { console.error('Posts:', e); }
 }
 
 async function loadAnalytics() {
     try {
         const r = await RequestGETFromKliveAPI('/omnigram/analytics');
-        if (r) analytics.value = JSON.parse(r);
+        if (r?.ok) analytics.value = await r.json();
     } catch (e) { console.error('Analytics:', e); }
 }
 
 async function loadEvents() {
     try {
         const r = await RequestGETFromKliveAPI('/omnigram/events');
-        if (r) events.value = JSON.parse(r);
+        if (r?.ok) events.value = await r.json();
     } catch (e) { console.error('Events:', e); }
 }
 
@@ -708,8 +884,8 @@ async function loadAccountConfig() {
     if (!configAccountId.value) { editConfig.value = null; return; }
     try {
         const r = await RequestGETFromKliveAPI(`/omnigram/accounts/config?accountId=${configAccountId.value}`);
-        if (r) {
-            editConfig.value = JSON.parse(r);
+        if (r?.ok) {
+            editConfig.value = await r.json();
             candidateCaptionsText.value = (editConfig.value.CandidateCaptions || []).join('\n');
             hashtagsText.value = (editConfig.value.Hashtags || []).join(', ');
             preferredHoursText.value = (editConfig.value.PreferredPostHoursUTC || []).join(', ');
@@ -748,8 +924,8 @@ async function loadAccountAnalytics() {
     }
     try {
         const r = await RequestGETFromKliveAPI(`/omnigram/analytics?accountId=${selectedAnalyticsAccount.value}`);
-        if (r) {
-            selectedAccountAnalytics.value = JSON.parse(r);
+        if (r?.ok) {
+            selectedAccountAnalytics.value = await r.json();
             await nextTick();
             renderCharts();
         }
@@ -879,6 +1055,145 @@ function timeAgo(d: string): string {
 function truncate(str: string, max: number): string {
     if (!str) return '';
     return str.length > max ? str.substring(0, max) + '...' : str;
+}
+
+// ── Profile Editor ──
+
+async function loadProfile() {
+    profileData.value = null;
+    profilePicPreview.value = null;
+    profilePicFile = null;
+    if (!profileAccountId.value) return;
+    try {
+        const r = await RequestGETFromKliveAPI(`/omnigram/accounts/profile?accountId=${profileAccountId.value}`);
+        if (r?.ok) {
+            const data = await r.json();
+            profileData.value = data;
+            profileForm.value = {
+                fullName: data.FullName || '',
+                newUsername: data.Username || '',
+                biography: data.Biography || '',
+                url: data.ExternalUrl || '',
+                email: data.Email || '',
+                phone: data.PhoneNumber || '',
+            };
+        }
+    } catch (e) { console.error('Profile:', e); }
+}
+
+async function saveProfile() {
+    if (!profileAccountId.value) return;
+    try {
+        const r = await RequestPOSTFromKliveAPI('/omnigram/accounts/profile/edit', JSON.stringify({
+            accountId: profileAccountId.value,
+            ...profileForm.value,
+        }));
+        if (r?.ok) {
+            const result = await r.json();
+            if (result.success) {
+                await Swal.fire({ title: 'Profile Updated', icon: 'success', timer: 1500, showConfirmButton: false, background: '#161516', color: '#fff' });
+                await loadProfile();
+            } else {
+                await Swal.fire({ title: 'Profile Update Failed', text: result.error, icon: 'error', background: '#161516', color: '#fff' });
+            }
+        }
+    } catch (e) { console.error('Save profile:', e); }
+}
+
+function onProfilePicSelected(e: Event) {
+    const input = e.target as HTMLInputElement;
+    if (input.files?.length) {
+        profilePicFile = input.files[0];
+        profilePicPreview.value = URL.createObjectURL(profilePicFile);
+    }
+}
+
+async function uploadProfilePic() {
+    if (!profileAccountId.value || !profilePicFile) return;
+    try {
+        const r = await RequestPOSTFromKliveAPI(`/omnigram/accounts/profile/picture?accountId=${profileAccountId.value}`, profilePicFile);
+        if (r?.ok) {
+            const result = await r.json();
+            if (result.success) {
+                await Swal.fire({ title: 'Profile Picture Updated', icon: 'success', timer: 1500, showConfirmButton: false, background: '#161516', color: '#fff' });
+                await loadProfile();
+            } else {
+                await Swal.fire({ title: 'Upload Failed', text: result.error, icon: 'error', background: '#161516', color: '#fff' });
+            }
+        }
+    } catch (e) { console.error('Upload pfp:', e); }
+}
+
+// ── Draft Post ──
+
+function onDraftMediaSelected(e: Event) {
+    const input = e.target as HTMLInputElement;
+    if (input.files) {
+        draftMediaFiles.value = [...draftMediaFiles.value, ...Array.from(input.files)];
+    }
+}
+
+function removeDraftMedia(idx: number) {
+    draftMediaFiles.value.splice(idx, 1);
+}
+
+function selectAllDraftAccounts() {
+    draftForm.value.selectedAccounts = accounts.value
+        .filter(a => !a.IsPaused && a.LoginStatus === 'LoggedIn')
+        .map(a => a.AccountId);
+}
+
+async function submitDraft() {
+    if (!draftForm.value.selectedAccounts.length) {
+        await Swal.fire({ title: 'No Accounts Selected', text: 'Select at least one account.', icon: 'warning', background: '#161516', color: '#fff' });
+        return;
+    }
+
+    // Upload media files first
+    const mediaPaths: string[] = [];
+    for (const file of draftMediaFiles.value) {
+        try {
+            const firstAccountId = draftForm.value.selectedAccounts[0];
+            const r = await RequestPOSTFromKliveAPI(`/omnigram/media/upload?fileName=${encodeURIComponent(file.name)}&accountId=${firstAccountId}`, file);
+            if (r?.ok) {
+                const result = await r.json();
+                if (result.success) mediaPaths.push(result.filePath);
+            }
+        } catch (e) { console.error('Media upload:', e); }
+    }
+
+    try {
+        const r = await RequestPOSTFromKliveAPI('/omnigram/posts/draft', JSON.stringify({
+            contentType: draftForm.value.contentType,
+            caption: draftForm.value.caption,
+            hashtags: draftForm.value.hashtags,
+            scheduledTime: draftForm.value.scheduledTime || null,
+            mediaPaths,
+            accountIds: draftForm.value.selectedAccounts,
+        }));
+        if (r?.ok) {
+            const result = await r.json();
+            if (result.success) {
+                await Swal.fire({
+                    title: 'Post Scheduled!',
+                    text: `${draftForm.value.contentType} scheduled for ${result.results.length} account(s).`,
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false,
+                    background: '#161516',
+                    color: '#fff',
+                });
+                // Reset form
+                draftForm.value.caption = '';
+                draftForm.value.hashtags = '';
+                draftForm.value.scheduledTime = '';
+                draftForm.value.selectedAccounts = [];
+                draftMediaFiles.value = [];
+                draftUploadedPaths.value = [];
+                await loadQueue();
+            }
+        }
+    } catch (e) { console.error('Submit draft:', e); }
 }
 
 onMounted(() => { refreshAll(); });
@@ -1061,4 +1376,45 @@ onMounted(() => { refreshAll(); });
 .og-events-list::-webkit-scrollbar-track { background: transparent; }
 .og-events-list::-webkit-scrollbar-thumb { background: rgba(77,158,57,0.2); border-radius: 4px; }
 .og-events-list::-webkit-scrollbar-thumb:hover { background: rgba(77,158,57,0.4); }
+
+/* ── Profile Editor ── */
+.og-profile-editor { animation: fadeIn 0.2s ease-in; }
+.og-profile-columns { display: grid; grid-template-columns: 1fr 380px; gap: 24px; }
+.og-profile-form h3 { margin: 0 0 12px; font-size: 0.95rem; color: #ccc; }
+.og-hint { font-size: 0.75rem; color: #777; margin: 4px 0 8px; }
+.og-profile-pic-preview { display: flex; align-items: center; gap: 16px; margin-top: 10px; }
+.og-pfp-preview-img { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(77,158,57,0.4); }
+
+/* Instagram Profile Preview Card */
+.og-profile-preview h3 { margin: 0 0 12px; font-size: 0.95rem; color: #ccc; }
+.ig-profile-card { background: #0e0e0e; border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 24px; }
+.ig-pfp-wrap { display: flex; justify-content: center; margin-bottom: 16px; }
+.ig-pfp { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(77,158,57,0.4); background: #222; }
+.ig-profile-info { text-align: center; }
+.ig-username { font-weight: 700; font-size: 1.1rem; color: #fff; margin-bottom: 8px; }
+.ig-stats-row { display: flex; justify-content: center; gap: 24px; font-size: 0.82rem; color: #bbb; margin-bottom: 10px; }
+.ig-stats-row strong { color: #fff; }
+.ig-fullname { font-weight: 600; font-size: 0.88rem; color: #eee; margin-bottom: 4px; }
+.ig-bio { font-size: 0.82rem; color: #aaa; white-space: pre-wrap; word-break: break-word; margin-bottom: 6px; }
+.ig-website { font-size: 0.78rem; color: #4d9e39; }
+
+/* ── Draft Post ── */
+.og-draft-composer { animation: fadeIn 0.2s ease-in; }
+.og-draft-columns { display: grid; grid-template-columns: 1fr 380px; gap: 24px; }
+.og-draft-form h3 { margin: 0 0 12px; font-size: 0.95rem; color: #ccc; }
+.og-draft-targets h3 { margin: 0 0 8px; font-size: 0.95rem; color: #ccc; }
+.og-draft-account-list { max-height: 400px; overflow-y: auto; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; }
+.og-draft-account-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer; font-size: 0.82rem; transition: background 0.15s; }
+.og-draft-account-row:hover { background: rgba(77,158,57,0.06); }
+.og-draft-account-row.disabled { opacity: 0.45; cursor: not-allowed; }
+.og-draft-account-row input[type="checkbox"] { accent-color: #4d9e39; }
+.og-draft-acc-name { font-weight: 600; flex: 1; }
+.og-draft-acc-followers { font-size: 0.75rem; color: #888; }
+.og-draft-select-actions { display: flex; gap: 8px; margin-top: 8px; }
+.og-draft-media-list { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.og-draft-media-item { display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; color: #bbb; padding: 4px 8px; background: rgba(255,255,255,0.03); border-radius: 6px; }
+.og-btn-xs { border: none; background: transparent; color: #ef4444; cursor: pointer; font-size: 0.85rem; padding: 2px 6px; }
+.og-btn-xs:hover { color: #ff6666; }
+.og-draft-submit { display: flex; align-items: center; gap: 16px; margin-top: 20px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.06); }
+.og-draft-submit p { font-size: 0.82rem; color: #4d9e39; font-weight: 600; }
 </style>

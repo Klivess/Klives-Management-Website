@@ -39,6 +39,41 @@
                 </div>
             </div>
 
+            <div class="scheme-card active" @click="$router.push('/schemery/omnigram')">
+                <div class="card-accent accent-instagram"></div>
+                <div class="card-body">
+                    <div class="card-top">
+                        <span class="card-icon">📸</span>
+                        <span class="card-badge badge-active">Active</span>
+                    </div>
+                    <h2 class="card-title">OmniGram</h2>
+                    <p class="card-desc">Manages Instagram accounts with scheduled posting, content automation via MemeScraper, and engagement analytics.</p>
+                    
+                    <!-- Analytics Section -->
+                    <div v-if="!omnigramStats.loading" class="omnigram-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Accounts</span>
+                            <span class="stat-value">{{ omnigramStats.accounts }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Followers</span>
+                            <span class="stat-value">{{ (omnigramStats.followers / 1000).toFixed(1) }}K</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Posts (Week)</span>
+                            <span class="stat-value">{{ omnigramStats.postsThisWeek }}</span>
+                        </div>
+                    </div>
+                    <div v-else class="omnigram-stats">
+                        <span class="stat-loading">Loading stats...</span>
+                    </div>
+                    
+                    <div class="card-footer">
+                        <span class="card-action">View Dashboard →</span>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
         <!-- Simulator & In Development -->
@@ -84,7 +119,40 @@
 </template>
 
 <script setup>
+import { ref, onMounted } from 'vue';
+
 definePageMeta({ layout: 'navbar' });
+
+const omnigramStats = ref({
+    accounts: 0,
+    followers: 0,
+    postsThisWeek: 0,
+    loading: true
+});
+
+const fetchOmnigramStats = async () => {
+    try {
+        const response = await fetch('/api/omnigram/dashboard-stats', {
+            credentials: 'include'
+        });
+        if (response.ok) {
+            const data = await response.json();
+            omnigramStats.value = {
+                accounts: data.activeAccounts || 0,
+                followers: data.totalFollowers || 0,
+                postsThisWeek: data.postsThisWeek || 0,
+                loading: false
+            };
+        }
+    } catch (error) {
+        console.error('Failed to fetch OmniGram stats:', error);
+        omnigramStats.value.loading = false;
+    }
+};
+
+onMounted(() => {
+    fetchOmnigramStats();
+});
 </script>
 
 <style scoped>
@@ -295,6 +363,45 @@ definePageMeta({ layout: 'navbar' });
     color: #4d9e39;
     font-size: 0.85rem;
     font-style: italic;
+}
+
+/* OmniGram Stats */
+.omnigram-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    padding: 10px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+}
+
+.stat-label {
+    font-size: 0.7rem;
+    color: #969696;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.stat-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #62ce47;
+}
+
+.stat-loading {
+    grid-column: 1 / -1;
+    text-align: center;
+    font-size: 0.8rem;
+    color: #969696;
+    padding: 5px 0;
 }
 
 /* Responsive */

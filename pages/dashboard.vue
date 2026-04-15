@@ -193,6 +193,37 @@
                             </div>
                         </div>
 
+                        <div class="scheme-card omnigram-card" @click="omniGramStats.hasAccess ? navigateToScheme('/schemery/omnigram') : showAccessDeniedMessage()"
+                             :class="{ 'card-loading': loadingStates.omnigram, 'card-error': errorStates.omnigram }">
+                            <div v-if="loadingStates.omnigram" class="card-loading-overlay">
+                                <div class="loading-spinner-small"></div>
+                            </div>
+                            <div v-if="errorStates.omnigram" class="card-error-overlay">
+                                <span>ERROR</span>
+                                <button @click.stop="retryOmniGramStats" class="retry-btn-small">↻</button>
+                            </div>
+                            <div class="scheme-header">
+                                <h3>OmniGram</h3>
+                                <div :class="['scheme-status', omniGramStats.hasAccess ? 'active' : 'restricted']">
+                                    {{ omniGramStats.hasAccess ? 'Active' : 'Restricted' }}
+                                </div>
+                            </div>
+                            <div class="scheme-metrics">
+                                <div class="metric">
+                                    <span class="metric-label">Accounts</span>
+                                    <span class="metric-value">{{ omniGramStats.totalAccounts === 'Restricted' ? 'Restricted' : omniGramStats.activeAccounts + '/' + omniGramStats.totalAccounts }}</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Success Rate</span>
+                                    <span class="metric-value success">{{ omniGramStats.successRate === 'Restricted' ? 'Restricted' : omniGramStats.successRate.toFixed(1) + '%' }}</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Posts</span>
+                                    <span class="metric-value">{{ omniGramStats.totalPosts === 'Restricted' ? 'Restricted' : omniGramStats.postedCount + ' posted' }}</span>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="scheme-card inactive-card">
                             <div class="scheme-header">
                                 <h3>OmniTube Bot</h3>
@@ -242,11 +273,12 @@ export default {
             lastUpdate: 'Never',
             loadInterval: null,
             completedLoads: 0,
-            totalLoads: 5, // CS2, Memescraper, OmniTrader, FrontpageStats, Logs
+            totalLoads: 6, // CS2, Memescraper, OmniTrader, OmniGram, FrontpageStats, Logs
             loadingStates: {
                 cs2: false,
                 memescraper: false,
                 omnitrader: false,
+                omnigram: false,
                 kliveTech: false,
                 logs: false,
                 frontpage: false
@@ -255,6 +287,7 @@ export default {
                 cs2: false,
                 memescraper: false,
                 omnitrader: false,
+                omnigram: false,
                 kliveTech: false,
                 logs: false,
                 frontpage: false
@@ -287,6 +320,15 @@ export default {
                 activeDeployments: 0,
                 avgWinRate: 0,
                 bestPnL: 0,
+                hasAccess: true
+            },
+            omniGramStats: {
+                totalAccounts: 0,
+                activeAccounts: 0,
+                totalPosts: 0,
+                postedCount: 0,
+                successRate: 0,
+                pendingCount: 0,
                 hasAccess: true
             },
             kliveTechStats: {
@@ -328,6 +370,7 @@ export default {
                 this.loadCS2Stats();
                 this.loadMemescraperStats(); 
                 this.loadOmniTraderStats();
+                this.loadOmniGramStats();
                 this.loadFrontpageStats();
                 this.loadRecentActivity(); // Only for logs now
                 
@@ -358,6 +401,10 @@ export default {
 
         retryOmniTraderStats() {
             this.loadOmniTraderStats();
+        },
+
+        retryOmniGramStats() {
+            this.loadOmniGramStats();
         },
 
         retryKliveTechStats() {
@@ -661,6 +708,48 @@ export default {
                 };
             } finally {
                 this.loadingStates.omnitrader = false;
+                this.trackLoadCompletion();
+            }
+        },
+
+        async loadOmniGramStats() {
+            this.loadingStates.omnigram = true;
+            this.errorStates.omnigram = false;
+
+            try {
+                const response = await RequestGETFromKliveAPI('/omnigram/dashboard-stats', false, false);
+
+                if (response.status === 401) {
+                    this.omniGramStats = {
+                        totalAccounts: 'Restricted',
+                        activeAccounts: 'Restricted',
+                        totalPosts: 'Restricted',
+                        postedCount: 'Restricted',
+                        successRate: 'Restricted',
+                        pendingCount: 'Restricted',
+                        hasAccess: false
+                    };
+                    console.log('OmniGram access denied - insufficient permissions');
+                } else if (response.ok) {
+                    const data = await response.json();
+                    this.omniGramStats = {
+                        totalAccounts: data.TotalAccounts ?? 0,
+                        activeAccounts: data.ActiveAccounts ?? 0,
+                        totalPosts: data.TotalPosts ?? 0,
+                        postedCount: data.PostedCount ?? 0,
+                        successRate: data.SuccessRate ?? 0,
+                        pendingCount: data.PendingCount ?? 0,
+                        hasAccess: true
+                    };
+                } else {
+                    console.log('OmniGram API returned status:', response.status);
+                    this.errorStates.omnigram = true;
+                }
+            } catch (error) {
+                console.log('OmniGram API unavailable:', error);
+                this.errorStates.omnigram = true;
+            } finally {
+                this.loadingStates.omnigram = false;
                 this.trackLoadCompletion();
             }
         },

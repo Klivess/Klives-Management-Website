@@ -124,6 +124,7 @@
                                     <button class="og-btn-icon" title="Configure" @click="openAccountConfig(acc.AccountId)">⚙️</button>
                                     <button v-if="!acc.IsPaused" class="og-btn-icon" title="Pause" @click="pauseAccount(acc.AccountId)">⏸️</button>
                                     <button v-else class="og-btn-icon" title="Resume" @click="resumeAccount(acc.AccountId)">▶️</button>
+                                    <button v-if="isErrorStatus(acc.LoginStatus)" class="og-btn-icon warn" title="Re-login / Resolve Checkpoint" @click="reloginAccount(acc.AccountId, acc.Username)">🔄</button>
                                     <button class="og-btn-icon" title="Analytics" @click="openAccountAnalytics(acc.AccountId)">📊</button>
                                     <button class="og-btn-icon danger" title="Remove" @click="removeAccount(acc.AccountId, acc.Username)">🗑️</button>
                                 </td>
@@ -164,6 +165,7 @@
                             <button class="og-btn-icon" @click="openAccountConfig(acc.AccountId)" title="Configure">⚙️</button>
                             <button v-if="!acc.IsPaused" class="og-btn-icon" @click="pauseAccount(acc.AccountId)" title="Pause">⏸️</button>
                             <button v-else class="og-btn-icon" @click="resumeAccount(acc.AccountId)" title="Resume">▶️</button>
+                            <button v-if="isErrorStatus(acc.LoginStatus)" class="og-btn-icon warn" @click="reloginAccount(acc.AccountId, acc.Username)" title="Re-login / Resolve Checkpoint">🔄</button>
                         </div>
                     </div>
                     <div class="adc-stats-row">
@@ -855,6 +857,36 @@ async function removeAccount(id: string, username: string) {
     }
 }
 
+async function reloginAccount(id: string, username: string) {
+    const confirm = await Swal.fire({
+        title: `Re-login @${username}?`,
+        html: 'This clears the session and triggers a fresh login with challenge resolution.<br><br><b>You may be prompted via Discord for a verification code.</b>',
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonText: 'Re-login',
+        confirmButtonColor: '#6366f1',
+        background: '#161516',
+        color: '#ffffff'
+    });
+    if (!confirm.isConfirmed) return;
+    const r = await RequestPOSTFromKliveAPI('/omnigram/accounts/relogin', JSON.stringify({ accountId: id }));
+    if (r?.ok) {
+        const data = await r.json();
+        await Swal.fire({
+            title: data.success ? 'Re-login Initiated' : 'Re-login Failed',
+            text: data.message || `Status: ${data.loginStatus}`,
+            icon: data.success ? 'success' : 'error',
+            timer: 3000,
+            showConfirmButton: false,
+            background: '#161516',
+            color: '#fff'
+        });
+    } else {
+        await Swal.fire({ title: 'Error', text: 'Failed to reach re-login endpoint.', icon: 'error', background: '#161516', color: '#fff' });
+    }
+    await loadAccounts();
+}
+
 async function cancelPost(postId: string) {
     await RequestPOSTFromKliveAPI('/omnigram/posts/cancel', JSON.stringify({ postId }));
     await loadQueue();
@@ -1276,6 +1308,7 @@ onMounted(() => { refreshAll(); });
 .og-btn-icon { width: 28px; height: 28px; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; background: transparent; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
 .og-btn-icon:hover { background: rgba(255,255,255,0.06); }
 .og-btn-icon.danger:hover { border-color: rgba(239,68,68,0.4); }
+.og-btn-icon.warn:hover { border-color: rgba(251,191,36,0.5); background: rgba(251,191,36,0.08); }
 .og-btn-cancel { padding: 3px 10px; border: 1px solid rgba(239,68,68,0.3); border-radius: 5px; background: transparent; color: #ef4444; cursor: pointer; font-size: 0.78rem; }
 .og-btn-cancel:hover { background: rgba(239,68,68,0.1); }
 

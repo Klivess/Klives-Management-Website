@@ -2,6 +2,37 @@
 <script setup lang="ts">
 import { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 
+const route = useRoute();
+
+const pageTitle = computed(() => {
+  if (route.path === '/') {
+    return 'Klives Management';
+  }
+
+  const normalizedName = String(route.name ?? '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const fallbackPath = route.path
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const source = normalizedName || fallbackPath || 'Dashboard';
+  const formattedPageName = source
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+
+  return `KM: ${formattedPageName}`;
+});
+
+useHead(() => ({
+  title: pageTitle.value,
+}));
+
 </script>
 
 <template>

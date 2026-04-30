@@ -241,9 +241,15 @@
             <div class="kmt-job-header" @click="toggleJob(job.jobId)">
               <div class="kmt-job-meta">
                 <span class="kmt-job-tool">{{ job.toolName }} / {{ job.functionName }}</span>
+                <span v-if="job.label" class="kmt-job-label">{{ job.label }}</span>
                 <span class="kmt-job-id">{{ job.jobId }}</span>
               </div>
               <div class="kmt-job-right">
+                <button
+                  v-if="job.status === 'Running'"
+                  class="kmt-cancel-btn"
+                  @click.stop="cancelJob(job.jobId)"
+                >Cancel</button>
                 <span class="kmt-status-badge" :class="statusClass(job.status)">{{ job.status }}</span>
                 <span class="kmt-job-time">{{ formatDuration(job) }}</span>
                 <span class="kmt-expand-icon">{{ expandedJobs.has(job.jobId) ? '▲' : '▼' }}</span>
@@ -420,7 +426,14 @@ function toggleJob(id: string) {
 function statusClass(status: string) {
   if (status === 'Completed') return 'status-ok';
   if (status === 'Failed') return 'status-fail';
+  if (status === 'Cancelled') return 'status-cancelled';
   return 'status-running';
+}
+
+async function cancelJob(jobId: string) {
+  try {
+    await RequestPOSTFromKliveAPI(`/KliveMultiTool/job/cancel?id=${encodeURIComponent(jobId)}`, '', false, false);
+  } catch {}
 }
 
 function formatDuration(job: any) {
@@ -885,6 +898,18 @@ watch(activeTab, (tab) => {
 }
 
 .kmt-job-tool { font-size: 13px; font-weight: 500; color: $white; }
+.kmt-job-label {
+  font-size: 12px;
+  color: $secondary;
+  background: #1a2a1a;
+  border: 1px solid #2a4a2a;
+  border-radius: 4px;
+  padding: 1px 7px;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .kmt-job-id { font-size: 11px; color: $gray; font-family: monospace; }
 
 .kmt-job-right {
@@ -901,6 +926,7 @@ watch(activeTab, (tab) => {
 
   &.status-ok { background: #1a3a1a; color: $secondary; border: 1px solid #2a5a2a; }
   &.status-fail { background: #3a1a1a; color: #e74c3c; border: 1px solid #5a2a2a; }
+  &.status-cancelled { background: #2a2a1a; color: #f59e0b; border: 1px solid #4a4a1a; }
   &.status-running { background: #1a2a3a; color: #3b82f6; border: 1px solid #2a4a6a; animation: pulse 1.5s infinite; }
 }
 
@@ -908,6 +934,19 @@ watch(activeTab, (tab) => {
 
 .kmt-job-time { font-size: 11px; color: $gray; }
 .kmt-expand-icon { font-size: 10px; color: $gray; }
+
+.kmt-cancel-btn {
+  background: #3a1a1a;
+  border: 1px solid #6a2a2a;
+  color: #e74c3c;
+  border-radius: 4px;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  &:hover { background: #5a2a2a; }
+}
 
 .kmt-job-result {
   padding: 10px 14px;

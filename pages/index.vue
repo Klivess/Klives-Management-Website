@@ -87,7 +87,7 @@ export default {
         const successOrNot = await (await RequestPOSTFromKliveAPI('/KMProfiles/AttemptLogin', JSON.stringify(this.password), false)).json();
         console.log("Login: "+successOrNot);
         if(successOrNot=='true'){
-          const passwordCookie = useCookie('password');
+          const passwordCookie = useCookie('password', { maxAge: 60 * 60 * 24 * 30 }); // 30 days
           passwordCookie.value = this.password;
           this.buttonText = "Logged in";
           // Open Dashboard

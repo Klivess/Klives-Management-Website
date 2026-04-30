@@ -13,7 +13,7 @@
           <KMButton message="Schemes"></KMButton>
         </NuxtLink>
         <NuxtLink to="/klivecloud">
-          <KMButton message="Klive cloud"></KMButton>
+          <KMButton message="KliveCloud"></KMButton>
         </NuxtLink>
         <NuxtLink to="/klivetech">
           <KMButton message="KliveTech"></KMButton>
@@ -24,8 +24,11 @@
         <NuxtLink to="/kliveagent">
           <KMButton message="KliveAgent"></KMButton>
         </NuxtLink>
+        <NuxtLink to="/klivetools">
+          <KMButton message="KliveTools"></KMButton>
+        </NuxtLink>
         <NuxtLink to="/botSchedule">
-          <KMButton message="Bot Schedule"></KMButton>
+          <KMButton message="Schedule"></KMButton>
         </NuxtLink>
         <NuxtLink to="/admin">
           <KMButton message="Admin"></KMButton>

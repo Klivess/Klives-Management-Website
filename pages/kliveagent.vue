@@ -1,8 +1,15 @@
 <template>
   <div class="agent-container">
     <div class="agent-header">
-      <h1 class="agent-title">KliveAgent</h1>
-      <p class="agent-subtitle">AI assistant for Omnipotent</p>
+      <div>
+        <h1 class="agent-title">KliveAgent</h1>
+        <p class="agent-subtitle">AI assistant for Omnipotent</p>
+      </div>
+      <button @click="reindexCodebase" class="reindex-btn" :disabled="reindexing" :title="reindexStatus">
+        <span v-if="reindexing">Reindexing...</span>
+        <span v-else-if="reindexDone">✓ Reindexed</span>
+        <span v-else>Reindex Codebase</span>
+      </button>
     </div>
 
     <div class="agent-layout">
@@ -341,6 +348,9 @@ const shortcuts = ref([]);
 
 const showAddMemory = ref(false);
 const newMemory = ref({ content: '', tags: '' });
+const reindexing = ref(false);
+const reindexDone = ref(false);
+const reindexStatus = ref('');
 
 async function sendMessage() {
   const msg = inputMessage.value.trim();
@@ -573,6 +583,24 @@ async function loadAnalytics() {
   } catch { }
 }
 
+async function reindexCodebase() {
+  if (reindexing.value) return;
+  reindexing.value = true;
+  reindexDone.value = false;
+  reindexStatus.value = '';
+  try {
+    const res = await RequestPOSTFromKliveAPI('/kliveagent/reindex', '{}', true, true);
+    const data = await res.json();
+    reindexStatus.value = data.message || 'Reindex triggered.';
+    reindexDone.value = true;
+    setTimeout(() => { reindexDone.value = false; }, 4000);
+  } catch (err) {
+    reindexStatus.value = 'Reindex failed: ' + err.message;
+  } finally {
+    reindexing.value = false;
+  }
+}
+
 async function loadShortcuts() {
   try {
     const res = await RequestGETFromKliveAPI('/kliveagent/shortcuts');
@@ -600,6 +628,30 @@ onMounted(() => {
 
 .agent-header {
   margin-bottom: 24px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.reindex-btn {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  color: #888;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.2s, color 0.2s;
+  margin-top: 4px;
+}
+.reindex-btn:hover:not(:disabled) {
+  border-color: #4d9e39;
+  color: #4d9e39;
+}
+.reindex-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .agent-title {

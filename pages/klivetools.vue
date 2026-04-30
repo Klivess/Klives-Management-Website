@@ -4,10 +4,11 @@
     <div class="kmt-sidebar">
       <div class="kmt-sidebar-header">
         <h2 class="kmt-title">KliveMultiTool</h2>
-        <button class="kmt-refresh-btn" @click="loadTools" title="Refresh tools">↺</button>
+        <button class="kmt-refresh-btn" :class="{ spinning: toolsLoading }" @click="loadTools" title="Refresh tools">↺</button>
       </div>
 
-      <div v-if="!tools.length" class="kmt-empty">No tools loaded.</div>
+      <div v-if="toolsLoading && !tools.length" class="kmt-loading-center"><span class="kmt-spinner"></span></div>
+      <div v-else-if="!tools.length" class="kmt-empty">No tools loaded.</div>
       <div
         v-for="tool in tools"
         :key="tool.name"
@@ -165,6 +166,7 @@
             <!-- Controls -->
             <div class="kmt-run-row">
               <button class="kmt-run-btn" :disabled="running" @click="executeFunction(false)">
+                <span v-if="running" class="kmt-spinner kmt-spinner--sm"></span>
                 {{ running ? 'Running…' : 'Execute' }}
               </button>
               <button class="kmt-run-btn kmt-run-btn--async" :disabled="running" @click="executeFunction(true)">
@@ -187,10 +189,11 @@
         <div v-if="activeTab === 'Observables'" class="kmt-tab-content">
           <div class="kmt-obs-header">
             <span class="kmt-obs-hint">Auto-refreshing every 2s</span>
-            <button class="kmt-refresh-btn" @click="loadObservables">↺</button>
+            <button class="kmt-refresh-btn" :class="{ spinning: obsLoading }" @click="loadObservables">↺</button>
           </div>
 
-          <div v-if="!observables.length" class="kmt-empty">No observable fields on this tool.</div>
+          <div v-if="obsLoading && !observables.length" class="kmt-loading-center"><span class="kmt-spinner"></span></div>
+          <div v-else-if="!observables.length" class="kmt-empty">No observable fields on this tool.</div>
 
           <div v-for="obs in observables" :key="obs.label" class="kmt-obs-card">
             <div class="kmt-obs-label">{{ obs.label }}</div>
@@ -232,10 +235,11 @@
         <div v-if="activeTab === 'Jobs'" class="kmt-tab-content">
           <div class="kmt-jobs-header">
             <span class="kmt-obs-hint">Auto-refreshing every 3s</span>
-            <button class="kmt-refresh-btn" @click="loadJobs">↺</button>
+            <button class="kmt-refresh-btn" :class="{ spinning: jobsLoading }" @click="loadJobs">↺</button>
           </div>
 
-          <div v-if="!jobs.length" class="kmt-empty">No recent jobs.</div>
+          <div v-if="jobsLoading && !jobs.length" class="kmt-loading-center"><span class="kmt-spinner"></span></div>
+          <div v-else-if="!jobs.length" class="kmt-empty">No recent jobs.</div>
 
           <div v-for="job in jobs" :key="job.jobId" class="kmt-job-card">
             <div class="kmt-job-header" @click="toggleJob(job.jobId)">
@@ -285,6 +289,10 @@ const activeTab = ref('Run');
 const running = ref(false);
 const lastResult = ref<any>(null);
 
+const toolsLoading = ref(false);
+const obsLoading = ref(false);
+const jobsLoading = ref(false);
+
 const observables = ref<any[]>([]);
 const jobs = ref<any[]>([]);
 const expandedJobs = ref<Set<string>>(new Set());
@@ -295,10 +303,11 @@ let jobsInterval: ReturnType<typeof setInterval> | null = null;
 // ── Load tools ──
 
 async function loadTools() {
+  toolsLoading.value = true;
   try {
     const res = await RequestGETFromKliveAPI('/KliveMultiTool/tools');
     if (res.ok) tools.value = await res.json();
-  } catch {}
+  } catch {} finally { toolsLoading.value = false; }
 }
 
 // ── Select a tool ──
@@ -381,10 +390,11 @@ async function executeFunction(asAsync: boolean) {
 
 async function loadObservables() {
   if (!selectedTool.value) return;
+  obsLoading.value = true;
   try {
     const res = await RequestGETFromKliveAPI(`/KliveMultiTool/tool/observables?name=${encodeURIComponent(selectedTool.value.name)}`);
     if (res.ok) observables.value = await res.json();
-  } catch {}
+  } catch {} finally { obsLoading.value = false; }
 }
 
 function startObsPolling() {
@@ -400,10 +410,11 @@ function stopObsPolling() {
 // ── Jobs polling ──
 
 async function loadJobs() {
+  jobsLoading.value = true;
   try {
     const res = await RequestGETFromKliveAPI('/KliveMultiTool/jobs');
     if (res.ok) jobs.value = await res.json();
-  } catch {}
+  } catch {} finally { jobsLoading.value = false; }
 }
 
 function startJobsPolling() {
@@ -954,6 +965,30 @@ watch(activeTab, (tab) => {
 }
 
 // ── Misc ──
+
+.kmt-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #333;
+  border-top-color: $secondary;
+  border-radius: 50%;
+  animation: kmt-spin 0.7s linear infinite;
+  vertical-align: middle;
+
+  &--sm { width: 12px; height: 12px; border-width: 2px; }
+}
+
+.kmt-loading-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px 0;
+}
+
+@keyframes kmt-spin { to { transform: rotate(360deg); } }
+
+.kmt-refresh-btn.spinning { animation: kmt-spin 0.7s linear infinite; }
 
 .kmt-empty {
   color: $gray;

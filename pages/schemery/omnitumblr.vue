@@ -760,14 +760,21 @@ async function loadEvents() {
 // ── Account Actions ──
 
 async function showAddAccount() {
+    // Fetch the configured callback URL from the backend
+    let configuredCallbackUrl = 'https://klive.dev/omnitumblr/oauth/callback';
+    try {
+        const cr = await RequestGETFromKliveAPI('/omnitumblr/oauth/callback-url');
+        if (cr?.ok) configuredCallbackUrl = (await cr.json()).callbackUrl;
+    } catch { /* fall back to default */ }
+
     // ── Step 1: Blog name + consumer credentials ──
     const { value: step1 } = await Swal.fire({
         title: 'Add Tumblr Blog — Step 1 of 2',
         html: `
             <p style="color:#aaa;font-size:13px;margin-bottom:12px;">
                 Create an app at <a href="https://www.tumblr.com/oauth/apps" target="_blank" style="color:#7eb3e8;">tumblr.com/oauth/apps</a>
-                and set the <strong>Default callback URL</strong> to
-                <code style="background:#222;padding:2px 5px;border-radius:3px;font-size:11px">https://klive.dev/omnitumblr/oauth/callback</code>.
+                and set the <strong>Default callback URL</strong> to exactly:<br/>
+                <code style="display:block;background:#222;padding:6px 8px;border-radius:4px;font-size:12px;margin-top:6px;word-break:break-all;color:#7eb3e8;">${configuredCallbackUrl}</code>
             </p>
             <input id="swal-blogname" class="swal2-input" placeholder="Blog name (e.g. myblog)" autocomplete="off">
             <input id="swal-ck" class="swal2-input" placeholder="Consumer Key" autocomplete="off">

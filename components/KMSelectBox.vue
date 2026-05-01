@@ -1,6 +1,6 @@
 <template>
   <div class="select">
-    <select :value="selected" @change="$emit('update:selected', $event.target.value); console.log('changed: '+$event.target.value)">
+    <select :value="selected" @change="$emit('update:selected', $event.target.value)">
       <option
         v-for="option in options"
         :key="option"
@@ -25,10 +25,17 @@ export default {
     }
   },
   watch: {
-    options(newOptions) {
-      if (newOptions && newOptions.length > 0) {
-        this.$emit('update:selected', newOptions[0]);
-      }
+    options: {
+      handler(newOptions) {
+        if (!Array.isArray(newOptions) || newOptions.length === 0) {
+          return;
+        }
+
+        if (!newOptions.includes(this.selected)) {
+          this.$emit('update:selected', newOptions[0]);
+        }
+      },
+      immediate: true,
     }
   },
 }

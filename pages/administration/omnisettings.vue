@@ -38,7 +38,7 @@
                 <div class="filter-group">
                     <KMSelectBox
                         v-model:selected="filterType"
-                        :options="['All Types', 'String', 'Bool', 'Int']"
+                        :options="['All Types', 'String', 'Bool', 'Int', 'Dropdown']"
                     />
                 </div>
                 
@@ -105,6 +105,12 @@
                                                 type="number"
                                             />
                                         </div>
+                                        <div v-else-if="setting.Type === 3" class="editor-input">
+                                            <KMSelectBox
+                                                v-model:selected="editingValues[`${setting.ParentServiceId}-${setting.Name}`]"
+                                                :options="getDropdownOptions(setting)"
+                                            />
+                                        </div>
                                     </div>
                                     
                                     <div class="editor-actions">
@@ -140,11 +146,12 @@ definePageMeta({ layout: 'navbar' });
 // Types
 interface OmniSetting {
     Name: string;
-    Type: number; // 0 = String, 1 = Bool, 2 = Int
+    Type: number; // 0 = String, 1 = Bool, 2 = Int, 3 = Dropdown
     Sensitive: boolean;
     ParentServiceId: string;
     ParentServiceName: string;
     Value: string;
+    DropdownOptions?: string[];
 }
 
 // State
@@ -210,8 +217,31 @@ const getTypeLabel = (type: number): string => {
         case 0: return 'String';
         case 1: return 'Bool';
         case 2: return 'Int';
+        case 3: return 'Dropdown';
         default: return 'Unknown';
     }
+};
+
+const getSettingKey = (setting: OmniSetting): string => `${setting.ParentServiceId}-${setting.Name}`;
+
+const getDropdownOptions = (setting: OmniSetting): string[] => {
+    if (setting.DropdownOptions && setting.DropdownOptions.length > 0) {
+        return setting.DropdownOptions;
+    }
+
+    return setting.Value ? [setting.Value] : [];
+};
+
+const normalizeDropdownValue = (setting: OmniSetting, value: string): string => {
+    const options = getDropdownOptions(setting);
+
+    if (options.length === 0) {
+        return value || '';
+    }
+
+    const trimmedValue = value?.trim() || '';
+    const matchedOption = options.find((option) => option.toLowerCase() === trimmedValue.toLowerCase());
+    return matchedOption || options[0];
 };
 
 const loadSettings = async () => {
@@ -232,12 +262,14 @@ const loadSettings = async () => {
 
             // Initialize editing values
             settings.value.forEach((setting) => {
-                const key = `${setting.ParentServiceId}-${setting.Name}`;
+                const key = getSettingKey(setting);
                 if (setting.Type === 1) {
                     // Bool
                     boolValues.value[key] = setting.Value === 'true' || setting.Value === 'True';
                 } else {
-                    editingValues.value[key] = setting.Value;
+                    editingValues.value[key] = setting.Type === 3
+                        ? normalizeDropdownValue(setting, setting.Value)
+                        : setting.Value;
                 }
             });
         } else {
@@ -252,16 +284,19 @@ const loadSettings = async () => {
 };
 
 const isSettingModified = (setting: OmniSetting): boolean => {
-    const key = `${setting.ParentServiceId}-${setting.Name}`;
+    const key = getSettingKey(setting);
     if (setting.Type === 1) {
         return boolValues.value[key] !== (setting.Value === 'true' || setting.Value === 'True');
     } else {
-        return editingValues.value[key] !== setting.Value;
+        const currentValue = setting.Type === 3
+            ? normalizeDropdownValue(setting, setting.Value)
+            : setting.Value;
+        return editingValues.value[key] !== currentValue;
     }
 };
 
 const saveSetting = async (setting: OmniSetting) => {
-    const key = `${setting.ParentServiceId}-${setting.Name}`;
+    const key = getSettingKey(setting);
     savingSettings.value.add(key);
 
     try {
@@ -269,7 +304,9 @@ const saveSetting = async (setting: OmniSetting) => {
         if (setting.Type === 1) {
             newValue = boolValues.value[key] ? 'true' : 'false';
         } else {
-            newValue = editingValues.value[key];
+            newValue = setting.Type === 3
+                ? normalizeDropdownValue(setting, editingValues.value[key])
+                : editingValues.value[key];
         }
 
         const payload = {

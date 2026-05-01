@@ -224,6 +224,37 @@
                             </div>
                         </div>
 
+                        <div class="scheme-card omnitumblr-card" @click="omniTumblrStats.hasAccess ? navigateToScheme('/schemery/omnitumblr') : showAccessDeniedMessage()"
+                             :class="{ 'card-loading': loadingStates.omnitumblr, 'card-error': errorStates.omnitumblr }">
+                            <div v-if="loadingStates.omnitumblr" class="card-loading-overlay">
+                                <div class="loading-spinner-small"></div>
+                            </div>
+                            <div v-if="errorStates.omnitumblr" class="card-error-overlay">
+                                <span>ERROR</span>
+                                <button @click.stop="retryOmniTumblrStats" class="retry-btn-small">↻</button>
+                            </div>
+                            <div class="scheme-header">
+                                <h3>OmniTumblr</h3>
+                                <div :class="['scheme-status', omniTumblrStats.hasAccess ? 'active' : 'restricted']">
+                                    {{ omniTumblrStats.hasAccess ? 'Active' : 'Restricted' }}
+                                </div>
+                            </div>
+                            <div class="scheme-metrics">
+                                <div class="metric">
+                                    <span class="metric-label">Blogs</span>
+                                    <span class="metric-value">{{ omniTumblrStats.totalAccounts === 'Restricted' ? 'Restricted' : omniTumblrStats.activeAccounts + '/' + omniTumblrStats.totalAccounts }}</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Success Rate</span>
+                                    <span class="metric-value success">{{ omniTumblrStats.successRate === 'Restricted' ? 'Restricted' : omniTumblrStats.successRate.toFixed(1) + '%' }}</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-label">Posts</span>
+                                    <span class="metric-value">{{ omniTumblrStats.totalPosts === 'Restricted' ? 'Restricted' : omniTumblrStats.postedCount + ' posted' }}</span>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="scheme-card inactive-card">
                             <div class="scheme-header">
                                 <h3>OmniTube Bot</h3>
@@ -273,12 +304,13 @@ export default {
             lastUpdate: 'Never',
             loadInterval: null,
             completedLoads: 0,
-            totalLoads: 6, // CS2, Memescraper, OmniTrader, OmniGram, FrontpageStats, Logs
+            totalLoads: 7, // CS2, Memescraper, OmniTrader, OmniGram, OmniTumblr, FrontpageStats, Logs
             loadingStates: {
                 cs2: false,
                 memescraper: false,
                 omnitrader: false,
                 omnigram: false,
+                omnitumblr: false,
                 kliveTech: false,
                 logs: false,
                 frontpage: false
@@ -288,6 +320,7 @@ export default {
                 memescraper: false,
                 omnitrader: false,
                 omnigram: false,
+                omnitumblr: false,
                 kliveTech: false,
                 logs: false,
                 frontpage: false
@@ -323,6 +356,15 @@ export default {
                 hasAccess: true
             },
             omniGramStats: {
+                totalAccounts: 0,
+                activeAccounts: 0,
+                totalPosts: 0,
+                postedCount: 0,
+                successRate: 0,
+                pendingCount: 0,
+                hasAccess: true
+            },
+            omniTumblrStats: {
                 totalAccounts: 0,
                 activeAccounts: 0,
                 totalPosts: 0,
@@ -371,6 +413,7 @@ export default {
                 this.loadMemescraperStats(); 
                 this.loadOmniTraderStats();
                 this.loadOmniGramStats();
+                this.loadOmniTumblrStats();
                 this.loadFrontpageStats();
                 this.loadRecentActivity(); // Only for logs now
                 
@@ -405,6 +448,10 @@ export default {
 
         retryOmniGramStats() {
             this.loadOmniGramStats();
+        },
+
+        retryOmniTumblrStats() {
+            this.loadOmniTumblrStats();
         },
 
         retryKliveTechStats() {
@@ -750,6 +797,46 @@ export default {
                 this.errorStates.omnigram = true;
             } finally {
                 this.loadingStates.omnigram = false;
+                this.trackLoadCompletion();
+            }
+        },
+
+        async loadOmniTumblrStats() {
+            this.loadingStates.omnitumblr = true;
+            this.errorStates.omnitumblr = false;
+
+            try {
+                const response = await RequestGETFromKliveAPI('/omnitumblr/dashboard-stats', false, false);
+
+                if (response.status === 401) {
+                    this.omniTumblrStats = {
+                        totalAccounts: 'Restricted',
+                        activeAccounts: 'Restricted',
+                        totalPosts: 'Restricted',
+                        postedCount: 'Restricted',
+                        successRate: 'Restricted',
+                        pendingCount: 'Restricted',
+                        hasAccess: false
+                    };
+                } else if (response.ok) {
+                    const data = await response.json();
+                    this.omniTumblrStats = {
+                        totalAccounts: data.TotalAccounts ?? 0,
+                        activeAccounts: data.ActiveAccounts ?? 0,
+                        totalPosts: data.TotalPosts ?? 0,
+                        postedCount: data.PostedCount ?? 0,
+                        successRate: data.SuccessRate ?? 0,
+                        pendingCount: data.PendingCount ?? 0,
+                        hasAccess: true
+                    };
+                } else {
+                    this.errorStates.omnitumblr = true;
+                }
+            } catch (error) {
+                console.log('OmniTumblr API unavailable:', error);
+                this.errorStates.omnitumblr = true;
+            } finally {
+                this.loadingStates.omnitumblr = false;
                 this.trackLoadCompletion();
             }
         },

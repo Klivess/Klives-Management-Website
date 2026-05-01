@@ -18,6 +18,26 @@
                     </div>
                     <h2 class="card-title">CS2 Arbitrage Bot</h2>
                     <p class="card-desc">Scans CS2 marketplace listings to find and exploit price discrepancies between Steam and CSFloat for profit.</p>
+                    
+                    <!-- Analytics Section -->
+                    <div v-if="!cs2Stats.loading" class="omnigram-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Success Rate</span>
+                            <span class="stat-value">{{ cs2Stats.successRate }}%</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Scanned</span>
+                            <span class="stat-value">{{ cs2Stats.itemsScanned.toLocaleString() }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Best Find</span>
+                            <span class="stat-value">{{ cs2Stats.bestFind }}%</span>
+                        </div>
+                    </div>
+                    <div v-else class="omnigram-stats">
+                        <span class="stat-loading">Loading stats...</span>
+                    </div>
+                    
                     <div class="card-footer">
                         <span class="card-action">View Analytics →</span>
                     </div>
@@ -33,6 +53,26 @@
                     </div>
                     <h2 class="card-title">Meme Scraper</h2>
                     <p class="card-desc">Periodically downloads media from Instagram sources for producing automated content across social platforms.</p>
+                    
+                    <!-- Analytics Section -->
+                    <div v-if="!memescraperStats.loading" class="omnigram-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Sources</span>
+                            <span class="stat-value">{{ memescraperStats.totalSources }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Total Memes</span>
+                            <span class="stat-value">{{ memescraperStats.totalMemes.toLocaleString() }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Today</span>
+                            <span class="stat-value">{{ memescraperStats.todayDownloads }}</span>
+                        </div>
+                    </div>
+                    <div v-else class="omnigram-stats">
+                        <span class="stat-loading">Loading stats...</span>
+                    </div>
+                    
                     <div class="card-footer">
                         <span class="card-action">View Analytics →</span>
                     </div>
@@ -74,6 +114,41 @@
                 </div>
             </div>
 
+            <div class="scheme-card active" @click="$router.push('/schemery/omnitumblr')">
+                <div class="card-accent accent-tumblr"></div>
+                <div class="card-body">
+                    <div class="card-top">
+                        <span class="card-icon">📝</span>
+                        <span class="card-badge badge-active">Active</span>
+                    </div>
+                    <h2 class="card-title">OmniTumblr</h2>
+                    <p class="card-desc">Manages Tumblr blogs with scheduled posting, content folder automation, and engagement analytics via OAuth.</p>
+                    
+                    <!-- Analytics Section -->
+                    <div v-if="!omnitumblrStats.loading" class="omnigram-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Blogs</span>
+                            <span class="stat-value tumblr-val">{{ omnitumblrStats.accounts }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Followers</span>
+                            <span class="stat-value tumblr-val">{{ omnitumblrStats.followers }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Posts (Week)</span>
+                            <span class="stat-value tumblr-val">{{ omnitumblrStats.postsThisWeek }}</span>
+                        </div>
+                    </div>
+                    <div v-else class="omnigram-stats">
+                        <span class="stat-loading">Loading stats...</span>
+                    </div>
+                    
+                    <div class="card-footer">
+                        <span class="card-action">View Dashboard →</span>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
         <!-- Simulator & In Development -->
@@ -88,6 +163,22 @@
                     </div>
                     <h2 class="card-title">OmniTrader</h2>
                     <p class="card-desc">Runs strategy deployment and analytics in simulator mode with backtesting workflows. Live exchange deployment is coming later.</p>
+                    
+                    <!-- Analytics Section -->
+                    <div v-if="!omnitraderStats.loading" class="omnigram-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Deployments</span>
+                            <span class="stat-value">{{ omnitraderStats.activeDeployments }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Avg Win Rate</span>
+                            <span class="stat-value">{{ omnitraderStats.avgWinRate.toFixed(1) }}%</span>
+                        </div>
+                    </div>
+                    <div v-else class="omnigram-stats">
+                        <span class="stat-loading">Loading stats...</span>
+                    </div>
+                    
                     <div class="card-footer">
                         <span class="card-action">Open Simulator →</span>
                     </div>
@@ -120,29 +211,29 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
+import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 
 definePageMeta({ layout: 'navbar' });
 
-const omnigramStats = ref({
-    accounts: 0,
-    followers: 0,
-    postsThisWeek: 0,
-    loading: true
-});
+const omnigramStats = ref({ accounts: 0, followers: 0, postsThisWeek: 0, loading: true });
+const omnitumblrStats = ref({ accounts: 0, followers: 0, postsThisWeek: 0, loading: true });
+const cs2Stats = ref({ successRate: 0, itemsScanned: 0, bestFind: 0, loading: true });
+const memescraperStats = ref({ totalSources: 0, totalMemes: 0, todayDownloads: 0, loading: true });
+const omnitraderStats = ref({ activeDeployments: 0, avgWinRate: 0, loading: true });
 
 const fetchOmnigramStats = async () => {
     try {
-        const response = await fetch('/api/omnigram/dashboard-stats', {
-            credentials: 'include'
-        });
+        const response = await RequestGETFromKliveAPI('/omnigram/dashboard-stats', false, false);
         if (response.ok) {
             const data = await response.json();
             omnigramStats.value = {
-                accounts: data.activeAccounts || 0,
-                followers: data.totalFollowers || 0,
-                postsThisWeek: data.postsThisWeek || 0,
+                accounts: data.ActiveAccounts ?? 0,
+                followers: data.TotalFollowers ?? 0,
+                postsThisWeek: data.PostsThisWeek ?? 0,
                 loading: false
             };
+        } else {
+            omnigramStats.value.loading = false;
         }
     } catch (error) {
         console.error('Failed to fetch OmniGram stats:', error);
@@ -150,8 +241,110 @@ const fetchOmnigramStats = async () => {
     }
 };
 
+const fetchOmniTumblrStats = async () => {
+    try {
+        const response = await RequestGETFromKliveAPI('/omnitumblr/dashboard-stats', false, false);
+        if (response.ok) {
+            const data = await response.json();
+            omnitumblrStats.value = {
+                accounts: data.ActiveAccounts ?? 0,
+                followers: data.TotalFollowers ?? 0,
+                postsThisWeek: data.PostsThisWeek ?? 0,
+                loading: false
+            };
+        } else {
+            omnitumblrStats.value.loading = false;
+        }
+    } catch (error) {
+        console.error('Failed to fetch OmniTumblr stats:', error);
+        omnitumblrStats.value.loading = false;
+    }
+};
+
+const fetchCS2Stats = async () => {
+    try {
+        const response = await RequestGETFromKliveAPI('/cs2arbitragebot/getscanalytics', false, false);
+        if (response.ok) {
+            const data = await response.json();
+            cs2Stats.value = {
+                successRate: Math.round((data.PercentageChanceOfFindingPositiveGainListing || 0) * 100) / 100,
+                itemsScanned: data.TotalListingsScanned || 0,
+                bestFind: Math.round(((data.HighestPredictedGainFoundSoFar - 1) * 100 || 0) * 100) / 100,
+                loading: false
+            };
+        } else {
+            cs2Stats.value.loading = false;
+        }
+    } catch (error) {
+        console.error('Failed to fetch CS2 stats:', error);
+        cs2Stats.value.loading = false;
+    }
+};
+
+const fetchMemescraperStats = async () => {
+    try {
+        const response = await RequestGETFromKliveAPI('/memescraper/memeScraperAnalytics', false, false);
+        if (response.ok) {
+            const analytics = await response.json();
+            let todayDownloads = 0;
+            if (analytics.MemesDownloadedPerDay) {
+                const today = new Date();
+                const todayStr = today.toISOString().split('T')[0];
+                for (const key of Object.keys(analytics.MemesDownloadedPerDay)) {
+                    if (key.includes(todayStr) || new Date(key).toDateString() === today.toDateString()) {
+                        todayDownloads = analytics.MemesDownloadedPerDay[key];
+                        break;
+                    }
+                }
+            }
+            memescraperStats.value = {
+                totalSources: analytics.TotalInstagramSources || 0,
+                totalMemes: analytics.TotalReelsDownloaded || 0,
+                todayDownloads,
+                loading: false
+            };
+        } else {
+            memescraperStats.value.loading = false;
+        }
+    } catch (error) {
+        console.error('Failed to fetch MemeScraper stats:', error);
+        memescraperStats.value.loading = false;
+    }
+};
+
+const fetchOmniTraderStats = async () => {
+    try {
+        const [statusResponse, deployedResponse] = await Promise.all([
+            RequestGETFromKliveAPI('/omniTrader/status', false, false),
+            RequestGETFromKliveAPI('/omniTrader/strategies/deployed', false, false)
+        ]);
+        if (statusResponse.ok && deployedResponse.ok) {
+            const status = await statusResponse.json();
+            const deployed = await deployedResponse.json();
+            const deployments = Array.isArray(deployed) ? deployed : [];
+            const avgWinRate = deployments.length > 0
+                ? deployments.reduce((sum, d) => sum + (Number(d.WinRate) || 0), 0) / deployments.length
+                : 0;
+            omnitraderStats.value = {
+                activeDeployments: status?.DeployedCount ?? deployments.length,
+                avgWinRate,
+                loading: false
+            };
+        } else {
+            omnitraderStats.value.loading = false;
+        }
+    } catch (error) {
+        console.error('Failed to fetch OmniTrader stats:', error);
+        omnitraderStats.value.loading = false;
+    }
+};
+
 onMounted(() => {
     fetchOmnigramStats();
+    fetchOmniTumblrStats();
+    fetchCS2Stats();
+    fetchMemescraperStats();
+    fetchOmniTraderStats();
 });
 </script>
 
@@ -254,6 +447,8 @@ onMounted(() => {
 .accent-amber { background: linear-gradient(to bottom, #f59e0b, #fbbf24); }
 .accent-red { background: linear-gradient(to bottom, #ef4444, #f87171); }
 .accent-instagram { background: linear-gradient(to bottom, #f97316, #fb7185); }
+.accent-tumblr { background: linear-gradient(to bottom, #35465c, #001935); }
+.tumblr-val { color: #5b8dd9; }
 .accent-tumblr { background: linear-gradient(to bottom, #2ab8ff, #4ade80); }
 
 /* Card Body */

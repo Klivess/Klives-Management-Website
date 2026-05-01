@@ -89,7 +89,8 @@
                 <div class="ot-section-header">
                     <h2>Fleet Status</h2>
                     <div class="ot-section-actions">
-                        <button class="ot-btn-sm" @click="triggerContentPull">⚡ Queue Content from Folders</button>
+                        <button class="ot-btn-sm" @click="triggerContentPull">⚡ Queue Content (Folders + MemeScraper)</button>
+                        <button class="ot-btn-sm" @click="activeTab = 'create'">✏️ Create Post</button>
                     </div>
                 </div>
                 <div class="ot-table-wrap">
@@ -124,6 +125,7 @@
                                 <td>{{ timeAgo(acc.LastPostTime) }}</td>
                                 <td class="td-actions">
                                     <button class="ot-btn-icon" title="Configure" @click="openAccountConfig(acc.AccountId)">⚙️</button>
+                                    <button class="ot-btn-icon" title="Profile" @click="showProfileEditor(acc.AccountId)">📋</button>
                                     <button v-if="!acc.IsPaused" class="ot-btn-icon" title="Pause" @click="pauseAccount(acc.AccountId)">⏸️</button>
                                     <button v-else class="ot-btn-icon" title="Resume" @click="resumeAccount(acc.AccountId)">▶️</button>
                                     <button class="ot-btn-icon" title="Refresh blog info" @click="refreshAccount(acc.AccountId, acc.BlogName)">🔄</button>
@@ -165,6 +167,7 @@
                         </div>
                         <div class="adc-actions">
                             <button class="ot-btn-icon" @click="openAccountConfig(acc.AccountId)" title="Configure">⚙️</button>
+                            <button class="ot-btn-icon" @click="showProfileEditor(acc.AccountId)" title="Edit Profile">📋</button>
                             <button v-if="!acc.IsPaused" class="ot-btn-icon" @click="pauseAccount(acc.AccountId)" title="Pause">⏸️</button>
                             <button v-else class="ot-btn-icon" @click="resumeAccount(acc.AccountId)" title="Resume">▶️</button>
                             <button class="ot-btn-icon" @click="refreshAccount(acc.AccountId, acc.BlogName)" title="Refresh blog info">🔄</button>
@@ -198,7 +201,8 @@
                 <div class="ot-section-header">
                     <h2>Post Queue ({{ queue.length }})</h2>
                     <div class="ot-section-actions">
-                        <button class="ot-btn-sm" @click="triggerContentPull">⚡ Queue Content from Folders Now</button>
+                        <button class="ot-btn-sm" @click="triggerContentPull">⚡ Queue Content (Folders + MemeScraper) Now</button>
+                        <button class="ot-btn-sm" @click="activeTab = 'create'">✏️ Create Post</button>
                     </div>
                 </div>
                 <div class="ot-table-wrap">
@@ -268,6 +272,109 @@
                         </tbody>
                     </table>
                     <div v-else class="ot-empty">No post history.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════ TAB: Create Post ═══════════════ -->
+        <div v-show="statsLoaded && activeTab === 'create'" class="ot-panel fade-in">
+            <div class="ot-section">
+                <div class="ot-section-header">
+                    <h2>Create / Draft Post</h2>
+                    <div class="ot-section-actions">
+                        <label class="ot-checkbox">
+                            <input type="checkbox" v-model="draftToMultiple" />
+                            <span>Draft to multiple blogs</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="ot-create-grid">
+                    <!-- Blog Selector -->
+                    <div class="create-section">
+                        <h3>Target Blog(s)</h3>
+                        <div v-if="!draftToMultiple" class="config-row">
+                            <label>Blog</label>
+                            <select v-model="createAccountId" class="ot-select" style="width:100%">
+                                <option value="">Select a blog...</option>
+                                <option v-for="acc in accounts" :key="acc.AccountId" :value="acc.AccountId">{{ acc.BlogName }}</option>
+                            </select>
+                        </div>
+                        <div v-else class="config-row">
+                            <label>Blogs to draft to</label>
+                            <div class="create-multi-select">
+                                <label class="ot-checkbox" v-for="acc in accounts" :key="acc.AccountId">
+                                    <input type="checkbox" :value="acc.AccountId" v-model="createAccountIds" />
+                                    <span>{{ acc.BlogName }}</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Post Type -->
+                    <div class="create-section">
+                        <h3>Post Type</h3>
+                        <div class="create-type-pills">
+                            <button v-for="t in ['Photo','PhotoSet','Video','Text','Quote','Link']" :key="t"
+                                class="create-type-pill" :class="{ active: createPostType === t }"
+                                @click="createPostType = t">{{ t }}</button>
+                        </div>
+                    </div>
+
+                    <!-- Content -->
+                    <div class="create-section">
+                        <h3>Content</h3>
+                        <div v-if="['Photo','PhotoSet','Video'].includes(createPostType)" class="config-row">
+                            <label>Media File(s)</label>
+                            <div class="create-upload-area">
+                                <input type="file" ref="mediaFileInput" :multiple="createPostType === 'PhotoSet'"
+                                    accept="image/*,video/*" style="display:none" @change="handleMediaFileChange" />
+                                <button class="ot-btn-sm" @click="(mediaFileInput as any)?.click()">📎 Choose File(s)</button>
+                                <span v-if="uploadedMediaPaths.length" class="upload-status">{{ uploadedMediaPaths.length }} file(s) ready</span>
+                                <span v-else class="upload-hint">No file chosen</span>
+                                <span v-if="uploadProgress" class="upload-status"> — {{ uploadProgress }}</span>
+                            </div>
+                            <div v-if="uploadedMediaPaths.length" class="uploaded-files">
+                                <div v-for="(p, i) in uploadedMediaPaths" :key="i" class="uploaded-file">
+                                    <span>📄 {{ getFileName(p) }}</span>
+                                    <button class="ot-btn-icon danger" style="width:22px;height:22px;font-size:11px" @click="removeUploadedFile(i)">✕</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="config-row">
+                            <label>{{ createPostType === 'Link' ? 'URL' : createPostType === 'Quote' ? 'Quote Text' : 'Caption / Body' }}</label>
+                            <textarea v-if="createPostType !== 'Link'" v-model="createCaption" class="ot-textarea" rows="4" placeholder="Enter caption or body text..."></textarea>
+                            <input v-else v-model="createCaption" class="ot-input" placeholder="https://..." />
+                        </div>
+                        <div v-if="['Text','Quote'].includes(createPostType)" class="config-row">
+                            <label>Title</label>
+                            <input v-model="createTitle" class="ot-input" placeholder="Post title..." />
+                        </div>
+                        <div v-if="createPostType === 'Quote'" class="config-row">
+                            <label>Quote Source</label>
+                            <input v-model="createQuoteSource" class="ot-input" placeholder="Source of the quote..." />
+                        </div>
+                        <div class="config-row">
+                            <label>Tags (comma-separated, no # needed)</label>
+                            <input v-model="createTagsText" class="ot-input" placeholder="photography, art, aesthetic" />
+                        </div>
+                    </div>
+
+                    <!-- Scheduling -->
+                    <div class="create-section">
+                        <h3>Schedule</h3>
+                        <div class="config-row">
+                            <label>Date &amp; Time (leave blank to publish immediately)</label>
+                            <input type="datetime-local" v-model="createScheduledTime" class="ot-input" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ot-config-actions">
+                    <KMButton message="⚡ Publish Now" @click="publishNow" style="width:240px;" />
+                    <KMButton message="📅 Schedule Post" @click="schedulePost" style="width:240px;" />
+                    <KMButton v-if="draftToMultiple" message="📋 Draft to All Selected" @click="draftToAll" style="width:280px;" />
+                    <button class="ot-btn-sm danger-btn" @click="clearCreateForm">✕ Clear Form</button>
                 </div>
             </div>
         </div>
@@ -392,11 +499,22 @@
                             <select v-model="editConfig.ContentSource" class="ot-select">
                                 <option value="ManualUpload">Manual Upload</option>
                                 <option value="ContentFolder">Content Folder</option>
+                                <option value="MemeScraper">MemeScraper (auto-pull reels)</option>
                             </select>
                         </div>
                         <div v-if="editConfig.ContentSource === 'ContentFolder'" class="config-row">
                             <label>Folder Path</label>
                             <input v-model="editConfig.ContentFolderPath" class="ot-input" placeholder="C:\path\to\content\folder" />
+                        </div>
+                        <div v-if="editConfig.ContentSource === 'MemeScraper'" class="config-row">
+                            <label>Niche Filter (optional keyword match on reel description)</label>
+                            <input v-model="editConfig.MemeScraperNicheFilter" class="ot-input" placeholder="e.g. gaming, meme, funny" />
+                        </div>
+                        <div v-if="editConfig.ContentSource === 'MemeScraper'" class="config-row">
+                            <label class="ot-checkbox">
+                                <input type="checkbox" v-model="editConfig.UseAICaptionsForMemeScraper" />
+                                <span>Use reel description as caption (AI pass-through)</span>
+                            </label>
                         </div>
                         <div class="config-row">
                             <label>Selection Mode</label>
@@ -544,10 +662,25 @@ const candidateCaptionsText = ref('');
 const tagsText = ref('');
 const preferredHoursText = ref('');
 
+// Create Post
+const draftToMultiple = ref(false);
+const createAccountId = ref('');
+const createAccountIds = ref<string[]>([]);
+const createPostType = ref('Photo');
+const createCaption = ref('');
+const createTitle = ref('');
+const createQuoteSource = ref('');
+const createTagsText = ref('');
+const createScheduledTime = ref('');
+const uploadedMediaPaths = ref<string[]>([]);
+const uploadProgress = ref('');
+const mediaFileInput = ref<HTMLInputElement | null>(null);
+
 const tabs = computed(() => [
     { id: 'overview', icon: '🏠', label: 'Fleet Overview', badge: null },
     { id: 'accounts', icon: '📝', label: 'Blogs', badge: accounts.value.length || null },
     { id: 'queue', icon: '📋', label: 'Post Queue', badge: queue.value.length || null },
+    { id: 'create', icon: '✏️', label: 'Create Post', badge: null },
     { id: 'analytics', icon: '📊', label: 'Analytics', badge: null },
     { id: 'config', icon: '⚙️', label: 'Content Config', badge: null },
 ]);
@@ -933,6 +1066,168 @@ function truncate(str: string, max: number): string {
     if (!str) return '';
     return str.length > max ? str.substring(0, max) + '...' : str;
 }
+
+function getFileName(p: string): string {
+    return p.split(/[/\\]/).pop() || p;
+}
+
+// ── Create Post ──
+
+async function handleMediaFileChange(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files) return;
+    const accountId = draftToMultiple.value
+        ? (createAccountIds.value[0] || '')
+        : createAccountId.value;
+    if (!accountId) {
+        Swal.fire('No Blog', 'Please select a blog first.', 'warning');
+        return;
+    }
+    for (const file of Array.from(input.files)) {
+        uploadProgress.value = `Uploading ${file.name}...`;
+        try {
+            const r = await RequestPOSTFromKliveAPI(
+                `/omnitumblr/media/upload?fileName=${encodeURIComponent(file.name)}&accountId=${encodeURIComponent(accountId)}`,
+                file
+            );
+            if (r?.ok) {
+                const data = await r.json();
+                uploadedMediaPaths.value.push(data.FilePath);
+            } else {
+                Swal.fire('Upload Failed', `${file.name}: ${r?.statusText || 'error'}`, 'error');
+            }
+        } catch (e) {
+            Swal.fire('Upload Error', String(e), 'error');
+        }
+    }
+    uploadProgress.value = '';
+    input.value = '';
+}
+
+function removeUploadedFile(index: number) {
+    uploadedMediaPaths.value.splice(index, 1);
+}
+
+function clearCreateForm() {
+    createAccountId.value = '';
+    createAccountIds.value = [];
+    createPostType.value = 'Photo';
+    createCaption.value = '';
+    createTitle.value = '';
+    createQuoteSource.value = '';
+    createTagsText.value = '';
+    createScheduledTime.value = '';
+    uploadedMediaPaths.value = [];
+    uploadProgress.value = '';
+}
+
+function buildCreatePayload() {
+    const tags = createTagsText.value.split(',').map(t => t.trim()).filter(Boolean);
+    return {
+        postType: createPostType.value,
+        caption: createCaption.value,
+        title: createTitle.value,
+        quoteSource: createQuoteSource.value,
+        tags,
+        mediaPaths: uploadedMediaPaths.value,
+        scheduledTime: createScheduledTime.value || null
+    };
+}
+
+async function publishNow() {
+    if (!createAccountId.value && !draftToMultiple.value) {
+        Swal.fire('No Blog', 'Please select a blog.', 'warning'); return;
+    }
+    const payload = { ...buildCreatePayload(), accountId: createAccountId.value };
+    const r = await RequestPOSTFromKliveAPI('/omnitumblr/posts/publish-now', payload);
+    if (r?.ok) {
+        Swal.fire('Published!', 'Post published successfully.', 'success');
+        clearCreateForm();
+        await loadQueue();
+    } else {
+        const msg = r ? await r.text() : 'Network error';
+        Swal.fire('Error', msg, 'error');
+    }
+}
+
+async function schedulePost() {
+    if (!createAccountId.value && !draftToMultiple.value) {
+        Swal.fire('No Blog', 'Please select a blog.', 'warning'); return;
+    }
+    const payload = { ...buildCreatePayload(), accountId: createAccountId.value };
+    const r = await RequestPOSTFromKliveAPI('/omnitumblr/posts/schedule', payload);
+    if (r?.ok) {
+        Swal.fire('Scheduled!', 'Post added to the queue.', 'success');
+        clearCreateForm();
+        await loadQueue();
+    } else {
+        const msg = r ? await r.text() : 'Network error';
+        Swal.fire('Error', msg, 'error');
+    }
+}
+
+async function draftToAll() {
+    if (!createAccountIds.value.length) {
+        Swal.fire('No Blogs', 'Please select at least one blog.', 'warning'); return;
+    }
+    const payload = { ...buildCreatePayload(), accountIds: createAccountIds.value };
+    const r = await RequestPOSTFromKliveAPI('/omnitumblr/posts/draft', payload);
+    if (r?.ok) {
+        Swal.fire('Drafted!', `Post drafted to ${createAccountIds.value.length} blog(s).`, 'success');
+        clearCreateForm();
+        await loadQueue();
+    } else {
+        const msg = r ? await r.text() : 'Network error';
+        Swal.fire('Error', msg, 'error');
+    }
+}
+
+// ── Profile Editor ──
+
+async function showProfileEditor(accountId: string) {
+    const r = await RequestGETFromKliveAPI(`/omnitumblr/accounts/profile?accountId=${encodeURIComponent(accountId)}`);
+    if (!r?.ok) { Swal.fire('Error', 'Could not load profile.', 'error'); return; }
+    const profile = await r.json();
+
+    const { value: formValues } = await Swal.fire({
+        title: `Edit Profile — ${profile.BlogName || accountId}`,
+        html: `
+            <div style="text-align:left;margin-bottom:8px">
+                <label style="font-size:13px;font-weight:600">Blog Title</label>
+                <input id="swal-title" class="swal2-input" style="margin:4px 0 12px;height:38px" value="${(profile.Title || '').replace(/"/g, '&quot;')}" placeholder="Blog title..." />
+                <label style="font-size:13px;font-weight:600">Description</label>
+                <textarea id="swal-desc" class="swal2-textarea" style="margin:4px 0 12px;min-height:80px" placeholder="Blog description...">${profile.Description || ''}</textarea>
+                <label style="font-size:13px;font-weight:600">Notes (internal only)</label>
+                <textarea id="swal-notes" class="swal2-textarea" style="margin:4px 0" placeholder="Internal notes...">${profile.Notes || ''}</textarea>
+            </div>`,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Save',
+        preConfirm: () => ({
+            title: (document.getElementById('swal-title') as HTMLInputElement)?.value || '',
+            description: (document.getElementById('swal-desc') as HTMLTextAreaElement)?.value || '',
+            notes: (document.getElementById('swal-notes') as HTMLTextAreaElement)?.value || ''
+        })
+    });
+
+    if (!formValues) return;
+
+    const saveR = await RequestPOSTFromKliveAPI('/omnitumblr/accounts/profile/edit', {
+        accountId,
+        title: formValues.title,
+        description: formValues.description,
+        notes: formValues.notes
+    });
+
+    if (saveR?.ok) {
+        const result = await saveR.json();
+        Swal.fire('Saved', result.note || 'Profile saved.', 'success');
+        await loadAccounts();
+    } else {
+        const msg = saveR ? await saveR.text() : 'Network error';
+        Swal.fire('Error', msg, 'error');
+    }
+}
 </script>
 
 <style scoped>
@@ -1207,6 +1502,25 @@ function truncate(str: string, max: number): string {
 .ot-checkbox { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; color: #c0c0c0; }
 .ot-checkbox input { cursor: pointer; accent-color: #35465c; }
 .ot-config-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 16px 0; }
+
+/* ─── Create Post ─── */
+.ot-create-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 20px; }
+@media (max-width: 900px) { .ot-create-grid { grid-template-columns: 1fr; } }
+.create-section { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 16px; }
+.create-section h3 { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: #969696; text-transform: uppercase; letter-spacing: .5px; }
+.create-type-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.create-type-pill { padding: 6px 14px; border-radius: 20px; border: 1px solid #333; background: transparent; color: #c0c0c0; font-size: 12px; cursor: pointer; transition: all 0.15s; }
+.create-type-pill:hover { border-color: #35465c; color: #fff; }
+.create-type-pill.active { background: #35465c; border-color: #35465c; color: #fff; font-weight: 600; }
+.create-upload-area { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px; background: #141414; border: 1px dashed #333; border-radius: 6px; }
+.upload-hint { font-size: 12px; color: #555; }
+.upload-status { font-size: 12px; color: #7eb3e8; }
+.upload-progress { font-size: 12px; color: #f0c040; }
+.uploaded-files { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.uploaded-file { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; background: #141414; border-radius: 4px; font-size: 12px; color: #c0c0c0; }
+.create-multi-select { display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto; }
+.danger-btn { background: transparent; border: 1px solid #5c3535; color: #e06060; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.danger-btn:hover { background: #5c3535; color: #fff; }
 
 /* ─── Inputs ─── */
 .ot-input {

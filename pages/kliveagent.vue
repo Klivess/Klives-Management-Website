@@ -114,17 +114,17 @@
           <div v-if="!analytics" class="side-empty">Loading analytics...</div>
           <template v-else>
             <div class="analytics-section">
-              <div class="analytics-label">Lifetime</div>
+              <div class="analytics-label">Lifetime Totals</div>
               <div class="analytics-grid">
-                <div class="stat-box"><div class="stat-val">{{ analytics.lifetime.totalMessages }}</div><div class="stat-key">Messages</div></div>
-                <div class="stat-box"><div class="stat-val">{{ fmtTokens(analytics.lifetime.totalPromptTokens + analytics.lifetime.totalCompletionTokens) }}</div><div class="stat-key">Total Tokens</div></div>
+                <div class="stat-box"><div class="stat-val">{{ analytics.lifetime.messages }}</div><div class="stat-key">Messages</div></div>
+                <div class="stat-box"><div class="stat-val">{{ fmtTokens(analytics.lifetime.totalTokens) }}</div><div class="stat-key">Total Tokens</div></div>
                 <div class="stat-box"><div class="stat-val">{{ fmtTokens(analytics.lifetime.avgPromptTokensPerMessage) }}</div><div class="stat-key">Avg Prompt/Msg</div></div>
                 <div class="stat-box"><div class="stat-val">{{ fmtTokens(analytics.lifetime.avgCompletionTokensPerMessage) }}</div><div class="stat-key">Avg Completion/Msg</div></div>
                 <div class="stat-box"><div class="stat-val">{{ analytics.lifetime.avgIterationsPerMessage?.toFixed(1) }}</div><div class="stat-key">Avg Iterations</div></div>
-                <div class="stat-box"><div class="stat-val">{{ analytics.lifetime.scriptSuccessRate?.toFixed(0) }}%</div><div class="stat-key">Script Success</div></div>
+                <div class="stat-box"><div class="stat-val">{{ analytics.lifetime.scriptSuccessRatePct?.toFixed(1) }}%</div><div class="stat-key">Script Success</div></div>
               </div>
             </div>
-            <div class="analytics-section">
+            <div v-if="analytics.today" class="analytics-section">
               <div class="analytics-label">Today</div>
               <div class="analytics-grid">
                 <div class="stat-box"><div class="stat-val">{{ analytics.today.messages }}</div><div class="stat-key">Messages</div></div>
@@ -134,7 +134,7 @@
               </div>
             </div>
             <div v-if="analytics.dailyHistory && analytics.dailyHistory.length > 0" class="analytics-section">
-              <div class="analytics-label">30-Day History</div>
+              <div class="analytics-label">Total History ({{ analytics.historyWindow?.totalDays || analytics.dailyHistory.length }} days)</div>
               <div class="daily-bars">
                 <div v-for="day in analytics.dailyHistory" :key="day.date" class="daily-bar-wrap" :title="day.date + ': ' + day.messages + ' msgs, ' + fmtTokens(day.promptTokens + day.completionTokens) + ' tokens'">
                   <div class="daily-bar" :style="{ height: Math.max(4, (day.messages / maxDailyMessages) * 80) + 'px' }"></div>
@@ -180,6 +180,10 @@
           <div class="kpi-val">{{ analytics.lifetime.scriptSuccessRatePct?.toFixed(1) }}%</div>
           <div class="kpi-key">Script Success Rate</div>
         </div>
+        <div class="kpi-card">
+          <div class="kpi-val">{{ analytics.historyWindow?.totalDays || chartDays.length }}</div>
+          <div class="kpi-key">Days Recorded</div>
+        </div>
       </div>
 
       <!-- Charts row -->
@@ -187,7 +191,7 @@
 
         <!-- Tokens per day line chart -->
         <div class="chart-card wide">
-          <div class="chart-title">Tokens Per Day (30 days)</div>
+          <div class="chart-title">Tokens Per Day (Total History)</div>
           <svg :viewBox="`0 0 ${chartW} ${chartH}`" class="chart-svg" preserveAspectRatio="none">
             <!-- grid lines -->
             <line v-for="y in [0.25,0.5,0.75,1]" :key="y"
@@ -219,7 +223,7 @@
 
         <!-- Messages per day bar chart -->
         <div class="chart-card">
-          <div class="chart-title">Messages Per Day (30 days)</div>
+          <div class="chart-title">Messages Per Day (Total History)</div>
           <svg :viewBox="`0 0 ${chartW} ${chartH}`" class="chart-svg" preserveAspectRatio="none">
             <line v-for="y in [0.25,0.5,0.75,1]" :key="y"
               :x1="chartPad" :y1="chartPad + (1-y)*(chartH-2*chartPad)"
@@ -352,6 +356,25 @@ const reindexing = ref(false);
 const reindexDone = ref(false);
 const reindexStatus = ref('');
 
+async function readAgentApiResponse(res) {
+  const contentType = res.headers.get('content-type') || '';
+
+  if (contentType.includes('application/json')) {
+    return { data: await res.json(), rawText: '' };
+  }
+
+  const rawText = await res.text();
+  if (!rawText) {
+    return { data: null, rawText: '' };
+  }
+
+  try {
+    return { data: JSON.parse(rawText), rawText };
+  } catch {
+    return { data: null, rawText };
+  }
+}
+
 async function sendMessage() {
   const msg = inputMessage.value.trim();
   if (!msg || loading.value) return;
@@ -364,7 +387,21 @@ async function sendMessage() {
   try {
     const body = JSON.stringify({ message: msg, conversationId: conversationId.value });
     const res = await RequestPOSTFromKliveAPI('/kliveagent/chat', body, true, true);
-    const data = await res.json();
+    const { data, rawText } = await readAgentApiResponse(res);
+
+    if (!res.ok) {
+      throw new Error(
+        data?.response ||
+        data?.error ||
+        data?.errorMessage ||
+        rawText ||
+        `KliveAgent API request failed with HTTP ${res.status}`
+      );
+    }
+
+    if (!data) {
+      throw new Error(rawText || 'KliveAgent API returned an empty response.');
+    }
 
     if (data.success !== false) {
       conversationId.value = data.conversationId;

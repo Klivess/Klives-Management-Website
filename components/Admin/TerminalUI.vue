@@ -1,125 +1,109 @@
 <template>
     <div class="terminal-container">
-        <!-- Terminal Header -->
         <div class="terminal-header">
-            <div class="terminal-title">
-                <span class="terminal-icon">⌘</span>
-                Terminal CLI
+            <div class="terminal-title-wrap">
+                <div class="terminal-title">Omnipotent Console</div>
+                <div class="terminal-meta">
+                    <span class="meta-pill" :class="sessionReady ? 'meta-online' : 'meta-offline'">
+                        {{ sessionReady ? 'Session Ready' : 'Session Unavailable' }}
+                    </span>
+                    <span class="meta-pill meta-neutral">{{ shortSessionId }}</span>
+                    <span class="meta-pill meta-path" :title="currentPath || 'No current path'">{{ currentPath || 'Connecting...' }}</span>
+                </div>
             </div>
+
             <div class="terminal-controls">
-                <button class="terminal-btn" @click="clearOutput" title="Clear terminal output">
-                    <span>🗑</span> Clear
-                </button>
-                <button class="terminal-btn" @click="clearHistory" title="Clear command history">
-                    <span>📋</span> Clear History
-                </button>
-                <button class="terminal-btn" @click="toggleHistory" title="Toggle history panel">
-                    <span>📜</span> {{ showHistoryPanel ? 'Hide' : 'Show' }} History
-                </button>
+                <button class="terminal-btn" @click="openSession(true)" :disabled="isExecuting">New Session</button>
+                <button class="terminal-btn" @click="resetSession" :disabled="!sessionId || isExecuting">Reset Shell</button>
+                <button class="terminal-btn" @click="clearScreen">Clear Screen</button>
+                <button class="terminal-btn" @click="clearHistory" :disabled="!sessionId || isExecuting">Clear History</button>
+                <button class="terminal-btn" @click="toggleHistory">{{ showHistoryPanel ? 'Hide' : 'Show' }} History</button>
             </div>
         </div>
 
         <div class="terminal-body">
-            <!-- History Panel -->
-            <div v-if="showHistoryPanel" class="history-panel">
-                <div class="history-header">Command History</div>
+            <aside v-if="showHistoryPanel" class="history-panel">
+                <div class="history-header">Session History</div>
                 <div class="history-list">
-                    <div
+                    <button
                         v-for="cmd in filteredHistory"
                         :key="cmd.commandId"
+                        type="button"
                         class="history-item"
                         :class="{
                             'history-success': cmd.status === 'completed',
                             'history-error': cmd.status === 'error',
-                            'history-running': cmd.status === 'running',
-                            'active': selectedCommand?.commandId === cmd.commandId
+                            active: selectedCommand?.commandId === cmd.commandId
                         }"
                         @click="loadPreviousCommand(cmd)"
                         :title="cmd.command"
                     >
-                        <div class="history-status">
-                            <span v-if="cmd.status === 'completed'" class="status-badge success">✓</span>
-                            <span v-else-if="cmd.status === 'error'" class="status-badge error">✕</span>
-                            <span v-else-if="cmd.status === 'running'" class="status-badge running">⟳</span>
-                            <span v-else class="status-badge pending">◯</span>
-                        </div>
-                        <div class="history-text">
-                            <div class="history-cmd">{{ cmd.command.substring(0, 40) }}</div>
-                            <div class="history-time">{{ formatTime(cmd.executedAt) }}</div>
-                        </div>
-                    </div>
+                        <span class="history-status" :class="`status-${cmd.status}`"></span>
+                        <span class="history-copy">
+                            <span class="history-cmd">{{ cmd.command }}</span>
+                            <span class="history-subline">{{ formatTime(cmd.executedAt) }} · {{ abbreviatePath(cmd.workingDirectory) }}</span>
+                        </span>
+                    </button>
                 </div>
-            </div>
+            </aside>
 
-            <!-- Main Terminal -->
             <div class="terminal-main">
-                <!-- Output Display -->
-                <div class="terminal-output" ref="outputContainer">
-                    <div v-if="executionHistory.length === 0" class="terminal-empty">
-                        <div class="empty-message">
-                            <p>Welcome to Omnipotent Terminal</p>
-                            <p class="empty-hint">Enter a command below or select from history to get started</p>
-                        </div>
+                <div ref="outputContainer" class="terminal-screen" @click="focusInput">
+                    <div class="screen-banner">
+                        <div class="screen-banner-title">PowerShell session attached to Omnipotent</div>
+                        <div class="screen-banner-copy">Working directory, variables, and shell state persist inside this session until you reset or replace it.</div>
                     </div>
 
-                    <div v-for="execution in executionHistory" :key="execution.commandId" class="execution-block">
+                    <div v-if="connectionError" class="screen-alert">{{ connectionError }}</div>
+
+                    <div v-if="transcript.length === 0 && !connectionError" class="terminal-empty">
+                        <p>{{ bannerMessage }}</p>
+                        <p class="empty-hint">Run a command to start building terminal history for this session.</p>
+                    </div>
+
+                    <div v-for="execution in transcript" :key="execution.commandId" class="execution-block">
                         <div class="command-line">
-                            <span class="prompt">$</span>
+                            <span class="prompt" :title="execution.workingDirectory || currentPath">PS {{ execution.workingDirectory || currentPath }}&gt;</span>
                             <span class="command-text">{{ execution.command }}</span>
                         </div>
 
-                        <div v-if="execution.status === 'running'" class="output-section">
-                            <div class="status-message running">
-                                <span class="spinner">⟳</span> Executing...
-                            </div>
-                        </div>
-
-                        <div v-else-if="execution.output" class="output-section">
-                            <pre class="output-text">{{ execution.output }}</pre>
-                        </div>
-
-                        <div v-if="execution.error" class="output-section error">
-                            <pre class="output-text error-text">{{ execution.error }}</pre>
-                        </div>
+                        <pre v-if="execution.output" class="output-text">{{ execution.output }}</pre>
+                        <pre v-if="execution.error" class="output-text error-text">{{ execution.error }}</pre>
 
                         <div class="execution-meta">
-                            <span :class="['status-badge', execution.status]">
-                                {{ execution.status.toUpperCase() }}
-                            </span>
-                            <span v-if="execution.exitCode !== null" class="exit-code">
-                                Exit: {{ execution.exitCode }}
-                            </span>
-                            <span class="execution-time">
-                                {{ formatExecutionTime(execution) }}
-                            </span>
+                            <span class="status-badge" :class="`badge-${execution.status}`">{{ execution.status }}</span>
+                            <span v-if="execution.exitCode !== null && execution.exitCode !== undefined">Exit {{ execution.exitCode }}</span>
+                            <span>{{ formatExecutionTime(execution) }}</span>
+                            <span>{{ formatTime(execution.executedAt) }}</span>
                         </div>
                     </div>
+
+                    <div v-if="isExecuting" class="live-status">Running command in {{ shortSessionId }}...</div>
                 </div>
 
-                <!-- Command Input -->
                 <div class="terminal-input-area">
-                    <div class="input-wrapper">
-                        <span class="prompt">$</span>
-                        <input
-                            v-model="currentCommand"
-                            type="text"
-                            class="terminal-input"
-                            placeholder="Enter command..."
-                            @keydown="handleKeydown"
-                            autocomplete="off"
+                    <div class="composer-shell" :class="{ disabled: !sessionReady }" @click="focusInput">
+                        <span class="composer-prompt" :title="currentPath">PS {{ currentPath || '~' }}&gt;</span>
+                        <textarea
                             ref="inputField"
-                        />
+                            v-model="currentCommand"
+                            rows="1"
+                            class="terminal-input"
+                            placeholder="Type a PowerShell command..."
+                            spellcheck="false"
+                            autocomplete="off"
+                            @input="resizeInput"
+                            @keydown="handleKeydown"
+                        ></textarea>
                         <button
                             class="send-btn"
                             @click="executeCommand"
-                            :disabled="currentCommand.trim() === '' || isExecuting"
-                            title="Execute command (Ctrl+Enter)"
+                            :disabled="currentCommand.trim() === '' || isExecuting || !sessionReady"
                         >
-                            <span v-if="isExecuting">⟳</span>
-                            <span v-else>▶</span>
+                            {{ isExecuting ? 'Running' : 'Run' }}
                         </button>
                     </div>
-                    <div class="input-hint">Press Enter to execute • ↑↓ for history • Ctrl+L to clear</div>
+                    <div class="input-hint">Enter runs the command. Shift+Enter inserts a newline. Up and Down browse session command history.</div>
                 </div>
             </div>
         </div>
@@ -127,12 +111,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue';
-import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import { computed, nextTick, onMounted, ref } from 'vue';
+import Swal from 'sweetalert2';
+import { RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 
-// State
+const SESSION_STORAGE_KEY = 'omnipotent-terminal-session-id';
+
 const currentCommand = ref('');
-const executionHistory = ref([]);
+const transcript = ref([]);
 const commandHistory = ref([]);
 const historyIndex = ref(-1);
 const isExecuting = ref(false);
@@ -140,185 +126,277 @@ const showHistoryPanel = ref(true);
 const selectedCommand = ref(null);
 const outputContainer = ref(null);
 const inputField = ref(null);
+const sessionId = ref('');
+const currentPath = ref('');
+const sessionReady = ref(false);
+const bannerMessage = ref('Opening terminal session...');
+const connectionError = ref('');
 
-// Constants
-const POLL_INTERVAL = 500; // Poll every 500ms for command status
+const filteredHistory = computed(() => commandHistory.value.slice().reverse().slice(0, 60));
+const shortSessionId = computed(() => sessionId.value ? `Session ${sessionId.value.slice(0, 8)}` : 'Session pending');
 
-// Computed
-const filteredHistory = computed(() => {
-    return commandHistory.value.slice().reverse().slice(0, 30);
-});
+function readStoredSessionId() {
+    if (!process.client) return '';
+    return localStorage.getItem(SESSION_STORAGE_KEY) || '';
+}
 
-// Lifecycle
-onMounted(async () => {
-    await loadCommandHistory();
-    inputField.value?.focus();
-});
+function storeSessionId(value) {
+    if (!process.client) return;
 
-// Methods
+    if (!value) {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+        return;
+    }
+
+    localStorage.setItem(SESSION_STORAGE_KEY, value);
+}
+
+function normalizeRecord(record) {
+    return {
+        commandId: record.commandId || `command-${Date.now()}-${Math.random()}`,
+        sessionId: record.sessionId || sessionId.value,
+        command: record.command || '',
+        output: record.output || '',
+        error: record.error || '',
+        status: record.status || 'completed',
+        exitCode: record.exitCode ?? null,
+        executedAt: record.executedAt || new Date().toISOString(),
+        completedAt: record.completedAt || null,
+        workingDirectory: record.workingDirectory || currentPath.value || ''
+    };
+}
+
+function syncSessionState(session) {
+    sessionId.value = session?.sessionId || '';
+    currentPath.value = session?.currentPath || currentPath.value || '';
+    bannerMessage.value = session?.welcomeMessage || 'Terminal session ready.';
+    sessionReady.value = Boolean(session?.sessionId);
+    connectionError.value = '';
+    storeSessionId(sessionId.value);
+
+    const history = Array.isArray(session?.history) ? session.history : [];
+    transcript.value = history.map(normalizeRecord);
+    commandHistory.value = [...transcript.value];
+    historyIndex.value = -1;
+    selectedCommand.value = null;
+    resizeInput();
+    scrollToBottom();
+}
+
+async function openSession(forceNew = false) {
+    connectionError.value = '';
+    bannerMessage.value = 'Opening terminal session...';
+
+    try {
+        const response = await RequestPOSTFromKliveAPI(
+            '/admin/terminal/session/open',
+            JSON.stringify({ sessionId: forceNew ? null : readStoredSessionId() }),
+            false,
+            true
+        );
+
+        const data = await response.json();
+        if (!response.ok || !data?.success || !data?.session) {
+            throw new Error(data?.error || `Failed to open terminal session (HTTP ${response.status})`);
+        }
+
+        syncSessionState(data.session);
+    } catch (error) {
+        console.error('Failed to open terminal session:', error);
+        sessionReady.value = false;
+        sessionId.value = '';
+        currentPath.value = '';
+        storeSessionId('');
+        connectionError.value = error?.message || 'Failed to connect to the terminal backend.';
+        bannerMessage.value = 'Unable to open a PowerShell session right now.';
+    }
+}
+
 async function executeCommand() {
     const command = currentCommand.value.trim();
-    if (!command || isExecuting.value) return;
+    if (!command || isExecuting.value || !sessionReady.value) return;
 
+    const pendingRecord = normalizeRecord({
+        commandId: `pending-${Date.now()}`,
+        command,
+        status: 'running',
+        executedAt: new Date().toISOString(),
+        workingDirectory: currentPath.value,
+        output: '',
+        error: '',
+        exitCode: null
+    });
+
+    transcript.value.push(pendingRecord);
+    commandHistory.value.push(pendingRecord);
+    currentCommand.value = '';
+    historyIndex.value = -1;
+    resizeInput();
+    scrollToBottom();
     isExecuting.value = true;
 
     try {
-        // Send command to backend
-        const response = await RequestPOSTFromKliveAPI('/admin/terminal/execute', command, false, false);
-
-        if (!response.ok) {
-            throw new Error(`API error: ${response.statusText}`);
-        }
+        const response = await RequestPOSTFromKliveAPI(
+            '/admin/terminal/session/execute',
+            JSON.stringify({ sessionId: sessionId.value, command }),
+            false,
+            true
+        );
 
         const data = await response.json();
-        const commandId = data.commandId;
-
-        // Add to execution history
-        const execution = {
-            commandId,
-            command,
-            status: 'running',
-            output: '',
-            error: '',
-            exitCode: null,
-            executedAt: new Date()
-        };
-
-        executionHistory.value.push(execution);
-
-        // Add to history if not already there
-        if (!commandHistory.value.find(c => c.commandId === commandId)) {
-            commandHistory.value.push(execution);
+        if (!response.ok || !data?.success) {
+            throw new Error(data?.error || `Command failed (HTTP ${response.status})`);
         }
 
-        // Clear input
-        currentCommand.value = '';
-        historyIndex.value = -1;
-
-        // Poll for status
-        await pollCommandStatus(commandId, execution);
-
-        // Save history to localStorage
-        saveCommandHistory();
-
-        scrollToBottom();
+        Object.assign(pendingRecord, normalizeRecord(data));
+        currentPath.value = data.currentPath || currentPath.value;
+        selectedCommand.value = pendingRecord;
     } catch (error) {
-        console.error('Failed to execute command:', error);
-        executionHistory.value.push({
-            commandId: `err-${Date.now()}`,
-            command: currentCommand.value,
-            status: 'error',
-            output: '',
-            error: `Failed to execute: ${error.message}`,
-            exitCode: -1,
-            executedAt: new Date()
-        });
+        console.error('Failed to execute terminal command:', error);
+        pendingRecord.status = 'error';
+        pendingRecord.error = error?.message || 'Failed to execute terminal command.';
+        pendingRecord.exitCode = -1;
+        pendingRecord.completedAt = new Date().toISOString();
     } finally {
         isExecuting.value = false;
-        inputField.value?.focus();
-    }
-}
-
-async function pollCommandStatus(commandId, executionObj) {
-    const maxAttempts = 120; // 60 seconds with 500ms interval
-    let attempts = 0;
-
-    while (attempts < maxAttempts && executionObj.status === 'running') {
-        await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
-
-        try {
-            const response = await RequestGETFromKliveAPI(`/admin/terminal/status?commandId=${encodeURIComponent(commandId)}`, false, false);
-
-            if (response.ok) {
-                const data = await response.json();
-                executionObj.status = data.status;
-                executionObj.output = data.output || '';
-                executionObj.error = data.error || '';
-                executionObj.exitCode = data.exitCode;
-
-                if (data.isComplete) {
-                    scrollToBottom();
-                    break;
-                }
-            }
-        } catch (error) {
-            console.warn('Polling error:', error);
-        }
-
-        attempts++;
         scrollToBottom();
     }
-
-    if (attempts >= maxAttempts) {
-        executionObj.status = 'timeout';
-        executionObj.error = 'Command execution timeout (60s limit exceeded)';
-    }
-}
-
-async function loadCommandHistory() {
-    try {
-        const response = await RequestGETFromKliveAPI('/admin/terminal/history?limit=50', false, false);
-
-        if (response.ok) {
-            commandHistory.value = await response.json();
-        }
-    } catch (error) {
-        console.warn('Failed to load command history:', error);
-    }
-}
-
-async function loadPreviousCommand(cmd) {
-    currentCommand.value = cmd.command;
-    selectedCommand.value = cmd;
-    inputField.value?.focus();
 }
 
 async function clearHistory() {
-    if (!confirm('Are you sure you want to clear command history?')) return;
+    if (!sessionId.value) return;
+
+    const result = await Swal.fire({
+        icon: 'warning',
+        title: 'Clear terminal history?',
+        text: 'This clears the saved transcript for the current shell session.',
+        showCancelButton: true,
+        confirmButtonText: 'Clear History',
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#4d9e39',
+        background: '#161516',
+        color: '#ffffff'
+    });
+
+    if (!result.isConfirmed) return;
 
     try {
-        await RequestPOSTFromKliveAPI('/admin/terminal/clear', '', false, false);
+        const response = await RequestPOSTFromKliveAPI(
+            '/admin/terminal/clear',
+            JSON.stringify({ sessionId: sessionId.value }),
+            false,
+            true
+        );
 
+        if (!response.ok) {
+            throw new Error(`Failed to clear history (HTTP ${response.status})`);
+        }
+
+        transcript.value = [];
         commandHistory.value = [];
-        inputField.value?.focus();
+        selectedCommand.value = null;
+        bannerMessage.value = 'History cleared. Shell state is still active.';
     } catch (error) {
-        console.error('Failed to clear history:', error);
+        console.error('Failed to clear terminal history:', error);
     }
 }
 
-function clearOutput() {
-    executionHistory.value = [];
+function clearScreen() {
+    transcript.value = [];
+    selectedCommand.value = null;
+}
+
+async function resetSession() {
+    if (!sessionId.value) {
+        await openSession(true);
+        return;
+    }
+
+    const result = await Swal.fire({
+        icon: 'warning',
+        title: 'Reset shell session?',
+        text: 'This starts a fresh PowerShell session and discards current shell state.',
+        showCancelButton: true,
+        confirmButtonText: 'Reset Session',
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#4d9e39',
+        background: '#161516',
+        color: '#ffffff'
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+        const response = await RequestPOSTFromKliveAPI(
+            '/admin/terminal/session/reset',
+            JSON.stringify({ sessionId: sessionId.value }),
+            false,
+            true
+        );
+
+        const data = await response.json();
+        if (!response.ok || !data?.success || !data?.session) {
+            throw new Error(data?.error || `Failed to reset session (HTTP ${response.status})`);
+        }
+
+        syncSessionState(data.session);
+    } catch (error) {
+        console.error('Failed to reset terminal session:', error);
+    }
 }
 
 function toggleHistory() {
     showHistoryPanel.value = !showHistoryPanel.value;
 }
 
-function handleKeydown(e) {
-    if (e.key === 'Enter' && e.ctrlKey) {
+function loadPreviousCommand(cmd) {
+    currentCommand.value = cmd.command || '';
+    selectedCommand.value = cmd;
+    resizeInput();
+    focusInput();
+}
+
+function focusInput() {
+    inputField.value?.focus();
+}
+
+function resizeInput() {
+    nextTick(() => {
+        if (!inputField.value) return;
+        inputField.value.style.height = '0px';
+        inputField.value.style.height = `${Math.min(inputField.value.scrollHeight, 180)}px`;
+    });
+}
+
+function handleKeydown(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
         executeCommand();
-    } else if (e.key === 'Enter') {
-        executeCommand();
-    } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
+        return;
+    }
+
+    if (event.key === 'ArrowUp' && !event.shiftKey && !currentCommand.value.includes('\n')) {
+        event.preventDefault();
         if (historyIndex.value < commandHistory.value.length - 1) {
-            historyIndex.value++;
-            const histCmd = commandHistory.value[commandHistory.value.length - 1 - historyIndex.value];
-            currentCommand.value = histCmd.command;
+            historyIndex.value += 1;
+            const historyItem = commandHistory.value[commandHistory.value.length - 1 - historyIndex.value];
+            currentCommand.value = historyItem.command || '';
+            resizeInput();
         }
-    } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
+        return;
+    }
+
+    if (event.key === 'ArrowDown' && !event.shiftKey && !currentCommand.value.includes('\n')) {
+        event.preventDefault();
         if (historyIndex.value > 0) {
-            historyIndex.value--;
-            const histCmd = commandHistory.value[commandHistory.value.length - 1 - historyIndex.value];
-            currentCommand.value = histCmd.command;
+            historyIndex.value -= 1;
+            const historyItem = commandHistory.value[commandHistory.value.length - 1 - historyIndex.value];
+            currentCommand.value = historyItem.command || '';
         } else if (historyIndex.value === 0) {
             historyIndex.value = -1;
             currentCommand.value = '';
         }
-    } else if (e.key === 'l' && e.ctrlKey) {
-        e.preventDefault();
-        clearOutput();
+        resizeInput();
     }
 }
 
@@ -330,33 +408,32 @@ function scrollToBottom() {
     });
 }
 
+function abbreviatePath(path) {
+    if (!path) return 'No path';
+    const normalized = path.replace(/\\/g, '/');
+    if (normalized.length <= 28) return normalized;
+    return `...${normalized.slice(-25)}`;
+}
+
 function formatTime(date) {
     if (!date) return '';
-    const d = new Date(date);
-    return d.toLocaleTimeString();
+    const parsed = new Date(date);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toLocaleTimeString();
 }
 
 function formatExecutionTime(execution) {
     const start = new Date(execution.executedAt);
-    let end = execution.status === 'running' ? new Date() : start;
-
-    // Try to calculate from polling if available
-    if (execution.status === 'completed' || execution.status === 'error') {
-        // Estimate based on output
-        const elapsed = 100; // Default estimate
-        return `${elapsed}ms`;
-    }
-
-    return `${Math.round((end - start))}ms`;
+    const end = execution.completedAt ? new Date(execution.completedAt) : new Date();
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '';
+    const elapsed = Math.max(end.getTime() - start.getTime(), 0);
+    if (elapsed < 1000) return `${elapsed}ms`;
+    return `${(elapsed / 1000).toFixed(2)}s`;
 }
 
-function saveCommandHistory() {
-    try {
-        localStorage.setItem('terminal_history', JSON.stringify(commandHistory.value.slice(-50)));
-    } catch (error) {
-        console.warn('Failed to save history:', error);
-    }
-}
+onMounted(async () => {
+    await openSession(false);
+});
 </script>
 
 <style scoped>
@@ -364,426 +441,486 @@ function saveCommandHistory() {
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: linear-gradient(135deg, #0a0e0c 0%, #0f1410 100%);
-    border-radius: 12px;
-    border: 1px solid rgba(77, 158, 57, 0.15);
+    background: radial-gradient(circle at top, rgba(40, 72, 42, 0.38), rgba(8, 12, 10, 0.98) 45%), #090c0a;
+    border: 1px solid rgba(111, 199, 121, 0.18);
+    border-radius: 16px;
     overflow: hidden;
-    font-family: 'Fira Code', 'Courier New', monospace;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    font-family: 'Consolas', 'Courier New', monospace;
+    box-shadow: 0 26px 60px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .terminal-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    padding: 16px 20px;
-    border-bottom: 1px solid rgba(77, 158, 57, 0.1);
-    background: rgba(7, 12, 9, 0.5);
+    gap: 20px;
+    align-items: flex-start;
+    padding: 18px 22px;
+    border-bottom: 1px solid rgba(111, 199, 121, 0.12);
+    background: linear-gradient(180deg, rgba(10, 16, 12, 0.95), rgba(10, 16, 12, 0.75));
+}
+
+.terminal-title-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
 }
 
 .terminal-title {
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #9df4a0;
+}
+
+.terminal-meta {
     display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.meta-pill {
+    display: inline-flex;
     align-items: center;
-    gap: 10px;
-    font-size: 16px;
-    font-weight: 600;
-    color: #86c96d;
-    letter-spacing: 0.05em;
+    max-width: 100%;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
 }
 
-.terminal-icon {
-    font-size: 20px;
-    opacity: 0.8;
+.meta-online {
+    background: rgba(46, 179, 82, 0.14);
+    color: #9df4a0;
+    border: 1px solid rgba(46, 179, 82, 0.22);
+}
+
+.meta-offline {
+    background: rgba(239, 68, 68, 0.12);
+    color: #ff9b9b;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.meta-neutral {
+    background: rgba(148, 163, 184, 0.12);
+    color: #cbd5e1;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.meta-path {
+    max-width: min(42vw, 420px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .terminal-controls {
     display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 8px;
 }
 
 .terminal-btn {
-    padding: 6px 14px;
-    border: 1px solid rgba(77, 158, 57, 0.3);
-    border-radius: 6px;
-    background: rgba(77, 158, 57, 0.08);
-    color: #86c96d;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(111, 199, 121, 0.22);
+    background: rgba(111, 199, 121, 0.08);
+    color: #bffac1;
     font-family: inherit;
-    font-size: 12px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    gap: 4px;
+    font-size: 0.74rem;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
 
 .terminal-btn:hover:not(:disabled) {
-    background: rgba(77, 158, 57, 0.15);
-    border-color: rgba(77, 158, 57, 0.5);
+    background: rgba(111, 199, 121, 0.16);
+    border-color: rgba(111, 199, 121, 0.42);
+    transform: translateY(-1px);
 }
 
 .terminal-btn:disabled {
-    opacity: 0.4;
+    opacity: 0.45;
     cursor: not-allowed;
 }
 
 .terminal-body {
     display: flex;
     flex: 1;
-    overflow: hidden;
+    min-height: 0;
 }
 
 .history-panel {
-    width: 250px;
-    border-right: 1px solid rgba(77, 158, 57, 0.1);
+    width: 280px;
+    border-right: 1px solid rgba(111, 199, 121, 0.1);
+    background: linear-gradient(180deg, rgba(9, 13, 11, 0.96), rgba(9, 13, 11, 0.72));
     display: flex;
     flex-direction: column;
-    background: rgba(7, 12, 9, 0.3);
+    min-height: 0;
 }
 
 .history-header {
-    padding: 12px 16px;
-    border-bottom: 1px solid rgba(77, 158, 57, 0.1);
-    font-size: 12px;
-    font-weight: 600;
-    color: #86c96d;
+    padding: 14px 16px;
+    font-size: 0.76rem;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    color: #8fe28f;
+    border-bottom: 1px solid rgba(111, 199, 121, 0.1);
 }
 
 .history-list {
     flex: 1;
     overflow-y: auto;
-    padding: 8px 0;
+    padding: 10px 8px;
 }
 
 .history-item {
+    width: 100%;
     display: flex;
-    align-items: center;
     gap: 10px;
+    align-items: flex-start;
+    text-align: left;
+    margin-bottom: 8px;
     padding: 10px 12px;
-    margin: 0 4px;
-    border-radius: 6px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.02);
     cursor: pointer;
-    transition: all 0.2s ease;
-    font-size: 11px;
-    border-left: 2px solid transparent;
+    transition: background 0.2s ease, border-color 0.2s ease;
 }
 
-.history-item:hover {
-    background: rgba(77, 158, 57, 0.1);
-}
-
+.history-item:hover,
 .history-item.active {
-    background: rgba(77, 158, 57, 0.15);
-    border-left-color: #86c96d;
-}
-
-.history-item.history-success {
-    color: #86c96d;
-}
-
-.history-item.history-error {
-    color: #ff6b6b;
-}
-
-.history-item.history-running {
-    color: #ffd93d;
+    background: rgba(111, 199, 121, 0.08);
+    border-color: rgba(111, 199, 121, 0.16);
 }
 
 .history-status {
-    min-width: 16px;
+    width: 10px;
+    height: 10px;
+    margin-top: 5px;
+    border-radius: 999px;
+    background: #7c8a7e;
+    flex-shrink: 0;
 }
 
-.history-text {
-    flex: 1;
-    overflow: hidden;
+.status-completed {
+    background: #7fe78a;
+}
+
+.status-error {
+    background: #ff8c8c;
+}
+
+.status-running {
+    background: #facc15;
+}
+
+.history-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
 }
 
 .history-cmd {
+    color: #edf7ee;
+    font-size: 0.8rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: #e0e0e0;
 }
 
-.history-time {
-    font-size: 9px;
-    color: #888;
-    margin-top: 2px;
-}
-
-.status-badge {
-    display: inline-block;
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 2px 6px;
-    border-radius: 3px;
-    background: rgba(77, 158, 57, 0.2);
-    color: #86c96d;
-}
-
-.status-badge.error {
-    background: rgba(255, 107, 107, 0.2);
-    color: #ff6b6b;
-}
-
-.status-badge.running {
-    background: rgba(255, 217, 61, 0.2);
-    color: #ffd93d;
-}
-
-.status-badge.pending {
-    background: rgba(130, 170, 255, 0.2);
-    color: #82aaff;
-}
-
-.status-badge.timeout {
-    background: rgba(255, 107, 107, 0.2);
-    color: #ff9999;
+.history-subline {
+    color: #7f907f;
+    font-size: 0.68rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .terminal-main {
     display: flex;
     flex-direction: column;
     flex: 1;
-    overflow: hidden;
+    min-width: 0;
+    min-height: 0;
 }
 
-.terminal-output {
+.terminal-screen {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
-    padding: 20px;
-    color: #e0e0e0;
+    padding: 20px 22px 18px;
+    background:
+        linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        radial-gradient(circle at top left, rgba(111, 199, 121, 0.07), transparent 34%),
+        #060907;
+    background-size: 100% 22px, auto, auto;
+    color: #d7e7d7;
+}
+
+.screen-banner {
+    margin-bottom: 18px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(111, 199, 121, 0.12);
+    background: rgba(111, 199, 121, 0.06);
+}
+
+.screen-banner-title {
+    color: #9df4a0;
+    font-size: 0.84rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 6px;
+}
+
+.screen-banner-copy {
+    color: #9aaf9a;
+    font-size: 0.78rem;
+    line-height: 1.45;
+}
+
+.screen-alert {
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.18);
+    color: #ffadad;
+    font-size: 0.82rem;
 }
 
 .terminal-empty {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    text-align: center;
+    padding: 24px 0;
+    color: #b0bdb0;
 }
 
-.empty-message {
-    color: #888;
-}
-
-.empty-message p {
-    margin: 8px 0;
+.terminal-empty p {
+    margin: 0 0 8px;
 }
 
 .empty-hint {
-    font-size: 12px;
-    color: #666;
+    color: #778577;
+    font-size: 0.78rem;
 }
 
 .execution-block {
-    margin-bottom: 16px;
-    border-left: 2px solid rgba(77, 158, 57, 0.2);
-    padding-left: 12px;
+    margin-bottom: 18px;
 }
 
 .command-line {
     display: flex;
-    gap: 8px;
-    font-size: 13px;
-    font-weight: 600;
+    gap: 10px;
+    align-items: flex-start;
     margin-bottom: 8px;
-    color: #e0e0e0;
+    font-size: 0.86rem;
 }
 
 .prompt {
-    color: #86c96d;
-    font-weight: 700;
-}
-
-.command-text {
-    color: #82aaff;
+    color: #8fe28f;
+    min-width: 0;
     word-break: break-all;
 }
 
-.output-section {
-    margin-bottom: 8px;
+.command-text {
+    color: #b8d4ff;
+    word-break: break-word;
 }
 
 .output-text {
-    margin: 0;
-    font-size: 12px;
-    line-height: 1.4;
-    color: #d0d0d0;
+    margin: 0 0 8px 0;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(111, 199, 121, 0.1);
+    color: #d6e5d6;
+    line-height: 1.45;
     white-space: pre-wrap;
-    word-wrap: break-word;
-    background: rgba(0, 0, 0, 0.2);
-    padding: 10px;
-    border-radius: 6px;
-    border-left: 2px solid rgba(77, 158, 57, 0.3);
-    max-height: 400px;
-    overflow: auto;
+    word-break: break-word;
+    overflow-x: auto;
 }
 
-.output-text.error-text {
-    border-left-color: #ff6b6b;
-    color: #ff9999;
-}
-
-.status-message {
-    padding: 10px;
-    border-radius: 6px;
-    font-size: 12px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.status-message.running {
-    color: #ffd93d;
-    background: rgba(255, 217, 61, 0.1);
-    border-left: 2px solid #ffd93d;
-}
-
-.spinner {
-    display: inline-block;
-    animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-    0% {
-        transform: rotate(0deg);
-    }
-    100% {
-        transform: rotate(360deg);
-    }
+.error-text {
+    border-color: rgba(239, 68, 68, 0.18);
+    background: rgba(239, 68, 68, 0.08);
+    color: #ffb5b5;
 }
 
 .execution-meta {
     display: flex;
-    gap: 12px;
-    font-size: 11px;
-    color: #999;
-    margin-top: 6px;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-size: 0.7rem;
+    color: #7f907f;
 }
 
-.exit-code {
-    color: #888;
+.status-badge {
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
 }
 
-.execution-time {
-    color: #777;
+.badge-completed {
+    background: rgba(46, 179, 82, 0.14);
+    color: #9df4a0;
+}
+
+.badge-error {
+    background: rgba(239, 68, 68, 0.14);
+    color: #ffb5b5;
+}
+
+.badge-running {
+    background: rgba(250, 204, 21, 0.14);
+    color: #fde68a;
+}
+
+.live-status {
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: rgba(250, 204, 21, 0.1);
+    border: 1px solid rgba(250, 204, 21, 0.16);
+    color: #fde68a;
+    font-size: 0.78rem;
 }
 
 .terminal-input-area {
-    border-top: 1px solid rgba(77, 158, 57, 0.1);
-    padding: 12px 20px;
-    background: rgba(7, 12, 9, 0.5);
+    border-top: 1px solid rgba(111, 199, 121, 0.12);
+    background: linear-gradient(180deg, rgba(9, 13, 11, 0.96), rgba(9, 13, 11, 0.88));
+    padding: 14px 18px 16px;
 }
 
-.input-wrapper {
+.composer-shell {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(77, 158, 57, 0.2);
-    border-radius: 8px;
-    padding: 8px 12px;
-    transition: all 0.2s ease;
+    align-items: flex-end;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid rgba(111, 199, 121, 0.16);
+    border-radius: 14px;
+    background: rgba(4, 6, 5, 0.72);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.input-wrapper:focus-within {
-    border-color: rgba(77, 158, 57, 0.5);
-    background: rgba(0, 0, 0, 0.5);
+.composer-shell:focus-within {
+    border-color: rgba(111, 199, 121, 0.34);
+    box-shadow: 0 0 0 1px rgba(111, 199, 121, 0.12);
+}
+
+.composer-shell.disabled {
+    opacity: 0.6;
+}
+
+.composer-prompt {
+    max-width: 320px;
+    color: #8fe28f;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
 }
 
 .terminal-input {
     flex: 1;
-    background: transparent;
+    min-height: 22px;
+    max-height: 180px;
+    resize: none;
     border: none;
-    color: #e0e0e0;
+    background: transparent;
+    color: #eef8ef;
     font-family: inherit;
-    font-size: 13px;
+    font-size: 0.86rem;
+    line-height: 1.5;
     outline: none;
-    caret-color: #86c96d;
+    padding: 0;
 }
 
 .terminal-input::placeholder {
-    color: #666;
+    color: #6b776b;
 }
 
 .send-btn {
-    width: 32px;
-    height: 32px;
-    border: 1px solid rgba(77, 158, 57, 0.3);
-    border-radius: 6px;
-    background: rgba(77, 158, 57, 0.1);
-    color: #86c96d;
-    font-size: 14px;
+    flex-shrink: 0;
+    min-width: 92px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(111, 199, 121, 0.22);
+    background: rgba(111, 199, 121, 0.12);
+    color: #cbf7cd;
+    font-family: inherit;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
     cursor: pointer;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.send-btn:hover:not(:disabled) {
-    background: rgba(77, 158, 57, 0.2);
-    border-color: rgba(77, 158, 57, 0.5);
 }
 
 .send-btn:disabled {
-    opacity: 0.4;
+    opacity: 0.42;
     cursor: not-allowed;
 }
 
 .input-hint {
-    font-size: 10px;
-    color: #666;
-    margin-top: 6px;
-    letter-spacing: 0.05em;
+    margin-top: 8px;
+    color: #6f7e6f;
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
 }
 
-/* Scrollbar styling */
-.terminal-output::-webkit-scrollbar,
+.terminal-screen::-webkit-scrollbar,
 .history-list::-webkit-scrollbar,
 .output-text::-webkit-scrollbar {
     width: 8px;
+    height: 8px;
 }
 
-.terminal-output::-webkit-scrollbar-track,
-.history-list::-webkit-scrollbar-track,
-.output-text::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.terminal-output::-webkit-scrollbar-thumb,
+.terminal-screen::-webkit-scrollbar-thumb,
 .history-list::-webkit-scrollbar-thumb,
 .output-text::-webkit-scrollbar-thumb {
-    background: rgba(77, 158, 57, 0.2);
-    border-radius: 4px;
+    background: rgba(111, 199, 121, 0.2);
+    border-radius: 999px;
 }
 
-.terminal-output::-webkit-scrollbar-thumb:hover,
-.history-list::-webkit-scrollbar-thumb:hover,
-.output-text::-webkit-scrollbar-thumb:hover {
-    background: rgba(77, 158, 57, 0.4);
-}
+@media (max-width: 1080px) {
+    .terminal-body {
+        flex-direction: column;
+    }
 
-/* Responsive */
-@media (max-width: 768px) {
     .history-panel {
-        display: none;
+        width: 100%;
+        max-height: 200px;
+        border-right: none;
+        border-bottom: 1px solid rgba(111, 199, 121, 0.1);
+    }
+}
+
+@media (max-width: 760px) {
+    .terminal-header {
+        flex-direction: column;
     }
 
     .terminal-controls {
-        flex-wrap: wrap;
+        justify-content: flex-start;
     }
 
-    .terminal-btn {
-        padding: 4px 10px;
-        font-size: 10px;
+    .composer-shell {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .composer-prompt {
+        max-width: 100%;
+    }
+
+    .send-btn {
+        width: 100%;
     }
 }
 </style>

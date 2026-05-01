@@ -148,6 +148,102 @@
             </KMInfoBox>
         </KMInfoGrid>
 
+        <KMInfoGrid columns="1" rows="1" rowHeight="390">
+            <KMInfoBox caption="KliveAPI Statistics">
+                <div v-if="!apiStats.loading && !apiStats.error" class="api-stats-container">
+                    <div class="api-stats-row">
+                        <div class="u-stat">
+                            <span class="u-val clr-success">{{ apiStats.lifetime.totalRequests.toLocaleString() }}</span>
+                            <span class="u-lbl">Total Requests</span>
+                        </div>
+                        <div class="u-stat">
+                            <span class="u-val clr-accent">{{ apiStats.lifetime.availabilityPct.toFixed(2) }}%</span>
+                            <span class="u-lbl">Success Rate</span>
+                        </div>
+                        <div class="u-stat">
+                            <span class="u-val">{{ formatMilliseconds(apiStats.lifetime.avgResponseMs) }}</span>
+                            <span class="u-lbl">Avg Response</span>
+                        </div>
+                        <div class="u-stat">
+                            <span class="u-val" :class="apiStats.lifetime.maxResponseMs > 1000 ? 'clr-danger' : apiStats.lifetime.maxResponseMs > 350 ? 'clr-warning' : 'clr-success'">{{ formatMilliseconds(apiStats.lifetime.maxResponseMs) }}</span>
+                            <span class="u-lbl">Max Response</span>
+                        </div>
+                    </div>
+
+                    <div class="api-chart-grid">
+                        <div class="api-chart-card">
+                            <div class="api-chart-title">Requests Per Day ({{ apiStats.historyWindow.totalDays || apiDailyHistory.length }} days)</div>
+                            <svg viewBox="0 0 560 150" class="api-chart-svg" preserveAspectRatio="none">
+                                <line v-for="y in [0.25, 0.5, 0.75, 1]" :key="`api-req-grid-${y}`"
+                                    :x1="22" :y1="22 + (1 - y) * (150 - 44)"
+                                    :x2="538" :y2="22 + (1 - y) * (150 - 44)"
+                                    stroke="#2a2a2a" stroke-width="1" />
+                                <rect v-for="(day, index) in apiDailyHistory" :key="`api-req-${day.date}`"
+                                    :x="getApiChartX(index) - 6"
+                                    :y="getApiRequestY(day.requests)"
+                                    :width="12"
+                                    :height="Math.max(3, 128 - getApiRequestY(day.requests))"
+                                    fill="#4d9e39"
+                                    rx="2" />
+                                <text v-for="label in apiHistoryLabels" :key="`api-req-label-${label.idx}`"
+                                    :x="getApiChartX(label.idx)" y="146" fill="#666666" font-size="9" text-anchor="middle">{{ label.label }}</text>
+                            </svg>
+                        </div>
+
+                        <div class="api-chart-card">
+                            <div class="api-chart-title">Daily Response Speed</div>
+                            <svg viewBox="0 0 560 150" class="api-chart-svg" preserveAspectRatio="none">
+                                <line v-for="y in [0.25, 0.5, 0.75, 1]" :key="`api-lat-grid-${y}`"
+                                    :x1="22" :y1="22 + (1 - y) * (150 - 44)"
+                                    :x2="538" :y2="22 + (1 - y) * (150 - 44)"
+                                    stroke="#2a2a2a" stroke-width="1" />
+                                <polyline :points="buildApiLatencyPoints('avgResponseMs')" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round" />
+                                <polyline :points="buildApiLatencyPoints('maxResponseMs')" fill="none" stroke="#ef4444" stroke-width="2" stroke-linejoin="round" />
+                                <circle v-for="(day, index) in apiDailyHistory" :key="`api-avg-${day.date}`" :cx="getApiChartX(index)" :cy="getApiLatencyY(day.avgResponseMs)" r="3" fill="#3b82f6" />
+                                <circle v-for="(day, index) in apiDailyHistory" :key="`api-max-${day.date}`" :cx="getApiChartX(index)" :cy="getApiLatencyY(day.maxResponseMs)" r="3" fill="#ef4444" />
+                                <text v-for="label in apiHistoryLabels" :key="`api-lat-label-${label.idx}`"
+                                    :x="getApiChartX(label.idx)" y="146" fill="#666666" font-size="9" text-anchor="middle">{{ label.label }}</text>
+                            </svg>
+                            <div class="chart-legend api-legend">
+                                <span class="legend-dot" style="background:#3b82f6"></span>Average latency
+                                <span class="legend-dot" style="background:#ef4444;margin-left:12px"></span>Peak latency
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div v-else-if="apiStats.loading" class="no-data">Loading KliveAPI statistics...</div>
+                <div v-else class="no-data clr-danger">Failed to load KliveAPI statistics</div>
+            </KMInfoBox>
+        </KMInfoGrid>
+
+        <KMInfoGrid columns="2" rows="1" rowHeight="300">
+            <KMInfoBox caption="Busiest API Routes">
+                <div class="api-route-list">
+                    <div v-for="route in apiStats.topRoutes" :key="`top-${route.method}-${route.route}`" class="api-route-row">
+                        <div class="api-route-copy">
+                            <span class="api-route-name">{{ route.method }} {{ route.route }}</span>
+                            <span class="api-route-meta">{{ route.requests.toLocaleString() }} requests · Avg {{ formatMilliseconds(route.avgResponseMs) }}</span>
+                        </div>
+                        <span class="api-route-chip">{{ route.successes.toLocaleString() }} ok</span>
+                    </div>
+                    <div v-if="!apiStats.topRoutes.length" class="no-data">No route history recorded yet</div>
+                </div>
+            </KMInfoBox>
+
+            <KMInfoBox caption="Slowest API Routes">
+                <div class="api-route-list">
+                    <div v-for="route in apiStats.slowestRoutes" :key="`slow-${route.method}-${route.route}`" class="api-route-row">
+                        <div class="api-route-copy">
+                            <span class="api-route-name">{{ route.method }} {{ route.route }}</span>
+                            <span class="api-route-meta">Avg {{ formatMilliseconds(route.avgResponseMs) }} · Peak {{ formatMilliseconds(route.maxResponseMs) }}</span>
+                        </div>
+                        <span class="api-route-chip api-route-chip-danger">{{ route.requests.toLocaleString() }} hits</span>
+                    </div>
+                    <div v-if="!apiStats.slowestRoutes.length" class="no-data">No slow-route data recorded yet</div>
+                </div>
+            </KMInfoBox>
+        </KMInfoGrid>
+
         <!-- Disk Statistics -->
         <KMInfoGrid columns="1" rows="1" rowHeight="220">
             <KMInfoBox caption="Disk Statistics">
@@ -170,9 +266,30 @@
             <KMInfoBox caption="All Services">
                 <div class="services-scroll">
                     <div class="service-row" v-for="svc in stats.Services" :key="svc.Name">
-                        <span class="svc-dot" :class="svc.IsActive ? 'dot-on' : 'dot-off'"></span>
-                        <span class="svc-name">{{ svc.Name }}</span>
-                        <span class="svc-uptime">{{ svc.UptimeHumanized }}</span>
+                        <div class="service-info">
+                            <span class="svc-dot" :class="svc.IsActive ? 'dot-on' : 'dot-off'"></span>
+                            <div class="svc-copy">
+                                <span class="svc-name">{{ svc.Name }}</span>
+                                <span class="svc-state" :class="svc.IsActive ? 'clr-success' : 'clr-danger'">{{ svc.IsActive ? 'Active' : 'Inactive' }}</span>
+                            </div>
+                        </div>
+                        <div class="service-actions">
+                            <span class="svc-uptime">{{ svc.UptimeHumanized }}</span>
+                            <button
+                                class="service-action-btn restart"
+                                :disabled="botUpdating || isServiceActionPending(svc.Name)"
+                                @click="manageService(svc, 'restart')"
+                            >
+                                {{ getServiceActionLabel(svc.Name, 'restart') }}
+                            </button>
+                            <button
+                                class="service-action-btn quit"
+                                :disabled="botUpdating || isServiceActionPending(svc.Name)"
+                                @click="manageService(svc, 'quit')"
+                            >
+                                {{ getServiceActionLabel(svc.Name, 'quit') }}
+                            </button>
+                        </div>
                     </div>
                     <div v-if="stats.Services.length === 0" class="no-data">No service data available</div>
                 </div>
@@ -287,6 +404,30 @@ export default {
                 loading: true,
                 error: false
             },
+            apiStats: {
+                lifetime: {
+                    totalRequests: 0,
+                    successfulRequests: 0,
+                    clientErrorRequests: 0,
+                    serverErrorRequests: 0,
+                    notFoundRequests: 0,
+                    unauthorizedRequests: 0,
+                    avgResponseMs: 0,
+                    maxResponseMs: 0,
+                    availabilityPct: 100,
+                    lastRequestAt: null
+                },
+                historyWindow: {
+                    firstDay: null,
+                    lastDay: null,
+                    totalDays: 0
+                },
+                dailyHistory: [],
+                topRoutes: [],
+                slowestRoutes: [],
+                loading: true,
+                error: false
+            },
             uptimeRangeOptions: [
                 { label: '1D', value: '1d', ms: 24 * 60 * 60 * 1000, description: 'Last 24 hours' },
                 { label: '3D', value: '3d', ms: 3 * 24 * 60 * 60 * 1000, description: 'Last 3 days' },
@@ -297,6 +438,7 @@ export default {
             selectedUptimeRange: '7d',
             hoveredUptimeBlock: null,
             botUpdating: false,
+            serviceActionState: {},
             refreshInterval: null,
             seleniumInstances: [],
             stats: {
@@ -347,6 +489,25 @@ export default {
             if (this.stats.RamUsagePercentage > 85) return 'clr-danger';
             if (this.stats.RamUsagePercentage > 60) return 'clr-warning';
             return 'clr-success';
+        },
+        apiDailyHistory() {
+            return Array.isArray(this.apiStats.dailyHistory) ? this.apiStats.dailyHistory : [];
+        },
+        apiHistoryLabels() {
+            const days = this.apiDailyHistory;
+            if (!days.length) return [];
+            const step = Math.max(1, Math.floor(days.length / 6));
+            return days
+                .map((day, index) => ({ idx: index, label: day.date?.slice(5) || '' }))
+                .filter((_, index) => index % step === 0 || index === days.length - 1);
+        },
+        apiMaxDailyRequests() {
+            if (!this.apiDailyHistory.length) return 1;
+            return Math.max(1, ...this.apiDailyHistory.map(day => day.requests || 0));
+        },
+        apiMaxLatencyMs() {
+            if (!this.apiDailyHistory.length) return 1;
+            return Math.max(1, ...this.apiDailyHistory.map(day => Math.max(day.avgResponseMs || 0, day.maxResponseMs || 0)));
         },
         filteredNetwork() {
             if (!this.stats.NetworkInterfaces) return [];
@@ -494,6 +655,17 @@ export default {
         }
     },
     methods: {
+        isServiceActionPending(serviceName) {
+            return Boolean(this.serviceActionState[serviceName]);
+        },
+        getServiceActionLabel(serviceName, action) {
+            const pendingAction = this.serviceActionState[serviceName];
+            if (pendingAction === action) {
+                return action === 'restart' ? 'RESTARTING...' : 'QUITTING...';
+            }
+
+            return action === 'restart' ? 'RESTART' : 'QUIT';
+        },
         setUptimeRange(rangeValue) {
             if (this.selectedUptimeRange === rangeValue) return;
             this.selectedUptimeRange = rangeValue;
@@ -504,6 +676,24 @@ export default {
         },
         clearHoveredUptimeBlock() {
             this.hoveredUptimeBlock = null;
+        },
+        getApiChartX(index) {
+            const totalDays = this.apiDailyHistory.length;
+            if (totalDays <= 1) return 22;
+            return 22 + index * ((560 - 44) / (totalDays - 1));
+        },
+        getApiRequestY(value) {
+            const ratio = Math.min(1, (value || 0) / this.apiMaxDailyRequests);
+            return 22 + (1 - ratio) * (150 - 44);
+        },
+        getApiLatencyY(value) {
+            const ratio = Math.min(1, (value || 0) / this.apiMaxLatencyMs);
+            return 22 + (1 - ratio) * (150 - 44);
+        },
+        buildApiLatencyPoints(metricKey) {
+            return this.apiDailyHistory
+                .map((day, index) => `${this.getApiChartX(index)},${this.getApiLatencyY(day[metricKey] || 0)}`)
+                .join(' ');
         },
         formatDateTime(value) {
             if (value === undefined || value === null) return 'N/A';
@@ -558,6 +748,24 @@ export default {
                 this.uptimeStats.loading = false;
             }
         },
+        async loadApiStats() {
+            this.apiStats.loading = true;
+            this.apiStats.error = false;
+            try {
+                const response = await RequestGETFromKliveAPI('/KliveAPI/Statistics', false, false);
+                if (response.ok) {
+                    const data = await response.json();
+                    this.apiStats = { ...this.apiStats, ...data, loading: false, error: false };
+                } else {
+                    this.apiStats.error = true;
+                    this.apiStats.loading = false;
+                }
+            } catch (e) {
+                console.error('Failed to load KliveAPI stats:', e);
+                this.apiStats.error = true;
+                this.apiStats.loading = false;
+            }
+        },
         async loadSeleniumInstances() {
             try {
                 const response = await RequestGETFromKliveAPI('/seleniumManager/getAllSeleniumInstances', false, false);
@@ -580,6 +788,85 @@ export default {
             const diffHr = Math.floor(diffMin / 60);
             if (diffHr < 24) return diffHr + 'h ' + (diffMin % 60) + 'm ago';
             return Math.floor(diffHr / 24) + 'd ' + (diffHr % 24) + 'h ago';
+        },
+        async manageService(service, action) {
+            const serviceName = service?.Name;
+            if (!serviceName || this.isServiceActionPending(serviceName) || this.botUpdating) return;
+
+            const isRestart = action === 'restart';
+            const apiWarning = serviceName.toLowerCase() === 'kliveapi'
+                ? '<br><br><b>Note:</b> Managing KliveAPI will temporarily interrupt this page connection.'
+                : '';
+
+            const result = await Swal.fire({
+                icon: 'warning',
+                title: isRestart ? 'Restart Service?' : 'Quit Service?',
+                html: isRestart
+                    ? `This will restart <b>${serviceName}</b>.<br><br>Short interruptions are expected while it comes back online.${apiWarning}`
+                    : `This will stop <b>${serviceName}</b> until it is restarted again.<br><br>This only affects the selected service.${apiWarning}`,
+                showCancelButton: true,
+                confirmButtonText: isRestart ? 'Restart Service' : 'Quit Service',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: isRestart ? '#4d9e39' : '#ef4444',
+                cancelButtonColor: '#5f5f5f',
+                background: '#161516',
+                color: '#ffffff',
+                customClass: { popup: 'swal-dark-theme' }
+            });
+
+            if (!result.isConfirmed) return;
+
+            this.serviceActionState = { ...this.serviceActionState, [serviceName]: action };
+
+            try {
+                const response = await RequestPOSTFromKliveAPI(
+                    isRestart ? '/GeneralBotStatistics/RestartService' : '/GeneralBotStatistics/QuitService',
+                    JSON.stringify({ serviceName }),
+                    false,
+                    true
+                );
+
+                let payload = null;
+                try {
+                    payload = await response.json();
+                } catch {
+                    payload = null;
+                }
+
+                if (!response.ok || !payload?.Success) {
+                    throw new Error(payload?.Message || payload?.Error || `Request failed with HTTP ${response.status}`);
+                }
+
+                await Swal.fire({
+                    icon: 'success',
+                    title: isRestart ? 'Restart Scheduled' : 'Quit Scheduled',
+                    text: payload.Message || `${serviceName} ${isRestart ? 'restart' : 'shutdown'} requested.`,
+                    confirmButtonColor: '#4d9e39',
+                    background: '#161516',
+                    color: '#ffffff',
+                    customClass: { popup: 'swal-dark-theme' }
+                });
+
+                if (serviceName.toLowerCase() !== 'kliveapi') {
+                    await new Promise(resolve => setTimeout(resolve, 900));
+                    await this.loadStats();
+                }
+            } catch (error) {
+                console.error(`Failed to ${action} service:`, error);
+                await Swal.fire({
+                    icon: 'error',
+                    title: isRestart ? 'Restart Failed' : 'Quit Failed',
+                    text: error?.message || `Unable to ${action} ${serviceName}.`,
+                    confirmButtonColor: '#4d9e39',
+                    background: '#161516',
+                    color: '#ffffff',
+                    customClass: { popup: 'swal-dark-theme' }
+                });
+            } finally {
+                const nextState = { ...this.serviceActionState };
+                delete nextState[serviceName];
+                this.serviceActionState = nextState;
+            }
         },
         goToCreateProfile() {
             window.location.replace('/createprofile');
@@ -703,7 +990,7 @@ export default {
         },
         restartAutoRefresh() {
             if (!this.refreshInterval) {
-                this.refreshInterval = setInterval(() => { this.loadStats(); this.loadSeleniumInstances(); this.loadUptimeStats(); }, 10000);
+                this.refreshInterval = setInterval(() => { this.loadStats(); this.loadSeleniumInstances(); this.loadUptimeStats(); this.loadApiStats(); }, 10000);
             }
         },
         formatBytes(bytes) {
@@ -721,13 +1008,23 @@ export default {
             if (h > 0) return `${h}h ${m}m`;
             if (m > 0) return `${m}m`;
             return `${Math.floor(seconds)}s`;
+        },
+        formatMilliseconds(value) {
+            if (value === undefined || value === null) return '0 ms';
+            const ms = Number(value);
+            if (!Number.isFinite(ms)) return '0 ms';
+            if (ms >= 1000) return (ms / 1000).toFixed(2) + ' s';
+            if (ms >= 100) return ms.toFixed(0) + ' ms';
+            if (ms >= 10) return ms.toFixed(1) + ' ms';
+            return ms.toFixed(2) + ' ms';
         }
     },
     mounted() {
         this.loadStats();
         this.loadSeleniumInstances();
         this.loadUptimeStats();
-        this.refreshInterval = setInterval(() => { this.loadStats(); this.loadSeleniumInstances(); this.loadUptimeStats(); }, 10000);
+        this.loadApiStats();
+        this.refreshInterval = setInterval(() => { this.loadStats(); this.loadSeleniumInstances(); this.loadUptimeStats(); this.loadApiStats(); }, 10000);
     },
     beforeUnmount() {
         if (this.refreshInterval) clearInterval(this.refreshInterval);
@@ -1045,6 +1342,119 @@ export default {
     font-size: 0.74rem;
 }
 
+/* KliveAPI Statistics */
+.api-stats-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    height: 100%;
+    min-height: 0;
+}
+
+.api-stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.api-chart-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    min-height: 0;
+}
+
+.api-chart-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(77, 158, 57, 0.12);
+    min-width: 0;
+}
+
+.api-chart-title {
+    color: #f2f2f2;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.25px;
+}
+
+.api-chart-svg {
+    width: 100%;
+    height: 170px;
+    overflow: visible;
+}
+
+.api-legend {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    color: #a3a3a3;
+    font-size: 0.72rem;
+}
+
+.api-route-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    height: 100%;
+    overflow-y: auto;
+    padding: 2px 4px;
+}
+
+.api-route-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.api-route-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.api-route-name {
+    color: #ffffff;
+    font-size: 0.8rem;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.api-route-meta {
+    color: #9f9f9f;
+    font-size: 0.72rem;
+}
+
+.api-route-chip {
+    border-radius: 999px;
+    padding: 4px 10px;
+    background: rgba(77, 158, 57, 0.12);
+    border: 1px solid rgba(77, 158, 57, 0.35);
+    color: #d7ffd0;
+    font-size: 0.68rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.api-route-chip-danger {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.35);
+    color: #ffc7c7;
+}
+
 /* Disk Statistics */
 .disk-grid {
     display: flex;
@@ -1091,13 +1501,23 @@ export default {
 .service-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
     padding: 6px 8px;
     border-radius: 4px;
 }
 
 .service-row:hover {
     background: rgba(77, 158, 57, 0.06);
+}
+
+.service-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1 1 180px;
 }
 
 .svc-dot {
@@ -1117,16 +1537,75 @@ export default {
     box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
 }
 
+.svc-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
 .svc-name {
     color: #ffffff;
     font-size: 0.82rem;
-    flex: 1;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.svc-state {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+}
+
+.service-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 .svc-uptime {
     color: #969696;
     font-size: 0.75rem;
     white-space: nowrap;
+}
+
+.service-action-btn {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.service-action-btn.restart {
+    border-color: rgba(77, 158, 57, 0.4);
+    color: #d7ffd0;
+}
+
+.service-action-btn.restart:hover:not(:disabled) {
+    background: rgba(77, 158, 57, 0.18);
+    border-color: rgba(77, 158, 57, 0.7);
+}
+
+.service-action-btn.quit {
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #ffc7c7;
+}
+
+.service-action-btn.quit:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.14);
+    border-color: rgba(239, 68, 68, 0.7);
+}
+
+.service-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 /* Network */
@@ -1321,6 +1800,20 @@ export default {
 
     .uptime-legend span:last-child {
         text-align: left;
+    }
+
+    .api-stats-row,
+    .api-chart-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .api-route-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .api-route-chip {
+        align-self: flex-start;
     }
 }
 

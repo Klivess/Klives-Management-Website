@@ -67,9 +67,15 @@
                 </div>
                 
                 <div v-else class="settings-groups">
-                    <div v-for="group in groupedSettings" :key="group.name" class="settings-group">
-                        <h2 class="group-title">{{ group.name }}</h2>
-                        <div class="settings-grid">
+                    <div v-for="group in activeGroupedSettings" :key="group.name" class="settings-group">
+                        <button class="group-toggle" type="button" @click="toggleGroup(group.name)">
+                            <span class="group-toggle-copy">
+                                <span class="group-toggle-icon" :class="{ collapsed: isGroupCollapsed(group.name) }">▾</span>
+                                <span class="group-title">{{ group.name }}</span>
+                            </span>
+                            <span class="group-count">{{ group.settings.length }}</span>
+                        </button>
+                        <div v-if="!isGroupCollapsed(group.name)" class="settings-grid">
                             <div v-for="setting in group.settings" :key="`${setting.ParentServiceId}-${setting.Name}`" class="setting-card">
                                 <div class="setting-header">
                                     <div class="setting-info">
@@ -126,6 +132,74 @@
                             </div>
                         </div>
                     </div>
+
+                    <div v-if="inactiveSettings.length > 0" class="settings-group inactive-section">
+                        <button class="group-toggle inactive-group-toggle" type="button" @click="inactiveCollapsed = !inactiveCollapsed">
+                            <span class="group-toggle-copy">
+                                <span class="group-toggle-icon" :class="{ collapsed: inactiveCollapsed }">▾</span>
+                                <span class="group-title inactive-title">Unused This Session</span>
+                            </span>
+                            <span class="group-count inactive-group-count">{{ inactiveSettings.length }}</span>
+                        </button>
+                        <p v-if="!inactiveCollapsed" class="inactive-subtitle">Settings loaded from persistence but not touched by any service during the current Omnipotent session.</p>
+                        <div v-if="!inactiveCollapsed" class="settings-grid">
+                            <div v-for="setting in inactiveSettings" :key="`inactive-${setting.ParentServiceId}-${setting.Name}`" class="setting-card inactive-setting-card">
+                                <div class="setting-header">
+                                    <div class="setting-info">
+                                        <h3 class="setting-name">{{ setting.Name }}</h3>
+                                        <p class="setting-service">{{ setting.ParentServiceName || 'Unknown Service' }}</p>
+                                    </div>
+                                    <div class="setting-badges">
+                                        <span v-if="setting.Sensitive" class="badge sensitive-badge">Sensitive</span>
+                                        <span class="badge type-badge inactive-type-badge" :class="'type-' + getTypeLabel(setting.Type).toLowerCase()">
+                                            {{ getTypeLabel(setting.Type) }}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div class="setting-editor">
+                                    <div class="editor-input-wrapper">
+                                        <div v-if="setting.Type === 0" class="editor-input">
+                                            <KMInputBox
+                                                v-model:value="editingValues[getSettingKey(setting)]"
+                                                :placeholder="`Enter ${setting.Name}...`"
+                                                type="text"
+                                            />
+                                        </div>
+                                        <div v-else-if="setting.Type === 1" class="editor-checkbox">
+                                            <KMCheckBox
+                                                v-model:boxChecked="boolValues[getSettingKey(setting)]"
+                                                :message="`${boolValues[getSettingKey(setting)] ? 'True' : 'False'}`"
+                                            />
+                                        </div>
+                                        <div v-else-if="setting.Type === 2" class="editor-input">
+                                            <KMInputBox
+                                                v-model:value="editingValues[getSettingKey(setting)]"
+                                                :placeholder="`Enter ${setting.Name}...`"
+                                                type="number"
+                                            />
+                                        </div>
+                                        <div v-else-if="setting.Type === 3" class="editor-input">
+                                            <KMSelectBox
+                                                v-model:selected="editingValues[getSettingKey(setting)]"
+                                                :options="getDropdownOptions(setting)"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div class="editor-actions">
+                                        <KMButton
+                                            v-if="isSettingModified(setting)"
+                                            :message="savingSettings.has(getSettingKey(setting)) ? 'Saving...' : 'Save'"
+                                            :onclick="() => saveSetting(setting)"
+                                            style="width: 100px; height: 100%;"
+                                        />
+                                        <div v-else class="placeholder-action"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -151,6 +225,7 @@ interface OmniSetting {
     ParentServiceId: string;
     ParentServiceName: string;
     Value: string;
+    WasUsedThisSession: boolean;
     DropdownOptions?: string[];
 }
 
@@ -164,6 +239,8 @@ const showSensitiveValues = ref(false);
 const editingValues = ref<Record<string, string>>({});
 const boolValues = ref<Record<string, boolean>>({});
 const savingSettings = ref(new Set<string>());
+const collapsedGroups = ref<Record<string, boolean>>({});
+const inactiveCollapsed = ref(true);
 
 // Watchers
 watch(showSensitiveValues, () => {
@@ -190,11 +267,13 @@ const filteredSettings = computed(() => {
     });
 });
 
-const groupedSettings = computed(() => {
+const activeGroupedSettings = computed(() => {
     const groups: Record<string, OmniSetting[]> = {};
     
     // Sort by name first for alphabetical order within groups
-    const sorted = [...filteredSettings.value].sort((a, b) => a.Name.localeCompare(b.Name));
+    const sorted = [...filteredSettings.value]
+        .filter((setting) => setting.WasUsedThisSession)
+        .sort((a, b) => a.Name.localeCompare(b.Name));
     
     for (const setting of sorted) {
         const serviceName = setting.ParentServiceName || 'Unknown Service';
@@ -211,6 +290,19 @@ const groupedSettings = computed(() => {
     }));
 });
 
+const inactiveSettings = computed(() => {
+    return [...filteredSettings.value]
+        .filter((setting) => !setting.WasUsedThisSession)
+        .sort((left, right) => {
+            const serviceComparison = (left.ParentServiceName || 'Unknown Service').localeCompare(right.ParentServiceName || 'Unknown Service');
+            if (serviceComparison !== 0) {
+                return serviceComparison;
+            }
+
+            return left.Name.localeCompare(right.Name);
+        });
+});
+
 // Methods
 const getTypeLabel = (type: number): string => {
     switch (type) {
@@ -223,6 +315,32 @@ const getTypeLabel = (type: number): string => {
 };
 
 const getSettingKey = (setting: OmniSetting): string => `${setting.ParentServiceId}-${setting.Name}`;
+
+const isGroupCollapsed = (groupName: string): boolean => collapsedGroups.value[groupName] ?? true;
+
+const toggleGroup = (groupName: string) => {
+    collapsedGroups.value = {
+        ...collapsedGroups.value,
+        [groupName]: !isGroupCollapsed(groupName)
+    };
+};
+
+const syncGroupCollapseState = (loadedSettings: OmniSetting[]) => {
+    const nextState = { ...collapsedGroups.value };
+    const groupNames = [...new Set(
+        loadedSettings
+            .filter((setting) => setting.WasUsedThisSession)
+            .map((setting) => setting.ParentServiceName || 'Unknown Service')
+    )];
+
+    for (const groupName of groupNames) {
+        if (!(groupName in nextState)) {
+            nextState[groupName] = true;
+        }
+    }
+
+    collapsedGroups.value = nextState;
+};
 
 const getDropdownOptions = (setting: OmniSetting): string[] => {
     if (setting.DropdownOptions && setting.DropdownOptions.length > 0) {
@@ -259,6 +377,7 @@ const loadSettings = async () => {
         if (response.ok) {
             const data = await response.json();
             settings.value = data;
+            syncGroupCollapseState(data);
 
             // Initialize editing values
             settings.value.forEach((setting) => {
@@ -516,13 +635,82 @@ onMounted(() => {
     gap: 15px;
 }
 
+.group-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    padding: 0 0 10px 0;
+    border: none;
+    border-bottom: 1px solid rgba(77, 158, 57, 0.4);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+}
+
+.group-toggle-copy {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.group-toggle-icon {
+    color: #4d9e39;
+    font-size: 0.95rem;
+    transition: transform 0.2s ease;
+}
+
+.group-toggle-icon.collapsed {
+    transform: rotate(-90deg);
+}
+
 .group-title {
     font-size: 1.4rem;
     font-weight: 600;
     color: #4d9e39;
     margin: 0;
-    padding-bottom: 8px;
-    border-bottom: 1px solid rgba(77, 158, 57, 0.4);
+}
+
+.group-count {
+    min-width: 36px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(77, 158, 57, 0.14);
+    color: #8dd776;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-align: center;
+}
+
+.inactive-section {
+    padding-top: 10px;
+    border-top: 1px solid rgba(214, 143, 38, 0.35);
+}
+
+.inactive-group-toggle {
+    border-bottom-color: rgba(214, 143, 38, 0.45);
+}
+
+.inactive-title {
+    color: #d68f26;
+}
+
+.inactive-group-toggle .group-toggle-icon {
+    color: #d68f26;
+}
+
+.inactive-group-count {
+    background: rgba(214, 143, 38, 0.16);
+    color: #e0a54b;
+}
+
+.inactive-subtitle {
+    margin: 0;
+    color: #d1b17b;
+    font-size: 0.95rem;
 }
 
 .settings-grid {
@@ -539,9 +727,18 @@ onMounted(() => {
     transition: all 0.3s ease;
 }
 
+.inactive-setting-card {
+    background: linear-gradient(180deg, rgba(54, 39, 18, 0.95), rgba(28, 22, 16, 0.98));
+    border-color: rgba(214, 143, 38, 0.4);
+}
+
 .setting-card:hover {
     border-color: rgba(77, 158, 57, 0.6);
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+.inactive-setting-card:hover {
+    border-color: rgba(214, 143, 38, 0.7);
 }
 
 .setting-header {
@@ -565,8 +762,9 @@ onMounted(() => {
 }
 
 .setting-service {
+    margin: 0;
     font-size: 0.9rem;
-    color: #969696;
+    color: #cba36a;
 }
 
 .setting-badges {
@@ -605,6 +803,18 @@ onMounted(() => {
     background: rgba(249, 115, 22, 0.2);
     color: #f97316;
     border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+.type-dropdown {
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.inactive-type-badge {
+    background: rgba(214, 143, 38, 0.15);
+    color: #e0a54b;
+    border-color: rgba(214, 143, 38, 0.35);
 }
 
 .setting-editor {

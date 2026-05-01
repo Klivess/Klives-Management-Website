@@ -760,14 +760,16 @@ async function loadEvents() {
 // ── Account Actions ──
 
 async function showAddAccount() {
-    // ── Step 1: Consumer credentials ──
+    // ── Step 1: Blog name + consumer credentials ──
     const { value: step1 } = await Swal.fire({
         title: 'Add Tumblr Blog — Step 1 of 2',
         html: `
             <p style="color:#aaa;font-size:13px;margin-bottom:12px;">
                 Create an app at <a href="https://www.tumblr.com/oauth/apps" target="_blank" style="color:#7eb3e8;">tumblr.com/oauth/apps</a>
-                to get your Consumer Key and Secret. The callback URL can be set to anything.
+                and set the <strong>Default callback URL</strong> to
+                <code style="background:#222;padding:2px 5px;border-radius:3px;font-size:11px">https://klive.dev/omnitumblr/oauth/callback</code>.
             </p>
+            <input id="swal-blogname" class="swal2-input" placeholder="Blog name (e.g. myblog)" autocomplete="off">
             <input id="swal-ck" class="swal2-input" placeholder="Consumer Key" autocomplete="off">
             <input id="swal-cs" class="swal2-input" type="password" placeholder="Consumer Secret" autocomplete="off">
         `,
@@ -778,10 +780,11 @@ async function showAddAccount() {
         background: '#161516',
         color: '#fff',
         preConfirm: () => {
+            const blogName = (document.getElementById('swal-blogname') as HTMLInputElement)?.value?.trim();
             const ck = (document.getElementById('swal-ck') as HTMLInputElement)?.value?.trim();
             const cs = (document.getElementById('swal-cs') as HTMLInputElement)?.value?.trim();
-            if (!ck || !cs) { Swal.showValidationMessage('Both fields are required'); return false; }
-            return { consumerKey: ck, consumerSecret: cs };
+            if (!blogName || !ck || !cs) { Swal.showValidationMessage('All fields are required'); return false; }
+            return { blogName, consumerKey: ck, consumerSecret: cs };
         }
     });
     if (!step1) return;
@@ -807,57 +810,53 @@ async function showAddAccount() {
         isLoading.value = false;
     }
 
-    // ── Step 2: Show auth URL + collect verifier PIN and blog name ──
-    const { value: step2 } = await Swal.fire({
+    // ── Step 2: Open auth URL, wait for Tumblr to redirect back ──
+    // Poll /omnitumblr/oauth/callback-status until the backend receives the callback
+    await Swal.fire({
         title: 'Add Tumblr Blog — Step 2 of 2',
         html: `
-            <p style="color:#aaa;font-size:13px;margin-bottom:8px;">
-                Open the link below in a browser, log in to Tumblr, and authorize the app.
-                Tumblr will show you a numeric <strong>verifier PIN</strong> — enter it below.
+            <p style="color:#aaa;font-size:13px;margin-bottom:10px;">
+                Click the button below to open the Tumblr authorization page.
+                After you approve the app, Tumblr will redirect back automatically.
+                Then click <strong>"Check Authorization"</strong> to complete setup.
             </p>
-            <a href="${authUrl}" target="_blank" style="display:block;word-break:break-all;color:#7eb3e8;font-size:12px;margin-bottom:12px;">${authUrl}</a>
-            <input id="swal-blogname" class="swal2-input" placeholder="Blog name (e.g. myblog)" autocomplete="off">
-            <input id="swal-verifier" class="swal2-input" placeholder="Verifier PIN from Tumblr" autocomplete="off">
+            <a href="${authUrl}" target="_blank">
+                <button type="button" style="padding:9px 18px;background:#35465c;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;margin-bottom:12px;">
+                    🔗 Open Tumblr Authorization Page
+                </button>
+            </a>
         `,
-        focusConfirm: false,
-        showCancelButton: true,
-        confirmButtonText: 'Authorize & Add Blog',
+        confirmButtonText: '✓ Check Authorization',
         confirmButtonColor: '#35465c',
+        showCancelButton: true,
+        cancelButtonText: 'Cancel',
         background: '#161516',
         color: '#fff',
-        preConfirm: () => {
-            const blogName = (document.getElementById('swal-blogname') as HTMLInputElement)?.value?.trim();
-            const verifier = (document.getElementById('swal-verifier') as HTMLInputElement)?.value?.trim();
-            if (!blogName || !verifier) { Swal.showValidationMessage('Blog name and verifier PIN are required'); return false; }
-            return { blogName, verifier };
-        }
-    });
-    if (!step2) return;
-
-    // ── Complete the flow ──
-    try {
-        isLoading.value = true;
-        const r = await RequestPOSTFromKliveAPI('/omnitumblr/oauth/complete', JSON.stringify({ flowId, ...step2 }));
-        if (r?.ok) {
-            const result = await r.json();
+        showLoaderOnConfirm: true,
+        preConfirm: async () => {
+            const r = await RequestGETFromKliveAPI(`/omnitumblr/oauth/callback-status?flowId=${encodeURIComponent(flowId)}`);
+            if (!r?.ok) throw new Error('Status check failed.');
+            const data = await r.json();
+            if (!data.completed) {
+                Swal.showValidationMessage('Authorization not received yet. Please authorize the app in the Tumblr page first, then click Check Authorization.');
+                return false;
+            }
+            return data;
+        },
+        allowOutsideClick: () => !Swal.isLoading()
+    }).then(async (result) => {
+        if (result.isConfirmed && result.value?.completed) {
             await Swal.fire({
-                title: 'Blog Added',
-                text: `"${result.BlogName}" connected. Status: ${result.ConnectionStatus}`,
+                title: 'Blog Added!',
+                text: `"${result.value.BlogName}" connected. Status: ${result.value.ConnectionStatus}`,
                 icon: 'success',
                 background: '#161516',
                 color: '#fff',
                 confirmButtonColor: '#35465c'
             });
             await refreshAll();
-        } else {
-            const err = await r?.text();
-            await Swal.fire({ title: 'Error', text: err || 'Failed to complete authorization.', icon: 'error', background: '#161516', color: '#fff' });
         }
-    } catch (e) {
-        await Swal.fire({ title: 'Error', text: 'Failed to complete authorization.', icon: 'error', background: '#161516', color: '#fff' });
-    } finally {
-        isLoading.value = false;
-    }
+    });
 }
 
 async function pauseAccount(id: string) {

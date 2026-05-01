@@ -627,86 +627,13 @@ async function loadEvents() {
 // ── Account Actions ──
 
 async function showAddAccount() {
-    // Step 1: Consumer Key + Secret
-    const step1 = await Swal.fire({
+    const { value } = await Swal.fire({
         title: 'Add Tumblr Blog',
         html: `
             <p style="color:#ccc;font-size:13px;margin-bottom:12px;">Create an app at <a href="https://www.tumblr.com/oauth/apps" target="_blank" style="color:#35c;">tumblr.com/oauth/apps</a> to get your Consumer Key and Secret.</p>
+            <input id="swal-blogname" class="swal2-input" placeholder="Blog name (e.g. myblog)">
             <input id="swal-consumerkey" class="swal2-input" placeholder="Consumer Key">
             <input id="swal-consumersecret" class="swal2-input" type="password" placeholder="Consumer Secret">
-        `,
-        focusConfirm: false,
-        showCancelButton: true,
-        confirmButtonText: 'Next →',
-        confirmButtonColor: '#35465c',
-        background: '#161516',
-        color: '#ffffff',
-        preConfirm: () => {
-            const consumerKey = (document.getElementById('swal-consumerkey') as HTMLInputElement)?.value?.trim();
-            const consumerSecret = (document.getElementById('swal-consumersecret') as HTMLInputElement)?.value?.trim();
-            if (!consumerKey || !consumerSecret) {
-                Swal.showValidationMessage('Both fields are required');
-                return false;
-            }
-            return { consumerKey, consumerSecret };
-        }
-    });
-    if (!step1.value) return;
-
-    // Call backend to get the Tumblr auth URL
-    let flowId: string;
-    let authorizeUrl: string;
-    try {
-        isLoading.value = true;
-        const r = await RequestPOSTFromKliveAPI('/omnitumblr/accounts/oauth/begin', JSON.stringify(step1.value));
-        if (!r?.ok) {
-            const err = await r?.text();
-            await Swal.fire({ title: 'Error', text: err || 'Failed to start OAuth flow.', icon: 'error', background: '#161516', color: '#fff' });
-            return;
-        }
-        const data = await r.json();
-        flowId = data.flowId;
-        authorizeUrl = data.authorizeUrl;
-    } catch (e) {
-        await Swal.fire({ title: 'Error', text: 'Failed to contact server.', icon: 'error', background: '#161516', color: '#fff' });
-        return;
-    } finally {
-        isLoading.value = false;
-    }
-
-    // Step 2: Send user to Tumblr, collect PIN
-    const step2 = await Swal.fire({
-        title: 'Authorise with Tumblr',
-        html: `
-            <p style="color:#ccc;font-size:13px;margin-bottom:12px;">
-                <a href="${authorizeUrl}" target="_blank" style="color:#35c;font-weight:600;">Click here to authorise on Tumblr ↗</a>
-            </p>
-            <p style="color:#999;font-size:12px;margin-bottom:12px;">After clicking Allow, Tumblr will show you a PIN code. Enter it below.</p>
-            <input id="swal-verifier" class="swal2-input" placeholder="PIN / verifier code" style="letter-spacing:3px;text-align:center;">
-        `,
-        focusConfirm: false,
-        showCancelButton: true,
-        confirmButtonText: 'Next →',
-        confirmButtonColor: '#35465c',
-        background: '#161516',
-        color: '#ffffff',
-        preConfirm: () => {
-            const verifier = (document.getElementById('swal-verifier') as HTMLInputElement)?.value?.trim();
-            if (!verifier) {
-                Swal.showValidationMessage('Enter the PIN from Tumblr');
-                return false;
-            }
-            return { verifier };
-        }
-    });
-    if (!step2.value) return;
-
-    // Step 3: Blog name then complete the flow
-    const step3 = await Swal.fire({
-        title: 'Name Your Blog',
-        html: `
-            <p style="color:#ccc;font-size:13px;margin-bottom:12px;">Enter the blog name (subdomain) for this account, e.g. <code>myblog</code> for myblog.tumblr.com.</p>
-            <input id="swal-blogname" class="swal2-input" placeholder="Blog name">
         `,
         focusConfirm: false,
         showCancelButton: true,
@@ -716,27 +643,24 @@ async function showAddAccount() {
         color: '#ffffff',
         preConfirm: () => {
             const blogName = (document.getElementById('swal-blogname') as HTMLInputElement)?.value?.trim();
-            if (!blogName) {
-                Swal.showValidationMessage('Blog name is required');
+            const consumerKey = (document.getElementById('swal-consumerkey') as HTMLInputElement)?.value?.trim();
+            const consumerSecret = (document.getElementById('swal-consumersecret') as HTMLInputElement)?.value?.trim();
+            if (!blogName || !consumerKey || !consumerSecret) {
+                Swal.showValidationMessage('All fields are required');
                 return false;
             }
-            return { blogName };
+            return { blogName, consumerKey, consumerSecret };
         }
     });
-    if (!step3.value) return;
-
+    if (!value) return;
     try {
         isLoading.value = true;
-        const r = await RequestPOSTFromKliveAPI('/omnitumblr/accounts/oauth/complete', JSON.stringify({
-            flowId,
-            verifier: step2.value.verifier,
-            blogName: step3.value.blogName
-        }));
+        const r = await RequestPOSTFromKliveAPI('/omnitumblr/accounts/add', JSON.stringify(value));
         if (r?.ok) {
             const result = await r.json();
             await Swal.fire({
                 title: 'Blog Added',
-                text: `"${result.BlogName}" connected successfully. Status: ${result.ConnectionStatus}`,
+                text: `"${result.BlogName}" added. Status: ${result.ConnectionStatus}`,
                 icon: 'success',
                 background: '#161516',
                 color: '#fff',
@@ -745,7 +669,7 @@ async function showAddAccount() {
             await refreshAll();
         } else {
             const err = await r?.text();
-            await Swal.fire({ title: 'Error', text: err || 'Failed to complete OAuth flow.', icon: 'error', background: '#161516', color: '#fff' });
+            await Swal.fire({ title: 'Error', text: err || 'Failed to add blog.', icon: 'error', background: '#161516', color: '#fff' });
         }
     } catch (e) {
         await Swal.fire({ title: 'Error', text: 'Failed to add blog.', icon: 'error', background: '#161516', color: '#fff' });

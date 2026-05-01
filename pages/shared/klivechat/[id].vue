@@ -98,14 +98,26 @@
                     >
                         <div class="participant-head">
                             <div>
-                                <div class="participant-name">You · {{ myName }}</div>
-                                <div class="participant-state">{{ isMuted ? 'Muted' : 'Speaking' }}</div>
+                                <div class="participant-name-row">
+                                    <div class="participant-name">You · {{ myName }}</div>
+                                    <span v-if="canModerate" class="participant-role-chip">ASSOCIATE+</span>
+                                </div>
+                                <div class="participant-state">{{ describeLocalState() }}</div>
+                                <div class="participant-badges">
+                                    <span class="participant-badge" :class="{ active: !isMuted, danger: isMuted }">{{ isMuted ? 'Muted' : 'Mic live' }}</span>
+                                    <span class="participant-badge" :class="{ active: isVideo }">{{ isVideo ? 'Camera on' : 'Camera off' }}</span>
+                                    <span class="participant-badge" :class="{ active: isScreenSharing }">{{ isScreenSharing ? 'Screen share' : 'No screen' }}</span>
+                                </div>
                             </div>
                             <canvas ref="localVisualizer" width="60" height="20" class="signal-meter"></canvas>
                         </div>
 
                         <div class="media-frame">
                             <video ref="localVideo" class="participant-video" autoplay playsinline muted></video>
+                            <div v-if="!isVideo && !isScreenSharing" class="media-placeholder">
+                                <span>AUDIO ONLY</span>
+                                <strong>Camera and screen share are off</strong>
+                            </div>
                         </div>
                     </div>
 
@@ -117,14 +129,31 @@
                     >
                         <div class="participant-head">
                             <div>
-                                <div class="participant-name">{{ peer.name || 'Anonymous' }}</div>
-                                <div class="participant-state">Connected</div>
+                                <div class="participant-name-row">
+                                    <div class="participant-name">{{ peer.name || 'Anonymous' }}</div>
+                                    <span v-if="peer.canModerate" class="participant-role-chip">ASSOCIATE+</span>
+                                </div>
+                                <div class="participant-state">{{ describePeerState(peer) }}</div>
+                                <div class="participant-badges">
+                                    <span class="participant-badge" :class="{ active: !peer.isMuted, danger: peer.isMuted }">{{ peer.isMuted ? 'Muted' : 'Mic live' }}</span>
+                                    <span class="participant-badge" :class="{ active: peer.hasVideo && !peer.isScreenSharing }">{{ peer.hasVideo && !peer.isScreenSharing ? 'Camera on' : 'Camera off' }}</span>
+                                    <span class="participant-badge" :class="{ active: peer.isScreenSharing }">{{ peer.isScreenSharing ? 'Screen share' : 'No screen' }}</span>
+                                </div>
                             </div>
                             <canvas :ref="(el) => setPeerVisualizerRef(el, peer.id)" width="60" height="20" class="signal-meter"></canvas>
                         </div>
 
                         <div class="media-frame">
                             <video :ref="(el) => setAudioRef(el, peer.id)" class="participant-video" autoplay playsinline></video>
+                            <div v-if="!peer.hasVideo && !peer.isScreenSharing" class="media-placeholder">
+                                <span>AUDIO ONLY</span>
+                                <strong>{{ peer.isMuted ? 'Participant is muted' : 'Listening without video' }}</strong>
+                            </div>
+                        </div>
+
+                        <div v-if="canModerate" class="participant-actions" @click.stop>
+                            <button class="participant-action-btn" type="button" @click.stop="moderatePeer(peer, 'kick')">REMOVE</button>
+                            <button class="participant-action-btn danger" type="button" @click.stop="moderatePeer(peer, 'ban')">BAN</button>
                         </div>
                     </div>
 
@@ -140,7 +169,7 @@
 <script setup>
 definePageMeta({ layout: 'navbar' });
 
-import { onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import Swal from 'sweetalert2';
 import { KliveAPIUrl, RequestGETFromKliveAPI } from '../../../scripts/APIInterface';
@@ -158,19 +187,25 @@ function toggleFocus(id) {
     focusedPeerId.value = focusedPeerId.value === id ? null : id;
 }
 
-let wsUrl = KliveAPIUrl.replace('https', 'wss').replace('http', 'ws') + `/klivechat/ws?roomId=${roomId}`;
+const wsBaseUrl = KliveAPIUrl.replace('https', 'wss').replace('http', 'ws');
+let wsUrl = `${wsBaseUrl}/klivechat/ws?roomId=${roomId}`;
 let ws = null;
 let localStream = null;
 const peerConnections = {};
+const peerAudioOnlyStreams = {};
+let socketCloseHandled = false;
 
 const myName = ref('');
 const roomName = ref('Loading...');
 const currentUrl = ref('');
+const localParticipantId = ref('');
+const currentRank = ref(0);
 const isMuted = ref(false);
 const isVideo = ref(false);
 const isScreenSharing = ref(false);
 const peersState = ref([]);
 const audioRefs = {};
+const canModerate = computed(() => currentRank.value >= 3);
 
 const localVisualizer = ref(null);
 const peerVisualizers = {};
@@ -191,12 +226,7 @@ const iceServers = {
 function setAudioRef(el, id) {
     if (el) {
         audioRefs[id] = el;
-        if (peerConnections[id] && peerConnections[id]._remoteStream) {
-            if (el.srcObject !== peerConnections[id]._remoteStream) {
-                el.srcObject = peerConnections[id]._remoteStream;
-                setupPeerVisualizer(peerConnections[id]._remoteStream, id);
-            }
-        }
+        bindPeerMedia(id);
     }
 }
 
@@ -206,8 +236,104 @@ function setPeerVisualizerRef(el, id) {
     }
 }
 
+function getLocalPassword() {
+    const match = document.cookie.match(/(?:^|; )password=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : '';
+}
+
+function normalizePeer(peer) {
+    return {
+        id: peer?.id || '',
+        name: peer?.name || 'Anonymous',
+        rank: Number(peer?.rank ?? 0),
+        isGuest: Boolean(peer?.isGuest ?? true),
+        isMuted: Boolean(peer?.isMuted),
+        hasVideo: Boolean(peer?.hasVideo),
+        isScreenSharing: Boolean(peer?.isScreenSharing),
+        canModerate: Boolean(peer?.canModerate)
+    };
+}
+
+function findPeer(id) {
+    return peersState.value.find((peer) => peer.id === id) || null;
+}
+
+function createAudioOnlyStream(stream) {
+    const audioOnlyStream = new MediaStream();
+    stream.getAudioTracks().forEach((track) => {
+        if (track.readyState === 'live') {
+            audioOnlyStream.addTrack(track);
+        }
+    });
+    return audioOnlyStream;
+}
+
+function bindPeerMedia(id) {
+    const element = audioRefs[id];
+    const connection = peerConnections[id];
+    const peer = findPeer(id);
+    const remoteStream = connection?._remoteStream;
+    if (!element || !remoteStream) {
+        return;
+    }
+
+    const shouldShowVideo = Boolean(peer?.hasVideo || peer?.isScreenSharing)
+        && remoteStream.getVideoTracks().some((track) => track.readyState === 'live');
+
+    if (shouldShowVideo) {
+        delete peerAudioOnlyStreams[id];
+        if (element.srcObject !== remoteStream) {
+            element.srcObject = remoteStream;
+        }
+        return;
+    }
+
+    const audioOnlyStream = createAudioOnlyStream(remoteStream);
+    peerAudioOnlyStreams[id] = audioOnlyStream;
+    if (element.srcObject !== audioOnlyStream) {
+        element.srcObject = audioOnlyStream;
+    }
+}
+
+function upsertPeer(rawPeer) {
+    const peer = normalizePeer(rawPeer);
+    if (!peer.id || peer.id === localParticipantId.value) {
+        return;
+    }
+
+    const index = peersState.value.findIndex((existingPeer) => existingPeer.id === peer.id);
+    if (index === -1) {
+        peersState.value.push(peer);
+    } else {
+        peersState.value[index] = { ...peersState.value[index], ...peer };
+    }
+
+    bindPeerMedia(peer.id);
+}
+
+function describeLocalState() {
+    const mediaState = isScreenSharing.value ? 'Screen sharing' : isVideo.value ? 'Camera live' : 'Audio only';
+    const micState = isMuted.value ? 'Muted' : 'Mic live';
+    return `${micState} · ${mediaState}`;
+}
+
+function describePeerState(peer) {
+    const mediaState = peer.isScreenSharing ? 'Screen sharing' : peer.hasVideo ? 'Camera live' : 'Audio only';
+    const micState = peer.isMuted ? 'Muted' : 'Mic live';
+    return `${micState} · ${mediaState}`;
+}
+
+function sendLocalParticipantState() {
+    sendWSMessage('media-state', null, {
+        isMuted: isMuted.value,
+        hasVideo: isVideo.value || isScreenSharing.value,
+        isScreenSharing: isScreenSharing.value
+    });
+}
+
 async function init() {
     currentUrl.value = window.location.href;
+    wsUrl = `${wsBaseUrl}/klivechat/ws?roomId=${roomId}`;
 
     let lsName = '';
     try {
@@ -215,6 +341,7 @@ async function init() {
         if (response && response.ok) {
             const data = await response.json();
             lsName = data.name || '';
+            currentRank.value = Number(data.rank ?? 0);
         }
     } catch (error) {
         console.error('Failed to parse my profile name:', error);
@@ -229,6 +356,10 @@ async function init() {
 
     myName.value = lsName;
     wsUrl += '&name=' + encodeURIComponent(lsName);
+    const authorization = getLocalPassword();
+    if (authorization) {
+        wsUrl += '&authorization=' + encodeURIComponent(authorization);
+    }
 
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isVideo.value });
@@ -331,12 +462,14 @@ function drawCanvas(canvas, analyser, color) {
 
 function connectWebSocket() {
     ws = new WebSocket(wsUrl);
+    socketCloseHandled = false;
 
     ws.onopen = () => {
         console.log('Connected to signaling server');
         if (!drawVisualizerLoop) {
             renderVisualizers();
         }
+        sendLocalParticipantState();
     };
 
     ws.onmessage = async (event) => {
@@ -345,14 +478,25 @@ function connectWebSocket() {
         switch (msg.type) {
             case 'room-info':
                 roomName.value = msg.payload.roomName;
-                msg.payload.users.forEach((user) => addPeer(user.id, user.name));
+                localParticipantId.value = msg.payload.clientId || '';
+                peersState.value = [];
+                msg.payload.users.forEach((user) => upsertPeer(user));
                 break;
             case 'user-joined':
-                addPeer(msg.payload.id, msg.payload.name);
+                upsertPeer(msg.payload);
                 await createOffer(msg.payload.id);
                 break;
             case 'user-left':
                 removePeer(msg.payload.id);
+                break;
+            case 'participant-state':
+                upsertPeer(msg.payload);
+                break;
+            case 'participant-removed':
+                await handleParticipantRemoved(msg.payload);
+                break;
+            case 'room-error':
+                await handleRoomError(msg.payload);
                 break;
             case 'offer':
                 await handleOffer(msg.senderId, msg.payload);
@@ -369,19 +513,29 @@ function connectWebSocket() {
         }
     };
 
-    ws.onclose = () => {
+    ws.onclose = async (event) => {
         console.log('Disconnected from signaling server');
+        if (!socketCloseHandled && (event.reason === 'Banned from room' || event.reason === 'Removed from room')) {
+            socketCloseHandled = true;
+            await Swal.fire({
+                title: event.reason === 'Banned from room' ? 'Banned from Room' : 'Removed from Room',
+                text: event.reason === 'Banned from room'
+                    ? 'A moderator banned you from this call.'
+                    : 'A moderator removed you from this call.',
+                icon: 'warning',
+                background: '#161516',
+                color: '#fff'
+            });
+            leaveRoom();
+        }
     };
-}
-
-function addPeer(id, name) {
-    if (!peersState.value.find((peer) => peer.id === id)) {
-        peersState.value.push({ id, name });
-    }
 }
 
 function removePeer(id) {
     peersState.value = peersState.value.filter((peer) => peer.id !== id);
+    if (focusedPeerId.value === id) {
+        focusedPeerId.value = null;
+    }
     if (peerConnections[id]) {
         peerConnections[id].close();
         delete peerConnections[id];
@@ -389,6 +543,7 @@ function removePeer(id) {
     delete audioRefs[id];
     delete peerVisualizers[id];
     delete peerAnalysers[id];
+    delete peerAudioOnlyStreams[id];
 }
 
 function createPeerConnection(targetId) {
@@ -404,10 +559,11 @@ function createPeerConnection(targetId) {
 
     pc.ontrack = (event) => {
         pc._remoteStream = event.streams[0];
-        if (audioRefs[targetId]) {
-            audioRefs[targetId].srcObject = pc._remoteStream;
-            setupPeerVisualizer(pc._remoteStream, targetId);
-        }
+        setupPeerVisualizer(pc._remoteStream, targetId);
+        pc._remoteStream.getTracks().forEach((track) => {
+            track.onended = () => bindPeerMedia(targetId);
+        });
+        bindPeerMedia(targetId);
     };
 
     pc.onnegotiationneeded = async () => {
@@ -463,12 +619,76 @@ function sendWSMessage(type, targetId, payload) {
     }
 }
 
+async function handleParticipantRemoved(payload) {
+    if (!payload?.id) {
+        return;
+    }
+
+    removePeer(payload.id);
+
+    if (payload.id === localParticipantId.value && !socketCloseHandled) {
+        socketCloseHandled = true;
+        await Swal.fire({
+            title: payload.action === 'ban' ? 'Banned from Room' : 'Removed from Room',
+            text: payload.action === 'ban'
+                ? 'A moderator banned you from this call.'
+                : 'A moderator removed you from this call.',
+            icon: 'warning',
+            background: '#161516',
+            color: '#fff'
+        });
+        leaveRoom();
+    }
+}
+
+async function handleRoomError(payload) {
+    if (!payload?.message) {
+        return;
+    }
+
+    await Swal.fire({
+        title: 'KliveChat',
+        text: payload.message,
+        icon: 'warning',
+        background: '#161516',
+        color: '#fff'
+    });
+}
+
+async function moderatePeer(peer, action) {
+    if (!canModerate.value) {
+        return;
+    }
+
+    const verb = action === 'ban' ? 'ban' : 'remove';
+    const result = await Swal.fire({
+        title: `${verb.toUpperCase()} ${peer.name}?`,
+        text: action === 'ban'
+            ? 'They will be blocked from rejoining this room while it stays open.'
+            : 'They will be disconnected from the room immediately.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: action === 'ban' ? 'Ban participant' : 'Remove participant',
+        confirmButtonColor: action === 'ban' ? '#cc3333' : '#d97706',
+        cancelButtonColor: '#555',
+        background: '#161516',
+        color: '#fff'
+    });
+
+    if (!result.isConfirmed) {
+        return;
+    }
+
+    sendWSMessage('moderate-participant', null, { targetId: peer.id, action });
+}
+
 function toggleMute() {
     if (localStream) {
         isMuted.value = !isMuted.value;
         localStream.getAudioTracks().forEach((track) => {
             track.enabled = !isMuted.value;
         });
+        sendLocalParticipantState();
     }
 }
 
@@ -502,9 +722,11 @@ async function toggleVideo() {
             if (localVideo.value) {
                 localVideo.value.srcObject = localStream;
             }
+            sendLocalParticipantState();
         } catch (error) {
             console.error('Camera access failed', error);
             isVideo.value = false;
+            sendLocalParticipantState();
         }
     } else {
         const videoTracks = localStream.getVideoTracks();
@@ -520,6 +742,7 @@ async function toggleVideo() {
                 pc.removeTrack(sender);
             }
         });
+        sendLocalParticipantState();
     }
 }
 
@@ -558,6 +781,7 @@ async function toggleScreenShare() {
                 }
             });
         }
+        sendLocalParticipantState();
     } else {
         try {
             const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
@@ -595,9 +819,11 @@ async function toggleScreenShare() {
             if (localVideo.value) {
                 localVideo.value.srcObject = localStream;
             }
+            sendLocalParticipantState();
         } catch (error) {
             console.error('Screen share access failed', error);
             isScreenSharing.value = false;
+            sendLocalParticipantState();
         }
     }
 }
@@ -991,11 +1217,63 @@ onUnmounted(() => {
     text-transform: uppercase;
 }
 
+.participant-name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.participant-role-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(77, 158, 57, 0.16);
+    border: 1px solid rgba(77, 158, 57, 0.34);
+    color: #d7ffd0;
+    font-size: 0.66rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
 .participant-state {
     margin-top: 4px;
     font-size: 0.76rem;
     letter-spacing: 0.12em;
     text-transform: uppercase;
+}
+
+.participant-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.participant-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 9px;
+    border-radius: 999px;
+    border: 1px solid #2e2e2e;
+    background: rgba(0, 0, 0, 0.16);
+    color: #969696;
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.participant-badge.active {
+    color: #dfffd8;
+    border-color: rgba(77, 158, 57, 0.45);
+    background: rgba(77, 158, 57, 0.12);
+}
+
+.participant-badge.danger {
+    color: #ffc2c2;
+    border-color: rgba(239, 68, 68, 0.38);
+    background: rgba(239, 68, 68, 0.12);
 }
 
 .signal-meter {
@@ -1006,10 +1284,39 @@ onUnmounted(() => {
 }
 
 .media-frame {
+    position: relative;
     overflow: hidden;
     border-radius: 18px;
     background: radial-gradient(circle at top, rgba(77, 158, 57, 0.08), rgba(0, 0, 0, 0.85));
     border: 1px solid #2e2e2e;
+}
+
+.media-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    padding: 16px;
+    background: linear-gradient(180deg, rgba(4, 4, 4, 0.12), rgba(4, 4, 4, 0.72));
+    color: #d7ffd0;
+    text-align: center;
+    pointer-events: none;
+}
+
+.media-placeholder span {
+    color: #86c96d;
+    font-size: 0.72rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+.media-placeholder strong {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #f4fff0;
 }
 
 .participant-video {
@@ -1024,6 +1331,44 @@ onUnmounted(() => {
 .participant-card.focused .participant-video {
     min-height: 50vh;
     object-fit: contain;
+}
+
+.participant-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.participant-action-btn {
+    border: 1px solid rgba(217, 119, 6, 0.38);
+    background: rgba(217, 119, 6, 0.12);
+    color: #ffd7a7;
+    border-radius: 999px;
+    min-height: 34px;
+    padding: 0 14px;
+    font: inherit;
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.participant-action-btn:hover {
+    transform: translateY(-1px);
+    border-color: rgba(217, 119, 6, 0.7);
+    background: rgba(217, 119, 6, 0.18);
+}
+
+.participant-action-btn.danger {
+    border-color: rgba(239, 68, 68, 0.38);
+    background: rgba(239, 68, 68, 0.12);
+    color: #ffc2c2;
+}
+
+.participant-action-btn.danger:hover {
+    border-color: rgba(239, 68, 68, 0.7);
+    background: rgba(239, 68, 68, 0.18);
 }
 
 .empty-room {

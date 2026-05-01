@@ -1,5 +1,5 @@
 <template>
-    <div class="terminal-container">
+    <div ref="terminalContainer" class="terminal-container" :class="{ 'terminal-fullscreen': isFullscreen }">
         <div class="terminal-header">
             <div class="terminal-title-wrap">
                 <div class="terminal-title">Omnipotent Console</div>
@@ -18,6 +18,7 @@
                 <button class="terminal-btn" @click="clearScreen">Clear Screen</button>
                 <button class="terminal-btn" @click="clearHistory" :disabled="!sessionId || isExecuting">Clear History</button>
                 <button class="terminal-btn" @click="toggleHistory">{{ showHistoryPanel ? 'Hide' : 'Show' }} History</button>
+                <button class="terminal-btn" @click="toggleFullscreen">{{ isFullscreen ? 'Exit Fullscreen' : 'Fullscreen' }}</button>
             </div>
         </div>
 
@@ -111,7 +112,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import Swal from 'sweetalert2';
 import { RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 
@@ -124,6 +125,7 @@ const historyIndex = ref(-1);
 const isExecuting = ref(false);
 const showHistoryPanel = ref(true);
 const selectedCommand = ref(null);
+const terminalContainer = ref(null);
 const outputContainer = ref(null);
 const inputField = ref(null);
 const sessionId = ref('');
@@ -131,6 +133,7 @@ const currentPath = ref('');
 const sessionReady = ref(false);
 const bannerMessage = ref('Opening terminal session...');
 const connectionError = ref('');
+const isFullscreen = ref(false);
 
 const filteredHistory = computed(() => commandHistory.value.slice().reverse().slice(0, 60));
 const shortSessionId = computed(() => sessionId.value ? `Session ${sessionId.value.slice(0, 8)}` : 'Session pending');
@@ -408,6 +411,30 @@ function scrollToBottom() {
     });
 }
 
+function syncFullscreenState() {
+    if (!process.client) return;
+    isFullscreen.value = document.fullscreenElement === terminalContainer.value;
+}
+
+async function toggleFullscreen() {
+    if (!process.client || !terminalContainer.value) return;
+
+    try {
+        if (document.fullscreenElement === terminalContainer.value) {
+            await document.exitFullscreen();
+            return;
+        }
+
+        if (document.fullscreenElement) {
+            await document.exitFullscreen();
+        }
+
+        await terminalContainer.value.requestFullscreen();
+    } catch (error) {
+        console.error('Failed to toggle terminal fullscreen:', error);
+    }
+}
+
 function abbreviatePath(path) {
     if (!path) return 'No path';
     const normalized = path.replace(/\\/g, '/');
@@ -432,7 +459,17 @@ function formatExecutionTime(execution) {
 }
 
 onMounted(async () => {
+    if (process.client) {
+        document.addEventListener('fullscreenchange', syncFullscreenState);
+    }
+
     await openSession(false);
+});
+
+onBeforeUnmount(() => {
+    if (process.client) {
+        document.removeEventListener('fullscreenchange', syncFullscreenState);
+    }
 });
 </script>
 
@@ -447,6 +484,16 @@ onMounted(async () => {
     overflow: hidden;
     font-family: 'Consolas', 'Courier New', monospace;
     box-shadow: 0 26px 60px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.terminal-fullscreen {
+    height: 100vh;
+    border-radius: 0;
+    border-color: rgba(111, 199, 121, 0.3);
+}
+
+.terminal-fullscreen .terminal-screen {
+    padding-bottom: 28px;
 }
 
 .terminal-header {

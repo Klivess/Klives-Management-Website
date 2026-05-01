@@ -336,34 +336,64 @@
         <!-- Management -->
         <KMInfoGrid columns="2" rows="1" rowHeight="520">
             <KMInfoBox caption="Bot Utilities">
-                <NuxtLink to="/administration/botlogs">
-                    <KMButton message="BOT LOGS" style="height: 100px; width: 100%; margin-top: 30px;" />
-                </NuxtLink>
-                <NuxtLink to="/klivelink">
-                    <KMButton message="KLIVELINK" style="height: 100px; width: 100%; margin-top: 15px;" />
-                </NuxtLink>
-                <NuxtLink to="/administration/omnisettings">
-                    <KMButton
-                        message="OMNISETTINGS"
-                        style="height: 100px; width: 100%; margin-top: 15px;"
-                    />
-                </NuxtLink>
-                <div class="update-bot-area">
-                    <KMButton
-                        :message="botUpdating ? 'UPDATING...' : 'UPDATE BOT'"
-                        :textColor="botUpdating ? '#969696' : '#ef4444'"
-                        style="height: 100px; width: 100%; margin-top: 15px;"
-                        :onclick="updateBot"
-                    />
-                    <div v-if="botUpdating" class="update-status">
-                        <div class="update-spinner"></div>
-                        <span>Bot is updating and restarting. The API will be temporarily unavailable...</span>
+                <div class="utility-panel">
+                    <p class="utility-intro">Open the main operator tools, inspect runtime activity, and push configuration or deployment changes from one control surface.</p>
+
+                    <div class="utility-grid">
+                        <NuxtLink to="/administration/botlogs" class="utility-card">
+                            <span class="utility-label">Diagnostics</span>
+                            <h3>Bot Logs</h3>
+                            <p>Inspect runtime output, failures, and service chatter without leaving Admin.</p>
+                            <KMButton message="OPEN BOT LOGS" style="height: 72px; width: 100%; margin-top: 18px;" />
+                        </NuxtLink>
+
+                        <NuxtLink to="/klivelink" class="utility-card">
+                            <span class="utility-label">Remote Control</span>
+                            <h3>KliveLink</h3>
+                            <p>Jump into remote administration tools and connected machine capabilities.</p>
+                            <KMButton message="OPEN KLIVELINK" style="height: 72px; width: 100%; margin-top: 18px;" />
+                        </NuxtLink>
+
+                        <NuxtLink to="/administration/omnisettings" class="utility-card">
+                            <span class="utility-label">Configuration</span>
+                            <h3>OmniSettings</h3>
+                            <p>Audit service configuration, secrets, and provider routing from the settings dashboard.</p>
+                            <KMButton message="OPEN OMNISETTINGS" style="height: 72px; width: 100%; margin-top: 18px;" />
+                        </NuxtLink>
+
+                        <div class="utility-card utility-card-danger update-bot-area">
+                            <span class="utility-label">Deployment</span>
+                            <h3>Update Bot</h3>
+                            <p>Pull latest code, rebuild, and restart the stack. This temporarily interrupts the API.</p>
+                            <KMButton
+                                :message="botUpdating ? 'UPDATING...' : 'RUN UPDATE'"
+                                :textColor="botUpdating ? '#969696' : '#ef4444'"
+                                style="height: 72px; width: 100%; margin-top: 18px;"
+                                :onclick="updateBot"
+                            />
+                            <div v-if="botUpdating" class="update-status">
+                                <div class="update-spinner"></div>
+                                <span>Bot is updating and restarting. The API will be temporarily unavailable...</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </KMInfoBox>
             <KMInfoBox caption="Manage Profiles">
-                <AdminKMProfileList style="height: 350px;" />
-                <KMButton style="height: 100px; margin-top: 25px;" message="Create New Profile" :onclick="goToCreateProfile" />
+                <div class="profiles-panel">
+                    <div class="profiles-panel-header">
+                        <div>
+                            <span class="utility-label">Access Control</span>
+                            <h3>Profile Directory</h3>
+                            <p>Review clearance, login eligibility, and create new operator accounts from a cleaner profile desk.</p>
+                        </div>
+                        <KMButton style="height: 72px; width: 240px;" message="CREATE NEW PROFILE" :onclick="goToCreateProfile" />
+                    </div>
+
+                    <div class="profiles-list-shell">
+                        <AdminKMProfileList style="height: 350px;" />
+                    </div>
+                </div>
             </KMInfoBox>
         </KMInfoGrid>
 
@@ -1756,6 +1786,87 @@ export default {
     border-radius: 2px;
 }
 
+/* Management */
+.utility-panel,
+.profiles-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    height: 100%;
+}
+
+.utility-intro,
+.profiles-panel-header p {
+    margin: 0;
+    color: #9a9a9a;
+    font-size: 0.84rem;
+    line-height: 1.6;
+}
+
+.utility-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    min-height: 0;
+}
+
+.utility-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 18px;
+    border-radius: 18px;
+    border: 1px solid rgba(77, 158, 57, 0.14);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.015));
+    text-decoration: none;
+    color: inherit;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.utility-card h3,
+.profiles-panel-header h3 {
+    margin: 0;
+    color: #f5fff2;
+    font-size: 1.15rem;
+}
+
+.utility-card p {
+    margin: 10px 0 0;
+    color: #9a9a9a;
+    font-size: 0.8rem;
+    line-height: 1.55;
+}
+
+.utility-label {
+    color: #86c96d;
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    display: inline-block;
+}
+
+.utility-card-danger {
+    border-color: rgba(239, 68, 68, 0.18);
+    background: linear-gradient(180deg, rgba(239, 68, 68, 0.05), rgba(255, 255, 255, 0.015));
+}
+
+.profiles-panel-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.profiles-list-shell {
+    flex: 1;
+    min-height: 0;
+    padding: 14px;
+    border-radius: 20px;
+    border: 1px solid rgba(77, 158, 57, 0.14);
+    background: rgba(255, 255, 255, 0.02);
+}
+
 /* Scrollbar */
 .services-scroll::-webkit-scrollbar,
 .network-scroll::-webkit-scrollbar {
@@ -1814,6 +1925,14 @@ export default {
 
     .api-route-chip {
         align-self: flex-start;
+    }
+
+    .utility-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .profiles-panel-header {
+        flex-direction: column;
     }
 }
 

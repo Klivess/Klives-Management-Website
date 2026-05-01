@@ -187,9 +187,8 @@
           </div>
           <div class="item-actions-hover">
             <button
-                v-if="item.ItemType === 'File'"
                 @click.stop="shareItem(item)"
-                title="Share"
+                title="Share Link"
                 class="share-btn"
             >
                 🔗
@@ -215,10 +214,11 @@
           <div class="shared-links-grid">
               <div v-for="link in sharedLinks" :key="link.ShareCode" class="shared-link-card">
                   <div class="link-details">
-                      <div class="link-name" :title="link.ItemName">{{ link.ItemName || 'Loading item info...' }}</div>
+                      <div class="link-name" :title="link.ItemName">{{ link.ItemName || 'Loading item info...' }}<span v-if="link.ItemType" class="link-item-type">{{ link.ItemType }}</span></div>
                       <div class="link-path" v-if="link.ItemPath" :title="link.ItemPath">{{ link.ItemPath.replace(/\\/g, '/') }}</div>
                       <div class="link-meta">
                           <span class="code">Code: {{ link.ShareCode.substring(0, 8) }}...</span>
+                          <span class="link-share-mode">{{ describeSharePermissionMode(link.SharePermissionMode) }}</span>
                           <span v-if="link.ExpirationDate">Exp: {{ formatDate(link.ExpirationDate) }}</span>
                           <span v-else>No Expiration</span>
                       </div>
@@ -307,6 +307,8 @@ interface ShareLink {
     CreatedByUserID: string;
     CreatedDate: string;
     ExpirationDate?: string;
+    ItemType?: 'Folder' | 'File';
+    SharePermissionMode?: number | string;
     // Enriched fields for display
     ItemName?: string;
     ItemPath?: string;
@@ -912,7 +914,31 @@ const downloadFile = (item: CloudItem) => {
 };
 
 const shareItem = async (item: CloudItem) => {
-    // Generate Share Link
+    let sharePermissionMode = 'ReadOnly';
+
+    if (item.ItemType === 'Folder') {
+        const permissionPrompt = await Swal.fire({
+            title: 'Folder Share Access',
+            text: 'Choose what visitors using this folder share link are allowed to do.',
+            input: 'select',
+            inputOptions: {
+                ReadOnly: 'Read only',
+                Write: 'Write',
+                WriteDelete: 'Write and delete'
+            },
+            inputValue: 'ReadOnly',
+            showCancelButton: true,
+            confirmButtonText: 'Create Share Link',
+            cancelButtonText: 'Cancel'
+        });
+
+        if (!permissionPrompt.isConfirmed) {
+            return;
+        }
+
+        sharePermissionMode = permissionPrompt.value || 'ReadOnly';
+    }
+
     Swal.fire({
         title: 'Creating Share Link...',
         text: 'Please wait',
@@ -923,20 +949,29 @@ const shareItem = async (item: CloudItem) => {
     });
 
     try {
-        const query = `/KliveCloud/CreateShareLink?itemID=${item.ItemID}`;
+        const params = new URLSearchParams({ itemID: item.ItemID });
+        if (item.ItemType === 'Folder') {
+            params.set('sharePermissionMode', sharePermissionMode);
+        }
+
+        const query = `/KliveCloud/CreateShareLink?${params.toString()}`;
         const response = await RequestPOSTFromKliveAPI(query);
         
         if (response.ok) {
             const data = await response.json();
             const shareUrl = `${window.location.origin}/shared/${data.ShareCode}`;
+            const sharedItemType = data.ItemType || item.ItemType;
+            const shareModeLabel = describeSharePermissionMode(data.SharePermissionMode);
+            const capabilityText = describeShareLinkCapabilities(sharedItemType, data.SharePermissionMode);
             
             // Refresh the shared links list so the new link appears immediately
             fetchSharedLinks();
             
             Swal.fire({
-                title: 'Share Link Created!',
+                title: 'Share Link Ready!',
                 html: `
-                    <p>Anyone with this link can download the file:</p>
+                    <p>Anyone with this link can ${capabilityText}.</p>
+                    <p><b>Access mode:</b> ${shareModeLabel}</p>
                     <input type="text" value="${shareUrl}" class="swal2-input" readonly id="share-link-input">
                 `,
                 icon: 'success',
@@ -1076,6 +1111,36 @@ const formatDate = (dateStr: string) => {
   return new Date(dateStr).toLocaleDateString() + ' ' + new Date(dateStr).toLocaleTimeString();
 };
 
+const describeSharePermissionMode = (mode?: number | string) => {
+    switch (`${mode ?? '0'}`.toLowerCase()) {
+        case '1':
+        case 'write':
+            return 'Write';
+        case '2':
+        case 'writedelete':
+            return 'Write + Delete';
+        default:
+            return 'Read Only';
+    }
+};
+
+const describeShareLinkCapabilities = (itemType: CloudItem['ItemType'] | string, mode?: number | string) => {
+    if (itemType !== 'Folder') {
+        return 'download the file';
+    }
+
+    switch (`${mode ?? '0'}`.toLowerCase()) {
+        case '1':
+        case 'write':
+            return 'open the shared folder, download files, upload files, and create subfolders';
+        case '2':
+        case 'writedelete':
+            return 'open the shared folder, download files, upload files, create subfolders, and delete shared contents';
+        default:
+            return 'open the shared folder and download any file inside it';
+    }
+};
+
 // --- Share Management ---
 
 const fetchSharedLinks = async () => {
@@ -1098,6 +1163,7 @@ const fetchSharedLinks = async () => {
                         const item: CloudItem = await itemRes.json();
                         link.ItemName = item.Name;
                         link.ItemPath = item.RelativePath || item.Name; // Use RelativePath if available for full context
+                        link.ItemType = item.ItemType;
                     } else {
                         link.ItemName = 'Unknown / Deleted';
                     }
@@ -1788,6 +1854,10 @@ const loadPreview = async (id: string) => {
                 color: #666;
                 display: flex;
                 gap: 8px;
+
+                .link-share-mode {
+                    color: #8bd38b;
+                }
 
                 .code {
                     font-family: monospace;

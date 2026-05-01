@@ -33,9 +33,10 @@
                 <pre v-if="script.errorMessage" class="script-error">{{ script.errorMessage }}</pre>
               </div>
             </div>
+            <div v-if="msg.pending" class="bubble-pending-note">Running scripts...</div>
             <div class="bubble-time">{{ formatTime(msg.timestamp) }}</div>
           </div>
-          <div v-if="loading" class="chat-bubble bubble-agent">
+          <div v-if="loading && !pendingRequestId" class="chat-bubble bubble-agent">
             <div class="bubble-role">KliveAgent</div>
             <div class="bubble-content typing-indicator">
               <span></span><span></span><span></span>
@@ -331,7 +332,7 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onMounted } from 'vue';
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 
 definePageMeta({ layout: 'navbar' });
@@ -339,8 +340,10 @@ definePageMeta({ layout: 'navbar' });
 const messages = ref([]);
 const inputMessage = ref('');
 const loading = ref(false);
+const pendingRequestId = ref(null);
 const conversationId = ref(null);
 const chatMessages = ref(null);
+let pendingPollHandle = null;
 
 const activeTab = ref('tasks');
 const tasks = ref([]);
@@ -405,12 +408,26 @@ async function sendMessage() {
 
     if (data.success !== false) {
       conversationId.value = data.conversationId;
-      messages.value.push({
-        role: 'KliveAgent',
-        content: data.response,
-        scripts: data.scriptsExecuted || [],
-        timestamp: new Date().toISOString()
-      });
+      if (data.isPending && data.pendingRequestId) {
+        pendingRequestId.value = data.pendingRequestId;
+        const pendingMessage = {
+          role: 'KliveAgent',
+          content: data.response,
+          scripts: [],
+          pending: true,
+          timestamp: new Date().toISOString()
+        };
+        messages.value.push(pendingMessage);
+        scrollToBottom();
+        await pollPendingResponse(pendingMessage);
+      } else {
+        messages.value.push({
+          role: 'KliveAgent',
+          content: data.response,
+          scripts: data.scriptsExecuted || [],
+          timestamp: new Date().toISOString()
+        });
+      }
     } else {
       messages.value.push({
         role: 'KliveAgent',
@@ -426,7 +443,59 @@ async function sendMessage() {
     });
   }
 
+  pendingRequestId.value = null;
   loading.value = false;
+  scrollToBottom();
+}
+
+function waitForPendingPoll(ms) {
+  return new Promise((resolve) => {
+    pendingPollHandle = setTimeout(resolve, ms);
+  });
+}
+
+async function pollPendingResponse(pendingMessage) {
+  while (pendingRequestId.value) {
+    try {
+      const res = await RequestGETFromKliveAPI(`/kliveagent/chat/pending?requestId=${encodeURIComponent(pendingRequestId.value)}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || `Pending request failed with HTTP ${res.status}`);
+      }
+
+      if (data.status === 'Running') {
+        pendingMessage.content = data.response || pendingMessage.content;
+        await waitForPendingPoll(1200);
+        continue;
+      }
+
+      const finalResponse = data.finalResponse;
+      pendingMessage.pending = false;
+      pendingMessage.timestamp = new Date().toISOString();
+
+      if (finalResponse) {
+        conversationId.value = finalResponse.conversationId || data.conversationId || conversationId.value;
+        pendingMessage.content = finalResponse.response || pendingMessage.content;
+        pendingMessage.scripts = finalResponse.scriptsExecuted || [];
+      } else {
+        pendingMessage.content = data.errorMessage || 'KliveAgent did not return a final response.';
+      }
+
+      break;
+    } catch (err) {
+      pendingMessage.pending = false;
+      pendingMessage.content = 'Failed to retrieve KliveAgent response: ' + err.message;
+      break;
+    }
+  }
+
+  pendingRequestId.value = null;
+  loading.value = false;
+  if (pendingPollHandle) {
+    clearTimeout(pendingPollHandle);
+    pendingPollHandle = null;
+  }
   scrollToBottom();
 }
 
@@ -652,6 +721,13 @@ onMounted(() => {
   loadAnalytics();
   loadShortcuts();
 });
+
+onUnmounted(() => {
+  if (pendingPollHandle) {
+    clearTimeout(pendingPollHandle);
+    pendingPollHandle = null;
+  }
+});
 </script>
 
 <style scoped>
@@ -781,6 +857,14 @@ onMounted(() => {
   color: #555;
   margin-top: 4px;
   text-align: right;
+}
+
+.bubble-pending-note {
+  margin-top: 8px;
+  color: #9fb4ff;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 /* Script results */

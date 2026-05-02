@@ -455,8 +455,8 @@ useHead(() => {
   }
 
   if (item?.ItemType === 'File' && item.IsVideo) {
-    const videoUrl = getSharedStreamUrl(item.ItemID);
-    const videoType = item.VideoMimeType || 'video/mp4';
+    const videoUrl = getSharedEmbedVideoUrl(item.ItemID);
+    const videoType = 'video/mp4';
     meta.push(
       { key: 'og-type', property: 'og:type', content: 'video.other' },
       { key: 'og-video', property: 'og:video', content: videoUrl },
@@ -559,6 +559,12 @@ function getSharedStreamUrl(itemId?: string) {
   const params = new URLSearchParams({ code: code.value });
   if (itemId) params.set('itemID', itemId);
   return `${KliveAPIUrl}/KliveCloud/StreamSharedVideo?${params.toString()}`;
+}
+
+function getSharedEmbedVideoUrl(itemId?: string) {
+  const params = new URLSearchParams({ code: code.value });
+  if (itemId) params.set('itemID', itemId);
+  return `${KliveAPIUrl}/KliveCloud/StreamSharedVideoEmbed?${params.toString()}`;
 }
 
 function getSharedPreviewUrl(itemId?: string, maxWidth = 320, maxHeight = 320) {

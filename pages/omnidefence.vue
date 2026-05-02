@@ -140,10 +140,10 @@
                                     <td>{{ ip.status }}</td><td>{{ Math.round(ip.score || 0) }}</td><td>{{ ip.total }}</td><td>{{ ip.unauth }}</td><td>{{ ip.deny }}</td>
                                     <td>{{ fmtTime(ip.lastSeen) }}</td>
                                     <td class="action-row">
+                                        <button class="micro release" :disabled="loading.action" @click="untrapIp(ip.ip)" v-if="isHostileStatus(ip.status)">Untrap</button>
                                         <button class="micro danger" :disabled="loading.action" @click="blockIp(ip.ip)" v-if="ip.status !== 'Blocked' && !ip.isKlives">Block</button>
-                                        <button class="micro" :disabled="loading.action" @click="unblockIp(ip.ip)" v-else-if="ip.status === 'Blocked'">Unblock</button>
-                                        <button class="micro warn" :disabled="loading.action" title="Tarpit slows hostile requests with deliberate response delay." @click="setIpStatus(ip.ip, 'Tarpit')" v-if="!ip.isKlives">Tarpit</button>
-                                        <button class="micro cyan" :disabled="loading.action" title="Trap serves junk honeypot responses instead of normal API data." @click="setIpStatus(ip.ip, 'Honeypot')" v-if="!ip.isKlives">Trap</button>
+                                        <button class="micro warn" :disabled="loading.action" title="Tarpit slows hostile requests with deliberate response delay." @click="setIpStatus(ip.ip, 'Tarpit')" v-if="ip.status !== 'Tarpit' && !ip.isKlives">Tarpit</button>
+                                        <button class="micro cyan" :disabled="loading.action" title="Trap serves junk honeypot responses instead of normal API data." @click="setIpStatus(ip.ip, 'Honeypot')" v-if="ip.status !== 'Honeypot' && !ip.isKlives">Trap</button>
                                         <span v-if="ip.isKlives" class="protected-chip">Klives protected</span>
                                         <button class="micro" :disabled="loading.action" @click="scanIp(ip.ip)">Scan</button>
                                     </td>
@@ -224,7 +224,12 @@
                         <div><span>Last Seen</span><strong>{{ fmtTime(selectedIp.lastSeen) }}</strong></div>
                     </div>
                     <textarea v-model="selectedIpNote" placeholder="Operator note"></textarea>
-                    <button class="od-btn" :disabled="loading.action" @click="saveSelectedIpNote">Save Note</button>
+                    <div class="detail-actions">
+                        <button class="od-btn" :disabled="loading.action" @click="saveSelectedIpNote">Save Note</button>
+                        <button class="od-btn release" :disabled="loading.action" @click="untrapIp(selectedIp.ip)" v-if="isHostileStatus(selectedIp.status)">Untrap IP</button>
+                        <button class="od-btn danger" :disabled="loading.action" @click="blockIp(selectedIp.ip)" v-if="selectedIp.status !== 'Blocked' && !selectedIp.isKlives">Block</button>
+                        <button class="od-btn ghost" :disabled="loading.action" @click="scanIp(selectedIp.ip)">Scan</button>
+                    </div>
                 </div>
                 <div class="detail-block" v-else>
                     <div class="detail-title">No IP selected</div>
@@ -339,6 +344,7 @@ export default {
         ipClass(ip) {
             return { 'row-bad': ip.status === 'Blocked', 'row-warn': ip.status === 'Watch' || ip.status === 'Tarpit', 'row-trap': ip.status === 'Honeypot' };
         },
+        isHostileStatus(status) { return ['Blocked', 'Tarpit', 'Honeypot'].includes(String(status || '')); },
         authClass(type) { return { 'row-bad': String(type).includes('NoProfile') || String(type).includes('Invalid'), 'row-warn': type === 'InsufficientClearance' }; },
         buildQuery(values) {
             const p = new URLSearchParams();
@@ -441,6 +447,7 @@ export default {
             } finally { this.loading.action = false; }
         },
         async unblockIp(ip) { this.loading.action = true; try { const r = await RequestPOSTFromKliveAPI('/omnidefence/ip/unblock', JSON.stringify({ ip }), false, true); if (!r.ok) { this.loadError = await r.text(); return; } await this.loadIps(); await this.selectIp(ip); } finally { this.loading.action = false; } },
+        async untrapIp(ip) { this.loading.action = true; try { const r = await RequestPOSTFromKliveAPI('/omnidefence/ip/untrap', JSON.stringify({ ip, reason: 'Dashboard untrap' }), false, true); if (!r.ok) { this.loadError = await r.text(); return; } await this.loadOverview(); await this.loadIps(); await this.selectIp(ip); } finally { this.loading.action = false; } },
         async setIpStatus(ip, status) { this.loading.action = true; try { const r = await RequestPOSTFromKliveAPI('/omnidefence/ip/status', JSON.stringify({ ip, status }), false, true); if (!r.ok) { this.loadError = await r.text(); return; } await this.loadIps(); await this.selectIp(ip); } finally { this.loading.action = false; } },
         async saveSelectedIpNote() {
             if (!this.selectedIp) return;
@@ -546,7 +553,7 @@ input:focus, select:focus, textarea:focus { border-color: #52ffb9; box-shadow: 0
 .checkline { display: flex; align-items: center; gap: 6px; color: #a8c3bb; font-size: 12px; }
 .od-btn, .micro { border: 1px solid rgba(82,255,185,.28); border-radius: 4px; background: linear-gradient(180deg, rgba(28,111,85,.38), rgba(10,25,26,.9)); color: #eafff9; cursor: pointer; font-weight: 700; }
 .od-btn:disabled, .micro:disabled { opacity: .52; cursor: wait; }
-.od-btn { padding: 8px 11px; } .od-btn.ghost { background: rgba(255,255,255,.04); } .od-btn.danger, .micro.danger { border-color: rgba(255,83,104,.45); color: #ffb9c1; } .od-btn.cyan, .micro.cyan { border-color: rgba(95,211,255,.45); color: #bcecff; } .micro.warn { color: #ffd98a; border-color: rgba(255,194,71,.4); }
+.od-btn { padding: 8px 11px; } .od-btn.ghost { background: rgba(255,255,255,.04); } .od-btn.danger, .micro.danger { border-color: rgba(255,83,104,.45); color: #ffb9c1; } .od-btn.cyan, .micro.cyan { border-color: rgba(95,211,255,.45); color: #bcecff; } .od-btn.release, .micro.release { border-color: rgba(93,255,174,.5); color: #baffdc; background: linear-gradient(180deg, rgba(32,132,89,.44), rgba(8,30,25,.92)); } .micro.warn { color: #ffd98a; border-color: rgba(255,194,71,.4); }
 .micro { padding: 4px 7px; font-size: 11px; }
 .table-shell { max-height: 590px; overflow: auto; border: 1px solid rgba(255,255,255,.08); border-radius: 5px; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -565,6 +572,7 @@ tr:hover td { background: rgba(78,255,182,.035); }
 .protected-chip { color: #c79cff; background: rgba(139,92,246,.16); border: 1px solid rgba(199,156,255,.22); }
 .identity-chip { margin-top: 9px; }
 .action-row { display: flex; flex-wrap: wrap; gap: 4px; min-width: 220px; }
+.detail-actions { display: flex; flex-wrap: wrap; gap: 7px; }
 .empty-cell { text-align: center; color: #70837e; padding: 28px; }
 .pager { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 10px; color: #8ba59d; font-size: 12px; }
 .detail-block:first-child { border-top: 0; margin-top: 0; padding-top: 0; }

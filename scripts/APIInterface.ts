@@ -1,11 +1,13 @@
 
 import { useCookie } from '#imports';
-import { TRUE } from 'sass';
 import Swal from 'sweetalert2';
 
-export { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, VerifyLogin, KMPermissions };
+export { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, VerifyLogin, StartAuthSessionWatch, StopAuthSessionWatch, KMPermissions };
 
 const KliveAPIUrl = "https://klive.dev";
+let authSessionSocket: WebSocket | null = null;
+let authSessionReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let authSessionInvalidated = false;
 
 enum DeniedRequestReason {
     NoProfile = 0,
@@ -115,43 +117,166 @@ function GetLocalPassword() {
     }
 }
 
+function SetLocalPassword(password: string | null) {
+    try {
+        const cookie = useCookie<string | null>('password');
+        cookie.value = password;
+    } catch (e) {
+    }
+
+    if (process.client) {
+        if (password) {
+            document.cookie = `password=${encodeURIComponent(password)}; path=/`;
+        } else {
+            document.cookie = 'password=; Max-Age=0; path=/';
+        }
+    }
+}
+
+function IsProtectedRoute(path: string | null | undefined) {
+    return Boolean(path) && path !== '/' && !path.includes('/shared/');
+}
+
+function ClearAuthSessionReconnectTimer() {
+    if (authSessionReconnectTimer) {
+        clearTimeout(authSessionReconnectTimer);
+        authSessionReconnectTimer = null;
+    }
+}
+
+function StopAuthSessionWatch() {
+    ClearAuthSessionReconnectTimer();
+
+    if (authSessionSocket) {
+        const socket = authSessionSocket;
+        authSessionSocket = null;
+        if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+            socket.close(1000, 'client-stop');
+        }
+    }
+}
+
+function BuildAuthSessionWatchUrl() {
+    const password = GetLocalPassword();
+    if (!password) {
+        return '';
+    }
+
+    const wsBaseUrl = KliveAPIUrl.replace('https', 'wss').replace('http', 'ws');
+    return `${wsBaseUrl}/KMProfiles/SessionWatch?authorization=${encodeURIComponent(password)}`;
+}
+
+async function HandleSessionInvalidation(state: string) {
+    if (!process.client || authSessionInvalidated) {
+        return;
+    }
+
+    authSessionInvalidated = true;
+    StopAuthSessionWatch();
+    SetLocalPassword(null);
+
+    let title = 'Session Ended';
+    let text = 'Your session is no longer valid.';
+    if (state === 'ProfileDisabled') {
+        title = 'Profile Disabled';
+        text = 'Your profile can no longer log in.';
+    } else if (state === 'PasswordChanged') {
+        title = 'Password Changed';
+        text = 'Your profile password changed, so this session was signed out.';
+    } else if (state === 'ProfileNotFound') {
+        title = 'Profile Removed';
+        text = 'Your profile no longer exists, so this session was signed out.';
+    }
+
+    await Swal.fire({
+        icon: 'warning',
+        title,
+        text,
+        timer: 1600,
+        showConfirmButton: false,
+        allowOutsideClick: false,
+        background: '#161516',
+        color: '#ffffff',
+        customClass: {
+            popup: 'swal-dark-theme'
+        }
+    });
+
+    window.location.replace('/');
+}
+
+function ScheduleAuthSessionReconnect() {
+    if (!process.client || authSessionInvalidated || authSessionReconnectTimer || !IsProtectedRoute(window.location.pathname) || !GetLocalPassword()) {
+        return;
+    }
+
+    authSessionReconnectTimer = setTimeout(() => {
+        authSessionReconnectTimer = null;
+        StartAuthSessionWatch(window.location.pathname);
+    }, 1500);
+}
+
+function StartAuthSessionWatch(path?: string) {
+    if (!process.client) {
+        return;
+    }
+
+    const routePath = path || window.location.pathname;
+    if (!IsProtectedRoute(routePath) || !GetLocalPassword()) {
+        StopAuthSessionWatch();
+        authSessionInvalidated = false;
+        return;
+    }
+
+    if (authSessionSocket && (authSessionSocket.readyState === WebSocket.OPEN || authSessionSocket.readyState === WebSocket.CONNECTING)) {
+        return;
+    }
+
+    const socketUrl = BuildAuthSessionWatchUrl();
+    if (!socketUrl) {
+        return;
+    }
+
+    authSessionInvalidated = false;
+    ClearAuthSessionReconnectTimer();
+
+    const socket = new WebSocket(socketUrl);
+    authSessionSocket = socket;
+
+    socket.onmessage = async (event) => {
+        try {
+            const payload = JSON.parse(event.data);
+            if (payload?.type === 'session-state' && payload.state && payload.state !== 'SessionActive') {
+                await HandleSessionInvalidation(payload.state);
+            }
+        } catch (error) {
+            console.error('Failed to parse auth session event:', error);
+        }
+    };
+
+    socket.onclose = () => {
+        if (authSessionSocket === socket) {
+            authSessionSocket = null;
+        }
+
+        if (!authSessionInvalidated) {
+            ScheduleAuthSessionReconnect();
+        }
+    };
+}
+
 async function VerifyLogin() {
     //Only run this if the user is not already on the login page and we're in the browser
     if (!process.client || window.location.pathname == "/") {
         return;
     }
-    RequestGETFromKliveAPI("/KMProfiles/LoginStatus").then(response => {
-        response.json().then((json: any) => {
-            if (json == "ProfileDisabled") {
-                window.location.replace('/');
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Profile Disabled',
-                    text: 'Your profile has been disabled.',
-                    confirmButtonColor: '#4d9e39',
-                    background: '#161516',
-                    color: '#ffffff',
-                    customClass: {
-                        popup: 'swal-dark-theme'
-                    }
-                });
-            }
-            else if (json == "ProfileNotFound") {
-                if (window.location.pathname != "/") {
-                    window.location.replace('/');
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Profile Not Found',
-                        text: 'You don\'t even have a profile or a password here, get out!!',
-                        confirmButtonColor: '#4d9e39',
-                        background: '#161516',
-                        color: '#ffffff',
-                        customClass: {
-                            popup: 'swal-dark-theme'
-                        }
-                    });
-                }
-            }
-        });
-    });
+    const response = await RequestGETFromKliveAPI("/KMProfiles/LoginStatus", false, false);
+    const text = await response.text();
+
+    if (text == "ProfileDisabled") {
+        await HandleSessionInvalidation('ProfileDisabled');
+    }
+    else if (text == "ProfileNotFound") {
+        await HandleSessionInvalidation('ProfileNotFound');
+    }
 }

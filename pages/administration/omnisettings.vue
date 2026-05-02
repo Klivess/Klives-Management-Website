@@ -127,6 +127,14 @@
                                             style="width: 100px; height: 100%;"
                                         />
                                         <div v-else class="placeholder-action"></div>
+                                        <button
+                                            class="danger-action"
+                                            type="button"
+                                            :disabled="deletingSettings.has(getSettingKey(setting)) || savingSettings.has(getSettingKey(setting))"
+                                            @click="deleteSetting(setting)"
+                                        >
+                                            {{ deletingSettings.has(getSettingKey(setting)) ? 'Deleting...' : 'Delete' }}
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -195,6 +203,14 @@
                                             style="width: 100px; height: 100%;"
                                         />
                                         <div v-else class="placeholder-action"></div>
+                                        <button
+                                            class="danger-action"
+                                            type="button"
+                                            :disabled="deletingSettings.has(getSettingKey(setting)) || savingSettings.has(getSettingKey(setting))"
+                                            @click="deleteSetting(setting)"
+                                        >
+                                            {{ deletingSettings.has(getSettingKey(setting)) ? 'Deleting...' : 'Delete' }}
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -239,6 +255,7 @@ const showSensitiveValues = ref(false);
 const editingValues = ref<Record<string, string>>({});
 const boolValues = ref<Record<string, boolean>>({});
 const savingSettings = ref(new Set<string>());
+const deletingSettings = ref(new Set<string>());
 const collapsedGroups = ref<Record<string, boolean>>({});
 const inactiveCollapsed = ref(true);
 
@@ -472,6 +489,87 @@ const saveSetting = async (setting: OmniSetting) => {
         });
     } finally {
         savingSettings.value.delete(key);
+    }
+};
+
+const removeSettingFromState = (setting: OmniSetting) => {
+    const key = getSettingKey(setting);
+    settings.value = settings.value.filter((candidate) => getSettingKey(candidate) !== key);
+
+    const nextEditingValues = { ...editingValues.value };
+    delete nextEditingValues[key];
+    editingValues.value = nextEditingValues;
+
+    const nextBoolValues = { ...boolValues.value };
+    delete nextBoolValues[key];
+    boolValues.value = nextBoolValues;
+
+    syncGroupCollapseState(settings.value);
+};
+
+const deleteSetting = async (setting: OmniSetting) => {
+    const key = getSettingKey(setting);
+    if (deletingSettings.value.has(key)) {
+        return;
+    }
+
+    const result = await Swal.fire({
+        icon: 'warning',
+        title: `Delete ${setting.Name}?`,
+        text: 'This OmniSetting will be removed from persistence until a service recreates it.',
+        showCancelButton: true,
+        confirmButtonText: 'Delete Setting',
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#4d9e39',
+        background: '#161516',
+        color: '#ffffff'
+    });
+
+    if (!result.isConfirmed) {
+        return;
+    }
+
+    deletingSettings.value.add(key);
+
+    try {
+        const response = await RequestPOSTFromKliveAPI(
+            '/OmniGlobalSettings/Delete',
+            JSON.stringify({
+                name: setting.Name,
+                parentServiceId: setting.ParentServiceId
+            }),
+            false,
+            true
+        );
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+
+        removeSettingFromState(setting);
+        Swal.fire({
+            icon: 'success',
+            title: 'Setting deleted',
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000,
+            background: '#161516',
+            color: '#ffffff'
+        });
+    } catch (e: any) {
+        console.error('Error deleting OmniSetting:', e);
+        Swal.fire({
+            icon: 'error',
+            title: 'Failed to delete',
+            text: e.message || 'An unknown error occurred.',
+            background: '#161516',
+            color: '#ffffff',
+            confirmButtonColor: '#4d9e39'
+        });
+    } finally {
+        deletingSettings.value.delete(key);
     }
 };
 
@@ -842,13 +940,40 @@ onMounted(() => {
 }
 
 .editor-actions {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
     height: 100%;
-    min-width: 100px;
+    min-width: 220px;
 }
 
 .placeholder-action {
     width: 100px;
     height: 100%;
+}
+
+.danger-action {
+    min-width: 100px;
+    height: 100%;
+    padding: 0 16px;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    border-radius: 10px;
+    background: rgba(239, 68, 68, 0.08);
+    color: #ef4444;
+    font-size: 0.86rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+}
+
+.danger-action:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.14);
+    border-color: rgba(239, 68, 68, 0.55);
+}
+
+.danger-action:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
 @media (max-width: 1024px) {
@@ -891,6 +1016,11 @@ onMounted(() => {
     .editor-actions :deep(button) {
         width: 100% !important;
         height: 45px !important;
+    }
+
+    .danger-action {
+        width: 100%;
+        height: 45px;
     }
 }
 </style>

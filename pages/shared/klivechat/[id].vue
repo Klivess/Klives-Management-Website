@@ -68,6 +68,12 @@
                         <span class="control-chip">{{ isVideo ? 'LIVE' : 'OFF' }}</span>
                     </button>
 
+                    <button v-if="canFlipCamera" class="control-tile" type="button" @click="flipCamera">
+                        <span class="control-title">Flip camera</span>
+                        <span class="control-copy">Swap between the front and rear camera without leaving the room.</span>
+                        <span class="control-chip">{{ preferredFacingMode === 'environment' ? 'REAR' : 'FRONT' }}</span>
+                    </button>
+
                     <button class="control-tile" type="button" :class="{ active: isScreenSharing }" @click="toggleScreenShare">
                         <span class="control-title">{{ isScreenSharing ? 'Stop screen share' : 'Share screen' }}</span>
                         <span class="control-copy">Present a browser tab or desktop capture.</span>
@@ -203,9 +209,11 @@ const currentRank = ref(0);
 const isMuted = ref(false);
 const isVideo = ref(false);
 const isScreenSharing = ref(false);
+const preferredFacingMode = ref('user');
 const peersState = ref([]);
 const audioRefs = {};
 const canModerate = computed(() => currentRank.value >= 3);
+const canFlipCamera = computed(() => isVideo.value && !isScreenSharing.value);
 
 const localVisualizer = ref(null);
 const peerVisualizers = {};
@@ -239,6 +247,21 @@ function setPeerVisualizerRef(el, id) {
 function getLocalPassword() {
     const match = document.cookie.match(/(?:^|; )password=([^;]*)/);
     return match ? decodeURIComponent(match[1]) : '';
+}
+
+function getGuestIdentity() {
+    if (!process.client) {
+        return '';
+    }
+
+    const storageKey = 'klivechat-guest-identity';
+    let guestIdentity = window.localStorage.getItem(storageKey);
+    if (!guestIdentity) {
+        guestIdentity = `guest-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+        window.localStorage.setItem(storageKey, guestIdentity);
+    }
+
+    return guestIdentity;
 }
 
 function normalizePeer(peer) {
@@ -331,6 +354,48 @@ function sendLocalParticipantState() {
     });
 }
 
+async function acquireCameraTrack() {
+    const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+            facingMode: { ideal: preferredFacingMode.value }
+        },
+        audio: false
+    });
+
+    return stream.getVideoTracks()[0];
+}
+
+function removeLocalVideoTracks() {
+    if (!localStream) {
+        return;
+    }
+
+    const videoTracks = localStream.getVideoTracks();
+    videoTracks.forEach((track) => {
+        track.enabled = false;
+        track.stop();
+        localStream.removeTrack(track);
+    });
+}
+
+function syncPeerVideoTrack(videoTrack) {
+    Object.values(peerConnections).forEach((pc) => {
+        const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+        if (videoTrack) {
+            if (sender) {
+                sender.replaceTrack(videoTrack);
+            } else {
+                pc.addTrack(videoTrack, localStream);
+            }
+            return;
+        }
+
+        if (sender) {
+            pc.removeTrack(sender);
+        }
+    });
+}
+
 async function init() {
     currentUrl.value = window.location.href;
     wsUrl = `${wsBaseUrl}/klivechat/ws?roomId=${roomId}`;
@@ -359,6 +424,11 @@ async function init() {
     const authorization = getLocalPassword();
     if (authorization) {
         wsUrl += '&authorization=' + encodeURIComponent(authorization);
+    } else {
+        const guestIdentity = getGuestIdentity();
+        if (guestIdentity) {
+            wsUrl += '&guestIdentity=' + encodeURIComponent(guestIdentity);
+        }
     }
 
     try {
@@ -699,25 +769,12 @@ async function toggleVideo() {
         try {
             if (isScreenSharing.value) {
                 isScreenSharing.value = false;
-                const videoTracks = localStream.getVideoTracks();
-                videoTracks.forEach((track) => {
-                    track.stop();
-                    localStream.removeTrack(track);
-                });
+                removeLocalVideoTracks();
             }
 
-            const newStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-            const videoTrack = newStream.getVideoTracks()[0];
+            const videoTrack = await acquireCameraTrack();
             localStream.addTrack(videoTrack);
-
-            Object.values(peerConnections).forEach((pc) => {
-                const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
-                if (sender) {
-                    sender.replaceTrack(videoTrack);
-                } else {
-                    pc.addTrack(videoTrack, localStream);
-                }
-            });
+            syncPeerVideoTrack(videoTrack);
 
             if (localVideo.value) {
                 localVideo.value.srcObject = localStream;
@@ -729,20 +786,34 @@ async function toggleVideo() {
             sendLocalParticipantState();
         }
     } else {
-        const videoTracks = localStream.getVideoTracks();
-        videoTracks.forEach((track) => {
-            track.enabled = false;
-            track.stop();
-            localStream.removeTrack(track);
-        });
-
-        Object.values(peerConnections).forEach((pc) => {
-            const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
-            if (sender) {
-                pc.removeTrack(sender);
-            }
-        });
+        removeLocalVideoTracks();
+        syncPeerVideoTrack(null);
         sendLocalParticipantState();
+    }
+}
+
+async function flipCamera() {
+    if (!localStream || !isVideo.value || isScreenSharing.value) {
+        return;
+    }
+
+    const previousFacingMode = preferredFacingMode.value;
+    preferredFacingMode.value = preferredFacingMode.value === 'user' ? 'environment' : 'user';
+
+    try {
+        const videoTrack = await acquireCameraTrack();
+        removeLocalVideoTracks();
+        localStream.addTrack(videoTrack);
+        syncPeerVideoTrack(videoTrack);
+
+        if (localVideo.value) {
+            localVideo.value.srcObject = localStream;
+        }
+
+        sendLocalParticipantState();
+    } catch (error) {
+        preferredFacingMode.value = previousFacingMode;
+        console.error('Camera flip failed', error);
     }
 }
 
@@ -759,27 +830,15 @@ async function toggleScreenShare() {
 
         if (isVideo.value) {
             try {
-                const newStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                const videoTrack = newStream.getVideoTracks()[0];
+                const videoTrack = await acquireCameraTrack();
                 localStream.addTrack(videoTrack);
-
-                Object.values(peerConnections).forEach((pc) => {
-                    const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
-                    if (sender) {
-                        sender.replaceTrack(videoTrack);
-                    }
-                });
+                syncPeerVideoTrack(videoTrack);
             } catch (error) {
                 console.error('Reverting to camera failed', error);
                 isVideo.value = false;
             }
         } else {
-            Object.values(peerConnections).forEach((pc) => {
-                const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
-                if (sender) {
-                    pc.removeTrack(sender);
-                }
-            });
+            syncPeerVideoTrack(null);
         }
         sendLocalParticipantState();
     } else {
@@ -799,22 +858,10 @@ async function toggleScreenShare() {
 
             isScreenSharing.value = true;
 
-            const videoTracks = localStream.getVideoTracks();
-            videoTracks.forEach((track) => {
-                track.stop();
-                localStream.removeTrack(track);
-            });
+            removeLocalVideoTracks();
 
             localStream.addTrack(screenTrack);
-
-            Object.values(peerConnections).forEach((pc) => {
-                const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
-                if (sender) {
-                    sender.replaceTrack(screenTrack);
-                } else {
-                    pc.addTrack(screenTrack, localStream);
-                }
-            });
+            syncPeerVideoTrack(screenTrack);
 
             if (localVideo.value) {
                 localVideo.value.srcObject = localStream;

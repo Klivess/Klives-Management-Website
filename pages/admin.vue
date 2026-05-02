@@ -334,7 +334,7 @@
         </KMInfoGrid>
 
         <!-- Management -->
-        <KMInfoGrid columns="2" rows="1" rowHeight="520">
+        <KMInfoGrid columns="2" rows="1" rowHeight="560">
             <KMInfoBox caption="Bot Utilities">
                 <div class="utility-panel">
                     <p class="utility-intro">Open the main operator tools, inspect runtime activity, and push configuration or deployment changes from one control surface.</p>
@@ -387,7 +387,7 @@
                             <h3>Profile Directory</h3>
                             <p>Review clearance, login eligibility, and create new operator accounts from a cleaner profile desk.</p>
                         </div>
-                        <KMButton style="height: 72px; width: 240px;" message="CREATE NEW PROFILE" :onclick="goToCreateProfile" />
+                        <KMButton style="height: 72px; width: 300px; font-size: 15px; letter-spacing: 0.08em;" message="CREATE NEW PROFILE" :onclick="goToCreateProfile" />
                     </div>
 
                     <div class="profiles-list-shell">
@@ -901,6 +901,39 @@ export default {
         goToCreateProfile() {
             window.location.replace('/createprofile');
         },
+        async ensureBotRestartNotificationPermission() {
+            if (!process.client || !('Notification' in window)) {
+                return false;
+            }
+
+            if (Notification.permission === 'granted') {
+                return true;
+            }
+
+            if (Notification.permission !== 'default') {
+                return false;
+            }
+
+            try {
+                return (await Notification.requestPermission()) === 'granted';
+            } catch {
+                return false;
+            }
+        },
+        notifyBotRestarted() {
+            if (!process.client || !('Notification' in window) || Notification.permission !== 'granted') {
+                return;
+            }
+
+            const notification = new Notification('Omnipotent is back online', {
+                body: 'Update Bot finished and the API is responding again.'
+            });
+
+            notification.onclick = () => {
+                window.focus();
+                notification.close();
+            };
+        },
         async updateBot() {
             if (this.botUpdating) return;
 
@@ -919,6 +952,8 @@ export default {
             });
 
             if (!result.isConfirmed) return;
+
+            await this.ensureBotRestartNotificationPermission();
 
             this.botUpdating = true;
             // Stop auto-refresh since the API will go down
@@ -999,6 +1034,7 @@ export default {
                 const res = await RequestGETFromKliveAPI('/GeneralBotStatistics/GetFrontpageStats', false, false);
                 if (res.ok) {
                     this.botUpdating = false;
+                    this.notifyBotRestarted();
                     Swal.fire({
                         icon: 'success',
                         title: 'Bot Updated Successfully',
@@ -1806,6 +1842,7 @@ export default {
 .utility-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: minmax(220px, 1fr);
     gap: 14px;
     min-height: 0;
 }
@@ -1813,7 +1850,10 @@ export default {
 .utility-card {
     display: flex;
     flex-direction: column;
+    justify-content: space-between;
+    gap: 14px;
     min-height: 0;
+    min-height: 220px;
     padding: 18px;
     border-radius: 18px;
     border: 1px solid rgba(77, 158, 57, 0.14);

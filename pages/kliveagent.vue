@@ -723,6 +723,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  pendingRequestId.value = null;
   if (pendingPollHandle) {
     clearTimeout(pendingPollHandle);
     pendingPollHandle = null;

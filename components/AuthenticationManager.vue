@@ -2,23 +2,36 @@
     <div aria-hidden="true" style="display: none;"></div>
 </template>
 
-<script>
+<script setup lang="ts">
+import { onMounted, onUnmounted, watch } from 'vue';
+import { useRoute } from '#imports';
+import { StartAuthSessionWatch, StopAuthSessionWatch, VerifyLogin } from '~/scripts/APIInterface';
 
-import { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, VerifyLogin } from '~/scripts/APIInterface';
+const route = useRoute();
 
-export default{
-    name: "AuthenticationManager",
-    async mounted (){
-        console.log("AuthenticationManager");
-        while(true){
-            if(this.$route.path != "/" && !this.$route.path.toString().includes("/shared/")){
-                await VerifyLogin();
-                await new Promise(r => setTimeout(r, 2000));
-            }
-            else{
-                await new Promise(r => setTimeout(r, 2000));
-            }
-        }
+async function syncAuthSession(path: string) {
+    if (!process.client) {
+        return;
     }
+
+    if (path === '/' || path.includes('/shared/')) {
+        StopAuthSessionWatch();
+        return;
+    }
+
+    await VerifyLogin();
+    StartAuthSessionWatch(path);
 }
+
+watch(() => route.path, (path) => {
+    syncAuthSession(path);
+}, { immediate: true });
+
+onMounted(() => {
+    syncAuthSession(route.path);
+});
+
+onUnmounted(() => {
+    StopAuthSessionWatch();
+});
 </script>

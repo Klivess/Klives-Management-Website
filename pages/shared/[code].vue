@@ -282,6 +282,7 @@ interface MarqueeRect {
 }
 
 const route = useRoute();
+const requestUrl = useRequestURL();
 const code = computed(() => String(route.params.code || ''));
 
 const activeFolderId = ref('');
@@ -417,6 +418,74 @@ const selectedSizeBytes = computed(() => {
 });
 const activeUploadCount = computed(() => activeUploads.value.filter((task) => task.status === 'uploading' || task.status === 'finalizing').length);
 
+const sharedPageUrl = computed(() => new URL(route.fullPath || `/shared/${encodeURIComponent(code.value)}`, requestUrl.origin).toString());
+const embedTitle = computed(() => rootItem.value?.Name || 'KliveCloud shared item');
+const embedDescription = computed(() => {
+  const item = rootItem.value;
+  if (!item) return 'Shared via KliveCloud';
+  if (item.ItemType === 'File') return `Shared via KliveCloud - ${formatSize(item.FileSizeBytes)}`;
+  return `Shared via KliveCloud - ${countNestedItems(item.ItemID)} items`;
+});
+
+useHead(() => {
+  const item = rootItem.value;
+  const title = embedTitle.value;
+  const description = embedDescription.value;
+  const meta: Array<Record<string, string>> = [
+    { key: 'description', name: 'description', content: description },
+    { key: 'og-site-name', property: 'og:site_name', content: 'KliveCloud' },
+    { key: 'og-title', property: 'og:title', content: title },
+    { key: 'og-description', property: 'og:description', content: description },
+    { key: 'og-url', property: 'og:url', content: sharedPageUrl.value },
+    { key: 'twitter-title', name: 'twitter:title', content: title },
+    { key: 'twitter-description', name: 'twitter:description', content: description },
+    { key: 'theme-color', name: 'theme-color', content: '#4d9e39' }
+  ];
+
+  if (item?.ItemType === 'File' && (item.IsImage || item.IsVideo)) {
+    const previewUrl = getSharedPreviewUrl(item.ItemID, 1280, 720);
+    meta.push(
+      { key: 'og-image', property: 'og:image', content: previewUrl },
+      { key: 'og-image-secure', property: 'og:image:secure_url', content: previewUrl },
+      { key: 'og-image-type', property: 'og:image:type', content: 'image/jpeg' },
+      { key: 'og-image-width', property: 'og:image:width', content: '1280' },
+      { key: 'og-image-height', property: 'og:image:height', content: '720' },
+      { key: 'twitter-image', name: 'twitter:image', content: previewUrl }
+    );
+  }
+
+  if (item?.ItemType === 'File' && item.IsVideo) {
+    const videoUrl = getSharedStreamUrl(item.ItemID);
+    const videoType = item.VideoMimeType || 'video/mp4';
+    meta.push(
+      { key: 'og-type', property: 'og:type', content: 'video.other' },
+      { key: 'og-video', property: 'og:video', content: videoUrl },
+      { key: 'og-video-url', property: 'og:video:url', content: videoUrl },
+      { key: 'og-video-secure', property: 'og:video:secure_url', content: videoUrl },
+      { key: 'og-video-type', property: 'og:video:type', content: videoType },
+      { key: 'og-video-width', property: 'og:video:width', content: '1280' },
+      { key: 'og-video-height', property: 'og:video:height', content: '720' },
+      { key: 'twitter-card', name: 'twitter:card', content: 'player' },
+      { key: 'twitter-player', name: 'twitter:player', content: videoUrl },
+      { key: 'twitter-player-stream', name: 'twitter:player:stream', content: videoUrl },
+      { key: 'twitter-player-stream-type', name: 'twitter:player:stream:content_type', content: videoType },
+      { key: 'twitter-player-width', name: 'twitter:player:width', content: '1280' },
+      { key: 'twitter-player-height', name: 'twitter:player:height', content: '720' }
+    );
+  } else {
+    meta.push(
+      { key: 'og-type', property: 'og:type', content: 'website' },
+      { key: 'twitter-card', name: 'twitter:card', content: 'summary_large_image' }
+    );
+  }
+
+  return {
+    title: `${title} | KliveCloud`,
+    link: [{ key: 'canonical', rel: 'canonical', href: sharedPageUrl.value }],
+    meta
+  };
+});
+
 watch(sharedItem, (item) => {
   const normalizedRoot = item ? normalizeSharedChild(item) : null;
   if (normalizedRoot?.ItemType === 'Folder') {
@@ -492,8 +561,9 @@ function getSharedStreamUrl(itemId?: string) {
   return `${KliveAPIUrl}/KliveCloud/StreamSharedVideo?${params.toString()}`;
 }
 
-function getSharedPreviewUrl(itemId: string) {
-  const params = new URLSearchParams({ code: code.value, itemID: itemId, maxWidth: '320', maxHeight: '320' });
+function getSharedPreviewUrl(itemId?: string, maxWidth = 320, maxHeight = 320) {
+  const params = new URLSearchParams({ code: code.value, maxWidth: String(maxWidth), maxHeight: String(maxHeight) });
+  if (itemId) params.set('itemID', itemId);
   return `${KliveAPIUrl}/KliveCloud/GetSharedPreview?${params.toString()}`;
 }
 

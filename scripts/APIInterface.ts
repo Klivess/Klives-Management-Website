@@ -27,16 +27,20 @@ enum KMPermissions {
 }
 
 async function RequestGETFromKliveAPI(query: string, redirectToDashboardIfUnauthorized = true, alertUserIfUnauthorized = true) {
-    const pass = GetLocalPassword();
-    const res = await fetch(`${KliveAPIUrl}${query}`, {
-        method: 'GET',
-        mode: 'cors',
-        headers: {
-            'Authorization': pass,
-        },
-    });
+    let res: Response;
+    try {
+        res = await fetch(`${KliveAPIUrl}${query}`, {
+            method: 'GET',
+            mode: 'cors',
+            headers: BuildKliveHeaders(),
+            signal: CreateTimeoutSignal(),
+        });
+    } catch (error) {
+        console.warn('Klive API GET failed:', query, error);
+        return new Response('Klive API request failed or timed out', { status: 504 });
+    }
 
-    if (res.status === 401) {
+    if (res.status === 401 || res.status === 403) {
         // Unauthorized access, handle accordingly
         console.log("Unauthorized access to API");
         if(alertUserIfUnauthorized==true && process.client){
@@ -60,23 +64,22 @@ async function RequestGETFromKliveAPI(query: string, redirectToDashboardIfUnauth
 }
 
 async function RequestPOSTFromKliveAPI(query: string, content: BodyInit | null = "", redirectToDashboardIfUnauthorized = true, isJson = false) {
-    const pass = GetLocalPassword();
     let response;
-    
-    const headers: Record<string, string> = {
-        "Authorization": pass,
-    };
-    if (isJson) {
-        headers["Content-Type"] = "application/json";
-    }
+    const headers = BuildKliveHeaders(isJson);
 
-    response = await fetch(KliveAPIUrl + query, {
-        method: "POST",
-        mode: 'cors',
-        body: content,
-        headers: headers
-    });
-    if (response.status === 401) {
+    try {
+        response = await fetch(KliveAPIUrl + query, {
+            method: "POST",
+            mode: 'cors',
+            body: content,
+            headers: headers,
+            signal: CreateTimeoutSignal(),
+        });
+    } catch (error) {
+        console.warn('Klive API POST failed:', query, error);
+        return new Response('Klive API request failed or timed out', { status: 504 });
+    }
+    if (response.status === 401 || response.status === 403) {
         // Unauthorized access, handle accordingly
         console.log("Unauthorized access to API");
         console.log(response.headers.get('RequestDeniedCode'));
@@ -117,6 +120,23 @@ function GetLocalPassword() {
     }
 }
 
+function BuildKliveHeaders(isJson = false) {
+    const headers: Record<string, string> = {
+        "Authorization": GetLocalPassword(),
+        "X-Klive-Client": "website",
+    };
+
+    if (process.client) {
+        headers["X-Klive-Page"] = window.location.pathname;
+    }
+
+    if (isJson) {
+        headers["Content-Type"] = "application/json";
+    }
+
+    return headers;
+}
+
 function SetLocalPassword(password: string | null) {
     try {
         const cookie = useCookie<string | null>('password');
@@ -134,7 +154,22 @@ function SetLocalPassword(password: string | null) {
 }
 
 function IsProtectedRoute(path: string | null | undefined) {
-    return Boolean(path) && path !== '/' && !path.includes('/shared/');
+    if (!path || path === '/') return false;
+    if (path.startsWith('/shared/')) return false;
+    if (path === '/klivechat' || path.startsWith('/klivechat/')) return false;
+    return true;
+}
+
+async function ReportWebsiteNoProfileAccess(path: string) {
+    try {
+        await fetch(`${KliveAPIUrl}/KMProfiles/GetAllProfiles?defenceProbe=WebsiteNoProfile&path=${encodeURIComponent(path)}`, {
+            method: 'GET',
+            mode: 'cors',
+            keepalive: true,
+            headers: BuildKliveHeaders(),
+        });
+    } catch {
+    }
 }
 
 function ClearAuthSessionReconnectTimer() {
@@ -270,6 +305,12 @@ async function VerifyLogin() {
     if (!process.client || window.location.pathname == "/") {
         return;
     }
+    const currentPath = window.location.pathname;
+    if (IsProtectedRoute(currentPath) && !GetLocalPassword()) {
+        await ReportWebsiteNoProfileAccess(currentPath);
+        window.location.replace('/');
+        return;
+    }
     const response = await RequestGETFromKliveAPI("/KMProfiles/LoginStatus", false, false);
     const text = await response.text();
 
@@ -279,4 +320,10 @@ async function VerifyLogin() {
     else if (text == "ProfileNotFound") {
         await HandleSessionInvalidation('ProfileNotFound');
     }
+}
+
+function CreateTimeoutSignal(timeoutMs = 8000) {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), timeoutMs);
+    return controller.signal;
 }

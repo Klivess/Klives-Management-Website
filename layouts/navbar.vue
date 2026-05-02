@@ -33,6 +33,9 @@
         <NuxtLink to="/admin">
           <KMButton message="Admin"></KMButton>
         </NuxtLink>
+        <NuxtLink v-if="isKlives" to="/omnidefence">
+          <KMButton message="OmniDefence"></KMButton>
+        </NuxtLink>
         <KMButton @click="logOut" message="Log Out"></KMButton>
       </div>
     </nav>
@@ -48,11 +51,26 @@
 
 import KMButton from '~/components/KMButton.vue';
 import KMInfoGrid from '~/components/KMInfoGrid.vue';
+import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 
 export default {
   name: 'navbarLayout',
   props: {
     
+  },
+  data() {
+    return { isKlives: false };
+  },
+  async mounted() {
+    try {
+      const r = await RequestGETFromKliveAPI('/KMProfiles/GetCurrentProfile', false, false);
+      if (!r.ok) {
+        this.isKlives = false;
+        return;
+      }
+      const profile = await r.json();
+      this.isKlives = Number(profile?.KlivesManagementRank) === 5;
+    } catch { this.isKlives = false; }
   },
   methods: {
     logOut(){

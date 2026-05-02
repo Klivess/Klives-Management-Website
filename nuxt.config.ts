@@ -13,6 +13,7 @@ export default defineNuxtConfig({
     '/administration/**': {ssr: false}, // Disable SSR for admin routes
     '/dashboard': {ssr: false}, // Disable SSR for dashboard to avoid hydration issues
     '/profilepage': {ssr: false}, // Disable SSR for profilepage
+    '/omnidefence': {ssr: false}, // Live security console is client-driven
     '/*': {cors: true},
   },
   vite: {

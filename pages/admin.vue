@@ -11,6 +11,17 @@
             </div>
         </div>
 
+        <div class="admin-action-strip">
+            <div class="admin-action-copy">
+                <span class="admin-action-label">Security Console</span>
+                <strong>OmniDefence</strong>
+                <small>Review request telemetry, tracked IPs, honeypots, and response tools.</small>
+            </div>
+            <NuxtLink to="/omnidefence" class="admin-action-link">
+                <KMButton message="Open OmniDefence"></KMButton>
+            </NuxtLink>
+        </div>
+
         <!-- Key Metrics -->
         <KMInfoGrid columns="4" rows="1" rowHeight="110">
             <KMInfoBox caption="Bot Uptime">
@@ -1142,6 +1153,64 @@ export default {
     color: #ef4444;
     cursor: pointer;
     text-decoration: underline;
+}
+
+.admin-action-strip {
+    max-width: 1120px;
+    margin: 0 auto 24px auto;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    background: linear-gradient(135deg, rgba(77, 158, 57, 0.16), rgba(21, 94, 117, 0.12));
+    border: 1px solid rgba(77, 158, 57, 0.28);
+    border-radius: 8px;
+    box-shadow: 0 0 22px rgba(77, 158, 57, 0.08);
+}
+
+.admin-action-copy {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+}
+
+.admin-action-label {
+    color: #4d9e39;
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.admin-action-copy strong {
+    color: #ffffff;
+    font-size: 1.15rem;
+}
+
+.admin-action-copy small {
+    color: #a3a3a3;
+    line-height: 1.35;
+}
+
+.admin-action-link {
+    flex: 0 0 210px;
+    height: 42px;
+    text-decoration: none;
+}
+
+@media (max-width: 720px) {
+    .admin-action-strip {
+        margin-left: 12px;
+        margin-right: 12px;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .admin-action-link {
+        flex: none;
+        width: 100%;
+    }
 }
 
 /* Metric Cards */

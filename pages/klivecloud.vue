@@ -338,6 +338,7 @@ const previewUrls = reactive(new Map<string, string>());
 const failedPreviews = reactive(new Set<string>());
 let observer: IntersectionObserver | null = null;
 const supportedPreviewExtensions = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'mp4', 'webm', 'mov', 'avi', 'mkv']);
+const videoExtensions = new Set(['mp4', 'mov', 'mkv', 'webm', 'm4v', 'avi', 'wmv', 'flv', 'qt', '3gp', '3g2', 'ogv', 'ogg', 'ts', 'mts', 'm2ts', 'vob', 'asf', 'divx', 'mxf']);
 
 // Selection State
 const selectedItems = ref(new Set<string>());
@@ -970,9 +971,12 @@ const shareItem = async (item: CloudItem) => {
     }
 
     // Generate Share Link
+    const itemExtension = item.Name.split('.').pop()?.toLowerCase() || '';
+    const isVideoShare = item.ItemType === 'File' && videoExtensions.has(itemExtension);
+
     Swal.fire({
-        title: 'Creating Share Link...',
-        text: 'Please wait',
+        title: isVideoShare ? 'Preparing Video Share Link...' : 'Creating Share Link...',
+        text: isVideoShare ? 'Preparing the Discord preview. Larger videos can take a moment.' : 'Please wait',
         allowOutsideClick: false,
         didOpen: () => {
             Swal.showLoading();

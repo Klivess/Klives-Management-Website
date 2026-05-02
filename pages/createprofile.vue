@@ -44,19 +44,40 @@ export default {
         };
     },
     methods: {
-        CreateProfile() {
-            // Create profile logic goes here
+        async CreateProfile() {
+            if (!this.userName.trim() || !this.userPassword) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Missing Details',
+                    text: 'Name and password are required.',
+                    confirmButtonColor: '#4d9e39',
+                    background: '#161516',
+                    color: '#ffffff',
+                    customClass: {
+                        popup: 'swal-dark-theme'
+                    }
+                });
+                return;
+            }
+
             this.buttonMessage = "Creating Profile....";
-            //get index of userRank in rankOptions
-            let rankIndex = this.rankOptions.indexOf(this.userRank)+1;
-            RequestPOSTFromKliveAPI('/KMProfiles/CreateProfile?name='+this.userName+"&password="+this.userPassword+"&rank="+rankIndex).then((response) => {
-                if(response.status == 200)
-                {
+            const rankIndex = this.rankOptions.indexOf(this.userRank) + 1;
+            const params = new URLSearchParams({
+                name: this.userName,
+                password: this.userPassword,
+                rank: String(rankIndex)
+            });
+
+            try {
+                const response = await RequestPOSTFromKliveAPI(`/KMProfiles/CreateProfile?${params.toString()}`);
+                if (response.status === 200) {
                     this.buttonMessage = "Created!";
                     window.location.replace("/admin");
+                    return;
                 }
-                else if(response.status == 403){
-                    Swal.fire({
+
+                if (response.status === 403) {
+                    await Swal.fire({
                         icon: 'error',
                         title: 'Permission Denied',
                         text: 'The server refused to do this. You probably tried to create a rank higher than yourself.',
@@ -67,14 +88,15 @@ export default {
                             popup: 'swal-dark-theme'
                         }
                     });
-                    this.buttonMessage = "Failed!";
+                    this.buttonMessage = "Create Profile";
+                    return;
                 }
-                else if(response.status=500)
-                {
-                    Swal.fire({
+
+                if (response.status === 401) {
+                    await Swal.fire({
                         icon: 'error',
-                        title: 'Server Error',
-                        text: 'The server just threw an error. This is probably a bug. :((',
+                        title: 'Unauthorized',
+                        text: 'You need to be signed in with sufficient permissions to create profiles.',
                         confirmButtonColor: '#4d9e39',
                         background: '#161516',
                         color: '#ffffff',
@@ -82,9 +104,38 @@ export default {
                             popup: 'swal-dark-theme'
                         }
                     });
-                    this.buttonMessage = "Failed!";
+                    this.buttonMessage = "Create Profile";
+                    return;
                 }
-            });
+
+                const errorText = await response.text();
+                await Swal.fire({
+                    icon: 'error',
+                    title: 'Create Profile Failed',
+                    text: errorText || `The server rejected the request (HTTP ${response.status}).`,
+                    confirmButtonColor: '#4d9e39',
+                    background: '#161516',
+                    color: '#ffffff',
+                    customClass: {
+                        popup: 'swal-dark-theme'
+                    }
+                });
+                this.buttonMessage = "Create Profile";
+            } catch (error) {
+                await Swal.fire({
+                    icon: 'error',
+                    title: 'Network Error',
+                    text: 'The request could not be completed. Check the console for details.',
+                    confirmButtonColor: '#4d9e39',
+                    background: '#161516',
+                    color: '#ffffff',
+                    customClass: {
+                        popup: 'swal-dark-theme'
+                    }
+                });
+                console.error('CreateProfile failed:', error);
+                this.buttonMessage = "Create Profile";
+            }
         }
     },
     mounted() {

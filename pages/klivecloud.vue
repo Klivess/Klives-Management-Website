@@ -218,11 +218,13 @@
                       <div class="link-path" v-if="link.ItemPath" :title="link.ItemPath">{{ link.ItemPath.replace(/\\/g, '/') }}</div>
                       <div class="link-meta">
                           <span class="code">Code: {{ link.ShareCode.substring(0, 8) }}...</span>
+                          <span v-if="link.ItemType === 'Folder'">{{ formatSharePermissionMode(getShareLinkPermissionMode(link)) }}</span>
                           <span v-if="link.ExpirationDate">Exp: {{ formatDate(link.ExpirationDate) }}</span>
                           <span v-else>No Expiration</span>
                       </div>
                   </div>
                   <div class="link-actions">
+                      <button v-if="link.ItemType === 'Folder'" @click="editShareLinkPermission(link)" title="Edit Permissions" class="permission-link-btn">⚙️</button>
                       <button @click="copyShareLink(link.ShareCode)" title="Copy Link" class="copy-btn">📋</button>
                       <button @click="deleteSharedLink(link.ShareCode)" title="Delete Link" class="delete-link-btn">🗑️</button>
                   </div>
@@ -306,6 +308,10 @@ interface ShareLink {
     CreatedByUserID: string;
     CreatedDate: string;
     ExpirationDate?: string;
+    SharePermissionMode?: string;
+    PermissionMode?: string | number;
+    CanWrite?: boolean;
+    CanDelete?: boolean;
     ItemType?: 'Folder' | 'File';
     // Enriched fields for display
     ItemName?: string;
@@ -911,7 +917,58 @@ const downloadFile = (item: CloudItem) => {
     downloadFileAPI(item);
 };
 
+const describeSharePermissionMode = (mode: string) => {
+    if (mode === 'WriteDelete') {
+        return 'open the shared folder, upload files, create folders, and delete items';
+    }
+    if (mode === 'Write') {
+        return 'open the shared folder, upload files, and create folders';
+    }
+    return 'open the shared folder and download files';
+};
+
+const normalizeSharePermissionMode = (mode: unknown): 'ReadOnly' | 'Write' | 'WriteDelete' => {
+    const value = String(mode ?? '').trim().replace(/[-_\s]/g, '').toLowerCase();
+    if (value === '2' || value === 'writedelete' || value === 'delete') return 'WriteDelete';
+    if (value === '1' || value === 'write') return 'Write';
+    return 'ReadOnly';
+};
+
+const getShareLinkPermissionMode = (link: ShareLink) => normalizeSharePermissionMode(link.SharePermissionMode ?? link.PermissionMode);
+
+const formatSharePermissionMode = (mode: string) => {
+    if (mode === 'WriteDelete') return 'Write and delete';
+    if (mode === 'Write') return 'Write';
+    return 'Read only';
+};
+
 const shareItem = async (item: CloudItem) => {
+    let permissionMode = 'ReadOnly';
+    if (item.ItemType === 'Folder') {
+        const permissionResult = await Swal.fire({
+            title: 'Share folder access',
+            text: 'Choose what people with this link can do inside the shared folder.',
+            input: 'select',
+            inputOptions: {
+                ReadOnly: 'Read only',
+                Write: 'Write',
+                WriteDelete: 'Write and delete'
+            },
+            inputValue: 'ReadOnly',
+            showCancelButton: true,
+            confirmButtonText: 'Create link',
+            confirmButtonColor: '#4d9e39',
+            background: '#161516',
+            color: '#ffffff'
+        });
+
+        if (!permissionResult.isConfirmed) {
+            return;
+        }
+
+        permissionMode = permissionResult.value || 'ReadOnly';
+    }
+
     // Generate Share Link
     Swal.fire({
         title: 'Creating Share Link...',
@@ -923,7 +980,7 @@ const shareItem = async (item: CloudItem) => {
     });
 
     try {
-        const query = `/KliveCloud/CreateShareLink?itemID=${item.ItemID}`;
+        const query = `/KliveCloud/CreateShareLink?itemID=${encodeURIComponent(item.ItemID)}&permissionMode=${encodeURIComponent(permissionMode)}`;
         const response = await RequestPOSTFromKliveAPI(query);
         
         if (response.ok) {
@@ -937,7 +994,7 @@ const shareItem = async (item: CloudItem) => {
             Swal.fire({
                 title: 'Share Link Ready!',
                 html: `
-                    <p>Anyone with this link can ${sharedItemType === 'Folder' ? 'open the shared folder and download any file inside it' : 'download the file'}:</p>
+                    <p>Anyone with this link can ${sharedItemType === 'Folder' ? describeSharePermissionMode(data.SharePermissionMode || permissionMode) : 'download the file'}:</p>
                     <input type="text" value="${shareUrl}" class="swal2-input" readonly id="share-link-input">
                 `,
                 icon: 'success',
@@ -1145,6 +1202,54 @@ const deleteSharedLink = async (code: string) => {
         } catch (e: any) {
             Swal.fire('Error', e.message, 'error');
         }
+    }
+};
+
+const editShareLinkPermission = async (link: ShareLink) => {
+    if (link.ItemType !== 'Folder') return;
+
+    const result = await Swal.fire({
+        title: 'Share folder access',
+        text: 'Change what people with this existing link can do.',
+        input: 'select',
+        inputOptions: {
+            ReadOnly: 'Read only',
+            Write: 'Write',
+            WriteDelete: 'Write and delete'
+        },
+        inputValue: getShareLinkPermissionMode(link),
+        showCancelButton: true,
+        confirmButtonText: 'Update link',
+        confirmButtonColor: '#4d9e39',
+        background: '#161516',
+        color: '#ffffff'
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+        const permissionMode = normalizeSharePermissionMode(result.value);
+        const response = await RequestPOSTFromKliveAPI(`/KliveCloud/UpdateShareLinkPermission?code=${encodeURIComponent(link.ShareCode)}&permissionMode=${encodeURIComponent(permissionMode)}`);
+        if (!response.ok) {
+            Swal.fire('Error', `Failed to update link permissions: ${await response.text()}`, 'error');
+            return;
+        }
+
+        const updated = await response.json();
+        link.SharePermissionMode = updated.SharePermissionMode || permissionMode;
+        link.PermissionMode = updated.SharePermissionMode || permissionMode;
+        link.CanWrite = updated.CanWrite;
+        link.CanDelete = updated.CanDelete;
+        Swal.fire({
+            icon: 'success',
+            title: 'Link Updated',
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 1800
+        });
+    } catch (e: any) {
+        Swal.fire('Error', e.message, 'error');
     }
 };
 
@@ -1818,6 +1923,7 @@ const loadPreview = async (id: string) => {
 
                &.delete-link-btn:hover { background: #bf616a; }
                &.copy-btn:hover { background: #5e81ac; }
+               &.permission-link-btn:hover { background: #ebcb8b; color: #2e3440; }
             }
         }
     }

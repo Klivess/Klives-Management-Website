@@ -1,0 +1,17 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "nuxt build validation",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				".\\node_modules\\@nuxt\\cli\\bin\\nuxi.mjs",
+				"build"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}

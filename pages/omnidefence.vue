@@ -13,6 +13,76 @@
             </div>
         </header>
 
+        <section class="od-map-panel">
+            <div class="map-head">
+                <div>
+                    <span class="panel-code">MAP</span>
+                    <h2>World Tactical Map</h2>
+                </div>
+                <div class="map-actions">
+                    <span class="refresh-stamp">{{ loading.map ? 'Mapping IPs' : filteredMapPoints.length + ' visible' }}</span>
+                    <div class="map-filters" role="group" aria-label="Map filter">
+                        <button :class="{ active: mapFilter === 'all' }" @click="mapFilter = 'all'">All</button>
+                        <button :class="{ active: mapFilter === 'attackers' }" @click="mapFilter = 'attackers'">Only Attackers</button>
+                        <button :class="{ active: mapFilter === 'profiled' }" @click="mapFilter = 'profiled'">Only Profiled</button>
+                        <label class="map-toggle" :class="{ active: hideApproximateMapPoints }" title="Hide country-only or fallback coordinates">
+                            <input type="checkbox" v-model="hideApproximateMapPoints" /> Exact Geo
+                        </label>
+                    </div>
+                    <div class="map-filters" role="group" aria-label="Map mode">
+                        <button :class="{ active: !boxMode }" @click="boxMode = false" title="Pan and zoom">Pan</button>
+                        <button :class="{ active: boxMode }" @click="boxMode = true" title="Drag a box to mass-block IPs in a region">Box Block</button>
+                    </div>
+                    <div class="map-filters" role="group" aria-label="Zoom">
+                        <button @click="zoomMap(1.4)" title="Zoom in">+</button>
+                        <button @click="zoomMap(1/1.4)" title="Zoom out">-</button>
+                        <button @click="resetMapView" title="Reset view">Reset</button>
+                    </div>
+                </div>
+            </div>
+            <div class="map-layout">
+                <div class="world-map-stage" :class="{ loading: loading.map, 'box-mode': boxMode }">
+                    <div ref="leafletMap" class="leaflet-threat-map" role="application" aria-label="World tactical threat map"></div>
+                    <div v-if="!leafletReady" class="map-loading"><span class="spinner"></span>Loading map</div>
+                    <div v-if="!filteredMapPoints.length && !loading.map" class="map-empty">No IPs for this filter</div>
+                    <div v-if="boxMode" class="map-mode-tag">BOX BLOCK MODE - drag a region</div>
+                    <div v-if="pendingBoxBlock" class="map-box-popover" :class="[{ working: boxBlockAnimating }, pendingBoxBlock.placement]" :style="boxPopoverStyle">
+                        <span>Region Block</span>
+                        <strong>{{ pendingBoxBlock.blockable.length ? `Block ${pendingBoxBlock.blockable.length} IP${pendingBoxBlock.blockable.length === 1 ? '' : 's'}` : 'Save Region' }}</strong>
+                        <small>{{ pendingBoxBlock.boundsLabel }}</small>
+                        <input v-model="pendingBoxBlock.reason" :disabled="boxBlockAnimating" class="map-box-reason" />
+                        <div v-if="boxBlockAnimating" class="map-box-progress"><span class="spinner"></span>{{ pendingBoxBlock.progress }} / {{ pendingBoxBlock.blockable.length || 1 }}</div>
+                        <div v-else-if="pendingBoxBlock.statusText" class="map-box-progress complete">{{ pendingBoxBlock.statusText }}</div>
+                        <div class="map-box-actions">
+                            <button class="micro danger" :disabled="boxBlockAnimating" @click="runBoxBlock">Confirm</button>
+                            <button class="micro" :disabled="boxBlockAnimating" @click="cancelBoxBlock">Cancel</button>
+                        </div>
+                    </div>
+                    <div class="map-zoom-tag">Z{{ leafletZoom }} / Web Mercator</div>
+                </div>
+                <aside class="map-intel">
+                    <div class="map-stat"><span>Mapped</span><strong>{{ fmtNum(filteredMapPoints.length) }}</strong></div>
+                    <div class="map-stat"><span>Attackers</span><strong>{{ fmtNum(mapAttackersCount) }}</strong></div>
+                    <div class="map-stat"><span>Profiled</span><strong>{{ fmtNum(mapProfiledCount) }}</strong></div>
+                    <div class="map-stat"><span>Recent</span><strong>{{ fmtNum(mapRecentCount) }}</strong></div>
+                    <div class="map-legend">
+                        <div><span class="legend-dot attacker"></span>Attacker</div>
+                        <div><span class="legend-dot attacker recent"></span>Recent attacker</div>
+                        <div><span class="legend-dot profile"></span>Profile</div>
+                        <div><span class="legend-dot profile recent"></span>Recent profile</div>
+                        <div><span class="legend-icon cross"></span>Blocked</div>
+                        <div><span class="legend-icon ring"></span>Honeypot trap</div>
+                        <div><span class="legend-icon strike"></span>Tarpitted</div>
+                    </div>
+                    <div v-if="selectedIp" class="map-selected">
+                        <span>{{ selectedIp.profileName ? 'Profile' : 'Attacker' }}</span>
+                        <strong>{{ selectedIp.ip }}</strong>
+                        <small>{{ formatGeo(selectedIp) }} / {{ fmtTime(selectedIp.lastSeen) }}</small>
+                    </div>
+                </aside>
+            </div>
+        </section>
+
         <section class="od-metrics">
             <button class="metric-tile" @click="activeTab = 'activity'">
                 <span class="metric-copy"><span class="metric-label">Requests 24h</span><small>{{ fmtNum(overview?.totalRequests) }} total</small></span>
@@ -95,11 +165,11 @@
                         <button class="od-btn" :disabled="loading.requests" @click="loadRequests">Apply</button>
                         <button class="od-btn ghost" :disabled="loading.action" @click="exportTable('requests')">Export CSV</button>
                     </div>
-                    <div v-if="loading.requests" class="loading-strip"><span class="spinner"></span>Loading activity</div>
-                    <div class="table-shell">
+                    <div class="table-shell" :class="{ refreshing: loading.requests }">
+                        <div v-if="loading.requests" class="table-loading-overlay"><span class="spinner"></span>Loading activity</div>
                         <table>
                             <thead><tr><th>Time</th><th>IP</th><th>Origin</th><th>Method</th><th>Route</th><th>Status</th><th>Profile</th><th>Reason</th><th>Ms</th></tr></thead>
-                            <tbody>
+                            <TransitionGroup name="table-row-fade" tag="tbody">
                                 <tr v-for="row in requests" :key="row.id" :class="rowClass(row)">
                                     <td>{{ fmtTime(row.ts) }}</td>
                                     <td><button class="link-btn" @click="selectIp(row.ip)">{{ row.ip || 'unknown' }}</button></td>
@@ -111,8 +181,8 @@
                                     <td class="clip">{{ row.reason || '-' }}</td>
                                     <td>{{ Math.round(row.duration || 0) }}</td>
                                 </tr>
-                                <tr v-if="!requests.length"><td colspan="9" class="empty-cell">No request records</td></tr>
-                            </tbody>
+                                <tr v-if="!requests.length" key="empty-requests"><td colspan="9" class="empty-cell">No request records</td></tr>
+                            </TransitionGroup>
                         </table>
                     </div>
                     <div class="pager">
@@ -133,9 +203,9 @@
                         <table>
                             <thead><tr><th>IP</th><th>Geo</th><th>KM Profile</th><th>Status</th><th>Score</th><th>Total</th><th>Unauth</th><th>Deny</th><th>Last Seen</th><th>Response</th></tr></thead>
                             <tbody>
-                                <tr v-for="ip in ips" :key="ip.ip" :class="ipClass(ip)">
+                                <tr v-for="ip in ips" :key="ip.ip" :class="ipClass(ip)" @dblclick="openActivityForIp(ip.ip)">
                                     <td><button class="link-btn" @click="selectIp(ip.ip)">{{ ip.ip }}</button></td>
-                                    <td>{{ ip.country || '-' }} <span class="muted">{{ ip.asn || '' }}</span></td>
+                                    <td>{{ formatGeo(ip) }} <span class="muted">{{ ip.isp || ip.org || ip.asn || '' }}</span></td>
                                     <td><span :class="ip.profileName ? 'profile-pill' : 'attacker-pill'">{{ ip.profileName || 'Attacker' }}</span></td>
                                     <td>{{ ip.status }}</td><td>{{ Math.round(ip.score || 0) }}</td><td>{{ ip.total }}</td><td>{{ ip.unauth }}</td><td>{{ ip.deny }}</td>
                                     <td>{{ fmtTime(ip.lastSeen) }}</td>
@@ -213,7 +283,7 @@
             <aside class="od-detail">
                 <div class="detail-block primary" v-if="selectedIp">
                     <div class="detail-title">{{ selectedIp.ip }}</div>
-                    <div class="detail-sub">{{ selectedIp.country || 'Unknown geo' }} / {{ selectedIp.asn || 'Unknown ASN' }}</div>
+                    <div class="detail-sub">{{ formatGeo(selectedIp) }} / {{ selectedIp.isp || selectedIp.org || selectedIp.asn || 'Unknown network' }}</div>
                     <div :class="selectedIp.profileName ? 'identity-chip profile' : 'identity-chip attacker'">{{ selectedIp.profileName ? 'KMProfile: ' + selectedIp.profileName : 'No KMProfile matched' }}</div>
                     <div class="score-ring"><span>{{ Math.round(selectedIp.score || 0) }}</span><small>{{ selectedIp.status }}</small></div>
                     <div class="detail-grid">
@@ -263,7 +333,30 @@ definePageMeta({ layout: 'navbar' });
 
 <script>
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import { markRaw, nextTick } from 'vue';
 import Swal from 'sweetalert2';
+import 'leaflet/dist/leaflet.css';
+
+const COUNTRY_CENTERS = Object.freeze({
+    AF: [33.94, 67.71], AL: [41.15, 20.17], DZ: [28.03, 1.66], AR: [-38.42, -63.62], AM: [40.07, 45.04], AU: [-25.27, 133.78], AT: [47.52, 14.55], AZ: [40.14, 47.58],
+    BD: [23.68, 90.36], BY: [53.71, 27.95], BE: [50.5, 4.47], BO: [-16.29, -63.59], BA: [43.92, 17.68], BR: [-14.23, -51.93], BG: [42.73, 25.49], KH: [12.57, 104.99],
+    CA: [56.13, -106.35], CL: [-35.68, -71.54], CN: [35.86, 104.2], CO: [4.57, -74.3], CR: [9.75, -83.75], HR: [45.1, 15.2], CY: [35.13, 33.43], CZ: [49.82, 15.47],
+    DK: [56.26, 9.5], DO: [18.74, -70.16], EC: [-1.83, -78.18], EG: [26.82, 30.8], EE: [58.6, 25.01], FI: [61.92, 25.75], FR: [46.23, 2.21], GE: [42.32, 43.36],
+    DE: [51.17, 10.45], GH: [7.95, -1.02], GR: [39.07, 21.82], GT: [15.78, -90.23], HK: [22.32, 114.17], HU: [47.16, 19.5], IS: [64.96, -19.02], IN: [20.59, 78.96],
+    ID: [-0.79, 113.92], IR: [32.43, 53.69], IQ: [33.22, 43.68], IE: [53.41, -8.24], IL: [31.05, 34.85], IT: [41.87, 12.57], JP: [36.2, 138.25], JO: [30.59, 36.24],
+    KZ: [48.02, 66.92], KE: [-0.02, 37.91], KR: [35.91, 127.77], KW: [29.31, 47.48], LV: [56.88, 24.6], LB: [33.85, 35.86], LT: [55.17, 23.88], LU: [49.82, 6.13],
+    MY: [4.21, 101.98], MX: [23.63, -102.55], MD: [47.41, 28.37], MA: [31.79, -7.09], NL: [52.13, 5.29], NZ: [-40.9, 174.89], NG: [9.08, 8.68], NO: [60.47, 8.47],
+    PK: [30.38, 69.35], PA: [8.54, -80.78], PE: [-9.19, -75.02], PH: [12.88, 121.77], PL: [51.92, 19.15], PT: [39.4, -8.22], QA: [25.35, 51.18], RO: [45.94, 24.97],
+    RU: [61.52, 105.32], SA: [23.89, 45.08], RS: [44.02, 21.01], SG: [1.35, 103.82], SK: [48.67, 19.7], SI: [46.15, 14.99], ZA: [-30.56, 22.94], ES: [40.46, -3.75],
+    LK: [7.87, 80.77], SE: [60.13, 18.64], CH: [46.82, 8.23], TW: [23.7, 120.96], TH: [15.87, 100.99], TN: [33.89, 9.54], TR: [38.96, 35.24], UA: [48.38, 31.17],
+    AE: [23.42, 53.85], GB: [55.38, -3.44], US: [39.83, -98.58], UY: [-32.52, -55.77], UZ: [41.38, 64.59], VE: [6.42, -66.59], VN: [14.06, 108.28]
+});
+
+const COUNTRY_ALIASES = Object.freeze({
+    'UNITED STATES': 'US', 'UNITED STATES OF AMERICA': 'US', 'UNITED KINGDOM': 'GB', 'GREAT BRITAIN': 'GB', 'ENGLAND': 'GB',
+    'RUSSIA': 'RU', 'SOUTH KOREA': 'KR', 'KOREA': 'KR', 'VIETNAM': 'VN', 'IRAN': 'IR', 'UNITED ARAB EMIRATES': 'AE', 'UAE': 'AE',
+    'NETHERLANDS': 'NL', 'CZECHIA': 'CZ', 'TAIWAN': 'TW', 'HONG KONG': 'HK'
+});
 
 export default {
     name: 'omnidefence',
@@ -279,10 +372,18 @@ export default {
                 { id: 'honeypot', label: 'Honeypots', code: 'HP' },
             ],
             overview: null,
-            requests: [], ips: [], authEvents: [], profileActions: [], honeypotRoutes: [],
+            requests: [], ips: [], mapIps: [], authEvents: [], profileActions: [], honeypotRoutes: [],
             selectedIp: null, selectedIpNote: '', selectedIpRecent: [], selectedIpEvents: [], lastScan: null,
+            mapFilter: 'all',
+            hideApproximateMapPoints: false,
+            leafletReady: false,
+            leafletZoom: 2,
+            boxMode: false,
+            pendingBoxBlock: null,
+            boxBlockAnimating: false,
+            blockedRegions: [],
             newHoneypotRoute: '', loadError: null, refreshTimer: null, lastUpdated: null,
-            loading: { overview: false, requests: false, ips: false, auth: false, profile: false, honeypot: false, action: false, ipDetail: false },
+            loading: { overview: false, requests: false, ips: false, map: false, auth: false, profile: false, honeypot: false, action: false, ipDetail: false },
             filters: {
                 requests: { ip: '', profile: '', route: '', status: '', method: '', origin: '', denyOnly: false, limit: 250, offset: 0 },
                 ips: { query: '', status: '', limit: 300, offset: 0 },
@@ -296,19 +397,55 @@ export default {
         topAttackers() { return this.overview?.topAttackers || []; },
         topRoutes() { return this.overview?.topRoutes || []; },
         originBreakdown() { return this.overview?.originBreakdown || []; },
+        mapSourceIps() { return this.mapIps.length ? this.mapIps : this.ips; },
+        mapPoints() {
+            return this.mapSourceIps.map((ipRecord, index) => {
+                const coordinates = this.resolveIpCoordinates(ipRecord, index);
+                if (!coordinates) return null;
+                const activityScale = Math.log10(Number(ipRecord.total || 0) + 1);
+                const baseSize = Math.min(7, Math.max(4, 4 + activityScale * 0.75));
+                return {
+                    ...ipRecord,
+                    latitude: coordinates.latitude,
+                    longitude: coordinates.longitude,
+                    size: baseSize,
+                    hasProfile: this.hasIpProfile(ipRecord),
+                    recent: this.isRecentIp(ipRecord),
+                    coordinatesApproximate: coordinates.approximate
+                };
+            }).filter(Boolean);
+        },
+        filteredMapPoints() {
+            let points = this.hideApproximateMapPoints ? this.mapPoints.filter(point => !point.coordinatesApproximate) : this.mapPoints;
+            if (this.mapFilter === 'attackers') return points.filter(point => !point.hasProfile);
+            if (this.mapFilter === 'profiled') return points.filter(point => point.hasProfile);
+            return points;
+        },
+        mapAttackersCount() { return this.filteredMapPoints.filter(point => !point.hasProfile).length; },
+        mapProfiledCount() { return this.filteredMapPoints.filter(point => point.hasProfile).length; },
+        mapRecentCount() { return this.filteredMapPoints.filter(point => point.recent).length; },
+        boxPopoverStyle() {
+            const position = this.pendingBoxBlock?.position;
+            if (!position) return {};
+            return { left: `${position.left}px`, top: `${position.top}px` };
+        },
         isBusy() { return Object.values(this.loading).some(Boolean); },
         busyLabel() {
-            const map = { overview: 'Refreshing overview', requests: 'Loading activity', ips: 'Loading IPs', auth: 'Loading auth', profile: 'Loading profiles', honeypot: 'Loading traps', action: 'Working', ipDetail: 'Loading IP' };
+            const map = { overview: 'Refreshing overview', requests: 'Loading activity', ips: 'Loading IPs', map: 'Mapping IPs', auth: 'Loading auth', profile: 'Loading profiles', honeypot: 'Loading traps', action: 'Working', ipDetail: 'Loading IP' };
             const key = Object.keys(this.loading).find(k => this.loading[k]);
             return key ? map[key] : '';
         },
         lastUpdatedLabel() { return this.lastUpdated ? `Updated ${this.lastUpdated.toLocaleTimeString()}` : 'Ready'; }
     },
     async mounted() {
+        await this.initThreatMap();
         await this.refreshActive(false);
         this.refreshTimer = setInterval(() => this.refreshActive(false), 5000);
     },
-    beforeUnmount() { if (this.refreshTimer) clearInterval(this.refreshTimer); },
+    beforeUnmount() {
+        if (this.refreshTimer) clearInterval(this.refreshTimer);
+        this.destroyThreatMap();
+    },
     watch: {
         activeTab(tab) {
             if (tab === 'activity') this.loadRequests();
@@ -316,7 +453,14 @@ export default {
             if (tab === 'auth') this.loadAuthEvents();
             if (tab === 'profiles') this.loadProfileActions();
             if (tab === 'honeypot') this.loadHoneypotRoutes();
-        }
+        },
+        mapFilter() { this.syncThreatMapPoints(); },
+        hideApproximateMapPoints() { this.syncThreatMapPoints(); },
+        mapIps() { this.syncThreatMapPoints(); },
+        ips() { this.syncThreatMapPoints(); },
+        blockedRegions() { this.syncThreatMapRegions(); },
+        selectedIp() { this.syncThreatMapPoints(); },
+        boxMode(enabled) { this.setThreatMapBoxMode(enabled); this.syncThreatMap(); }
     },
     methods: {
         fmtNum(value) { return Number(value || 0).toLocaleString(); },
@@ -324,6 +468,11 @@ export default {
             if (!value) return '-';
             const date = new Date(Number(value) * 1000);
             return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
+        },
+        toNumberOrNull(value) {
+            if (value === null || value === undefined || value === '') return null;
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : null;
         },
         statusClass(code) {
             code = Number(code || 0);
@@ -394,6 +543,12 @@ export default {
                 status: row.status ?? row.Status ?? 'Normal',
                 country: row.country ?? row.Country,
                 asn: row.asn ?? row.Asn,
+                city: row.city ?? row.City,
+                region: row.region ?? row.regionName ?? row.region_name ?? row.Region ?? row.RegionName,
+                isp: row.isp ?? row.Isp,
+                org: row.org ?? row.Org,
+                latitude: this.toNumberOrNull(row.latitude ?? row.Latitude),
+                longitude: this.toNumberOrNull(row.longitude ?? row.Longitude),
                 notes: row.notes ?? row.Notes,
                 profileId: row.associated_profile_id ?? row.AssociatedProfileId,
                 profileName: row.associated_profile_name ?? row.AssociatedProfileName,
@@ -406,12 +561,13 @@ export default {
         async loadOverview() { const data = await this.fetchJson('/omnidefence/overview', 'overview'); if (data) this.overview = data; },
         async loadRequests() { const data = await this.fetchJson('/omnidefence/requests' + this.buildQuery(this.filters.requests), 'requests'); if (data) this.requests = data.map(this.normalizeRequest); },
         async loadIps() { const data = await this.fetchJson('/omnidefence/ips' + this.buildQuery(this.filters.ips), 'ips'); if (data) this.ips = data.map(this.normalizeIp); },
+        async loadMapIps() { const data = await this.fetchJson('/omnidefence/ip-map', 'map'); if (data) this.mapIps = data.map(this.normalizeIp); },
         async loadAuthEvents() { const data = await this.fetchJson('/omnidefence/auth-events' + this.buildQuery(this.filters.auth), 'auth'); if (data) this.authEvents = data.map(this.normalizeAuth); },
         async loadProfileActions() { const data = await this.fetchJson('/omnidefence/profile-actions' + this.buildQuery(this.filters.profile), 'profile'); if (data) this.profileActions = data.map(this.normalizeProfile); },
         async loadHoneypotRoutes() { const data = await this.fetchJson('/omnidefence/honeypot-routes', 'honeypot'); if (data) this.honeypotRoutes = data; },
         async refreshActive(manual = true) {
             if (this.isBusy && !manual) return;
-            const jobs = [this.loadOverview()];
+            const jobs = [this.loadOverview(), this.loadMapIps(), this.loadBlockedRegions()];
             if (this.activeTab === 'activity') jobs.push(this.loadRequests());
             if (this.activeTab === 'ips') jobs.push(this.loadIps());
             if (this.activeTab === 'auth') jobs.push(this.loadAuthEvents());
@@ -425,6 +581,473 @@ export default {
         },
         showOnlyDenied() { this.activeTab = 'activity'; this.filters.requests.denyOnly = true; this.filters.requests.offset = 0; this.loadRequests(); },
         pageRequests(direction) { this.filters.requests.offset = Math.max(0, this.filters.requests.offset + direction * this.filters.requests.limit); this.loadRequests(); },
+        openActivityForIp(ip) {
+            if (!ip) return;
+            this.filters.requests.ip = ip;
+            this.filters.requests.offset = 0;
+            if (this.activeTab === 'activity') this.loadRequests();
+            else this.activeTab = 'activity';
+            this.selectIp(ip, false);
+            if (process.client) {
+                Swal.fire({
+                    toast: true,
+                    position: 'bottom-end',
+                    icon: 'info',
+                    title: `Activity filtered to ${ip}`,
+                    timer: 2200,
+                    timerProgressBar: true,
+                    showConfirmButton: false,
+                    background: '#0a1518',
+                    color: '#bcecff'
+                });
+            }
+        },
+        hasIpProfile(ipRecord) { return Boolean(ipRecord?.profileId || ipRecord?.profileName); },
+        isRecentIp(ipRecord) {
+            const lastSeen = Number(ipRecord?.lastSeen || 0);
+            if (!lastSeen) return false;
+            return lastSeen >= Math.floor(Date.now() / 1000) - 86400 * 3;
+        },
+        resolveIpCoordinates(ipRecord, index) {
+            const latitude = this.toNumberOrNull(ipRecord?.latitude);
+            const longitude = this.toNumberOrNull(ipRecord?.longitude);
+            if (latitude !== null && longitude !== null) {
+                return { latitude, longitude, approximate: false };
+            }
+
+            const countryCode = this.countryKey(ipRecord?.country);
+            const countryCenter = countryCode ? COUNTRY_CENTERS[countryCode] : null;
+            if (countryCenter) {
+                const jitter = this.jitterForIp(ipRecord?.ip, 2.8);
+                return {
+                    latitude: Math.max(-85, Math.min(85, countryCenter[0] + jitter.latitude)),
+                    longitude: Math.max(-180, Math.min(180, countryCenter[1] + jitter.longitude)),
+                    approximate: true
+                };
+            }
+
+            return this.ipFallbackCoordinates(ipRecord?.ip, index);
+        },
+        mapPointTitle(point) {
+            const identity = point.hasProfile ? `Profile: ${point.profileName || point.profileId || 'matched'}` : 'Attacker';
+            const location = this.formatGeo(point);
+            const network = point.isp || point.org || point.asn || 'Unknown network';
+            const recency = point.recent ? 'Recent' : 'Older';
+            const accuracy = point.coordinatesApproximate ? 'Approximate' : 'Exact';
+            return `${point.ip} / ${identity} / ${location} / ${network} / ${recency} / ${accuracy}`;
+        },
+        formatGeo(ipRecord) {
+            const parts = [ipRecord?.city, ipRecord?.region, ipRecord?.country].filter(Boolean);
+            return parts.length ? parts.join(', ') : 'Unresolved';
+        },
+        clampLatitude(latitude) {
+            return Math.max(-85.0511287, Math.min(85.0511287, Number(latitude)));
+        },
+        clampLongitude(longitude) {
+            const value = Number(longitude);
+            if (!Number.isFinite(value)) return 0;
+            return Math.max(-180, Math.min(180, value));
+        },
+        threatMapHomeZoom(container = this.$refs.leafletMap) {
+            const width = Math.max(1, container?.clientWidth || 1024);
+            const zoom = Math.ceil(Math.log2(width / 256) * 4) / 4;
+            return Math.min(3.5, Math.max(2, zoom));
+        },
+        resizeThreatMap() {
+            if (!this._threatMap) return;
+            this._threatMap.invalidateSize({ animate: false });
+            const homeZoom = this.threatMapHomeZoom();
+            this._threatMapHomeZoom = homeZoom;
+            this._threatMap.setMinZoom(homeZoom);
+            if (this._threatMap.getZoom() < homeZoom) this._threatMap.setZoom(homeZoom, { animate: false });
+        },
+        mapPointVisual(point) {
+            if (point.status === 'Blocked') return { fill: '#4a1a22', stroke: '#ff6071', opacity: 0.88 };
+            if (point.status === 'Honeypot') return { fill: '#c79cff', stroke: '#f0ddff', opacity: 0.9 };
+            if (point.status === 'Tarpit') return { fill: '#f0a23a', stroke: '#ffe066', opacity: 0.9 };
+            if (point.hasProfile && point.recent) return { fill: '#6bffc1', stroke: '#ddfff1', opacity: 0.92 };
+            if (point.hasProfile) return { fill: '#5fd3ff', stroke: '#dbf7ff', opacity: 0.88 };
+            if (point.recent) return { fill: '#ffc247', stroke: '#fff0ba', opacity: 0.9 };
+            return { fill: '#ff6071', stroke: '#ffd0d6', opacity: 0.88 };
+        },
+        pointInLatLonBounds(point, latMin, latMax, lonMin, lonMax) {
+            const lat = this.toNumberOrNull(point.latitude);
+            const lon = this.toNumberOrNull(point.longitude);
+            return lat !== null && lon !== null && lat >= latMin && lat <= latMax && lon >= lonMin && lon <= lonMax;
+        },
+        async initThreatMap() {
+            if (!process.client || this._threatMap) return;
+            await nextTick();
+            const container = this.$refs.leafletMap;
+            if (!container) return;
+
+            const leafletModule = await import('leaflet');
+            const L = markRaw(leafletModule.default || leafletModule);
+            const bounds = L.latLngBounds([[-85.0511287, -180], [85.0511287, 180]]);
+            const map = L.map(container, {
+                preferCanvas: true,
+                zoomControl: false,
+                attributionControl: false,
+                doubleClickZoom: false,
+                minZoom: 2,
+                maxZoom: 13,
+                zoomSnap: 0.25,
+                zoomDelta: 0.5,
+                wheelPxPerZoomLevel: 140,
+                maxBounds: bounds,
+                maxBoundsViscosity: 0.85
+            });
+
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
+            L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                subdomains: 'abcd',
+                noWrap: true,
+                bounds,
+                detectRetina: true,
+                updateWhenIdle: true,
+                updateWhenZooming: false,
+                keepBuffer: 2,
+                maxNativeZoom: 20,
+                attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+            }).addTo(map);
+
+            this._leaflet = L;
+            this._threatMap = markRaw(map);
+            this._threatRenderer = markRaw(L.canvas({ padding: 0.3 }));
+            this._regionLayer = markRaw(L.layerGroup().addTo(map));
+            this._pointLayer = markRaw(L.layerGroup().addTo(map));
+            this._selectionLayer = markRaw(L.layerGroup().addTo(map));
+            this._blockAnimationLayer = markRaw(L.layerGroup().addTo(map));
+            this._threatMapHomeZoom = this.threatMapHomeZoom(container);
+            map.setMinZoom(this._threatMapHomeZoom);
+            this._boxHandlers = {
+                mousedown: event => this.onThreatBoxMouseDown(event),
+                mousemove: event => this.onThreatBoxMouseMove(event),
+                mouseup: event => this.onThreatBoxMouseUp(event)
+            };
+            map.on(this._boxHandlers);
+            map.on('zoomend moveend', () => { this.leafletZoom = Number(map.getZoom().toFixed(2)); });
+            map.setView([18, 0], this._threatMapHomeZoom);
+            this.leafletZoom = Number(map.getZoom().toFixed(2));
+            this.leafletReady = true;
+            this.setThreatMapBoxMode(this.boxMode);
+            this.syncThreatMap();
+            if (typeof ResizeObserver !== 'undefined') {
+                this._threatMapResizeObserver = new ResizeObserver(() => this.resizeThreatMap());
+                this._threatMapResizeObserver.observe(container);
+            }
+            setTimeout(() => this.resizeThreatMap(), 80);
+        },
+        destroyThreatMap() {
+            if (this._threatMapResizeObserver) this._threatMapResizeObserver.disconnect();
+            if (this._threatMap) this._threatMap.remove();
+            this._leaflet = null;
+            this._threatMap = null;
+            this._threatMapHomeZoom = null;
+            this._threatMapResizeObserver = null;
+            this._threatRenderer = null;
+            this._pointLayer = null;
+            this._regionLayer = null;
+            this._selectionLayer = null;
+            this._blockAnimationLayer = null;
+            this._selectionRectangle = null;
+            this._boxStartLatLng = null;
+            this._boxStartPoint = null;
+            this.leafletReady = false;
+        },
+        syncThreatMap() {
+            this.syncThreatMapPoints();
+            this.syncThreatMapRegions();
+        },
+        syncThreatMapPoints() {
+            const L = this._leaflet;
+            if (!L || !this._pointLayer) return;
+            this._pointLayer.clearLayers();
+            for (const point of this.filteredMapPoints) {
+                const latitude = this.toNumberOrNull(point.latitude);
+                const longitude = this.toNumberOrNull(point.longitude);
+                if (latitude === null || longitude === null) continue;
+                const visual = this.mapPointVisual(point);
+                const selected = this.selectedIp?.ip === point.ip;
+                const radius = selected ? point.size + 2 : point.size;
+                const latLng = [this.clampLatitude(latitude), this.clampLongitude(longitude)];
+
+                if (point.recent || selected) {
+                    L.circleMarker(latLng, {
+                        renderer: this._threatRenderer,
+                        radius: radius + (selected ? 4 : 3),
+                        color: selected ? '#eafff9' : visual.fill,
+                        weight: selected ? 1.5 : 1,
+                        opacity: selected ? 0.75 : 0.32,
+                        fill: false,
+                        interactive: false
+                    }).addTo(this._pointLayer);
+                }
+
+                const marker = L.circleMarker(latLng, {
+                    renderer: this._threatRenderer,
+                    radius,
+                    color: visual.stroke,
+                    weight: selected ? 2 : 1,
+                    opacity: 0.95,
+                    fillColor: visual.fill,
+                    fillOpacity: point.coordinatesApproximate ? 0.58 : visual.opacity,
+                    interactive: !this.boxMode,
+                    bubblingMouseEvents: false
+                }).addTo(this._pointLayer);
+                marker.bindTooltip(this.mapPointTitle(point), { sticky: true, direction: 'top', className: 'od-map-tooltip' });
+                marker.on('click', () => this.selectIp(point.ip, false));
+                marker.on('dblclick', event => {
+                    L.DomEvent.stop(event);
+                    this.openActivityForIp(point.ip);
+                });
+            }
+        },
+        syncThreatMapRegions() {
+            const L = this._leaflet;
+            if (!L || !this._regionLayer) return;
+            this._regionLayer.clearLayers();
+            for (const region of this.blockedRegions || []) {
+                const latMin = this.toNumberOrNull(region.latMin);
+                const latMax = this.toNumberOrNull(region.latMax);
+                const lonMin = this.toNumberOrNull(region.lonMin);
+                const lonMax = this.toNumberOrNull(region.lonMax);
+                if ([latMin, latMax, lonMin, lonMax].some(value => value === null)) continue;
+                const bounds = L.latLngBounds([
+                    [this.clampLatitude(Math.min(latMin, latMax)), this.clampLongitude(Math.min(lonMin, lonMax))],
+                    [this.clampLatitude(Math.max(latMin, latMax)), this.clampLongitude(Math.max(lonMin, lonMax))]
+                ]);
+                const rectangle = L.rectangle(bounds, {
+                    renderer: this._threatRenderer,
+                    color: '#ff8a96',
+                    weight: 1,
+                    opacity: 0.75,
+                    fillColor: '#ff6071',
+                    fillOpacity: 0.16,
+                    dashArray: '5 4',
+                    interactive: !this.boxMode,
+                    bubblingMouseEvents: false
+                }).addTo(this._regionLayer);
+                rectangle.bindTooltip(`Region #${region.id} - ${region.reason || 'Region block'} (click to remove)`, { sticky: true, className: 'od-map-tooltip' });
+                rectangle.on('click', () => this.confirmRemoveRegion(region));
+            }
+        },
+        setThreatMapBoxMode(enabled) {
+            const map = this._threatMap;
+            if (!map) return;
+            if (enabled) map.dragging.disable();
+            else {
+                map.dragging.enable();
+                this.cancelBoxBlock();
+            }
+        },
+        clearThreatSelection() {
+            this._boxStartLatLng = null;
+            this._boxStartPoint = null;
+            if (this._selectionLayer) this._selectionLayer.clearLayers();
+            this._selectionRectangle = null;
+        },
+        cancelBoxBlock() {
+            if (this.boxBlockAnimating) return;
+            this.pendingBoxBlock = null;
+            this.clearThreatSelection();
+        },
+        onThreatBoxMouseDown(event) {
+            if (!this.boxMode || this.boxBlockAnimating || !this._leaflet || !this._selectionLayer || event.originalEvent?.button !== 0) return;
+            this.pendingBoxBlock = null;
+            this.clearThreatSelection();
+            this._boxStartLatLng = event.latlng;
+            this._boxStartPoint = this._threatMap.latLngToContainerPoint(event.latlng);
+            this._selectionRectangle = this._leaflet.rectangle(this._leaflet.latLngBounds(event.latlng, event.latlng), {
+                color: '#ff8a96',
+                weight: 1,
+                opacity: 0.95,
+                fillColor: '#ff6071',
+                fillOpacity: 0.13,
+                dashArray: '4 3',
+                interactive: false
+            }).addTo(this._selectionLayer);
+            this._leaflet.DomEvent.preventDefault(event.originalEvent);
+        },
+        onThreatBoxMouseMove(event) {
+            if (!this.boxMode || !this._boxStartLatLng || !this._selectionRectangle || !this._leaflet) return;
+            this._selectionRectangle.setBounds(this._leaflet.latLngBounds(this._boxStartLatLng, event.latlng));
+        },
+        async onThreatBoxMouseUp(event) {
+            if (!this.boxMode || this.boxBlockAnimating || !this._boxStartLatLng || !this._leaflet || !this._threatMap) return;
+            const start = this._boxStartLatLng;
+            const end = event.latlng;
+            const startPoint = this._boxStartPoint;
+            const endPoint = this._threatMap.latLngToContainerPoint(end);
+            const hasArea = startPoint && Math.abs(endPoint.x - startPoint.x) > 8 && Math.abs(endPoint.y - startPoint.y) > 8;
+            const bounds = this._leaflet.latLngBounds(start, end);
+            this._boxStartLatLng = null;
+            this._boxStartPoint = null;
+            if (!hasArea) { this.cancelBoxBlock(); return; }
+            this.prepareBoxBlock(bounds, startPoint, endPoint);
+        },
+        zoomMap(factor) {
+            if (!this._threatMap) return;
+            const delta = factor > 1 ? 1 : -1;
+            this._threatMap.setZoom(Math.max(this._threatMap.getMinZoom(), Math.min(13, this._threatMap.getZoom() + delta)));
+        },
+        resetMapView() {
+            if (!this._threatMap) return;
+            this._threatMap.setView([18, 0], this._threatMapHomeZoom || this.threatMapHomeZoom());
+            this.cancelBoxBlock();
+        },
+        prepareBoxBlock(bounds, startPoint, endPoint) {
+            const latMin = this.clampLatitude(Math.min(bounds.getSouth(), bounds.getNorth()));
+            const latMax = this.clampLatitude(Math.max(bounds.getSouth(), bounds.getNorth()));
+            const lonMin = this.clampLongitude(Math.min(bounds.getWest(), bounds.getEast()));
+            const lonMax = this.clampLongitude(Math.max(bounds.getWest(), bounds.getEast()));
+            const targets = this.filteredMapPoints.filter(point => this.pointInLatLonBounds(point, latMin, latMax, lonMin, lonMax));
+            const blockable = targets.filter(point => !point.isKlives && point.status !== 'Blocked');
+            const placement = this.boxBlockPopoverPlacement(startPoint, endPoint);
+            this.pendingBoxBlock = {
+                latMin, latMax, lonMin, lonMax,
+                targets,
+                blockable,
+                position: { left: placement.left, top: placement.top },
+                placement: placement.side,
+                boundsLabel: `${latMin.toFixed(2)}, ${lonMin.toFixed(2)} -> ${latMax.toFixed(2)}, ${lonMax.toFixed(2)}`,
+                reason: 'Region block from map',
+                progress: 0,
+                statusText: ''
+            };
+            if (this._selectionRectangle) {
+                this._selectionRectangle.setStyle({ color: '#52ffb9', fillColor: '#52ffb9', fillOpacity: 0.11, dashArray: '6 4' });
+                this._selectionRectangle.bringToFront();
+            }
+        },
+        boxBlockPopoverPlacement(startPoint, endPoint) {
+            const container = this.$refs.leafletMap;
+            const width = container?.clientWidth || 1024;
+            const height = container?.clientHeight || 520;
+            const popoverWidth = 236;
+            const popoverHeight = 148;
+            const boxLeft = Math.min(startPoint.x, endPoint.x);
+            const boxRight = Math.max(startPoint.x, endPoint.x);
+            const boxTop = Math.min(startPoint.y, endPoint.y);
+            const boxBottom = Math.max(startPoint.y, endPoint.y);
+            const side = boxRight + popoverWidth + 22 > width && boxLeft > popoverWidth + 22 ? 'left' : 'right';
+            const left = side === 'left'
+                ? Math.max(12, boxLeft - popoverWidth - 14)
+                : Math.min(width - popoverWidth - 12, boxRight + 14);
+            const verticalCenter = boxTop + (boxBottom - boxTop) / 2;
+            const top = Math.max(12, Math.min(height - popoverHeight - 12, verticalCenter - popoverHeight / 2));
+            return { left, top, side };
+        },
+        async runBoxBlock() {
+            const pending = this.pendingBoxBlock;
+            if (!pending || this.boxBlockAnimating) return;
+            const reason = (pending.reason || 'Region block from map').trim();
+            this.loading.action = true;
+            this.boxBlockAnimating = true;
+            this.clearBlockingAnimation();
+            let ok = 0, fail = 0, regionSaved = false;
+            try {
+                try {
+                    const regionResponse = await RequestPOSTFromKliveAPI('/omnidefence/regions/add', JSON.stringify({ latMin: pending.latMin, latMax: pending.latMax, lonMin: pending.lonMin, lonMax: pending.lonMax, reason }), false, true);
+                    regionSaved = regionResponse.ok;
+                    if (!regionResponse.ok) this.loadError = await regionResponse.text();
+                } catch (error) {
+                    this.loadError = `Region save failed: ${error}`;
+                }
+
+                for (const point of pending.blockable) {
+                    if (this.pendingBoxBlock) this.pendingBoxBlock.progress += 1;
+                    this.addBlockingMarker(point);
+                    await this.wait(115);
+                    try {
+                        const r = await RequestPOSTFromKliveAPI('/omnidefence/ip/block', JSON.stringify({ ip: point.ip, reason }), false, true);
+                        if (r.ok) ok++; else fail++;
+                    } catch { fail++; }
+                }
+                if (!pending.blockable.length) await this.wait(220);
+                await Promise.allSettled([this.loadIps(), this.loadMapIps(), this.loadOverview(), this.loadBlockedRegions()]);
+                if (this.pendingBoxBlock) this.pendingBoxBlock.statusText = regionSaved ? `Blocked ${ok}, failed ${fail}` : `Region save failed; blocked ${ok}`;
+                await this.wait(700);
+            } finally {
+                this.loading.action = false;
+                this.boxBlockAnimating = false;
+                this.pendingBoxBlock = null;
+                this.clearThreatSelection();
+                setTimeout(() => this.clearBlockingAnimation(), 450);
+            }
+        },
+        addBlockingMarker(point) {
+            const L = this._leaflet;
+            if (!L || !this._blockAnimationLayer) return;
+            const latitude = this.toNumberOrNull(point.latitude);
+            const longitude = this.toNumberOrNull(point.longitude);
+            if (latitude === null || longitude === null) return;
+            L.marker([this.clampLatitude(latitude), this.clampLongitude(longitude)], {
+                icon: L.divIcon({ className: 'od-blocking-marker', html: '<span class="od-block-cross"></span>', iconSize: [28, 28], iconAnchor: [14, 14] }),
+                interactive: false,
+                zIndexOffset: 900
+            }).addTo(this._blockAnimationLayer);
+        },
+        clearBlockingAnimation() {
+            if (this._blockAnimationLayer) this._blockAnimationLayer.clearLayers();
+        },
+        wait(milliseconds) {
+            return new Promise(resolve => setTimeout(resolve, milliseconds));
+        },
+        countryKey(value) {
+            const text = String(value || '').trim();
+            if (!text) return '';
+            const upper = text.toUpperCase();
+            if (upper.length === 2 && COUNTRY_CENTERS[upper]) return upper;
+            return COUNTRY_ALIASES[upper] || '';
+        },
+        jitterForIp(ip, spread) {
+            const hash = this.hashString(`${ip || 'unknown'}:jitter`);
+            const angleRadians = (hash % 360) * Math.PI / 180;
+            const radius = (((hash >>> 8) % 100) / 100) * spread;
+            return {
+                latitude: Math.sin(angleRadians) * radius * 0.7,
+                longitude: Math.cos(angleRadians) * radius
+            };
+        },
+        ipFallbackCoordinates(ip, index) {
+            const hash = this.hashString(`${ip || index}:fallback`);
+            const longitude = ((hash % 36000) / 100) - 180;
+            const latitude = (((Math.floor(hash / 36000) % 15000) / 100) - 75);
+            return { latitude, longitude, approximate: true };
+        },
+        hashString(value) {
+            let hash = 2166136261;
+            for (let index = 0; index < value.length; index++) {
+                hash ^= value.charCodeAt(index);
+                hash = Math.imul(hash, 16777619);
+            }
+            return hash >>> 0;
+        },
+        async loadBlockedRegions() {
+            const data = await this.fetchJson('/omnidefence/regions');
+            if (Array.isArray(data)) this.blockedRegions = data;
+        },
+        async confirmRemoveRegion(region) {
+            if (!region || !process.client) return;
+            const result = await Swal.fire({
+                title: `Remove region block #${region.id}?`,
+                html: `<div style="text-align:left;font-size:12px;color:#9fb8b1">${region.reason || 'Region block'}<br>Lat ${Number(region.latMin).toFixed(1)} to ${Number(region.latMax).toFixed(1)}, Lon ${Number(region.lonMin).toFixed(1)} to ${Number(region.lonMax).toFixed(1)}</div>`,
+                showCancelButton: true,
+                confirmButtonText: 'Remove',
+                background: '#080b0d',
+                color: '#e8fff7',
+                confirmButtonColor: '#c0283f',
+                cancelButtonColor: '#2a3338'
+            });
+            if (!result.isConfirmed) return;
+            this.loading.action = true;
+            try {
+                await RequestPOSTFromKliveAPI('/omnidefence/regions/remove', JSON.stringify({ id: region.id }), false, true);
+                await this.loadBlockedRegions();
+            } finally { this.loading.action = false; }
+        },
         async selectIp(ip, switchTab = true) {
             if (!ip) return;
             if (switchTab) this.activeTab = 'ips';
@@ -516,6 +1139,73 @@ export default {
 .od-header p { margin: 0; color: #94b6ad; font-size: 14px; }
 .od-header-actions { display: flex; gap: 8px; align-items: center; }
 .refresh-stamp { min-width: 128px; text-align: right; color: #83aca2; font: 700 11px ui-monospace, Consolas, monospace; text-transform: uppercase; }
+.od-map-panel { margin-bottom: 12px; border: 1px solid rgba(82,255,185,.16); border-radius: 6px; background: rgba(4, 8, 10, .86); box-shadow: inset 0 0 22px rgba(71, 255, 183, .04); overflow: hidden; }
+.map-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid rgba(82,255,185,.14); background: linear-gradient(90deg, rgba(14,50,52,.7), rgba(9,12,15,.45)); }
+.map-head h2 { margin: 0; font-size: 20px; color: #eafff9; }
+.map-actions { display: flex; align-items: center; gap: 10px; }
+.map-filters { display: flex; gap: 4px; padding: 3px; border: 1px solid rgba(116,255,198,.16); border-radius: 5px; background: rgba(255,255,255,.035); }
+.map-filters button { min-height: 30px; padding: 6px 9px; border: 0; border-radius: 3px; background: transparent; color: #9fb8b1; font-size: 11px; font-weight: 800; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
+.map-filters button.active { color: #ecfffa; background: rgba(82,255,185,.16); box-shadow: inset 0 0 0 1px rgba(82,255,185,.2); }
+.map-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 6px 9px; border-radius: 3px; color: #b9d8cf; font-size: 11px; font-weight: 800; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
+.map-toggle.active { color: #ecfffa; background: rgba(95,211,255,.14); box-shadow: inset 0 0 0 1px rgba(95,211,255,.22); }
+.map-toggle input { width: 13px; height: 13px; margin: 0; accent-color: #5fd3ff; cursor: pointer; }
+.map-layout { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 10px; padding: 12px; }
+.world-map-stage { position: relative; height: clamp(500px, 56vh, 760px); min-height: 500px; overflow: hidden; border: 1px solid rgba(82,255,185,.24); border-radius: 5px; background: radial-gradient(circle at 50% 20%, rgba(35,144,118,.2), transparent 45%), linear-gradient(180deg, #031512, #05090b); cursor: grab; }
+.world-map-stage.box-mode { cursor: crosshair; }
+.world-map-stage.loading { box-shadow: inset 0 0 28px rgba(95,211,255,.08); }
+.leaflet-threat-map { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; background: #031512; }
+.leaflet-threat-map::after { content: ''; position: absolute; inset: 0; z-index: 450; pointer-events: none; background: linear-gradient(rgba(38,214,166,.08), rgba(4,15,16,.08)), repeating-linear-gradient(0deg, rgba(82,255,185,.038) 0 1px, transparent 1px 48px), repeating-linear-gradient(90deg, rgba(82,255,185,.03) 0 1px, transparent 1px 54px); mix-blend-mode: screen; opacity: .46; }
+.world-map-stage :deep(.leaflet-container) { background: #031512; color: #d9fff0; font: 700 11px ui-monospace, Consolas, monospace; }
+.world-map-stage :deep(.leaflet-tile-pane) { filter: sepia(.24) hue-rotate(104deg) saturate(1.55) brightness(1.28) contrast(.92); opacity: 1; }
+.world-map-stage :deep(.leaflet-control-zoom) { border: 1px solid rgba(95,211,255,.18); border-radius: 4px; overflow: hidden; background: rgba(5,13,16,.82); box-shadow: none; }
+.world-map-stage :deep(.leaflet-control-zoom a) { width: 28px; height: 28px; border: 0; border-bottom: 1px solid rgba(95,211,255,.14); background: rgba(8,17,22,.92); color: #bcecff; line-height: 28px; text-shadow: none; }
+.world-map-stage :deep(.leaflet-control-zoom a:hover) { background: rgba(31,92,110,.86); color: #fff; }
+.world-map-stage :deep(.leaflet-control-attribution) { padding: 2px 5px; border: 1px solid rgba(95,211,255,.12); border-radius: 3px; background: rgba(4,8,10,.66); color: #71918a; font-size: 10px; }
+.world-map-stage :deep(.leaflet-control-attribution a) { color: #8fd0e8; }
+.world-map-stage :deep(.leaflet-interactive) { outline: none; }
+.world-map-stage :deep(.od-map-tooltip) { border: 1px solid rgba(95,211,255,.2); border-radius: 4px; background: rgba(4,9,11,.92); color: #d9fff0; box-shadow: 0 8px 22px rgba(0,0,0,.28); font: 700 11px ui-monospace, Consolas, monospace; }
+.world-map-stage :deep(.od-map-tooltip::before) { border-top-color: rgba(4,9,11,.92); }
+.world-map-stage :deep(.od-blocking-marker) { width: 28px; height: 28px; margin: 0; border: 0; background: transparent; pointer-events: none; }
+.world-map-stage :deep(.od-block-cross) { position: relative; display: block; width: 28px; height: 28px; border: 1px solid rgba(255,96,113,.9); border-radius: 50%; background: rgba(255,96,113,.15); box-shadow: 0 0 18px rgba(255,96,113,.55); animation: blockPulse .42s ease-out both; }
+.world-map-stage :deep(.od-block-cross::before), .world-map-stage :deep(.od-block-cross::after) { content: ''; position: absolute; left: 4px; right: 4px; top: 13px; height: 2px; border-radius: 999px; background: #ffd7dc; transform-origin: center; animation: blockStrike .34s ease-out both; }
+.world-map-stage :deep(.od-block-cross::before) { transform: rotate(45deg) scaleX(0); }
+.world-map-stage :deep(.od-block-cross::after) { transform: rotate(-45deg) scaleX(0); animation-delay: .11s; }
+.world-map-stage.box-mode :deep(.leaflet-container) { cursor: crosshair; }
+.map-loading, .map-empty { position: absolute; inset: 0; z-index: 500; display: grid; place-items: center; color: #78928b; font: 700 12px ui-monospace, Consolas, monospace; text-transform: uppercase; pointer-events: none; }
+.map-loading { background: radial-gradient(circle at center, rgba(10,42,47,.36), rgba(3,7,10,.68)); color: #bcecff; }
+.map-mode-tag { position: absolute; z-index: 600; top: 8px; left: 8px; padding: 4px 8px; border: 1px solid rgba(255,138,150,.4); border-radius: 3px; background: rgba(60,12,18,.78); color: #ff8a96; font: 700 10px ui-monospace, Consolas, monospace; letter-spacing: 1px; pointer-events: none; }
+.map-zoom-tag { position: absolute; z-index: 600; bottom: 8px; left: 8px; padding: 3px 7px; border: 1px solid rgba(95,211,255,.25); border-radius: 3px; background: rgba(8,17,22,.78); color: #8fd0e8; font: 700 10px ui-monospace, Consolas, monospace; letter-spacing: 1px; pointer-events: none; }
+.map-box-popover { position: absolute; z-index: 760; width: 236px; padding: 10px; border: 1px solid rgba(82,255,185,.38); border-radius: 5px; background: linear-gradient(180deg, rgba(5,22,20,.96), rgba(3,9,11,.96)); box-shadow: 0 12px 28px rgba(0,0,0,.38), 0 0 22px rgba(82,255,185,.1); color: #d9fff0; animation: mapPopoverIn .16s ease-out both; }
+.map-box-popover::before { content: ''; position: absolute; top: 50%; width: 14px; height: 1px; background: rgba(82,255,185,.72); box-shadow: 0 0 8px rgba(82,255,185,.45); }
+.map-box-popover.right::before { left: -14px; }
+.map-box-popover.left::before { right: -14px; }
+.map-box-popover span { display: block; color: #57f0b3; font: 800 10px ui-monospace, Consolas, monospace; text-transform: uppercase; letter-spacing: 1px; }
+.map-box-popover strong { display: block; margin-top: 4px; color: #f3fffb; font-size: 15px; line-height: 1.15; }
+.map-box-popover small { display: block; margin-top: 4px; color: #86a39b; font-size: 10px; }
+.map-box-reason { width: 100%; margin-top: 8px; padding: 6px 7px; font-size: 11px; }
+.map-box-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+.map-box-progress { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: #bcecff; font: 800 10px ui-monospace, Consolas, monospace; text-transform: uppercase; }
+.map-box-progress.complete { color: #7dffc5; }
+.map-intel { display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 8px; }
+.map-stat { padding: 9px; border: 1px solid rgba(255,255,255,.07); border-radius: 4px; background: rgba(255,255,255,.035); }
+.map-stat span { display: block; color: #7d948e; font-size: 11px; text-transform: uppercase; }
+.map-stat strong { display: block; margin-top: 3px; color: #f3fffb; font-size: 20px; line-height: 1; }
+.map-legend, .map-selected { grid-column: 1 / -1; padding: 9px; border: 1px solid rgba(255,255,255,.07); border-radius: 4px; background: rgba(255,255,255,.03); }
+.map-legend { display: grid; gap: 7px; }
+.map-legend div { display: flex; align-items: center; gap: 7px; color: #a9c8bf; font-size: 11px; font-weight: 700; }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; background: #ff6071; box-shadow: 0 0 10px currentColor; color: #ff6071; }
+.legend-dot.attacker.recent { background: #ffc247; color: #ffc247; }
+.legend-dot.profile { background: #5fd3ff; color: #5fd3ff; }
+.legend-dot.profile.recent { background: #6bffc1; color: #6bffc1; }
+.legend-icon { display: inline-block; position: relative; width: 12px; height: 12px; border-radius: 50%; background: #2a3338; border: 1px solid rgba(255,255,255,.18); }
+.legend-icon.cross::before, .legend-icon.cross::after { content: ''; position: absolute; left: 50%; top: 50%; width: 12px; height: 1.5px; background: #fff; transform: translate(-50%, -50%) rotate(45deg); }
+.legend-icon.cross::after { transform: translate(-50%, -50%) rotate(-45deg); }
+.legend-icon.ring { border: 1.5px dashed #c79cff; background: rgba(199,156,255,.25); }
+.legend-icon.strike { background: #f0a23a; }
+.legend-icon.strike::after { content: ''; position: absolute; left: -2px; right: -2px; top: 50%; height: 1.5px; background: #ffe066; transform: translateY(-50%); }
+.map-selected span { display: block; color: #7d948e; font-size: 11px; text-transform: uppercase; }
+.map-selected strong { display: block; margin-top: 4px; color: #eafff9; font-size: 15px; }
+.map-selected small { display: block; margin-top: 3px; color: #86a39b; font-size: 11px; }
 .od-metrics { display: grid; grid-template-columns: repeat(5, minmax(145px, 1fr)); gap: 10px; margin-bottom: 12px; }
 .metric-tile { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; text-align: left; padding: 12px 14px; min-height: 82px; border: 1px solid rgba(82,255,185,.22); border-radius: 6px; background: linear-gradient(180deg, rgba(12,31,32,.95), rgba(6,11,13,.96)); color: inherit; cursor: pointer; }
 .metric-copy { min-width: 0; }
@@ -550,12 +1240,18 @@ export default {
 input, select, textarea { min-width: 0; border: 1px solid rgba(116,255,198,.16); border-radius: 4px; background: #071012; color: #e7fff7; padding: 8px 9px; outline: none; }
 textarea { width: 100%; min-height: 70px; resize: vertical; margin: 10px 0 8px; }
 input:focus, select:focus, textarea:focus { border-color: #52ffb9; box-shadow: 0 0 0 1px rgba(82,255,185,.15); }
+.map-toggle input[type="checkbox"] { min-width: 13px; width: 13px; height: 13px; padding: 0; border: 1px solid rgba(95,211,255,.42); background: #071012; accent-color: #5fd3ff; }
 .checkline { display: flex; align-items: center; gap: 6px; color: #a8c3bb; font-size: 12px; }
 .od-btn, .micro { border: 1px solid rgba(82,255,185,.28); border-radius: 4px; background: linear-gradient(180deg, rgba(28,111,85,.38), rgba(10,25,26,.9)); color: #eafff9; cursor: pointer; font-weight: 700; }
 .od-btn:disabled, .micro:disabled { opacity: .52; cursor: wait; }
 .od-btn { padding: 8px 11px; } .od-btn.ghost { background: rgba(255,255,255,.04); } .od-btn.danger, .micro.danger { border-color: rgba(255,83,104,.45); color: #ffb9c1; } .od-btn.cyan, .micro.cyan { border-color: rgba(95,211,255,.45); color: #bcecff; } .od-btn.release, .micro.release { border-color: rgba(93,255,174,.5); color: #baffdc; background: linear-gradient(180deg, rgba(32,132,89,.44), rgba(8,30,25,.92)); } .micro.warn { color: #ffd98a; border-color: rgba(255,194,71,.4); }
 .micro { padding: 4px 7px; font-size: 11px; }
-.table-shell { max-height: 590px; overflow: auto; border: 1px solid rgba(255,255,255,.08); border-radius: 5px; }
+.table-shell { position: relative; max-height: 590px; overflow: auto; border: 1px solid rgba(255,255,255,.08); border-radius: 5px; }
+.table-shell table { transition: opacity .18s ease; }
+.table-shell.refreshing table { opacity: .72; }
+.table-loading-overlay { position: absolute; top: 8px; left: 8px; z-index: 5; display: inline-flex; align-items: center; gap: 7px; padding: 6px 9px; border: 1px solid rgba(95,211,255,.24); border-radius: 4px; background: rgba(4,15,18,.84); color: #bcecff; backdrop-filter: blur(6px); box-shadow: 0 8px 18px rgba(0,0,0,.26); font: 800 11px ui-monospace, Consolas, monospace; text-transform: uppercase; animation: softFadeIn .16s ease-out both; }
+.table-row-fade-enter-active, .table-row-fade-leave-active { transition: opacity .18s ease, transform .18s ease; }
+.table-row-fade-enter-from, .table-row-fade-leave-to { opacity: 0; transform: translateY(4px); }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 th, td { padding: 7px 9px; border-bottom: 1px solid rgba(255,255,255,.055); text-align: left; vertical-align: top; }
 th { position: sticky; top: 0; z-index: 1; background: #0a1113; color: #73ffbf; font: 700 11px ui-monospace, Consolas, monospace; text-transform: uppercase; }
@@ -587,6 +1283,12 @@ tr:hover td { background: rgba(78,255,182,.035); }
 .od-error { margin-top: 12px; padding: 10px 12px; border: 1px solid rgba(255,83,104,.35); border-radius: 5px; background: rgba(120,22,36,.35); color: #ffc7cd; }
 @keyframes pulse { 0%,100% { opacity: .45; } 50% { opacity: 1; } }
 @keyframes spin { to { transform: rotate(360deg); } }
-@media (max-width: 1320px) { .od-grid { grid-template-columns: 210px 1fr; } .od-detail { grid-column: 1 / -1; } .activity-controls { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 820px) { .od-header { align-items: flex-start; flex-direction: column; } .od-header-actions { width: 100%; flex-wrap: wrap; } .refresh-stamp { min-width: 0; text-align: left; } .od-metrics { grid-template-columns: repeat(2, 1fr); } .od-grid { grid-template-columns: 1fr; } .activity-controls, .auth-controls, .profile-controls, .honey-controls, .ip-controls { grid-template-columns: 1fr; } }
+@keyframes softFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes mapPopoverIn { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes blockPulse { 0% { opacity: 0; transform: scale(.55); } 65% { opacity: 1; transform: scale(1.14); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes blockStrike { from { transform: rotate(45deg) scaleX(0); } to { transform: rotate(45deg) scaleX(1); } }
+.world-map-stage :deep(.od-block-cross::after) { animation-name: blockStrikeReverse; }
+@keyframes blockStrikeReverse { from { transform: rotate(-45deg) scaleX(0); } to { transform: rotate(-45deg) scaleX(1); } }
+@media (max-width: 1320px) { .od-grid { grid-template-columns: 210px 1fr; } .od-detail { grid-column: 1 / -1; } .activity-controls { grid-template-columns: repeat(3, 1fr); } .map-layout { grid-template-columns: 1fr; } .map-intel { grid-template-columns: repeat(4, minmax(0, 1fr)); } .map-legend, .map-selected { grid-column: auto; } }
+@media (max-width: 820px) { .od-header { align-items: flex-start; flex-direction: column; } .od-header-actions { width: 100%; flex-wrap: wrap; } .refresh-stamp { min-width: 0; text-align: left; } .map-head { align-items: flex-start; flex-direction: column; } .map-actions { width: 100%; align-items: flex-start; flex-direction: column; } .map-filters { width: 100%; flex-wrap: wrap; } .map-filters button, .map-toggle { flex: 1 1 130px; } .world-map-stage { height: 52vh; min-height: 340px; } .map-intel { grid-template-columns: repeat(2, minmax(0, 1fr)); } .map-legend, .map-selected { grid-column: 1 / -1; } .od-metrics { grid-template-columns: repeat(2, 1fr); } .od-grid { grid-template-columns: 1fr; } .activity-controls, .auth-controls, .profile-controls, .honey-controls, .ip-controls { grid-template-columns: 1fr; } }
 </style>

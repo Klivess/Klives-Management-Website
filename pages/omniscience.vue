@@ -11,7 +11,7 @@
                 <span class="refresh-stamp">{{ busyLabel || lastUpdatedLabel }}</span>
                 <button class="os-btn ghost" :disabled="isBusy" @click="refreshAll">Refresh</button>
                 <button class="os-btn violet" :disabled="profilerRunning" @click="runProfilerNow">
-                    {{ profilerRunning ? 'Profiler running…' : 'Run Profiler Now' }}
+                    {{ profilerRunning ? 'Profiler running...' : 'Run Profile List' }}
                 </button>
             </div>
         </header>
@@ -31,7 +31,7 @@
                 <strong>{{ fmtNum(overview?.conversations) }}</strong>
             </button>
             <button class="metric-tile violet" @click="activeTab = 'llm'">
-                <span class="metric-copy"><span class="metric-label">LLM Dossiers</span><small>{{ profilerRunning ? 'generating…' : 'on file' }}</small></span>
+                <span class="metric-copy"><span class="metric-label">LLM Dossiers</span><small>{{ profilerRunning ? activeJobLabel : profileTargetCount + ' on profile list' }}</small></span>
                 <strong>{{ fmtNum(overview?.personality_profiles) }}</strong>
             </button>
             <button class="metric-tile warn" @click="activeTab = 'src'">
@@ -66,6 +66,7 @@
                 <div class="rail-section">
                     <h3>Scheduler</h3>
                     <div class="rail-meta-row"><span>Status</span><strong :class="profilerRunning ? 'good' : 'mid'">{{ profilerRunning ? 'RUNNING' : 'IDLE' }}</strong></div>
+                    <div v-if="currentJob" class="rail-meta-row"><span>Job</span><strong>{{ activeJobLabel }}</strong></div>
                     <div class="rail-meta-row"><span>Last run</span><strong>{{ fmtTime(scheduleStatus?.last_run_finished_at) }}</strong></div>
                     <div class="rail-meta-row"><span>Outcome</span><strong>{{ scheduleStatus?.last_run_status || '—' }}</strong></div>
                 </div>
@@ -181,10 +182,14 @@
                     </div>
                     <div class="panel-body">
                         <div class="control-row people-controls">
-                            <input v-model="peopleSearch" @input="onSearchChange" placeholder="Search by name or username" />
+                            <input v-model="peopleSearch" @input="onSearchChange" placeholder="Search name, username, nickname, alias, or related person" />
                             <select v-model="peoplePlatform" @change="loadPeople">
                                 <option value="">All platforms</option>
                                 <option value="discord">Discord</option>
+                            </select>
+                            <select v-model="peopleRelatedTo" @change="loadPeople" :title="peopleRelatedTo ? 'Filter to people related to the selected one' : ''">
+                                <option value="">No relationship filter</option>
+                                <option v-for="p in topPeople" :key="'rt'+p.person_id" :value="p.person_id">related to: {{ p.display_name || '(unnamed)' }}</option>
                             </select>
                             <button class="os-btn ghost" @click="loadPeople">Reload</button>
                         </div>
@@ -193,7 +198,7 @@
                             <button v-for="p in people" :key="p.person_id" class="person-card" :class="{ active: selectedPersonId === p.person_id }" @click="openPerson(p)">
                                 <div class="pc-top">
                                     <span class="pc-display">{{ personPrimaryDisplay(p) }}</span>
-                                    <span class="pc-msgs">{{ fmtNum(p.message_count) }}</span>
+                                    <span class="pc-msgs"><span v-if="p.profile_targeted" class="profile-marker">LLM</span>{{ fmtNum(p.message_count) }}</span>
                                 </div>
                                 <div class="pc-handle-row">
                                     <span v-for="(id, i) in (p.identities || []).slice(0, 3)" :key="i" class="pc-handle">
@@ -216,6 +221,7 @@
                         <div><span class="panel-code">DSR</span><h2>{{ dossier?.display_name || 'Dossier' }}</h2></div>
                         <div class="head-actions">
                             <button class="micro cyan" :disabled="!dossier || recomputing" @click="recomputeSelected">{{ recomputing ? 'Recomputing…' : 'Recompute' }}</button>
+                            <button class="micro violet" :disabled="!dossier" @click="setProfileTarget(dossier.person_id, !dossier.profile_targeted)">{{ dossier?.profile_targeted ? 'Profile listed' : 'Add to profile list' }}</button>
                             <button class="micro" :disabled="!dossier" @click="dossier = null">Close</button>
                         </div>
                     </div>
@@ -227,6 +233,20 @@
                                 <div><span>Messages</span><strong>{{ fmtNum(dossier.message_count || 0) }}</strong></div>
                                 <div><span>Identities</span><strong>{{ dossier.identities?.length || 0 }}</strong></div>
                                 <div><span>Profile generated</span><strong>{{ fmtTime(dossier.personality_profile?.generated_at) }}</strong></div>
+                                <div><span>Profile list</span><strong :class="dossier.profile_targeted ? 'good' : 'mid'">{{ dossier.profile_targeted ? 'ENABLED' : 'NOT LISTED' }}</strong></div>
+                            </div>
+
+                            <div v-if="selectedJobItem || (currentJob?.mode === 'profile_targets' && profilerRunning)" class="run-status-card">
+                                <div class="run-status-head">
+                                    <strong>{{ activeJobLabel }}</strong>
+                                    <small>{{ currentJob?.status || scheduleStatus?.last_run_status }}</small>
+                                </div>
+                                <div v-if="selectedJobItem" class="run-stage-grid">
+                                    <div><span>Analytics</span><strong :class="stageClass(selectedJobItem.analytics)">{{ stageText(selectedJobItem.analytics) }}</strong></div>
+                                    <div><span>Dossier / LLM</span><strong :class="stageClass(selectedJobItem.profile)">{{ stageText(selectedJobItem.profile) }}</strong></div>
+                                </div>
+                                <p v-if="selectedJobItem?.error" class="run-error">{{ selectedJobItem.error }}</p>
+                                <p v-else-if="selectedJobItem?.profile === 'skipped_not_profile_target'" class="muted">Analytics refreshed; LLM dossier generation was skipped because this person is not on the profile list.</p>
                             </div>
 
                             <div class="dossier-grid">
@@ -348,17 +368,113 @@
                                     <div v-else class="muted">Not computed.</div>
                                 </div>
 
-                                <!-- Conflict + humour + language -->
-                                <div class="dossier-card">
+                                <!-- Conflict + humour + language (rich) -->
+                                <div class="dossier-card wide">
                                     <div class="dc-head"><span class="panel-code sm">PSY</span><h3>Conflict · humour · language</h3></div>
                                     <div v-if="dossier.analytics?.conflict || dossier.analytics?.humor || dossier.analytics?.language">
                                         <div class="info-grid sm">
                                             <div v-if="dossier.analytics?.conflict"><span>Conflict</span><strong :class="(dossier.analytics.conflict.payload.conflict_score || 0) > 0.05 ? 'bad' : 'good'">{{ (dossier.analytics.conflict.payload.conflict_score || 0).toFixed(3) }}</strong></div>
                                             <div v-if="dossier.analytics?.humor"><span>Humour</span><strong class="violet-text">{{ (dossier.analytics.humor.payload.humor_score || 0).toFixed(3) }}</strong></div>
-                                            <div v-if="dossier.analytics?.language"><span>Language</span><strong>{{ dossier.analytics.language.payload.primary_language || 'unknown' }}</strong></div>
+                                            <div v-if="dossier.analytics?.language"><span>Language</span><strong>{{ dossier.analytics.language.payload.primary_language || 'unknown' }}<small v-if="dossier.analytics.language.payload.secondary_language" class="muted"> + {{ dossier.analytics.language.payload.secondary_language }}</small></strong></div>
+                                            <div v-if="dossier.analytics?.language"><span>Lang conf.</span><strong>{{ ((dossier.analytics.language.payload.confidence || 0) * 100).toFixed(0) }}%</strong></div>
+                                            <div v-if="dossier.analytics?.humor"><span>Laugh family</span><strong>{{ dossier.analytics.humor.payload.dominant_laugh_family || '—' }}</strong></div>
                                         </div>
+
+                                        <template v-if="dossier.analytics?.humor?.payload?.laugh_family_distribution?.length">
+                                            <h5 class="psy-h">Laugh distribution</h5>
+                                            <div class="tag-cloud">
+                                                <span v-for="f in dossier.analytics.humor.payload.laugh_family_distribution" :key="f.family" class="tag">{{ f.family }} <small style="opacity:.7">{{ f.count }}</small></span>
+                                            </div>
+                                        </template>
+
+                                        <template v-if="dossier.analytics?.humor?.payload?.sample_humorous_messages?.length">
+                                            <h5 class="psy-h">Humour samples</h5>
+                                            <ul class="psy-list">
+                                                <li v-for="(s, ix) in dossier.analytics.humor.payload.sample_humorous_messages" :key="'hu'+ix">{{ s.text }}</li>
+                                            </ul>
+                                        </template>
+
+                                        <template v-if="dossier.analytics?.conflict?.payload?.top_profanity?.length || dossier.analytics?.conflict?.payload?.top_insults?.length">
+                                            <h5 class="psy-h">Conflict markers</h5>
+                                            <div class="tag-cloud">
+                                                <span v-for="t in (dossier.analytics.conflict.payload.top_profanity || [])" :key="'pf'+t.token" class="tag bad-tag">{{ t.token }} <small style="opacity:.7">{{ t.count }}</small></span>
+                                                <span v-for="t in (dossier.analytics.conflict.payload.top_insults || [])" :key="'in'+t.token" class="tag bad-tag">{{ t.token }} <small style="opacity:.7">{{ t.count }}</small></span>
+                                            </div>
+                                        </template>
+
+                                        <template v-if="dossier.analytics?.conflict?.payload?.sample_heated_messages?.length">
+                                            <h5 class="psy-h">Heated samples</h5>
+                                            <ul class="psy-list">
+                                                <li v-for="(s, ix) in dossier.analytics.conflict.payload.sample_heated_messages" :key="'co'+ix">{{ s.text }}</li>
+                                            </ul>
+                                        </template>
+
+                                        <template v-if="dossier.analytics?.language?.payload?.distribution?.length">
+                                            <h5 class="psy-h">Language samples</h5>
+                                            <div v-for="d in dossier.analytics.language.payload.distribution.filter(d => d.samples?.length)" :key="'lg'+d.lang" class="lang-block">
+                                                <strong>{{ d.lang }}</strong> <small class="muted">{{ (d.share * 100).toFixed(0) }}%</small>
+                                                <ul class="psy-list compact">
+                                                    <li v-for="(s, ix) in d.samples" :key="'ls'+ix">{{ s }}</li>
+                                                </ul>
+                                            </div>
+                                        </template>
                                     </div>
                                     <div v-else class="muted">Not computed.</div>
+                                </div>
+
+                                <!-- Vocabulary phrases -->
+                                <div v-if="dossier.analytics?.vocabulary?.payload?.top_phrases?.length" class="dossier-card">
+                                    <div class="dc-head"><span class="panel-code sm">PHR</span><h3>Top phrases</h3></div>
+                                    <div class="tag-cloud">
+                                        <span v-for="p in dossier.analytics.vocabulary.payload.top_phrases.slice(0, 24)" :key="'ph'+p.phrase" class="tag" :class="{ 'phr-tri': p.size === 3 }">{{ p.phrase }} <small style="opacity:.7">{{ p.count }}</small></span>
+                                    </div>
+                                </div>
+
+                                <!-- Liked people (mention affinity) -->
+                                <div class="dossier-card">
+                                    <div class="dc-head"><span class="panel-code sm">LKE</span><h3>People they mention positively</h3></div>
+                                    <ol v-if="dossier.analytics?.mention_affinity?.payload?.liked_people?.length" class="rel-list">
+                                        <li v-for="r in dossier.analytics.mention_affinity.payload.liked_people.slice(0, 12)" :key="'la'+r.person_id">
+                                            <button class="link-btn" @click="openPersonById(r.person_id)">{{ r.display_name || '(unnamed)' }}</button>
+                                            <small class="muted">{{ r.positive_mentions }}+ / {{ r.negative_mentions }}-</small>
+                                        </li>
+                                    </ol>
+                                    <div v-else class="muted">Not enough mentions yet.</div>
+                                </div>
+
+                                <!-- Location / timezone inference -->
+                                <div class="dossier-card">
+                                    <div class="dc-head"><span class="panel-code sm">LOC</span><h3>Inferred location</h3></div>
+                                    <div v-if="dossier.analytics?.timezone_inference">
+                                        <div class="info-grid sm">
+                                            <div><span>Region</span><strong>{{ dossier.analytics.timezone_inference.payload.inferred_region || '—' }}</strong></div>
+                                            <div><span>UTC offset</span><strong>{{ fmtOffset(dossier.analytics.timezone_inference.payload.inferred_utc_offset_minutes) }}</strong></div>
+                                            <div><span>Confidence</span><strong>{{ ((dossier.analytics.timezone_inference.payload.confidence || 0) * 100).toFixed(0) }}%</strong></div>
+                                            <div><span>Lead phrases</span><strong>{{ dossier.analytics.timezone_inference.payload.location_lead_phrase_hits || 0 }}</strong></div>
+                                        </div>
+                                        <template v-if="dossier.analytics.timezone_inference.payload.top_region_hints?.length">
+                                            <div class="tag-cloud" style="margin-top:8px">
+                                                <span v-for="r in dossier.analytics.timezone_inference.payload.top_region_hints" :key="'rg'+r.region" class="tag">{{ r.region }} <small style="opacity:.7">{{ r.score }}</small></span>
+                                            </div>
+                                        </template>
+                                    </div>
+                                    <div v-else class="muted">Not computed.</div>
+                                </div>
+
+                                <!-- Alt names / nicknames -->
+                                <div class="dossier-card">
+                                    <div class="dc-head"><span class="panel-code sm">ALT</span><h3>Alt names &amp; nicknames</h3></div>
+                                    <div v-if="dossier.alt_names?.length" class="tag-cloud">
+                                        <span v-for="a in dossier.alt_names" :key="'an'+a.alt_name" class="tag" :title="a.source || ''">{{ a.alt_name }}</span>
+                                    </div>
+                                    <div v-else class="muted">None recorded.</div>
+                                </div>
+
+                                <!-- Biographical inferences -->
+                                <div class="dossier-card wide">
+                                    <div class="dc-head"><span class="panel-code sm">BIO</span><h3>Biographical inferences</h3></div>
+                                    <div v-if="dossier.personality_profile?.biographical_markdown" class="narrative" v-html="renderMarkdown(dossier.personality_profile.biographical_markdown)"></div>
+                                    <div v-else class="muted" style="padding:14px">No biographical dossier yet. Run profiler.</div>
                                 </div>
                             </div>
 
@@ -430,19 +546,35 @@
                             <div><span>Last started</span><strong>{{ fmtTime(scheduleStatus?.last_run_started_at) }}</strong></div>
                             <div><span>Last finished</span><strong>{{ fmtTime(scheduleStatus?.last_run_finished_at) }}</strong></div>
                             <div><span>Last outcome</span><strong>{{ scheduleStatus?.last_run_status || '—' }}</strong></div>
+                            <div><span>Profile list</span><strong>{{ profileTargetCount }}</strong></div>
+                            <div><span>Current job</span><strong>{{ activeJobLabel }}</strong></div>
+                        </div>
+
+                        <div v-if="currentJob" class="run-status-card llm-status">
+                            <div class="run-status-head">
+                                <strong>{{ activeJobLabel }}</strong>
+                                <small>{{ currentJob.status }}</small>
+                            </div>
+                            <div class="run-stage-grid">
+                                <div><span>Analytics OK</span><strong class="good">{{ currentJob.analytics_ok || 0 }}</strong></div>
+                                <div><span>Analytics failed</span><strong :class="currentJob.analytics_failed ? 'bad' : 'mid'">{{ currentJob.analytics_failed || 0 }}</strong></div>
+                                <div><span>Dossiers OK</span><strong class="good">{{ currentJob.profiles_ok || 0 }}</strong></div>
+                                <div><span>Dossiers skipped/failed</span><strong :class="(currentJob.profiles_failed || currentJob.profiles_skipped) ? 'bad' : 'mid'">{{ (currentJob.profiles_failed || 0) + (currentJob.profiles_skipped || 0) }}</strong></div>
+                            </div>
                         </div>
 
                         <div class="cta-row">
-                            <button class="os-btn violet" :disabled="profilerRunning" @click="runProfilerNow">{{ profilerRunning ? 'Profiler running…' : 'Run for all people now' }}</button>
-                            <span class="muted">Runs analytics + LLM dossier generation. Auto-runs nightly at 03:30.</span>
+                            <button class="os-btn violet" :disabled="profilerRunning || !profileTargetCount" @click="runProfilerNow">{{ profilerRunning ? 'Profiler running...' : 'Run profile list now' }}</button>
+                            <span class="muted">Only people you add to the profile list receive LLM dossiers. Auto-runs nightly at 03:30.</span>
                         </div>
 
-                        <h4 class="block-h">Most recently profiled</h4>
+                        <h4 class="block-h">Profile list</h4>
                         <div class="people-strip">
-                            <button v-for="p in topPeople" :key="'pp'+p.person_id" class="person-pill" @click="openPerson(p)">
+                            <button v-for="p in profileTargets" :key="'pt'+p.person_id" class="person-pill" @click="openPerson(p)">
                                 <strong>{{ p.display_name || '(unnamed)' }}</strong>
-                                <small>{{ fmtNum(p.message_count) }} msgs</small>
+                                <small>{{ fmtNum(p.message_count) }} msgs · {{ p.last_profile_status || 'not run' }}</small>
                             </button>
+                            <span v-if="!profileTargets.length" class="muted">No people are on the profile list yet. Open a dossier and click Add to profile list.</span>
                         </div>
                     </div>
                 </template>
@@ -500,6 +632,7 @@
 
                         <div class="cta-row sm">
                             <button class="micro cyan" :disabled="recomputing" @click="recomputeSelected">{{ recomputing ? 'Recomputing…' : 'Recompute' }}</button>
+                            <button class="micro violet" @click="setProfileTarget(dossier.person_id, !dossier.profile_targeted)">{{ dossier.profile_targeted ? 'Profile listed' : 'Add to profile list' }}</button>
                             <button class="micro" @click="activeTab = 'dsr'">Open dossier</button>
                         </div>
                     </template>
@@ -543,10 +676,12 @@ const activeTab = ref('int');
 
 const overview = ref(null);
 const scheduleStatus = ref(null);
+const profileTargets = ref([]);
 const sources = ref([]);
 const people = ref([]);
 const peopleSearch = ref('');
 const peoplePlatform = ref('');
+const peopleRelatedTo = ref('');
 const selectedPersonId = ref(null);
 const dossier = ref(null);
 const personMessages = ref([]);
@@ -564,6 +699,20 @@ const lastUpdatedAt = ref(null);
 let searchDebounce = null;
 
 const profilerRunning = computed(() => !!scheduleStatus.value?.running);
+const currentJob = computed(() => scheduleStatus.value?.current_job || null);
+const profileTargetCount = computed(() => profileTargets.value.length);
+const activeJobLabel = computed(() => {
+    const job = currentJob.value;
+    if (!job) return profilerRunning.value ? 'running' : 'idle';
+    if (job.mode === 'person_recompute') return 'Person recompute';
+    if (job.mode === 'profile_targets') return 'Profile list run';
+    return job.mode || 'run';
+});
+const selectedJobItem = computed(() => {
+    const job = currentJob.value;
+    if (!job?.items?.length || !selectedPersonId.value) return null;
+    return job.items.find(i => i.person_id === selectedPersonId.value) || null;
+});
 const sourceErrorCount = computed(() => sources.value.filter(s => s.status === 'error').length);
 const topPeople = computed(() => [...people.value].sort((a, b) => (b.message_count || 0) - (a.message_count || 0)).slice(0, 6));
 const lastUpdatedLabel = computed(() => lastUpdatedAt.value ? 'Updated ' + new Date(lastUpdatedAt.value).toLocaleTimeString() : 'Awaiting refresh');
@@ -599,14 +748,23 @@ async function refreshAll() {
         overview.value = ov;
         scheduleStatus.value = sched;
         sources.value = srcs || [];
-        await Promise.all([loadPeople(), loadConversations()]);
+        await Promise.all([loadPeople(), loadConversations(), loadProfileTargets()]);
     });
+}
+
+async function loadScheduleStatus() {
+    scheduleStatus.value = await fetchJSON('/omniscience/schedule/status');
+}
+
+async function loadProfileTargets() {
+    profileTargets.value = (await fetchJSON('/omniscience/persons/profile-targets')) || [];
 }
 
 async function loadPeople() {
     const params = new URLSearchParams();
     if (peopleSearch.value) params.set('search', peopleSearch.value);
     if (peoplePlatform.value) params.set('platform', peoplePlatform.value);
+    if (peopleRelatedTo.value) params.set('relatedTo', peopleRelatedTo.value);
     params.set('limit', '200');
     people.value = (await fetchJSON('/omniscience/persons?' + params.toString())) || [];
 }
@@ -632,9 +790,24 @@ async function recomputeSelected() {
     if (!selectedPersonId.value) return;
     recomputing.value = true;
     try {
-        await postJSON('/omniscience/persons/recompute?personId=' + encodeURIComponent(selectedPersonId.value));
+        const res = await postJSON('/omniscience/persons/recompute?personId=' + encodeURIComponent(selectedPersonId.value));
+        if (res?.ok === false) alert(res.error || res.message || 'Recompute could not be started.');
+        await pollSchedulerUntilIdle();
         await openPerson({ person_id: selectedPersonId.value });
+        await Promise.all([loadPeople(), loadProfileTargets()]);
     } finally { recomputing.value = false; }
+}
+
+async function setProfileTarget(personId, enabled) {
+    if (!personId) return;
+    const res = await postJSON('/omniscience/persons/profile-targets/set?personId=' + encodeURIComponent(personId) + '&enabled=' + (enabled ? 'true' : 'false'));
+    if (res?.ok === false) {
+        alert(res.error || 'Could not update profile list.');
+        return;
+    }
+    if (dossier.value?.person_id === personId) dossier.value.profile_targeted = enabled;
+    people.value = people.value.map(p => p.person_id === personId ? { ...p, profile_targeted: enabled } : p);
+    await loadProfileTargets();
 }
 
 async function openConversation(c) {
@@ -665,7 +838,20 @@ async function backfill(s) {
 }
 async function runProfilerNow() {
     await postJSON('/omniscience/schedule/run-now');
-    setTimeout(refreshAll, 1500);
+    await pollSchedulerUntilIdle();
+    await refreshAll();
+}
+
+async function pollSchedulerUntilIdle() {
+    for (let i = 0; i < 240; i++) {
+        await sleep(i === 0 ? 300 : 1500);
+        await loadScheduleStatus();
+        if (!scheduleStatus.value?.running) return;
+    }
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // ─── Format helpers ───
@@ -713,6 +899,24 @@ function sentimentClass(v) {
     if (v < -0.05) return 'bad';
     return 'mid';
 }
+function stageClass(stage) {
+    if (stage === 'ok') return 'good';
+    if (stage === 'failed') return 'bad';
+    if (stage?.startsWith?.('skipped')) return 'mid';
+    return 'mid';
+}
+function stageText(stage) {
+    if (!stage) return 'waiting';
+    return String(stage).replaceAll('_', ' ');
+}
+function fmtOffset(mins) {
+    if (mins == null) return '—';
+    const sign = mins >= 0 ? '+' : '−';
+    const abs = Math.abs(mins);
+    const h = Math.floor(abs / 60);
+    const m = abs % 60;
+    return 'UTC' + sign + String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
 
 function renderMarkdown(md) {
     if (!md) return '';
@@ -727,6 +931,10 @@ function renderMarkdown(md) {
     s = s.replace(/^(?:[-*] .+(?:\n|$))+/gm, block => {
         const items = block.trim().split(/\n/).map(l => '<li>' + l.replace(/^[-*]\s+/, '') + '</li>').join('');
         return '<ul>' + items + '</ul>';
+    });
+    s = s.replace(/^(?:\d+\. .+(?:\n|$))+/gm, block => {
+        const items = block.trim().split(/\n/).map(l => '<li>' + l.replace(/^\d+\.\s+/, '') + '</li>').join('');
+        return '<ol>' + items + '</ol>';
     });
     return s.split(/\n{2,}/).map(p => p.startsWith('<') ? p : '<p>' + p.replace(/\n/g, '<br>') + '</p>').join('');
 }
@@ -878,6 +1086,7 @@ onMounted(refreshAll);
 .pc-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
 .pc-display { font-weight: 700; color: #eaf6ff; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 .pc-msgs { color: #5fd3ff; font: 700 12px ui-monospace, Consolas, monospace; flex-shrink: 0; }
+.profile-marker { display: inline-block; margin-right: 6px; padding: 1px 4px; border-radius: 3px; background: rgba(199,156,255,.16); color: #e0c8ff; font-size: 9px; letter-spacing: .4px; }
 .pc-handle-row { display: flex; flex-direction: column; gap: 2px; }
 .pc-handle { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; font-size: 11px; color: #b6cee5; min-width: 0; }
 .pc-handle.muted { color: #6b819b; font-style: italic; }
@@ -908,7 +1117,7 @@ input, select, textarea {
 }
 input:focus, select:focus, textarea:focus { border-color: #5fd3ff; box-shadow: 0 0 0 1px rgba(95,211,255,.18); }
 .control-row { display: grid; gap: 8px; margin-bottom: 12px; }
-.people-controls { grid-template-columns: minmax(220px, 1fr) 180px 100px; }
+.people-controls { grid-template-columns: minmax(220px, 1fr) 170px 230px 100px; }
 
 /* ═════ Tables ═════ */
 .table-shell { position: relative; max-height: 600px; overflow: auto; border: 1px solid rgba(255,255,255,.08); border-radius: 5px; }
@@ -934,11 +1143,26 @@ tr.active td { background: rgba(95,211,255,.10); }
 .dc-head { display: flex; align-items: baseline; gap: 6px; margin-bottom: 10px; }
 .dc-head h3 { margin: 0; font-size: 13px; color: #eaf6ff; flex: 1; }
 .dc-head small { font-size: 10px; }
-.narrative { font-size: 13px; line-height: 1.55; color: #d6ecff; }
-.narrative :deep(h2), .narrative :deep(h3), .narrative :deep(h4) { color: #eaf6ff; margin: 12px 0 6px; }
-.narrative :deep(p) { margin: 8px 0; }
-.narrative :deep(ul) { margin: 6px 0 6px 20px; }
+.narrative { font-size: 12.5px; line-height: 1.5; color: #d6ecff; }
+.narrative :deep(h1) { font-size: 15px; color: #eaf6ff; margin: 12px 0 6px; }
+.narrative :deep(h2) { font-size: 13.5px; color: #eaf6ff; margin: 12px 0 6px; }
+.narrative :deep(h3) { font-size: 12.5px; color: #eaf6ff; margin: 10px 0 5px; }
+.narrative :deep(h4) { font-size: 12px; color: #eaf6ff; margin: 8px 0 4px; }
+.narrative :deep(p) { margin: 6px 0; }
+.narrative :deep(ul), .narrative :deep(ol) { margin: 4px 0 4px 18px; }
+.narrative :deep(li) { margin: 2px 0; }
+.narrative :deep(strong), .narrative strong { color: #eaf6ff; font-weight: 800; }
 .narrative :deep(code) { background: #07101e; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+.run-status-card { margin: 12px 0; padding: 10px 12px; border: 1px solid rgba(95,211,255,.18); border-radius: 5px; background: rgba(95,211,255,.045); }
+.run-status-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 8px; }
+.run-status-head strong { color: #eaf6ff; font-size: 13px; }
+.run-status-head small { color: #88c4ff; font: 700 10px ui-monospace, Consolas, monospace; text-transform: uppercase; }
+.run-stage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.run-stage-grid > div { padding: 7px 9px; border: 1px solid rgba(255,255,255,.06); border-radius: 4px; background: rgba(255,255,255,.025); }
+.run-stage-grid span { display: block; color: #7e9ab5; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; }
+.run-stage-grid strong { display: block; margin-top: 3px; font: 800 12px ui-monospace, Consolas, monospace; text-transform: uppercase; }
+.run-error { margin: 8px 0 0; color: #ffb1bf; font-size: 12px; }
+.llm-status { margin-top: 14px; }
 .details summary { cursor: pointer; color: #88c4ff; margin-top: 10px; font-size: 11px; font-weight: 700; }
 .details pre { background: #07101e; padding: 10px; border-radius: 5px; font-size: 11px; overflow: auto; max-height: 240px; color: #cfe3f5; }
 
@@ -949,6 +1173,13 @@ tr.active td { background: rgba(95,211,255,.10); }
 
 .tag-cloud { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
 .tag { background: rgba(95,211,255,.10); color: #cfe3f5; border-radius: 3px; padding: 2px 7px; font: 700 11px ui-monospace, Consolas, monospace; }
+.tag.bad-tag { background: rgba(255,90,120,.14); color: #ffb1bf; }
+.tag.phr-tri { background: rgba(199,156,255,.14); color: #e0c8ff; }
+.psy-h { margin: 12px 0 4px; font: 700 10px ui-monospace, Consolas, monospace; color: #88c4ff; text-transform: uppercase; letter-spacing: .8px; }
+.psy-list { margin: 4px 0 4px 16px; padding: 0; font-size: 11.5px; color: #d6ecff; }
+.psy-list.compact { margin: 2px 0 6px 14px; font-size: 11px; }
+.psy-list li { margin: 2px 0; }
+.lang-block { margin: 6px 0; padding: 4px 0; border-top: 1px solid rgba(255,255,255,.04); }
 
 .emoji-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .emoji-chip { display: inline-flex; align-items: center; gap: 4px; background: rgba(255,255,255,.04); padding: 3px 7px; border-radius: 4px; }

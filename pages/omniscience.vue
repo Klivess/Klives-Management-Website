@@ -76,8 +76,8 @@
                     <button v-for="p in topPeople" :key="p.person_id" class="rail-row" @click="openPerson(p)">
                         <span class="rail-rank">{{ fmtNum(p.message_count) }}</span>
                         <span class="rail-text">
-                            <strong>{{ p.display_name || '(unnamed)' }}</strong>
-                            <small>{{ p.handles || '—' }}</small>
+                            <strong>{{ personPrimaryDisplay(p) }}</strong>
+                            <small>{{ personPrimaryHandle(p) || p.handles || '—' }}</small>
                         </span>
                     </button>
                 </div>
@@ -191,9 +191,19 @@
 
                         <div class="people-grid">
                             <button v-for="p in people" :key="p.person_id" class="person-card" :class="{ active: selectedPersonId === p.person_id }" @click="openPerson(p)">
-                                <div class="pc-name">{{ p.display_name || '(unnamed)' }}</div>
-                                <div class="pc-handles">{{ p.handles || '—' }}</div>
-                                <div class="pc-foot"><span>{{ fmtNum(p.message_count) }} msgs</span><small>{{ fmtTime(p.updated_at) }}</small></div>
+                                <div class="pc-top">
+                                    <span class="pc-display">{{ personPrimaryDisplay(p) }}</span>
+                                    <span class="pc-msgs">{{ fmtNum(p.message_count) }}</span>
+                                </div>
+                                <div class="pc-handle-row">
+                                    <span v-for="(id, i) in (p.identities || []).slice(0, 3)" :key="i" class="pc-handle">
+                                        <em class="pc-platform">{{ id.platform }}</em>
+                                        <span class="pc-user">@{{ id.username || id.platform_user_id || '?' }}</span>
+                                        <span v-if="id.display_name && id.display_name !== id.username" class="pc-alias">"{{ id.display_name }}"</span>
+                                    </span>
+                                    <span v-if="(p.identities || []).length > 3" class="pc-handle muted">+{{ p.identities.length - 3 }} more</span>
+                                </div>
+                                <div class="pc-foot"><small>updated {{ fmtTime(p.updated_at) }}</small></div>
                             </button>
                             <div v-if="!people.length" class="muted" style="grid-column:1/-1;text-align:center;padding:24px">No people captured yet. Add a source.</div>
                         </div>
@@ -669,6 +679,23 @@ function fmtTime(ms) {
     if (!ms) return '—';
     try { return new Date(typeof ms === 'number' ? ms : Date.parse(ms)).toLocaleString(); } catch { return String(ms); }
 }
+function personPrimaryDisplay(p) {
+    if (!p) return '(unknown)';
+    if (p.display_name && p.display_name.trim()) return p.display_name;
+    const idents = p.identities || [];
+    const withDisplay = idents.find(i => i.display_name && i.display_name.trim());
+    if (withDisplay) return withDisplay.display_name;
+    const withUser = idents.find(i => i.username);
+    if (withUser) return '@' + withUser.username;
+    return '(unnamed)';
+}
+function personPrimaryHandle(p) {
+    if (!p) return '';
+    const idents = p.identities || [];
+    const first = idents[0];
+    if (!first) return p.handles || '';
+    return (first.platform ? first.platform + ':' : '') + (first.username || first.platform_user_id || '');
+}
 function barHeight(v, arr) {
     const max = Math.max(1, ...(arr || [1]));
     return Math.max(2, (v / max) * 60) + 'px';
@@ -838,17 +865,27 @@ onMounted(refreshAll);
 .cta-row.sm { margin: 10px 0 0; }
 
 /* ═════ People grid + chips ═════ */
-.people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
 .person-card {
+    display: flex; flex-direction: column; gap: 6px;
     padding: 10px 12px; border: 1px solid rgba(255,255,255,.07); border-radius: 5px;
     background: rgba(255,255,255,.025); color: inherit; text-align: left; cursor: pointer;
-    transition: border-color .12s ease;
+    transition: border-color .12s ease, background .12s ease;
+    font-family: inherit;
+    min-width: 0;
 }
 .person-card:hover, .person-card.active { border-color: #5fd3ff; background: rgba(95,211,255,.07); }
-.pc-name { font-weight: 700; color: #eaf6ff; }
-.pc-handles { color: #7e9ab5; font-size: 11px; margin: 4px 0; word-break: break-word; }
-.pc-foot { display: flex; justify-content: space-between; color: #5fd3ff; font: 700 11px ui-monospace, Consolas, monospace; }
-.pc-foot small { color: #6b819b; font-weight: 400; }
+.pc-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+.pc-display { font-weight: 700; color: #eaf6ff; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.pc-msgs { color: #5fd3ff; font: 700 12px ui-monospace, Consolas, monospace; flex-shrink: 0; }
+.pc-handle-row { display: flex; flex-direction: column; gap: 2px; }
+.pc-handle { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; font-size: 11px; color: #b6cee5; min-width: 0; }
+.pc-handle.muted { color: #6b819b; font-style: italic; }
+.pc-platform { font: 700 9px ui-monospace, Consolas, monospace; color: #c79cff; background: rgba(199,156,255,.1); border: 1px solid rgba(199,156,255,.3); border-radius: 3px; padding: 1px 5px; text-transform: uppercase; font-style: normal; letter-spacing: .5px; flex-shrink: 0; }
+.pc-user { font: 700 11px ui-monospace, Consolas, monospace; color: #eaf6ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pc-alias { color: #7e9ab5; font-size: 10px; font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pc-foot { display: flex; justify-content: flex-end; }
+.pc-foot small { color: #6b819b; font: 400 10px ui-monospace, Consolas, monospace; }
 
 .people-strip, .conv-strip { display: flex; flex-wrap: wrap; gap: 6px; }
 .person-pill, .conv-chip {

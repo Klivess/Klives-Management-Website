@@ -46,7 +46,7 @@
 
         <div class="chat-input-row">
           <input v-model="inputMessage" @keydown.enter="sendMessage" placeholder="Ask KliveAgent anything..." class="chat-input" :disabled="loading" />
-          <button @click="sendMessage" class="chat-send-btn" :disabled="loading || !inputMessage.trim()">Send</button>
+          <button @click="sendMessage" type="button" class="chat-send-btn" :disabled="isSendDisabled" :title="sendButtonTitle">Send</button>
         </div>
       </div>
 
@@ -66,10 +66,10 @@
           <div v-if="tasks.length === 0" class="side-empty">No background tasks.</div>
           <div v-for="task in tasks" :key="task.taskId" class="task-card">
             <div class="task-header">
-              <span class="task-status" :class="'status-' + task.status.toLowerCase()">{{ task.status }}</span>
-              <button v-if="task.status === 'Running'" @click="cancelTask(task.taskId)" class="cancel-btn">Cancel</button>
+              <span class="task-status" :class="getTaskStatusClass(task)">{{ getTaskStatusLabel(task) }}</span>
+              <button v-if="canCancelTask(task)" @click="cancelTask(task.taskId)" class="cancel-btn">Cancel</button>
             </div>
-            <div class="task-desc">{{ task.description }}</div>
+            <div class="task-desc">{{ task.description || 'Background task' }}</div>
             <div class="task-time">{{ formatTime(task.createdAt) }}</div>
             <pre v-if="task.result" class="task-result">{{ task.result }}</pre>
             <pre v-if="task.errorMessage" class="task-error">{{ task.errorMessage }}</pre>
@@ -112,7 +112,7 @@
         <!-- Analytics Tab -->
         <div v-if="activeTab === 'analytics'" class="side-content">
           <button @click="loadAnalytics" class="refresh-btn">Refresh</button>
-          <div v-if="!analytics" class="side-empty">Loading analytics...</div>
+          <div v-if="!analytics?.lifetime" class="side-empty">Loading analytics...</div>
           <template v-else>
             <div class="analytics-section">
               <div class="analytics-label">Lifetime Totals</div>
@@ -149,7 +149,7 @@
     </div>
 
     <!-- ── Full-width Analytics Dashboard (below chat layout) ── -->
-    <div v-if="analytics" class="dash-section">
+    <div v-if="analytics?.lifetime" class="dash-section">
       <div class="dash-header">
         <h2 class="dash-title">Analytics Dashboard</h2>
         <button @click="loadAnalytics" class="refresh-btn" style="width:auto;padding:6px 14px;">Refresh</button>
@@ -359,6 +359,20 @@ const reindexing = ref(false);
 const reindexDone = ref(false);
 const reindexStatus = ref('');
 
+const isSendDisabled = computed(() => loading.value || !inputMessage.value.trim());
+
+const sendButtonTitle = computed(() => {
+  if (loading.value) {
+    return pendingRequestId.value
+      ? 'KliveAgent is finishing the current request.'
+      : 'KliveAgent is processing your message.';
+  }
+
+  return inputMessage.value.trim()
+    ? 'Send message'
+    : 'Type a message to enable Send.';
+});
+
 async function readAgentApiResponse(res) {
   const contentType = res.headers.get('content-type') || '';
 
@@ -519,14 +533,108 @@ function renderMarkdown(text) {
 function formatTime(ts) {
   if (!ts) return '';
   const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 // Tasks
+function getTaskStatusLabel(task) {
+  return String(task?.status || 'Unknown');
+}
+
+function getTaskStatusClass(task) {
+  return 'status-' + getTaskStatusLabel(task).toLowerCase().replace(/[^a-z0-9-]/g, '-');
+}
+
+function canCancelTask(task) {
+  return Boolean(task?.taskId) && getTaskStatusLabel(task) === 'Running';
+}
+
+function toFiniteNumber(value, fallback = 0) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function normalizeTask(task) {
+  return {
+    taskId: task?.taskId || crypto.randomUUID(),
+    description: task?.description || '',
+    status: task?.status || 'Unknown',
+    createdAt: task?.createdAt || null,
+    result: task?.result || '',
+    errorMessage: task?.errorMessage || ''
+  };
+}
+
+function normalizeAnalyticsDay(day) {
+  const promptTokens = toFiniteNumber(day?.promptTokens);
+  const completionTokens = toFiniteNumber(day?.completionTokens);
+
+  return {
+    date: typeof day?.date === 'string' ? day.date : '',
+    messages: toFiniteNumber(day?.messages),
+    promptTokens,
+    completionTokens,
+    totalTokens: toFiniteNumber(day?.totalTokens, promptTokens + completionTokens),
+    iterations: toFiniteNumber(day?.iterations),
+    scripts: toFiniteNumber(day?.scripts),
+    scriptFailures: toFiniteNumber(day?.scriptFailures),
+    capabilityCalls: toFiniteNumber(day?.capabilityCalls),
+    capabilityFailures: toFiniteNumber(day?.capabilityFailures),
+    capabilityConfirmationBlocks: toFiniteNumber(day?.capabilityConfirmationBlocks)
+  };
+}
+
+function normalizeAnalyticsPeriod(period) {
+  if (!period || typeof period !== 'object') {
+    return null;
+  }
+
+  const promptTokens = toFiniteNumber(period.promptTokens);
+  const completionTokens = toFiniteNumber(period.completionTokens);
+
+  return {
+    messages: toFiniteNumber(period.messages),
+    promptTokens,
+    completionTokens,
+    totalTokens: toFiniteNumber(period.totalTokens, promptTokens + completionTokens),
+    iterations: toFiniteNumber(period.iterations),
+    scripts: toFiniteNumber(period.scripts),
+    scriptFailures: toFiniteNumber(period.scriptFailures),
+    capabilityCalls: toFiniteNumber(period.capabilityCalls),
+    capabilityFailures: toFiniteNumber(period.capabilityFailures),
+    capabilityConfirmationBlocks: toFiniteNumber(period.capabilityConfirmationBlocks),
+    avgPromptTokensPerMessage: toFiniteNumber(period.avgPromptTokensPerMessage),
+    avgCompletionTokensPerMessage: toFiniteNumber(period.avgCompletionTokensPerMessage),
+    avgIterationsPerMessage: toFiniteNumber(period.avgIterationsPerMessage),
+    scriptSuccessRatePct: toFiniteNumber(period.scriptSuccessRatePct, 100),
+    capabilitySuccessRatePct: toFiniteNumber(period.capabilitySuccessRatePct, 100)
+  };
+}
+
+function normalizeAnalytics(data) {
+  const lifetime = normalizeAnalyticsPeriod(data?.lifetime) || normalizeAnalyticsPeriod({}) || {};
+  const today = normalizeAnalyticsPeriod(data?.today);
+  const dailyHistory = Array.isArray(data?.dailyHistory) ? data.dailyHistory.map(normalizeAnalyticsDay) : [];
+
+  return {
+    lifetime,
+    today,
+    historyWindow: {
+      firstDay: typeof data?.historyWindow?.firstDay === 'string' ? data.historyWindow.firstDay : null,
+      lastDay: typeof data?.historyWindow?.lastDay === 'string' ? data.historyWindow.lastDay : null,
+      totalDays: toFiniteNumber(data?.historyWindow?.totalDays, dailyHistory.length)
+    },
+    dailyHistory,
+    topCapabilities: Array.isArray(data?.topCapabilities) ? data.topCapabilities : []
+  };
+}
+
 async function loadTasks() {
   try {
     const res = await RequestGETFromKliveAPI('/kliveagent/tasks');
-    tasks.value = await res.json();
+    const data = await res.json();
+    tasks.value = Array.isArray(data) ? data.map(normalizeTask) : [];
   } catch { }
 }
 
@@ -685,8 +793,11 @@ function fmtTokens(n) {
 async function loadAnalytics() {
   try {
     const res = await RequestGETFromKliveAPI('/kliveagent/stats');
-    analytics.value = await res.json();
-  } catch { }
+    const { data } = await readAgentApiResponse(res);
+    analytics.value = res.ok ? normalizeAnalytics(data) : null;
+  } catch {
+    analytics.value = null;
+  }
 }
 
 async function reindexCodebase() {
@@ -1045,6 +1156,7 @@ onUnmounted(() => {
 .status-completed { background: #1a3a1a; color: #4d9e39; }
 .status-failed { background: #3a1a1a; color: #e74c3c; }
 .status-cancelled { background: #3a3a1a; color: #f39c12; }
+.status-unknown { background: #2a2a2a; color: #aaa; }
 
 .cancel-btn {
   font-size: 11px;

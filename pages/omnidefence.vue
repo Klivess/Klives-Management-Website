@@ -48,10 +48,10 @@
                     <div v-if="boxMode" class="map-mode-tag">BOX BLOCK MODE - drag a region</div>
                     <div v-if="pendingBoxBlock" class="map-box-popover" :class="[{ working: boxBlockAnimating }, pendingBoxBlock.placement]" :style="boxPopoverStyle">
                         <span>Region Block</span>
-                        <strong>{{ pendingBoxBlock.blockable.length ? `Block ${pendingBoxBlock.blockable.length} IP${pendingBoxBlock.blockable.length === 1 ? '' : 's'}` : 'Save Region' }}</strong>
-                        <small>{{ pendingBoxBlock.boundsLabel }}</small>
+                        <strong>Save live region block</strong>
+                        <small>{{ pendingBoxBlock.boundsLabel }} / {{ pendingBoxBlock.blockable.length }} current target{{ pendingBoxBlock.blockable.length === 1 ? '' : 's' }}</small>
                         <input v-model="pendingBoxBlock.reason" :disabled="boxBlockAnimating" class="map-box-reason" />
-                        <div v-if="boxBlockAnimating" class="map-box-progress"><span class="spinner"></span>{{ pendingBoxBlock.progress }} / {{ pendingBoxBlock.blockable.length || 1 }}</div>
+                        <div v-if="boxBlockAnimating" class="map-box-progress"><span class="spinner"></span>{{ pendingBoxBlock.statusText || 'Saving region rule' }}</div>
                         <div v-else-if="pendingBoxBlock.statusText" class="map-box-progress complete">{{ pendingBoxBlock.statusText }}</div>
                         <div class="map-box-actions">
                             <button class="micro danger" :disabled="boxBlockAnimating" @click="runBoxBlock">Confirm</button>
@@ -946,29 +946,27 @@ export default {
             this.loading.action = true;
             this.boxBlockAnimating = true;
             this.clearBlockingAnimation();
-            let ok = 0, fail = 0, regionSaved = false;
+            let blockedCount = 0;
             try {
-                try {
-                    const regionResponse = await RequestPOSTFromKliveAPI('/omnidefence/regions/add', JSON.stringify({ latMin: pending.latMin, latMax: pending.latMax, lonMin: pending.lonMin, lonMax: pending.lonMax, reason }), false, true);
-                    regionSaved = regionResponse.ok;
-                    if (!regionResponse.ok) this.loadError = await regionResponse.text();
-                } catch (error) {
-                    this.loadError = `Region save failed: ${error}`;
+                pending.blockable.forEach(point => this.addBlockingMarker(point));
+                if (this.pendingBoxBlock) this.pendingBoxBlock.statusText = 'Saving region rule';
+
+                const regionResponse = await RequestPOSTFromKliveAPI('/omnidefence/regions/add', JSON.stringify({ latMin: pending.latMin, latMax: pending.latMax, lonMin: pending.lonMin, lonMax: pending.lonMax, reason }), false, true);
+                if (!regionResponse.ok) {
+                    this.loadError = await regionResponse.text();
+                    if (this.pendingBoxBlock) this.pendingBoxBlock.statusText = 'Region save failed';
+                    return;
                 }
 
-                for (const point of pending.blockable) {
-                    if (this.pendingBoxBlock) this.pendingBoxBlock.progress += 1;
-                    this.addBlockingMarker(point);
-                    await this.wait(115);
-                    try {
-                        const r = await RequestPOSTFromKliveAPI('/omnidefence/ip/block', JSON.stringify({ ip: point.ip, reason }), false, true);
-                        if (r.ok) ok++; else fail++;
-                    } catch { fail++; }
-                }
-                if (!pending.blockable.length) await this.wait(220);
+                const saved = await regionResponse.json().catch(() => ({}));
+                blockedCount = Number(saved.blockedCount ?? 0);
                 await Promise.allSettled([this.loadIps(), this.loadMapIps(), this.loadOverview(), this.loadBlockedRegions()]);
-                if (this.pendingBoxBlock) this.pendingBoxBlock.statusText = regionSaved ? `Blocked ${ok}, failed ${fail}` : `Region save failed; blocked ${ok}`;
-                await this.wait(700);
+                if (this.pendingBoxBlock) this.pendingBoxBlock.statusText = `Region active / blocked ${blockedCount}`;
+                await this.wait(350);
+            } catch (error) {
+                this.loadError = `Region save failed: ${error}`;
+                if (this.pendingBoxBlock) this.pendingBoxBlock.statusText = 'Region save failed';
+                await this.wait(350);
             } finally {
                 this.loading.action = false;
                 this.boxBlockAnimating = false;
@@ -1033,19 +1031,37 @@ export default {
             if (!region || !process.client) return;
             const result = await Swal.fire({
                 title: `Remove region block #${region.id}?`,
-                html: `<div style="text-align:left;font-size:12px;color:#9fb8b1">${region.reason || 'Region block'}<br>Lat ${Number(region.latMin).toFixed(1)} to ${Number(region.latMax).toFixed(1)}, Lon ${Number(region.lonMin).toFixed(1)} to ${Number(region.lonMax).toFixed(1)}</div>`,
+                html: `<div style="text-align:left;font-size:12px;color:#9fb8b1">${region.reason || 'Region block'}<br>Lat ${Number(region.latMin).toFixed(1)} to ${Number(region.latMax).toFixed(1)}, Lon ${Number(region.lonMin).toFixed(1)} to ${Number(region.lonMax).toFixed(1)}</div><label style="display:flex;gap:8px;align-items:center;margin-top:12px;text-align:left;color:#d9fff0;font-size:12px"><input id="od-unblock-region-ips" type="checkbox" style="accent-color:#13b66b" /> Unblock blocked IPs in this box</label>`,
                 showCancelButton: true,
                 confirmButtonText: 'Remove',
                 background: '#080b0d',
                 color: '#e8fff7',
                 confirmButtonColor: '#c0283f',
-                cancelButtonColor: '#2a3338'
+                cancelButtonColor: '#2a3338',
+                preConfirm: () => document.getElementById('od-unblock-region-ips')?.checked === true
             });
             if (!result.isConfirmed) return;
             this.loading.action = true;
             try {
-                await RequestPOSTFromKliveAPI('/omnidefence/regions/remove', JSON.stringify({ id: region.id }), false, true);
-                await this.loadBlockedRegions();
+                const response = await RequestPOSTFromKliveAPI('/omnidefence/regions/remove', JSON.stringify({ id: region.id, unblockIpsInRegion: result.value === true }), false, true);
+                if (!response.ok) {
+                    this.loadError = await response.text();
+                    return;
+                }
+                const data = await response.json().catch(() => ({}));
+                await Promise.allSettled([this.loadBlockedRegions(), this.loadIps(), this.loadMapIps(), this.loadOverview()]);
+                if (result.value === true) {
+                    await Swal.fire({
+                        toast: true,
+                        position: 'bottom-end',
+                        icon: 'success',
+                        title: `Unblocked ${Number(data.unblockedCount ?? 0)} IPs`,
+                        showConfirmButton: false,
+                        timer: 1800,
+                        background: '#080b0d',
+                        color: '#e8fff7'
+                    });
+                }
             } finally { this.loading.action = false; }
         },
         async selectIp(ip, switchTab = true) {

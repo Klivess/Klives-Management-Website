@@ -345,7 +345,7 @@
         </KMInfoGrid>
 
         <!-- Management -->
-        <KMInfoGrid columns="2" rows="1" rowHeight="560">
+        <KMInfoGrid columns="2" rows="1" rowHeight="720">
             <KMInfoBox caption="Bot Utilities">
                 <div class="utility-panel">
                     <p class="utility-intro">Open the main operator tools, inspect runtime activity, and push configuration or deployment changes from one control surface.</p>

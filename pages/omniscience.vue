@@ -228,6 +228,10 @@
                     <div class="panel-body">
                         <div v-if="!dossier" class="muted" style="text-align:center;padding:32px">Select a person from the PEO tab to load their dossier.</div>
                         <template v-else>
+                            <ReplicaChatPanel
+                                :person-id="dossier.person_id"
+                                :display-name="dossier.display_name"
+                                :profile-targeted="!!dossier.profile_targeted" />
                             <div class="info-grid">
                                 <div><span>Person ID</span><strong class="mono">{{ dossier.person_id }}</strong></div>
                                 <div><span>Messages</span><strong>{{ fmtNum(dossier.message_count || 0) }}</strong></div>

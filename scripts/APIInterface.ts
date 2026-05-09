@@ -33,7 +33,6 @@ async function RequestGETFromKliveAPI(query: string, redirectToDashboardIfUnauth
             method: 'GET',
             mode: 'cors',
             headers: BuildKliveHeaders(),
-            signal: CreateTimeoutSignal(),
         });
     } catch (error) {
         console.warn('Klive API GET failed:', query, error);
@@ -73,7 +72,6 @@ async function RequestPOSTFromKliveAPI(query: string, content: BodyInit | null =
             mode: 'cors',
             body: content,
             headers: headers,
-            signal: CreateTimeoutSignal(),
         });
     } catch (error) {
         console.warn('Klive API POST failed:', query, error);
@@ -322,8 +320,3 @@ async function VerifyLogin() {
     }
 }
 
-function CreateTimeoutSignal(timeoutMs = 8000) {
-    const controller = new AbortController();
-    setTimeout(() => controller.abort(), timeoutMs);
-    return controller.signal;
-}

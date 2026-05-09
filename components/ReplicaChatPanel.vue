@@ -154,6 +154,8 @@ const statusClass = computed(() => {
 
 function stageLabel(stage) {
     switch (stage) {
+        case 'loading_person': return 'Loading person + identities…';
+        case 'loading_messages': return 'Loading messages from corpus…';
         case 'voice': return 'Building voice rulebook…';
         case 'opinions': return 'Extracting opinions…';
         case 'reflexes': return 'Capturing conversational reflexes…';

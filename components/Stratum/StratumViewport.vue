@@ -62,10 +62,23 @@ function initThree() {
   const axes = new THREE.AxesHelper(50);
   scene.add(axes);
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-  const dir = new THREE.DirectionalLight(0xffffff, 0.9);
-  dir.position.set(100, 200, 100);
-  scene.add(dir);
+  // CAD-style lighting rig: cool sky / warm ground hemisphere fill plus four
+  // directional lights from opposing octants so every face of the model is lit
+  // roughly evenly. A faint backlight prevents the silhouette from going black.
+  scene.add(new THREE.HemisphereLight(0xdfe7ef, 0x202428, 0.85));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+  const keyAngles: Array<[number, number, number, number]> = [
+    [ 200,  250,  200, 0.55], // key (upper front-right)
+    [-200,  220,  150, 0.40], // fill (upper front-left)
+    [ 150,  180, -220, 0.35], // rim (upper back-right)
+    [-160,  100, -200, 0.30], // back fill
+    [   0, -180,    0, 0.20], // soft underlight to lift shadows
+  ];
+  for (const [x, y, z, intensity] of keyAngles) {
+    const d = new THREE.DirectionalLight(0xffffff, intensity);
+    d.position.set(x, y, z);
+    scene!.add(d);
+  }
 
   modelGroup = new THREE.Group();
   scene.add(modelGroup);

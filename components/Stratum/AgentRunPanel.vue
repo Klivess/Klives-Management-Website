@@ -126,6 +126,9 @@ const activeRunID = ref<string | null>(null);
 const activeRun = ref<RunSummary | null>(null);
 const events = ref<AgentEvent[]>([]);
 const currentGate = ref<GateRecord | null>(null);
+// Tracks gate IDs we've already emitted a preview event for so historic events replayed
+// when the user clicks an existing AwaitingApproval run don't trigger duplicate previews.
+const previewedGateIDs = new Set<string>();
 const showRunList = ref(true);
 const lastSequence = ref(0);
 const loadError = ref('');
@@ -192,13 +195,21 @@ async function loadRuns() {
 }
 
 async function selectRun(runID: string) {
-  if (activeRunID.value === runID) return;
+  if (activeRunID.value === runID) {
+    // Re-clicking the same row should at least re-poll so a stuck UI recovers.
+    await pollOnce();
+    return;
+  }
   activeRunID.value = runID;
   events.value = [];
   currentGate.value = null;
   lastSequence.value = 0;
+  // Populate activeRun synchronously from the cached list so the details pane appears
+  // immediately — otherwise if pollOnce fails the panel looks empty and feels like a reload.
+  const cached = runs.value.find(r => r.runID === runID) ?? null;
+  activeRun.value = cached ? { ...cached } : null;
   // Auto-collapse run history once a run is selected so the event stream gets the space.
-  showRunList.value = false;
+  if (activeRun.value) showRunList.value = false;
   await pollOnce();
 }
 
@@ -224,9 +235,12 @@ async function pollOnce() {
       // If a gate just opened with associated artifacts, ask the workbench to preview them.
       for (const e of incoming as AgentEvent[]) {
         if (e.Type === 'gate-opened' && e.Payload && Array.isArray(e.Payload.proposalArtifactIDs) && e.Payload.proposalArtifactIDs.length) {
+          const gateID = String(e.Payload.gateID || '');
+          if (previewedGateIDs.has(gateID)) continue;
+          previewedGateIDs.add(gateID);
           emit('gate-preview', {
             runID: activeRunID.value!,
-            gateID: String(e.Payload.gateID || ''),
+            gateID,
             artifactIDs: e.Payload.proposalArtifactIDs.map(String),
           });
         }

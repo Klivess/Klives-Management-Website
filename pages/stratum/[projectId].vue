@@ -213,18 +213,22 @@ function normaliseProject(raw: any): ProjectDetail | null {
 }
 
 async function loadProject() {
-  loading.value = true;
+  // Only show the full-page loading banner on the first load. Subsequent refreshes
+  // (e.g. when an agent opens a new gate) must NOT unmount the workbench, otherwise
+  // the AgentRunPanel loses its selected run and the user perceives it as a reload.
+  const isInitial = project.value === null;
+  if (isInitial) loading.value = true;
   loadError.value = '';
   try {
     const res = await RequestGETFromKliveAPI(`/stratum/projects/get?projectID=${encodeURIComponent(projectId)}`, false, false);
     if (!res.ok) {
       loadError.value = `Failed to load project (HTTP ${res.status}).`;
-      project.value = null;
+      if (isInitial) project.value = null;
       return;
     }
     const data = normaliseProject(await res.json());
     project.value = data;
-    if (data && data.revisions.length) {
+    if (isInitial && data && data.revisions.length) {
       const latest = data.revisions[data.revisions.length - 1];
       selectedRevisionID.value = latest.RevisionID;
       // Auto-pick a viewable artifact, if any.
@@ -233,9 +237,9 @@ async function loadProject() {
     }
   } catch (err: any) {
     loadError.value = err?.message ?? String(err);
-    project.value = null;
+    if (isInitial) project.value = null;
   } finally {
-    loading.value = false;
+    if (isInitial) loading.value = false;
   }
 }
 

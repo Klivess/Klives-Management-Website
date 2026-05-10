@@ -477,7 +477,14 @@ watch(() => route.params.projectId, () => loadProject());
 .link-btn { background: none; border: none; color: #ff8484; cursor: pointer; font-size: 11px; }
 .muted { color: #666; font-size: 12px; }
 
-.main-area { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.main-area { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto; }
+.main-area :deep(.stratum-viewport-root) {
+  flex: 0 0 clamp(220px, 38vh, 440px);
+  height: auto;
+}
+.main-area :deep(.agent-run-panel) {
+  flex: 1 1 auto;
+}
 .viewer-meta {
   display: flex; gap: 16px; padding: 8px 12px; background: #1f1f23;
   border-radius: 6px; font-size: 12px; color: #aaa;

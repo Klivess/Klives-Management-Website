@@ -2,7 +2,15 @@
   <div class="agent-run-panel">
     <div class="panel-header">
       <h3>Agents</h3>
-      <button class="primary-btn small" :disabled="busy" @click="openStartDialog">+ Plan a build</button>
+      <div class="panel-header-actions">
+        <button
+          v-if="runs.length"
+          class="link-btn toggle-runs"
+          @click="showRunList = !showRunList"
+          :title="showRunList ? 'Hide run history' : 'Show run history'"
+        >{{ showRunList ? 'Hide' : 'Show' }} runs ({{ runs.length }})</button>
+        <button class="primary-btn small" :disabled="busy" @click="openStartDialog">+ Plan a build</button>
+      </div>
     </div>
 
     <div v-if="loadError" class="error-line">{{ loadError }}</div>
@@ -11,7 +19,7 @@
       No runs yet. Click "Plan a build" to invoke the Planning Agent.
     </div>
 
-    <ul v-if="runs.length" class="run-list">
+    <ul v-if="runs.length && showRunList" class="run-list">
       <li
         v-for="r in runs"
         :key="r.runID"
@@ -19,7 +27,7 @@
         @click="selectRun(r.runID)"
       >
         <span class="run-type">{{ r.agentType }}</span>
-        <span class="run-prompt">{{ truncate(r.userPrompt, 60) }}</span>
+        <span class="run-prompt" :title="r.userPrompt">{{ truncate(r.userPrompt, 60) }}</span>
         <span class="run-status" :data-status="r.status">{{ r.status }}</span>
         <span v-if="r.wallClockSeconds != null" class="run-duration">{{ formatDuration(r.wallClockSeconds) }}</span>
       </li>
@@ -29,6 +37,8 @@
       <div class="active-run-header">
         <strong>{{ activeRun.agentType }}</strong>
         <span class="run-status" :data-status="activeRun.status">{{ activeRun.status }}</span>
+        <span v-if="activeRun.wallClockSeconds != null" class="run-duration">{{ formatDuration(activeRun.wallClockSeconds) }}</span>
+        <span class="spacer"></span>
         <button v-if="canCancel" class="link-btn" @click="cancelActiveRun">cancel</button>
       </div>
 
@@ -116,6 +126,7 @@ const activeRunID = ref<string | null>(null);
 const activeRun = ref<RunSummary | null>(null);
 const events = ref<AgentEvent[]>([]);
 const currentGate = ref<GateRecord | null>(null);
+const showRunList = ref(true);
 const lastSequence = ref(0);
 const loadError = ref('');
 const busy = ref(false);
@@ -186,6 +197,8 @@ async function selectRun(runID: string) {
   events.value = [];
   currentGate.value = null;
   lastSequence.value = 0;
+  // Auto-collapse run history once a run is selected so the event stream gets the space.
+  showRunList.value = false;
   await pollOnce();
 }
 
@@ -347,15 +360,19 @@ onBeforeUnmount(() => {
 .agent-run-panel {
   background: #1f1f23; border: 1px solid #2a2a2e; border-radius: 8px;
   padding: 14px; color: #e6e6e6; display: flex; flex-direction: column; gap: 12px;
-  min-height: 0; max-height: 100%; overflow: hidden;
+  min-height: 360px; max-height: none; overflow: visible;
+  flex: 1 1 auto;
 }
-.panel-header { display: flex; justify-content: space-between; align-items: center; }
+.panel-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex: 0 0 auto; }
+.panel-header-actions { display: flex; align-items: center; gap: 10px; }
+.toggle-runs { color: #aaa; font-size: 11px; padding: 2px 6px; border: 1px solid #2a2a2e; border-radius: 4px; }
+.toggle-runs:hover { background: #2a2a2e; color: #eee; }
 .panel-header h3 { margin: 0; font-size: 14px; color: #aaa; text-transform: uppercase; letter-spacing: 0.05em; }
 .primary-btn {
   background: #4d9e39; color: #fff; border: none; padding: 8px 14px; border-radius: 6px;
   cursor: pointer; font-weight: 600; font-size: 13px;
 }
-.primary-btn.small { padding: 6px 10px; font-size: 12px; }
+.primary-btn.small { padding: 6px 10px; font-size: 12px; white-space: nowrap; }
 .primary-btn:hover { background: #5cb947; }
 .primary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .danger-btn {
@@ -368,16 +385,18 @@ onBeforeUnmount(() => {
 .muted { color: #666; font-size: 12px; }
 .error-line { color: #ff8484; font-size: 12px; }
 
-.run-list { list-style: none; margin: 0; padding: 0; max-height: 160px; overflow-y: auto; }
+.run-list { list-style: none; margin: 0; padding: 0; max-height: 200px; overflow-y: auto; flex: 0 0 auto; }
 .run-list li {
-  display: grid; grid-template-columns: 80px 1fr auto; gap: 8px; padding: 6px 8px;
+  display: grid; grid-template-columns: minmax(72px, 88px) minmax(0, 1fr) max-content max-content;
+  gap: 8px; padding: 7px 8px; min-height: 34px;
   border-radius: 4px; cursor: pointer; font-size: 12px; align-items: center;
 }
 .run-list li:hover { background: #2a2a2e; }
 .run-list li.active { background: #2d4030; }
 .run-type { font-size: 10px; padding: 2px 6px; background: #2a2a2e; border-radius: 3px; color: #aaa; text-align: center; }
 .run-prompt { color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.run-status { font-size: 10px; padding: 2px 6px; border-radius: 3px; }
+.run-status { font-size: 10px; padding: 2px 6px; border-radius: 3px; justify-self: end; white-space: nowrap; }
+.run-duration { color: #7ee06f; font-size: 10px; font-variant-numeric: tabular-nums; justify-self: end; white-space: nowrap; }
 .run-status[data-status="Running"] { background: #1f3a5a; color: #aacfff; }
 .run-status[data-status="AwaitingApproval"] { background: #5a4a1f; color: #ffe699; }
 .run-status[data-status="Completed"] { background: #2d4a30; color: #b9e8b4; }
@@ -385,11 +404,12 @@ onBeforeUnmount(() => {
   background: #4a1f1f; color: #ff9090;
 }
 
-.active-run { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
-.active-run-header { display: flex; gap: 10px; align-items: center; font-size: 13px; }
+.active-run { display: flex; flex-direction: column; gap: 10px; min-height: 0; flex: 1 1 auto; }
+.active-run-header { display: flex; gap: 10px; align-items: center; font-size: 13px; flex: 0 0 auto; }
+.active-run-header .spacer { flex: 1 1 auto; }
 .event-stream {
-  background: #161618; border-radius: 6px; padding: 10px; flex: 1;
-  overflow-y: auto; min-height: 120px; max-height: 280px; font-size: 12px;
+  background: #161618; border-radius: 6px; padding: 10px;
+  overflow-y: auto; flex: 1 1 auto; min-height: 200px; font-size: 12px;
   font-family: ui-monospace, Menlo, Consolas, monospace;
 }
 .event-row { display: grid; grid-template-columns: 70px 100px 1fr; gap: 8px; padding: 2px 0; }
@@ -402,7 +422,7 @@ onBeforeUnmount(() => {
 
 .gate-card {
   background: #2a2418; border: 1px solid #5a4a1f; border-radius: 6px; padding: 12px;
-  display: flex; flex-direction: column; gap: 8px;
+  display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; max-height: 50vh; overflow-y: auto;
 }
 .gate-title { font-weight: 600; color: #ffe699; }
 .gate-desc { font-size: 13px; color: #ddd; }

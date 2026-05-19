@@ -170,9 +170,9 @@
                         <table>
                             <thead><tr><th>Time</th><th>IP</th><th>Origin</th><th>Method</th><th>Route</th><th>Status</th><th>Profile</th><th>Reason</th><th>Ms</th></tr></thead>
                             <TransitionGroup name="table-row-fade" tag="tbody">
-                                <tr v-for="row in requests" :key="row.id" :class="rowClass(row)">
+                                <tr v-for="row in requests" :key="row.id" :class="['clickable-row', rowClass(row)]" :title="'Click for full request detail'" @click="viewRequestDetail(row.id)">
                                     <td>{{ fmtTime(row.ts) }}</td>
-                                    <td><button class="link-btn" @click="selectIp(row.ip)">{{ row.ip || 'unknown' }}</button></td>
+                                    <td><button class="link-btn" @click.stop="selectIp(row.ip)">{{ row.ip || 'unknown' }}</button></td>
                                     <td><span :class="originClass(row.origin)">{{ row.origin || 'Unknown' }}</span></td>
                                     <td>{{ row.method }}</td>
                                     <td class="clip">{{ row.route }}</td>
@@ -324,6 +324,75 @@
         </section>
 
         <div v-if="loadError" class="od-error">{{ loadError }}</div>
+
+        <div v-if="requestDetail || loading.requestDetail" class="od-modal-backdrop" @click.self="closeRequestDetail">
+            <div class="od-modal" role="dialog" aria-modal="true" aria-labelledby="od-modal-title">
+                <header class="od-modal-head">
+                    <div>
+                        <span class="panel-code">REQ</span>
+                        <h2 id="od-modal-title">Request Detail</h2>
+                        <small v-if="requestDetail">#{{ requestDetail.id }} / {{ fmtTime(requestDetail.utc_ts) }}</small>
+                    </div>
+                    <button class="od-btn ghost" @click="closeRequestDetail">Close</button>
+                </header>
+                <div v-if="loading.requestDetail" class="od-modal-loading"><span class="spinner"></span>Loading request</div>
+                <div v-else-if="requestDetail" class="od-modal-body">
+                    <div class="od-detail-grid">
+                        <div><span>Method</span><strong>{{ requestDetail.method || '-' }}</strong></div>
+                        <div><span>Status</span><strong :class="statusClass(requestDetail.status_code)">{{ requestDetail.status_code }}</strong></div>
+                        <div><span>Duration</span><strong>{{ Math.round(Number(requestDetail.duration_ms) || 0) }} ms</strong></div>
+                        <div><span>Origin</span><strong>{{ requestDetail.request_origin || '-' }}</strong></div>
+                        <div><span>Matched Route</span><strong>{{ Number(requestDetail.matched_route) ? 'Yes' : 'No' }}</strong></div>
+                        <div><span>Perm Required</span><strong>{{ requestDetail.perm_required ?? '-' }}</strong></div>
+                        <div><span>IP</span><strong><button v-if="requestDetail.ip" class="link-btn" @click="selectIp(requestDetail.ip); closeRequestDetail();">{{ requestDetail.ip }}</button><template v-else>-</template></strong></div>
+                        <div><span>Profile</span><strong>{{ requestDetail.profile_name || requestDetail.profile_id || '-' }}<small v-if="requestDetail.profile_rank != null"> (rank {{ requestDetail.profile_rank }})</small></strong></div>
+                        <div><span>Deny Reason</span><strong>{{ requestDetail.deny_reason || '-' }}</strong></div>
+                        <div><span>Client Page</span><strong class="clip" :title="requestDetail.client_page || ''">{{ requestDetail.client_page || '-' }}</strong></div>
+                        <div><span>User-Agent</span><strong class="clip" :title="requestDetail.user_agent || ''">{{ requestDetail.user_agent || '-' }}</strong></div>
+                        <div><span>Body Length</span><strong>{{ fmtNum(requestDetail.body_length) }} bytes<small v-if="Number(requestDetail.body_truncated)"> (stored truncated)</small></strong></div>
+                    </div>
+
+                    <div class="od-detail-section">
+                        <div class="od-detail-section-head"><h3>Route</h3></div>
+                        <pre class="od-detail-code">{{ requestDetail.method }} {{ requestDetail.route }}{{ requestDetail.query || '' }}</pre>
+                    </div>
+
+                    <div class="od-detail-section" v-if="requestDetailQueryPairs.length">
+                        <div class="od-detail-section-head">
+                            <h3>Query Parameters</h3>
+                            <button class="micro" @click="copyToClipboard(requestDetail.query || '')">Copy</button>
+                        </div>
+                        <table class="od-kv-table">
+                            <thead><tr><th>Key</th><th>Value</th></tr></thead>
+                            <tbody><tr v-for="(pair, idx) in requestDetailQueryPairs" :key="idx"><td>{{ pair.key }}</td><td class="clip" :title="pair.value">{{ pair.value }}</td></tr></tbody>
+                        </table>
+                    </div>
+
+                    <div class="od-detail-section">
+                        <div class="od-detail-section-head">
+                            <h3>Headers</h3>
+                            <button class="micro" :disabled="!requestDetailHeaderPairs.length" @click="copyToClipboard(JSON.stringify(requestDetail.headers || {}, null, 2))">Copy</button>
+                        </div>
+                        <table class="od-kv-table" v-if="requestDetailHeaderPairs.length">
+                            <thead><tr><th>Header</th><th>Value</th></tr></thead>
+                            <tbody><tr v-for="(pair, idx) in requestDetailHeaderPairs" :key="idx"><td>{{ pair.key }}</td><td class="clip" :title="pair.value">{{ pair.value }}</td></tr></tbody>
+                        </table>
+                        <div v-else class="empty-rail">No headers captured</div>
+                    </div>
+
+                    <div class="od-detail-section">
+                        <div class="od-detail-section-head">
+                            <h3>Body</h3>
+                            <span class="muted" v-if="requestDetailBodyInfo">{{ requestDetailBodyInfo }}</span>
+                            <button class="micro" :disabled="!requestDetail.body_text" @click="copyToClipboard(requestDetail.body_text || '')">Copy</button>
+                        </div>
+                        <pre v-if="requestDetail.body_text" class="od-detail-code body">{{ formatBodyForDisplay(requestDetail.body_text) }}</pre>
+                        <div v-else class="empty-rail">No body captured{{ Number(requestDetail.body_length) ? ' (request had ' + fmtNum(requestDetail.body_length) + ' bytes but was not stored)' : '' }}</div>
+                        <div v-if="requestDetail.body_hash" class="muted od-body-hash">SHA-256: {{ requestDetail.body_hash }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -383,7 +452,8 @@ export default {
             boxBlockAnimating: false,
             blockedRegions: [],
             newHoneypotRoute: '', loadError: null, refreshTimer: null, lastUpdated: null,
-            loading: { overview: false, requests: false, ips: false, map: false, auth: false, profile: false, honeypot: false, action: false, ipDetail: false },
+            requestDetail: null,
+            loading: { overview: false, requests: false, ips: false, map: false, auth: false, profile: false, honeypot: false, action: false, ipDetail: false, requestDetail: false },
             filters: {
                 requests: { ip: '', profile: '', route: '', status: '', method: '', origin: '', denyOnly: false, limit: 250, offset: 0 },
                 ips: { query: '', status: '', limit: 300, offset: 0 },
@@ -431,11 +501,36 @@ export default {
         },
         isBusy() { return Object.values(this.loading).some(Boolean); },
         busyLabel() {
-            const map = { overview: 'Refreshing overview', requests: 'Loading activity', ips: 'Loading IPs', map: 'Mapping IPs', auth: 'Loading auth', profile: 'Loading profiles', honeypot: 'Loading traps', action: 'Working', ipDetail: 'Loading IP' };
+            const map = { overview: 'Refreshing overview', requests: 'Loading activity', ips: 'Loading IPs', map: 'Mapping IPs', auth: 'Loading auth', profile: 'Loading profiles', honeypot: 'Loading traps', action: 'Working', ipDetail: 'Loading IP', requestDetail: 'Loading request' };
             const key = Object.keys(this.loading).find(k => this.loading[k]);
             return key ? map[key] : '';
         },
-        lastUpdatedLabel() { return this.lastUpdated ? `Updated ${this.lastUpdated.toLocaleTimeString()}` : 'Ready'; }
+        lastUpdatedLabel() { return this.lastUpdated ? `Updated ${this.lastUpdated.toLocaleTimeString()}` : 'Ready'; },
+        requestDetailHeaderPairs() {
+            const headers = this.requestDetail?.headers;
+            if (!headers || typeof headers !== 'object') return [];
+            return Object.keys(headers).sort((a, b) => a.localeCompare(b)).map(key => ({ key, value: String(headers[key] ?? '') }));
+        },
+        requestDetailQueryPairs() {
+            const raw = this.requestDetail?.query;
+            if (!raw || typeof raw !== 'string') return [];
+            const stripped = raw.startsWith('?') ? raw.slice(1) : raw;
+            if (!stripped) return [];
+            try {
+                const params = new URLSearchParams(stripped);
+                const pairs = [];
+                params.forEach((value, key) => { pairs.push({ key, value }); });
+                return pairs;
+            } catch { return []; }
+        },
+        requestDetailBodyInfo() {
+            if (!this.requestDetail) return '';
+            const total = Number(this.requestDetail.body_length || 0);
+            const truncated = Number(this.requestDetail.body_truncated) === 1;
+            if (!total) return '';
+            const totalLabel = `${total.toLocaleString()} bytes`;
+            return truncated ? `${totalLabel} / stored truncated to 64 KB` : totalLabel;
+        }
     },
     async mounted() {
         await this.initThreatMap();
@@ -1132,6 +1227,43 @@ export default {
             if (!process.client) return def;
             const { value } = await Swal.fire({ title, input: 'text', inputValue: def, showCancelButton: true, background: '#080b0d', color: '#e8fff7', confirmButtonColor: '#13b66b' });
             return value === undefined ? null : value;
+        },
+        async viewRequestDetail(id) {
+            if (id === null || id === undefined) return;
+            this.requestDetail = null;
+            const data = await this.fetchJson('/omnidefence/request?id=' + encodeURIComponent(id), 'requestDetail');
+            if (data) this.requestDetail = data;
+        },
+        closeRequestDetail() {
+            if (this.loading.requestDetail) return;
+            this.requestDetail = null;
+        },
+        formatBodyForDisplay(body) {
+            if (body === null || body === undefined) return '';
+            const text = String(body);
+            const trimmed = text.trim();
+            if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+                try { return JSON.stringify(JSON.parse(trimmed), null, 2); }
+                catch { /* fall through */ }
+            }
+            return text;
+        },
+        async copyToClipboard(value) {
+            if (!process.client || value === null || value === undefined) return;
+            try {
+                if (navigator?.clipboard?.writeText) await navigator.clipboard.writeText(String(value));
+                else {
+                    const ta = document.createElement('textarea');
+                    ta.value = String(value);
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                }
+                Swal.fire({ toast: true, position: 'bottom-end', icon: 'success', title: 'Copied', timer: 1200, showConfirmButton: false, background: '#0a1518', color: '#bcecff' });
+            } catch (e) {
+                this.loadError = 'Copy failed: ' + e;
+            }
         }
     }
 };
@@ -1272,6 +1404,8 @@ table { width: 100%; border-collapse: collapse; font-size: 12px; }
 th, td { padding: 7px 9px; border-bottom: 1px solid rgba(255,255,255,.055); text-align: left; vertical-align: top; }
 th { position: sticky; top: 0; z-index: 1; background: #0a1113; color: #73ffbf; font: 700 11px ui-monospace, Consolas, monospace; text-transform: uppercase; }
 tr:hover td { background: rgba(78,255,182,.035); }
+.clickable-row { cursor: pointer; }
+.clickable-row:hover td { background: rgba(78,255,182,.085); }
 .row-bad td { background: rgba(149, 31, 50, .12); } .row-warn td { background: rgba(169, 116, 24, .11); } .row-trap td { background: rgba(92, 57, 159, .12); }
 .clip { max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .link-btn { padding: 0; border: 0; background: transparent; color: #7dffc5; cursor: pointer; text-decoration: underline; }
@@ -1307,4 +1441,27 @@ tr:hover td { background: rgba(78,255,182,.035); }
 @keyframes blockStrikeReverse { from { transform: rotate(-45deg) scaleX(0); } to { transform: rotate(-45deg) scaleX(1); } }
 @media (max-width: 1320px) { .od-grid { grid-template-columns: 210px 1fr; } .od-detail { grid-column: 1 / -1; } .activity-controls { grid-template-columns: repeat(3, 1fr); } .map-layout { grid-template-columns: 1fr; } .map-intel { grid-template-columns: repeat(4, minmax(0, 1fr)); } .map-legend, .map-selected { grid-column: auto; } }
 @media (max-width: 820px) { .od-header { align-items: flex-start; flex-direction: column; } .od-header-actions { width: 100%; flex-wrap: wrap; } .refresh-stamp { min-width: 0; text-align: left; } .map-head { align-items: flex-start; flex-direction: column; } .map-actions { width: 100%; align-items: flex-start; flex-direction: column; } .map-filters { width: 100%; flex-wrap: wrap; } .map-filters button, .map-toggle { flex: 1 1 130px; } .world-map-stage { height: 52vh; min-height: 340px; } .map-intel { grid-template-columns: repeat(2, minmax(0, 1fr)); } .map-legend, .map-selected { grid-column: 1 / -1; } .od-metrics { grid-template-columns: repeat(2, 1fr); } .od-grid { grid-template-columns: 1fr; } .activity-controls, .auth-controls, .profile-controls, .honey-controls, .ip-controls { grid-template-columns: 1fr; } }
+.od-modal-backdrop { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: flex-start; justify-content: center; padding: 5vh 16px; background: rgba(2, 6, 8, 0.78); backdrop-filter: blur(4px); animation: softFadeIn .14s ease-out both; }
+.od-modal { width: min(960px, 100%); max-height: 90vh; display: flex; flex-direction: column; border: 1px solid rgba(82,255,185,.32); border-radius: 6px; background: linear-gradient(180deg, rgba(7,18,20,.98), rgba(4,8,10,.98)); box-shadow: 0 24px 64px rgba(0,0,0,.55), 0 0 36px rgba(82,255,185,.08); color: #d9fff0; overflow: hidden; }
+.od-modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 14px 16px; border-bottom: 1px solid rgba(82,255,185,.18); background: linear-gradient(90deg, rgba(14,50,52,.7), rgba(9,12,15,.45)); }
+.od-modal-head h2 { margin: 4px 0 0; font-size: 22px; color: #eafff9; }
+.od-modal-head small { display: block; margin-top: 4px; color: #86a39b; font: 700 11px ui-monospace, Consolas, monospace; }
+.od-modal-loading { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 60px 16px; color: #bcecff; font: 700 12px ui-monospace, Consolas, monospace; text-transform: uppercase; }
+.od-modal-body { padding: 14px 16px 20px; overflow: auto; }
+.od-detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-bottom: 14px; }
+.od-detail-grid div { padding: 8px 10px; border: 1px solid rgba(255,255,255,.07); border-radius: 4px; background: rgba(255,255,255,.03); min-width: 0; }
+.od-detail-grid span { display: block; color: #7d948e; font: 700 10px ui-monospace, Consolas, monospace; text-transform: uppercase; letter-spacing: .8px; }
+.od-detail-grid strong { display: block; margin-top: 3px; color: #f3fffb; font-size: 13px; word-break: break-word; }
+.od-detail-grid strong small { color: #86a39b; font-weight: 600; font-size: 11px; margin-left: 4px; }
+.od-detail-section { margin-top: 14px; border: 1px solid rgba(82,255,185,.16); border-radius: 5px; background: rgba(255,255,255,.025); }
+.od-detail-section-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid rgba(82,255,185,.12); background: rgba(255,255,255,.02); }
+.od-detail-section-head h3 { margin: 0; font: 700 12px ui-monospace, Consolas, monospace; color: #82f8c1; text-transform: uppercase; letter-spacing: 1px; }
+.od-detail-code { margin: 0; padding: 10px 12px; background: #050b0d; color: #c5e9d9; font: 12px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; word-break: break-all; max-height: 360px; overflow: auto; }
+.od-detail-code.body { max-height: 460px; }
+.od-kv-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.od-kv-table th, .od-kv-table td { padding: 6px 12px; border-bottom: 1px solid rgba(255,255,255,.05); text-align: left; vertical-align: top; }
+.od-kv-table th { background: rgba(255,255,255,.025); color: #73ffbf; font: 700 11px ui-monospace, Consolas, monospace; text-transform: uppercase; }
+.od-kv-table td:first-child { color: #bcecff; font: 700 12px ui-monospace, Consolas, monospace; white-space: nowrap; }
+.od-kv-table td:nth-child(2) { color: #d9fff0; max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.od-body-hash { padding: 6px 12px; font: 11px ui-monospace, Consolas, monospace; word-break: break-all; border-top: 1px solid rgba(82,255,185,.08); }
 </style>

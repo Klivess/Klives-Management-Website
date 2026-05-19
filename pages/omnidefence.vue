@@ -236,7 +236,7 @@
                         <table>
                             <thead><tr><th>Time</th><th>Type</th><th>IP</th><th>Profile</th><th>Route</th><th>Detail</th></tr></thead>
                             <tbody>
-                                <tr v-for="event in authEvents" :key="event.id" :class="authClass(event.type)"><td>{{ fmtTime(event.ts) }}</td><td>{{ event.type }}</td><td>{{ event.ip || '-' }}</td><td>{{ event.profile || '-' }}</td><td class="clip">{{ event.route || '-' }}</td><td class="clip">{{ event.detail || '-' }}</td></tr>
+                                <tr v-for="event in authEvents" :key="event.id" :class="['clickable-row', authClass(event.type)]" :title="'Click for full auth event detail'" @click="viewAuthDetail(event)"><td>{{ fmtTime(event.ts) }}</td><td>{{ event.type }}</td><td>{{ event.ip || '-' }}</td><td>{{ event.profile || '-' }}</td><td class="clip">{{ event.route || '-' }}</td><td class="clip">{{ event.detail || '-' }}</td></tr>
                                 <tr v-if="!authEvents.length"><td colspan="6" class="empty-cell">No auth events</td></tr>
                             </tbody>
                         </table>
@@ -393,6 +393,38 @@
                 </div>
             </div>
         </div>
+
+        <div v-if="authDetail" class="od-modal-backdrop" @click.self="closeAuthDetail">
+            <div class="od-modal" role="dialog" aria-modal="true" aria-labelledby="od-auth-modal-title">
+                <header class="od-modal-head">
+                    <div>
+                        <span class="panel-code">AUTH</span>
+                        <h2 id="od-auth-modal-title">Auth Event Detail</h2>
+                        <small>#{{ authDetail.id }} / {{ fmtTime(authDetail.ts) }}</small>
+                    </div>
+                    <button class="od-btn ghost" @click="closeAuthDetail">Close</button>
+                </header>
+                <div class="od-modal-body">
+                    <div class="od-detail-grid">
+                        <div><span>Type</span><strong :class="authTypeClass(authDetail.type)">{{ authDetail.type || '-' }}</strong></div>
+                        <div><span>Time</span><strong>{{ fmtTime(authDetail.ts) }}</strong></div>
+                        <div><span>IP</span><strong><button v-if="authDetail.ip" class="link-btn" @click="selectIp(authDetail.ip); closeAuthDetail();">{{ authDetail.ip }}</button><template v-else>-</template></strong></div>
+                        <div><span>Profile</span><strong>{{ authDetail.profile || '-' }}<small v-if="authDetail.profileId"> ({{ authDetail.profileId }})</small></strong></div>
+                        <div><span>Route</span><strong class="clip" :title="authDetail.route || ''">{{ authDetail.route || '-' }}</strong></div>
+                        <div><span>User-Agent</span><strong class="clip" :title="authDetail.userAgent || ''">{{ authDetail.userAgent || '-' }}</strong></div>
+                    </div>
+
+                    <div class="od-detail-section">
+                        <div class="od-detail-section-head">
+                            <h3>Detail</h3>
+                            <button class="micro" :disabled="!authDetail.detail" @click="copyToClipboard(authDetail.detail || '')">Copy</button>
+                        </div>
+                        <pre v-if="authDetail.detail" class="od-detail-code">{{ formatBodyForDisplay(authDetail.detail) }}</pre>
+                        <div v-else class="empty-rail">No detail recorded</div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -453,6 +485,7 @@ export default {
             blockedRegions: [],
             newHoneypotRoute: '', loadError: null, refreshTimer: null, lastUpdated: null,
             requestDetail: null,
+            authDetail: null,
             loading: { overview: false, requests: false, ips: false, map: false, auth: false, profile: false, honeypot: false, action: false, ipDetail: false, requestDetail: false },
             filters: {
                 requests: { ip: '', profile: '', route: '', status: '', method: '', origin: '', denyOnly: false, limit: 250, offset: 0 },
@@ -651,7 +684,7 @@ export default {
                 isKlives: Number(row.associated_profile_rank ?? row.AssociatedProfileRank ?? 0) >= 5,
             };
         },
-        normalizeAuth(row) { return { id: row.id, ts: row.utc_ts, ip: row.ip, type: row.type, profile: row.profile_name, route: row.route, detail: row.detail }; },
+        normalizeAuth(row) { return { id: row.id, ts: row.utc_ts, ip: row.ip, type: row.type, profile: row.profile_name, profileId: row.profile_id, route: row.route, userAgent: row.user_agent, detail: row.detail }; },
         normalizeProfile(row) { return { id: row.id, ts: row.utc_ts, profile: row.profile_name || row.profile_id, category: row.category, action: row.action, ip: row.ip, detail: row.detail_json }; },
         async loadOverview() { const data = await this.fetchJson('/omnidefence/overview', 'overview'); if (data) this.overview = data; },
         async loadRequests() { const data = await this.fetchJson('/omnidefence/requests' + this.buildQuery(this.filters.requests), 'requests'); if (data) this.requests = data.map(this.normalizeRequest); },
@@ -1237,6 +1270,17 @@ export default {
         closeRequestDetail() {
             if (this.loading.requestDetail) return;
             this.requestDetail = null;
+        },
+        viewAuthDetail(event) {
+            if (!event) return;
+            this.authDetail = { ...event };
+        },
+        closeAuthDetail() { this.authDetail = null; },
+        authTypeClass(type) {
+            const t = String(type || '');
+            if (t.includes('NoProfile') || t.includes('Invalid')) return 'status bad';
+            if (t === 'InsufficientClearance') return 'status warn';
+            return 'status good';
         },
         formatBodyForDisplay(body) {
             if (body === null || body === undefined) return '';

@@ -143,7 +143,11 @@
         <div
           v-if="currentPath.length > 0"
           class="file-item folder-item back-item"
+          :class="{ 'drag-hover': activeDropTargetID === 'back' }"
           @click="navigateUp"
+          @dragover.prevent="onFolderDragOver($event, null)"
+          @dragleave="onFolderDragLeave($event, null)"
+          @drop.prevent.stop="onFolderDrop($event, null)"
         >
           <div class="item-icon">⤴️</div>
           <div class="item-name">..</div>
@@ -157,9 +161,16 @@
           :class="{
             'folder-item': item.ItemType === 'Folder', 
             'file-card': item.ItemType !== 'Folder',
-            'selected': selectedItems.has(item.ItemID)
+            'selected': selectedItems.has(item.ItemID),
+            'drag-hover': activeDropTargetID === item.ItemID
           }"
           :ref="(el) => setItemRef(el, item.ItemID)"
+          draggable="true"
+          @dragstart="onItemDragStart($event, item)"
+          @dragend="onItemDragEnd($event)"
+          @dragover.prevent="item.ItemType === 'Folder' ? onFolderDragOver($event, item) : null"
+          @dragleave="item.ItemType === 'Folder' ? onFolderDragLeave($event, item) : null"
+          @drop.prevent.stop="item.ItemType === 'Folder' ? onFolderDrop($event, item) : null"
           @click.stop="handleItemClick(item, $event)"
           @contextmenu.prevent="showContextMenu($event, item)"
         >
@@ -348,6 +359,10 @@ const dragStart = { x: 0, y: 0 };
 const initialSelection = new Set<string>();
 const itemRefs = new Map<string, HTMLElement>();
 const cloudContentRef = ref<HTMLElement | null>(null);
+
+// Internal Drag and Drop Moving State
+const draggedItem = ref<CloudItem | null>(null);
+const activeDropTargetID = ref<string | null>(null);
 
 // Methods
 
@@ -1318,6 +1333,105 @@ const onDrop = async (e: DragEvent) => {
     }
 };
 
+const onItemDragStart = (e: DragEvent, item: CloudItem) => {
+    draggedItem.value = item;
+    if (e.dataTransfer) {
+        e.dataTransfer.setData('text/plain', item.ItemID);
+        e.dataTransfer.effectAllowed = 'move';
+    }
+};
+
+const onItemDragEnd = (e: DragEvent) => {
+    draggedItem.value = null;
+    activeDropTargetID.value = null;
+};
+
+const onFolderDragOver = (e: DragEvent, targetFolder: CloudItem | null) => {
+    if (!draggedItem.value) return;
+
+    const targetID = targetFolder ? targetFolder.ItemID : 'back';
+    
+    // Cannot move a folder into itself
+    if (draggedItem.value.ItemID === targetID) return;
+
+    if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'move';
+    }
+    
+    activeDropTargetID.value = targetID;
+};
+
+const onFolderDragLeave = (e: DragEvent, targetFolder: CloudItem | null) => {
+    const targetID = targetFolder ? targetFolder.ItemID : 'back';
+    if (activeDropTargetID.value === targetID) {
+        activeDropTargetID.value = null;
+    }
+};
+
+const onFolderDrop = async (e: DragEvent, targetFolder: CloudItem | null) => {
+    e.preventDefault();
+    activeDropTargetID.value = null;
+
+    if (!draggedItem.value) return;
+
+    const sourceItem = draggedItem.value;
+    const destParentFolderID = targetFolder ? targetFolder.ItemID : (currentPath.value.length > 1 ? currentPath.value[currentPath.value.length - 2].ItemID : '');
+
+    // Determine the list of items to move
+    let itemsToMove: string[] = [];
+    if (selectedItems.value.has(sourceItem.ItemID)) {
+        itemsToMove = Array.from(selectedItems.value);
+    } else {
+        itemsToMove = [sourceItem.ItemID];
+    }
+
+    itemsToMove = itemsToMove.filter(id => id !== destParentFolderID);
+
+    if (itemsToMove.length === 0) return;
+
+    await moveItems(itemsToMove, destParentFolderID);
+};
+
+const moveItems = async (itemIDs: string[], newParentFolderID: string) => {
+    let successCount = 0;
+    let failedCount = 0;
+    let lastError = '';
+
+    for (const id of itemIDs) {
+        try {
+            if (id === newParentFolderID) {
+                failedCount++;
+                continue;
+            }
+            const response = await RequestPOSTFromKliveAPI(`/KliveCloud/MoveItem?itemID=${id}&newParentFolderID=${newParentFolderID}`);
+            if (response.ok) {
+                successCount++;
+            } else {
+                failedCount++;
+                lastError = await response.text();
+            }
+        } catch (e: any) {
+            failedCount++;
+            lastError = e.message;
+        }
+    }
+
+    if (successCount > 0) {
+        Swal.fire({
+            icon: 'success',
+            title: `Moved ${successCount} item(s) successfully` + (failedCount > 0 ? `, ${failedCount} failed` : ''),
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000
+        });
+        selectedItems.value.clear();
+        refreshCurrentFolder();
+    } else if (failedCount > 0) {
+        Swal.fire('Error', `Failed to move items: ${lastError}`, 'error');
+    }
+};
+
 const promptCreateFolder = async () => {
     const { value: folderName } = await Swal.fire({
         title: 'New Folder',
@@ -1855,6 +1969,13 @@ const loadPreview = async (id: string) => {
   border-color: #4CAF50;
   background-color: #3b4252;
   box-shadow: 0 0 8px rgba(76, 175, 80, 0.4);
+}
+
+.file-item.drag-hover {
+  border-color: #88c0d0 !important;
+  background-color: #3b4252 !important;
+  box-shadow: 0 0 10px rgba(136, 192, 208, 0.6) !important;
+  transform: scale(1.03) translateY(-2px);
 }
 
 .shared-links-section {

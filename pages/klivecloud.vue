@@ -504,6 +504,13 @@ const fetchItems = async (folderID: string = '') => {
     
     if (response.ok) {
       const data = await response.json();
+      if (Array.isArray(data)) {
+        data.sort((a: any, b: any) => {
+          if (a.ItemType === 'Folder' && b.ItemType !== 'Folder') return -1;
+          if (a.ItemType !== 'Folder' && b.ItemType === 'Folder') return 1;
+          return a.Name.localeCompare(b.Name);
+        });
+      }
       items.value = data;
     } else {
       const text = await response.text();
@@ -1693,15 +1700,15 @@ const loadPreview = async (id: string) => {
 
 .file-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 15px;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
 }
 
 .file-item {
   background: #2e2e2e;
   border: 1px solid #3e3e3e;
   border-radius: 6px;
-  padding: 15px;
+  padding: 10px;
   cursor: pointer;
   transition: transform 0.1s, background 0.2s;
   display: flex;
@@ -1709,6 +1716,8 @@ const loadPreview = async (id: string) => {
   align-items: center;
   text-align: center;
   position: relative;
+  min-height: 124px;
+  justify-content: space-between;
 
   &:hover {
     background: #3a3a3a;
@@ -1727,10 +1736,10 @@ const loadPreview = async (id: string) => {
   }
 
   .item-icon {
-    font-size: 3rem;
-    margin-bottom: 10px;
-    height: 64px;
-    width: 64px;
+    font-size: 2.2rem;
+    margin-bottom: 6px;
+    height: 48px;
+    width: 48px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1750,24 +1759,25 @@ const loadPreview = async (id: string) => {
     width: 100%;
     
     .item-name {
+      font-size: 0.85rem;
       font-weight: bold;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      margin-bottom: 5px;
+      margin-bottom: 3px;
     }
     
     .item-meta {
-      font-size: 0.8rem;
+      font-size: 0.72rem;
       color: #888;
     }
 
     .item-perm {
-        font-size: 0.7rem;
+        font-size: 0.62rem;
         color: #aaa;
-        margin-top: 4px;
+        margin-top: 2px;
         background: #222;
-        padding: 2px 6px;
+        padding: 1px 4px;
         border-radius: 4px;
         display: inline-block;
     }

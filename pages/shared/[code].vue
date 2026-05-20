@@ -47,32 +47,49 @@
 
       <input ref="uploadInput" class="hidden-input" type="file" multiple @change="handleSharedUpload" />
 
-      <div v-if="!isFolder" class="single-file-layout">
-        <div class="viewer-panel">
-          <img v-if="rootItem.IsImage" class="media-preview" :src="getSharedDownloadUrl()" :alt="rootItem.Name" />
-          <video v-else-if="rootItem.IsVideo" controls class="media-preview" :src="getSharedStreamUrl()"></video>
-          <div v-else class="document-preview">
-            <div class="doc-glyph">{{ getIcon(rootItem.Name) }}</div>
-            <p>Preview not available. Download to open this file.</p>
+      <!-- Single File Layout -->
+      <div v-if="!isFolder" class="single-file-container">
+        <div class="single-file-card">
+          <div class="file-preview-header">
+            <span class="file-icon-large">{{ getCloudItemEmoji(rootItem) }}</span>
+            <h2>{{ rootItem.Name }}</h2>
+            <p class="file-size-badge">{{ formatSize(rootItem.FileSizeBytes) }}</p>
+          </div>
+          
+          <div class="file-preview-body">
+            <div v-if="rootItem.IsImage" class="media-frame">
+              <img :src="getSharedDownloadUrl()" :alt="rootItem.Name" />
+            </div>
+            <div v-else-if="rootItem.IsVideo" class="media-frame">
+              <video controls :src="getSharedStreamUrl()"></video>
+            </div>
+            <div v-else class="fallback-frame">
+              <p>Preview is not supported for this file type.</p>
+            </div>
+          </div>
+
+          <div class="file-preview-footer">
+            <div class="file-meta-grid">
+              <div class="meta-item">
+                <span>Created</span>
+                <strong>{{ formatDateTime(rootItem.CreatedDate) }}</strong>
+              </div>
+              <div class="meta-item">
+                <span>Modified</span>
+                <strong>{{ formatDateTime(rootItem.ModifiedDate) }}</strong>
+              </div>
+            </div>
+            <a class="btn btn-primary full-width" :href="getSharedDownloadUrl()">Download File</a>
           </div>
         </div>
-
-        <aside class="details-panel">
-          <h2>{{ rootItem.Name }}</h2>
-          <div class="detail-stack">
-            <div><span>Size</span><strong>{{ formatSize(rootItem.FileSizeBytes) }}</strong></div>
-            <div><span>Created</span><strong>{{ formatDateTime(rootItem.CreatedDate) }}</strong></div>
-            <div><span>Modified</span><strong>{{ formatDateTime(rootItem.ModifiedDate) }}</strong></div>
-          </div>
-        </aside>
       </div>
 
+      <!-- Folder Workspace Layout -->
       <div v-else class="folder-workspace">
         <div
           ref="gridContainer"
           class="file-grid-area"
-          :class="{ 'drop-active': isDropActive, 'marquee-active': isMarqueeing }"
-          @mousedown="onGridMouseDown"
+          :class="{ 'drop-active': isDropActive }"
         >
           <div v-if="visibleItems.length === 0 && !sameId(activeFolderId, rootFolderId)" class="empty-state">
             <div class="empty-glyph">[ ]</div>
@@ -83,72 +100,76 @@
             <p>{{ canWrite ? 'Drop files here or use Upload to add content.' : 'This shared folder is empty.' }}</p>
           </div>
 
-          <div v-else class="file-grid">
-            <button
-              v-if="!sameId(activeFolderId, rootFolderId)"
-              class="tile tile-back"
-              @click="openFolder(parentFolderId)"
-            >
-              <div class="tile-thumb thumb-folder"><div class="thumb-glyph">..</div></div>
-              <div class="tile-body">
-                <div class="tile-name">Up one level</div>
-                <div class="tile-meta">Back</div>
-              </div>
-            </button>
+          <div v-else class="shared-table-container">
+            <table class="shared-files-table">
+              <thead>
+                <tr>
+                  <th class="checkbox-col">
+                    <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll" />
+                  </th>
+                  <th>Name</th>
+                  <th>Size</th>
+                  <th>Modified</th>
+                  <th class="actions-col">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="!sameId(activeFolderId, rootFolderId)" class="table-row-back" @click="openFolder(parentFolderId)">
+                  <td class="checkbox-col"></td>
+                  <td class="name-cell">
+                    <div class="name-cell-inner">
+                      <span class="type-icon">📁</span>
+                      <span class="item-name-text">.. (Up one level)</span>
+                    </div>
+                  </td>
+                  <td>—</td>
+                  <td>—</td>
+                  <td class="actions-col"></td>
+                </tr>
 
-            <button
-              v-for="item in visibleItems"
-              :key="item.ItemID"
-              :data-item-id="item.ItemID"
-              class="tile"
-              :class="{
-                'tile-folder': item.ItemType === 'Folder',
-                'tile-file': item.ItemType === 'File',
-                selected: isSelected(item.ItemID),
-                primary: sameId(primarySelectedId, item.ItemID)
-              }"
-              @click="onTileClick($event, item)"
-              @dblclick="onTileDoubleClick(item)"
-            >
-              <div class="tile-thumb" :class="item.ItemType === 'Folder' ? 'thumb-folder' : `thumb-file thumb-kind-${getCloudItemIcon(item).toLowerCase()}`">
-                <img
-                  v-if="hasThumbnail(item)"
-                  :src="getSharedPreviewUrl(item.ItemID)"
-                  loading="lazy"
-                  :alt="item.Name"
-                  @error="markThumbnailFailed(item.ItemID)"
-                />
-                <div v-else class="thumb-glyph">{{ getCloudItemIcon(item) }}</div>
-                <span v-if="item.ItemType === 'File' && item.IsVideo" class="thumb-tag">VIDEO</span>
-                <span v-else-if="item.ItemType === 'File' && item.IsImage" class="thumb-tag">IMAGE</span>
-              </div>
-              <div class="tile-body">
-                <div class="tile-name">{{ item.Name }}</div>
-                <div class="tile-meta">
-                  <span v-if="item.ItemType === 'File'">{{ formatSize(item.FileSizeBytes) }}</span>
-                  <span v-else>Folder</span>
-                  <span class="meta-sep">·</span>
-                  <span>{{ formatDate(item.ModifiedDate) }}</span>
-                </div>
-              </div>
-
-              <div class="tile-actions" @click.stop>
-                <a
-                  v-if="item.ItemType === 'File'"
-                  class="icon-btn"
-                  :href="getSharedDownloadUrl(item.ItemID)"
-                  :download="item.Name"
-                  title="Download"
-                >DL</a>
-                <button
-                  v-if="canDelete"
-                  class="icon-btn icon-btn-danger"
-                  @click.stop="deleteSharedItem(item)"
-                  :disabled="isMutating"
-                  title="Delete"
-                >X</button>
-              </div>
-            </button>
+                <tr 
+                  v-for="item in visibleItems" 
+                  :key="item.ItemID"
+                  :class="{ selected: isSelected(item.ItemID) }"
+                  @click="onRowClick($event, item)"
+                  @dblclick="onRowDoubleClick(item)"
+                >
+                  <td class="checkbox-col" @click.stop>
+                    <input type="checkbox" :checked="isSelected(item.ItemID)" @change="toggleSelection(item.ItemID)" />
+                  </td>
+                  <td class="name-cell">
+                    <div class="name-cell-inner">
+                      <span class="type-icon">{{ getCloudItemEmoji(item) }}</span>
+                      <span class="item-name-text">{{ item.Name }}</span>
+                    </div>
+                  </td>
+                  <td>
+                    {{ item.ItemType === 'File' ? formatSize(item.FileSizeBytes) : 'Folder' }}
+                  </td>
+                  <td class="date-cell">
+                    {{ formatDate(item.ModifiedDate) }}
+                  </td>
+                  <td class="actions-col" @click.stop>
+                    <div class="row-actions">
+                      <a
+                        v-if="item.ItemType === 'File'"
+                        class="action-btn"
+                        :href="getSharedDownloadUrl(item.ItemID)"
+                        :download="item.Name"
+                        title="Download"
+                      >⬇️</a>
+                      <button
+                        v-if="canDelete"
+                        class="action-btn action-btn-danger"
+                        @click="deleteSharedItem(item)"
+                        :disabled="isMutating"
+                        title="Delete"
+                      >🗑️</button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
 
           <div v-if="isDropActive" class="drop-overlay">
@@ -158,51 +179,67 @@
               <p>Files will be added to this folder.</p>
             </div>
           </div>
-
-          <div v-if="marqueeRect" class="marquee" :style="{ left: marqueeRect.left + 'px', top: marqueeRect.top + 'px', width: marqueeRect.width + 'px', height: marqueeRect.height + 'px' }"></div>
         </div>
 
-        <aside class="preview-panel">
-          <div v-if="selectionCount === 0" class="preview-empty">
-            <p class="preview-help">Select a file to preview it.</p>
+        <!-- Sticky Collapsible Side Preview Panel -->
+        <aside v-if="selectionCount > 0" class="preview-drawer">
+          <div class="drawer-header">
+            <h3>Selection Info</h3>
+            <button class="close-drawer-btn" @click="clearSelection">✕</button>
           </div>
-
-          <div v-else-if="selectionCount > 1" class="preview-multi">
-            <h2>{{ selectionCount }} items selected</h2>
-            <div class="detail-stack compact">
-              <div><span>Total file size</span><strong>{{ formatSize(selectedSizeBytes) }}</strong></div>
-            </div>
-            <div class="preview-actions">
-              <button class="btn btn-ghost" @click="downloadSelected">Download files</button>
-              <button v-if="canDelete" class="btn btn-danger" @click="deleteSelected" :disabled="isMutating">Delete selected</button>
-              <button class="btn btn-ghost" @click="clearSelection">Clear selection</button>
-            </div>
-          </div>
-
-          <div v-else-if="primarySelected" class="preview-single">
-            <h2>{{ primarySelected.Name }}</h2>
-            <div class="preview-media">
-              <img v-if="primarySelected.ItemType === 'File' && primarySelected.IsImage" :src="getSharedDownloadUrl(primarySelected.ItemID)" :alt="primarySelected.Name" />
-              <video v-else-if="primarySelected.ItemType === 'File' && primarySelected.IsVideo" controls :src="getSharedStreamUrl(primarySelected.ItemID)"></video>
-              <div v-else class="preview-doc">
-                <div class="doc-glyph">{{ getCloudItemIcon(primarySelected) }}</div>
-                <p>{{ primarySelected.ItemType === 'Folder' ? 'Double-click to open this folder.' : 'No inline preview for this file type.' }}</p>
+          
+          <div class="drawer-body">
+            <!-- Multi-selection details -->
+            <div v-if="selectionCount > 1" class="preview-multi">
+              <div class="multi-count">📁 {{ selectionCount }} items selected</div>
+              <div class="detail-stack compact">
+                <div class="detail-row">
+                  <span>Total Size</span>
+                  <strong>{{ formatSize(selectedSizeBytes) }}</strong>
+                </div>
+              </div>
+              <div class="drawer-actions">
+                <button class="btn btn-primary full-width" @click="downloadSelected">Download files</button>
+                <button v-if="canDelete" class="btn btn-danger full-width" @click="deleteSelected" :disabled="isMutating">Delete selected</button>
               </div>
             </div>
-            <div class="detail-stack compact">
-              <div v-if="primarySelected.ItemType === 'File'"><span>Size</span><strong>{{ formatSize(primarySelected.FileSizeBytes) }}</strong></div>
-              <div><span>Modified</span><strong>{{ formatDateTime(primarySelected.ModifiedDate) }}</strong></div>
-            </div>
-            <div class="preview-actions">
-              <a v-if="primarySelected.ItemType === 'File'" class="btn btn-primary" :href="getSharedDownloadUrl(primarySelected.ItemID)" :download="primarySelected.Name">Download</a>
-              <button v-if="primarySelected.ItemType === 'Folder'" class="btn btn-primary" @click="openFolder(primarySelected.ItemID)">Open folder</button>
-              <button v-if="canDelete" class="btn btn-danger" @click="deleteSharedItem(primarySelected)" :disabled="isMutating">Delete</button>
+
+            <!-- Single selection details -->
+            <div v-else-if="primarySelected" class="preview-single">
+              <h4 class="item-name">{{ primarySelected.Name }}</h4>
+              
+              <div class="preview-media">
+                <img v-if="primarySelected.ItemType === 'File' && primarySelected.IsImage" :src="getSharedDownloadUrl(primarySelected.ItemID)" :alt="primarySelected.Name" />
+                <video v-else-if="primarySelected.ItemType === 'File' && primarySelected.IsVideo" controls :src="getSharedStreamUrl(primarySelected.ItemID)"></video>
+                <div v-else class="preview-doc">
+                  <div class="doc-glyph">{{ getCloudItemEmoji(primarySelected) }}</div>
+                  <p>{{ primarySelected.ItemType === 'Folder' ? 'Double-click to open folder' : 'No preview available' }}</p>
+                </div>
+              </div>
+
+              <div class="detail-stack compact">
+                <div v-if="primarySelected.ItemType === 'File'" class="detail-row">
+                  <span>Size</span>
+                  <strong>{{ formatSize(primarySelected.FileSizeBytes) }}</strong>
+                </div>
+                <div class="detail-row">
+                  <span>Modified</span>
+                  <strong>{{ formatDateTime(primarySelected.ModifiedDate) }}</strong>
+                </div>
+              </div>
+
+              <div class="drawer-actions">
+                <a v-if="primarySelected.ItemType === 'File'" class="btn btn-primary full-width" :href="getSharedDownloadUrl(primarySelected.ItemID)" :download="primarySelected.Name">Download</a>
+                <button v-if="primarySelected.ItemType === 'Folder'" class="btn btn-primary full-width" @click="openFolder(primarySelected.ItemID)">Open folder</button>
+                <button v-if="canDelete" class="btn btn-danger full-width" @click="deleteSharedItem(primarySelected)" :disabled="isMutating">Delete</button>
+              </div>
             </div>
           </div>
         </aside>
       </div>
     </section>
 
+    <!-- Upload Progress Panel -->
     <div v-if="activeUploads.length > 0" class="upload-panel" :class="{ minimized: !isUploadPanelOpen }">
       <div class="upload-header" @click="isUploadPanelOpen = !isUploadPanelOpen">
         <span>{{ activeUploadCount }} uploading / {{ activeUploads.length }} total</span>
@@ -934,6 +971,75 @@ async function mutateSharedFolder(url: string) {
   }
 }
 
+function getCloudItemEmoji(item: NormalizedSharedChildItem) {
+  if (item.ItemType === 'Folder') return '📁';
+  const ext = item.Name.split('.').pop()?.toLowerCase();
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext || '')) return '🖼️';
+  if (['mp4', 'mov', 'mkv', 'webm', 'm4v', 'avi'].includes(ext || '')) return '🎥';
+  if (['mp3', 'wav', 'flac', 'aac'].includes(ext || '')) return '🎵';
+  if (['zip', 'rar', '7z', 'tar'].includes(ext || '')) return '📦';
+  if (ext === 'pdf') return '📄';
+  if (['txt', 'md', 'json', 'csv'].includes(ext || '')) return '📝';
+  return '📄';
+}
+
+const isAllSelected = computed(() => {
+  if (visibleItems.value.length === 0) return false;
+  return visibleItems.value.every(item => selectedIds.value.has(item.ItemID));
+});
+
+function toggleSelectAll() {
+  if (isAllSelected.value) {
+    const next = new Set<string>();
+    selectedIds.value = next;
+  } else {
+    const next = new Set<string>();
+    visibleItems.value.forEach(item => next.add(item.ItemID));
+    selectedIds.value = next;
+  }
+}
+
+function onRowClick(event: MouseEvent, item: NormalizedSharedChildItem) {
+  const target = event.target as HTMLElement;
+  if (target.closest('.checkbox-col') || target.closest('.actions-col') || target.closest('input') || target.closest('button') || target.closest('a')) {
+    return;
+  }
+  
+  if (event.shiftKey && primarySelectedId.value) {
+    const ids = visibleItems.value.map(i => i.ItemID);
+    const lastIdx = ids.indexOf(primarySelectedId.value);
+    const currIdx = ids.indexOf(item.ItemID);
+    if (lastIdx !== -1 && currIdx !== -1) {
+      const start = Math.min(lastIdx, currIdx);
+      const end = Math.max(lastIdx, currIdx);
+      const next = new Set(selectedIds.value);
+      for (let i = start; i <= end; i++) {
+        next.add(ids[i]);
+      }
+      selectedIds.value = next;
+      primarySelectedId.value = item.ItemID;
+      return;
+    }
+  }
+  
+  if (event.ctrlKey || event.metaKey) {
+    toggleSelection(item.ItemID);
+    return;
+  }
+  
+  setSingleSelection(item.ItemID);
+}
+
+function onRowDoubleClick(item: NormalizedSharedChildItem) {
+  if (item.ItemType === 'Folder') {
+    openFolder(item.ItemID);
+  } else {
+    if (process.client) {
+      window.location.assign(getSharedDownloadUrl(item.ItemID));
+    }
+  }
+}
+
 if (sharedItem.value) {
   const item = sharedItem.value;
   const description = normalizeItemType(item.ItemType) === 'Folder'
@@ -1161,105 +1267,140 @@ if (sharedItem.value) {
   font-weight: 600;
 }
 
-.single-file-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(310px, 0.36fr);
-  gap: 16px;
-}
-
-.viewer-panel,
-.details-panel,
-.preview-panel {
-  border-radius: 14px;
-  background: linear-gradient(135deg, rgba(15, 24, 16, 0.92), rgba(7, 11, 8, 0.92));
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
-}
-
-.viewer-panel {
-  min-height: 520px;
+/* Single File Redesigned Layout */
+.single-file-container {
   display: grid;
   place-items: center;
-  padding: 18px;
+  padding: 40px 10px;
 }
 
-.details-panel { padding: 20px; }
-
-.media-preview,
-.preview-media img,
-.preview-media video {
+.single-file-card {
   width: 100%;
-  max-height: 70vh;
-  object-fit: contain;
+  max-width: 520px;
+  background: linear-gradient(135deg, rgba(15, 24, 16, 0.95), rgba(7, 11, 8, 0.95));
+  border: 1px solid rgba(125, 219, 94, 0.16);
+  border-radius: 14px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.file-preview-header {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-icon-large {
+  font-size: 3.5rem;
+  line-height: 1;
+}
+
+.file-preview-header h2 {
+  margin: 6px 0 0;
+  font-size: 1.4rem;
+  color: #fff;
+  font-weight: 700;
+  word-break: break-all;
+}
+
+.file-size-badge {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  color: #8dd574;
+  font-weight: 600;
+}
+
+.file-preview-body {
   border-radius: 10px;
   background: #000;
-}
-
-.document-preview,
-.preview-doc {
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  overflow: hidden;
   display: grid;
   place-items: center;
-  padding: 24px;
-  text-align: center;
-  min-height: 280px;
+  min-height: 200px;
+}
+
+.media-frame {
   width: 100%;
+  max-height: 320px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
-.doc-glyph {
-  font-size: clamp(3rem, 12vw, 7rem);
-  font-weight: 900;
-  color: rgba(217, 255, 208, 0.78);
-  letter-spacing: 0.12em;
+.media-frame img,
+.media-frame video {
+  width: 100%;
+  height: 100%;
+  max-height: 320px;
+  object-fit: contain;
 }
 
-.detail-stack {
-  display: grid;
-  gap: 8px;
-  margin: 14px 0;
+.fallback-frame {
+  padding: 30px;
+  text-align: center;
+  color: #9fb69a;
+  font-size: 0.9rem;
 }
 
-.detail-stack.compact { margin: 12px 0; }
-
-.detail-stack > div {
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.detail-stack span {
-  display: block;
-  color: #8dd574;
-  font-size: 0.7rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  font-weight: 800;
-  margin-bottom: 4px;
-}
-
-.detail-stack strong {
-  display: block;
-  color: #fff;
-  word-break: break-word;
-  font-size: 0.94rem;
-}
-
-.folder-workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 320px);
+.file-preview-footer {
+  display: flex;
+  flex-direction: column;
   gap: 16px;
-  align-items: start;
+}
+
+.file-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.meta-item {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.meta-item span {
+  display: block;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: #8dd574;
+  margin-bottom: 2px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.meta-item strong {
+  display: block;
+  font-size: 0.82rem;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Folder Workspace Layout */
+.folder-workspace {
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+  min-height: 520px;
 }
 
 .file-grid-area {
-  position: relative;
+  flex: 1;
+  min-width: 0;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: linear-gradient(135deg, rgba(15, 24, 16, 0.92), rgba(7, 11, 8, 0.92));
-  padding: 18px;
-  min-height: 480px;
+  padding: 16px;
+  position: relative;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
-  user-select: none;
 }
 
 .file-grid-area.drop-active {
@@ -1267,172 +1408,279 @@ if (sharedItem.value) {
   outline-offset: -10px;
 }
 
-.file-grid-area.marquee-active { cursor: crosshair; }
-
-.file-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 14px;
-  position: relative;
-  z-index: 1;
-}
-
-.tile {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  background: rgba(255, 255, 255, 0.025);
-  color: #f6fff2;
-  padding: 0;
-  text-align: left;
-  cursor: pointer;
-  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
-  overflow: hidden;
-  font: inherit;
-  outline: none;
-}
-
-button.tile { width: 100%; }
-
-.tile:hover {
-  transform: translateY(-1px);
-  border-color: rgba(125, 219, 94, 0.32);
-  background: rgba(125, 219, 94, 0.06);
-}
-
-.tile.selected {
-  border-color: rgba(125, 219, 94, 0.55);
-  background: rgba(125, 219, 94, 0.12);
-  box-shadow: 0 0 0 1px rgba(125, 219, 94, 0.35), 0 14px 32px rgba(0, 0, 0, 0.45);
-}
-
-.tile.primary {
-  border-color: #76d85a;
-  box-shadow: 0 0 0 2px rgba(125, 219, 94, 0.55), 0 16px 36px rgba(0, 0, 0, 0.5);
-}
-
-.tile-thumb {
-  position: relative;
-  height: 140px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #0a0e0a;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  overflow: hidden;
-}
-
-.tile-thumb img {
+/* Shared Files Table */
+.shared-table-container {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+  overflow-x: auto;
 }
 
-.thumb-glyph {
-  font-size: 2rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  color: #cdeac1;
+.shared-files-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.88rem;
+  color: #dfffd8;
 }
 
-.thumb-folder {
-  background: linear-gradient(135deg, rgba(245, 205, 92, 0.12), rgba(245, 205, 92, 0.04));
+.shared-files-table th,
+.shared-files-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
-.thumb-folder .thumb-glyph,
-.tile-folder .thumb-glyph {
-  color: #ffe9a6;
-}
-
-.thumb-kind-img,
-.thumb-kind-vid { background: linear-gradient(135deg, rgba(94, 129, 172, 0.18), rgba(94, 129, 172, 0.04)); }
-.thumb-kind-aud { background: linear-gradient(135deg, rgba(180, 142, 173, 0.18), rgba(180, 142, 173, 0.04)); }
-.thumb-kind-zip { background: linear-gradient(135deg, rgba(208, 135, 112, 0.18), rgba(208, 135, 112, 0.04)); }
-.thumb-kind-pdf { background: linear-gradient(135deg, rgba(191, 97, 106, 0.18), rgba(191, 97, 106, 0.04)); }
-.thumb-kind-txt { background: linear-gradient(135deg, rgba(143, 188, 187, 0.18), rgba(143, 188, 187, 0.04)); }
-
-.thumb-tag {
-  position: absolute;
-  bottom: 8px;
-  left: 8px;
-  padding: 2px 7px;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.6);
-  color: #f6fff2;
-  font-size: 0.66rem;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-}
-
-.tile-body {
-  padding: 10px 12px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.tile-name {
+.shared-files-table th {
+  background: rgba(0, 0, 0, 0.25);
+  color: #8dd574;
   font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
 }
 
-.tile-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #91a78d;
-  font-size: 0.78rem;
+.shared-files-table tbody tr {
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.meta-sep { color: #4b6745; }
-
-.tile-back {
-  border-style: dashed;
-  background: rgba(255, 255, 255, 0.02);
+.shared-files-table tbody tr:hover {
+  background: rgba(125, 219, 94, 0.04);
 }
 
-.tile-actions {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.15s ease;
+.shared-files-table tbody tr.selected {
+  background: rgba(125, 219, 94, 0.09);
 }
 
-.tile:hover .tile-actions,
-.tile.selected .tile-actions,
-.tile:focus-visible .tile-actions {
+.shared-files-table tbody tr.selected td {
+  border-bottom-color: rgba(125, 219, 94, 0.2);
+}
+
+.table-row-back {
+  opacity: 0.8;
+}
+
+.table-row-back:hover {
   opacity: 1;
 }
 
-.icon-btn {
-  min-width: 28px;
-  height: 28px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.55);
-  color: #f6fff2;
-  font: inherit;
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+.checkbox-col {
+  width: 32px;
+  text-align: center;
+  padding-right: 0 !important;
+}
+
+.checkbox-col input[type="checkbox"] {
   cursor: pointer;
-  text-decoration: none;
+  accent-color: #55c83c;
+  transform: scale(1.05);
+}
+
+.name-cell-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.name-cell .type-icon {
+  font-size: 1.1rem;
+}
+
+.name-cell .item-name-text {
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 350px;
+}
+
+.date-cell {
+  color: #9fb69a;
+}
+
+.actions-col {
+  width: 80px;
+  text-align: right;
+}
+
+.row-actions {
+  display: inline-flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.action-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #fff;
+  text-decoration: none;
+  transition: background 0.15s ease, transform 0.1s ease;
 }
 
-.icon-btn:hover { background: rgba(94, 129, 172, 0.85); }
-.icon-btn-danger:hover { background: rgba(191, 97, 106, 0.95); }
+.action-btn:hover {
+  background: rgba(125, 219, 94, 0.15);
+  border-color: rgba(125, 219, 94, 0.3);
+  transform: scale(1.05);
+}
+
+.action-btn-danger:hover {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+/* Collapsible Side Preview Panel */
+.preview-drawer {
+  width: 320px;
+  background: linear-gradient(135deg, rgba(15, 24, 16, 0.95), rgba(7, 11, 8, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-self: start;
+  position: sticky;
+  top: 18px;
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
+}
+
+.drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 10px;
+}
+
+.drawer-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #8dd574;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.close-drawer-btn {
+  background: none;
+  border: none;
+  color: #9fb69a;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.close-drawer-btn:hover {
+  color: #fff;
+}
+
+.drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.preview-multi {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: center;
+}
+
+.multi-count {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fff;
+  padding: 10px 0;
+}
+
+.preview-single {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.preview-single .item-name {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fff;
+  word-break: break-all;
+  line-height: 1.3;
+}
+
+.preview-media {
+  width: 100%;
+  height: 160px;
+  border-radius: 8px;
+  background: #000;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.preview-media img,
+.preview-media video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.preview-doc {
+  text-align: center;
+  padding: 16px;
+  color: #9fb69a;
+}
+
+.preview-doc .doc-glyph {
+  font-size: 3rem;
+  margin-bottom: 8px;
+}
+
+.preview-doc p {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.detail-row span {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: #8dd574;
+  font-weight: 700;
+}
+
+.detail-row strong {
+  font-size: 0.85rem;
+  color: #fff;
+  font-weight: 600;
+}
+
+.drawer-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 
 .empty-state {
   display: flex;
@@ -1440,104 +1688,23 @@ button.tile { width: 100%; }
   align-items: center;
   justify-content: center;
   text-align: center;
-  min-height: 480px;
+  min-height: 380px;
   color: #9fb69a;
-  gap: 8px;
+  gap: 12px;
+  padding: 40px 20px;
 }
 
 .empty-glyph {
-  font-size: 4rem;
+  font-size: 3.5rem;
   font-weight: 900;
-  color: rgba(125, 219, 94, 0.45);
+  color: rgba(125, 219, 94, 0.25);
+  line-height: 1;
 }
 
-.drop-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.72);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 30;
-  pointer-events: none;
-  border-radius: 14px;
+.empty-state p {
+  margin: 0;
+  font-size: 0.95rem;
 }
-
-.drop-card {
-  text-align: center;
-  padding: 24px 32px;
-  border-radius: 14px;
-  background: rgba(15, 24, 16, 0.95);
-  border: 1px solid rgba(125, 219, 94, 0.35);
-  color: #dfffd8;
-}
-
-.drop-icon {
-  width: 64px;
-  height: 64px;
-  margin: 0 auto 12px;
-  border-radius: 14px;
-  display: grid;
-  place-items: center;
-  background: rgba(125, 219, 94, 0.18);
-  border: 1px solid rgba(125, 219, 94, 0.36);
-  font-size: 2rem;
-  font-weight: 900;
-  color: #c8ffb6;
-}
-
-.marquee {
-  position: absolute;
-  background: rgba(125, 219, 94, 0.16);
-  border: 1px solid rgba(125, 219, 94, 0.7);
-  border-radius: 4px;
-  pointer-events: none;
-  z-index: 5;
-}
-
-.preview-panel {
-  padding: 18px;
-  display: flex;
-  flex-direction: column;
-  align-self: start;
-  position: sticky;
-  top: 18px;
-  max-height: calc(100vh - 36px);
-  overflow: auto;
-}
-
-.preview-panel h2 {
-  margin: 4px 0 10px;
-  color: #f6fff2;
-  font-size: 1.15rem;
-  word-break: break-word;
-}
-
-.preview-media {
-  min-height: 180px;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  overflow: hidden;
-  background: rgba(0, 0, 0, 0.3);
-}
-
-.preview-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.preview-actions .btn { flex: 0 0 auto; }
-
-.preview-empty {
-  padding: 18px 4px;
-  color: #91a78d;
-  text-align: center;
-}
-
-.preview-help { color: #91a78d; margin: 0; }
 
 .hidden-input { display: none; }
 
@@ -1633,12 +1800,12 @@ button.tile { width: 100%; }
 }
 
 @media (max-width: 1024px) {
-  .folder-workspace,
-  .single-file-layout {
-    grid-template-columns: 1fr;
+  .folder-workspace {
+    flex-direction: column;
   }
 
-  .preview-panel {
+  .preview-drawer {
+    width: 100%;
     position: static;
     max-height: none;
   }
@@ -1648,7 +1815,8 @@ button.tile { width: 100%; }
   .shared-shell { padding: 18px 12px; }
   .topbar { flex-direction: column; align-items: stretch; }
   .topbar-right { justify-content: flex-start; }
-  .file-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
-  .tile-thumb { height: 110px; }
+  .name-cell .item-name-text {
+    max-width: 150px;
+  }
 }
 </style>

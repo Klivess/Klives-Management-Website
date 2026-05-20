@@ -10,6 +10,9 @@
           <p class="page-subtitle">{{ project.description || 'No description' }}</p>
         </div>
         <div class="header-actions">
+          <button class="secondary-btn" @click="downloadBundle('printables')" :disabled="downloading !== null">{{ downloading === 'printables' ? '…' : 'Download printables' }}</button>
+          <button class="secondary-btn" @click="downloadBundle('current')" :disabled="downloading !== null">{{ downloading === 'current' ? '…' : 'Download bundle' }}</button>
+          <button class="secondary-btn" @click="downloadBundle('all')" :disabled="downloading !== null" title="Includes superseded iterations and all CadQuery scripts">{{ downloading === 'all' ? '…' : 'With history' }}</button>
           <button class="secondary-btn" @click="renameProject">Rename</button>
           <button class="danger-btn" @click="confirmDelete">Delete</button>
         </div>
@@ -36,19 +39,12 @@
           <section class="panel">
             <h3>Artifacts</h3>
             <div v-if="!selectedRevision" class="muted">Select a revision.</div>
-            <div v-else-if="!selectedRevision.Artifacts.length" class="muted">No artifacts in this revision yet.</div>
-            <ul v-else class="artifact-list">
-              <li
-                v-for="art in selectedRevision.Artifacts"
-                :key="art.ArtifactID"
-                :class="{ active: art.ArtifactID === selectedArtifactID }"
-                @click="selectArtifact(art)"
-              >
-                <span class="art-kind">{{ art.Kind }}</span>
-                <span class="art-name">{{ art.FileName }}</span>
-                <span class="art-size">{{ formatBytes(art.SizeBytes) }}</span>
-              </li>
-            </ul>
+            <ArtifactTreePanel
+              v-else
+              :artifacts="selectedRevision.Artifacts"
+              :active-artifact-i-d="selectedArtifactID"
+              @select="selectArtifact"
+            />
           </section>
 
           <section class="panel">
@@ -68,11 +64,12 @@
         </aside>
 
         <div class="main-area">
-          <StratumViewport :model-url="viewerUrl" :model-type="viewerType" />
+          <StratumViewport :model-url="viewerUrl" :model-type="viewerType" :highlight-subtask="highlightedSubtask" />
           <div v-if="selectedArtifact" class="viewer-meta">
             <strong>{{ selectedArtifact.FileName }}</strong>
             <span>{{ selectedArtifact.ContentType }}</span>
             <span>{{ formatBytes(selectedArtifact.SizeBytes) }}</span>
+            <button v-if="!showingAssembly" class="link-btn" @click="() => loadAssemblyIntoViewer()">← back to assembly</button>
           </div>
           <WiringDiagram v-if="wiringGraph" :graph="wiringGraph" />
           <section v-if="firmwareSource" class="firmware-panel">
@@ -102,6 +99,11 @@
               </tbody>
             </table>
           </section>
+          <MechanicalEngineerChat
+            :project-id="projectId"
+            @reference="onChatReference"
+            @amendment-spawned="onAmendmentSpawned"
+          />
           <AgentRunPanel :project-id="projectId" @project-changed="loadProject" @gate-preview="onGatePreview" />
         </div>
       </div>
@@ -117,6 +119,8 @@ import { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/
 import StratumViewport from '~/components/Stratum/StratumViewport.vue';
 import AgentRunPanel from '~/components/Stratum/AgentRunPanel.vue';
 import WiringDiagram from '~/components/Stratum/WiringDiagram.vue';
+import ArtifactTreePanel from '~/components/Stratum/ArtifactTreePanel.vue';
+import MechanicalEngineerChat from '~/components/Stratum/MechanicalEngineerChat.vue';
 
 definePageMeta({ layout: 'navbar' });
 
@@ -129,6 +133,9 @@ interface ArtifactDto {
   ContentHash: string;
   CreatedAt: string;
   Metadata: Record<string, string>;
+  Role?: string | null;
+  SubtaskTitle?: string | null;
+  SupersededByArtifactID?: string | null;
 }
 interface RevisionDto {
   RevisionID: string;
@@ -169,6 +176,12 @@ const selectedArtifactID = ref<string | null>(null);
 const viewerUrl = ref<string | null>(null);
 const viewerType = ref<'glb' | 'stl' | null>(null);
 const attachmentInput = ref<HTMLInputElement | null>(null);
+const downloading = ref<'printables' | 'current' | 'all' | null>(null);
+const highlightedSubtask = ref<string | null>(null);
+const showingAssembly = ref(false);
+// ArtifactID of the assembly GLB currently auto-loaded in the viewport — used to
+// resync after a refresh without flicker.
+const activeAssemblyArtifactID = ref<string | null>(null);
 
 const revisionsDesc = computed(() => [...(project.value?.revisions ?? [])].sort((a, b) => b.Index - a.Index));
 const selectedRevision = computed(() => project.value?.revisions.find(r => r.RevisionID === selectedRevisionID.value) ?? null);
@@ -199,6 +212,9 @@ function normaliseProject(raw: any): ProjectDetail | null {
         ContentHash: String(a.ContentHash ?? ''),
         CreatedAt: String(a.CreatedAt ?? ''),
         Metadata: a.Metadata && typeof a.Metadata === 'object' ? a.Metadata : {},
+        Role: a.Role ?? null,
+        SubtaskTitle: a.SubtaskTitle ?? null,
+        SupersededByArtifactID: a.SupersededByArtifactID ?? null,
       })) : [],
     })) : [],
     attachments: Array.isArray(raw.attachments) ? raw.attachments.map((a: any) => ({
@@ -231,9 +247,22 @@ async function loadProject() {
     if (isInitial && data && data.revisions.length) {
       const latest = data.revisions[data.revisions.length - 1];
       selectedRevisionID.value = latest.RevisionID;
-      // Auto-pick a viewable artifact, if any.
-      const viewable = latest.Artifacts.find(isViewable);
-      if (viewable) selectArtifact(viewable);
+      // Auto-load the latest assembly GLB if one exists; otherwise fall back to any viewable artifact.
+      const assembly = pickLatestAssemblyGlb(data);
+      if (assembly) {
+        await loadAssemblyIntoViewer(assembly);
+      } else {
+        const viewable = latest.Artifacts.find(isViewable);
+        if (viewable) selectArtifact(viewable);
+      }
+    } else if (data) {
+      // Subsequent refresh (e.g., after a gate closes): if a fresher assembly snapshot has
+      // arrived since we last loaded one, swap to it (only when the user is still viewing
+      // the assembly; never clobber an explicit selection).
+      const assembly = pickLatestAssemblyGlb(data);
+      if (showingAssembly.value && assembly && assembly.ArtifactID !== activeAssemblyArtifactID.value) {
+        await loadAssemblyIntoViewer(assembly);
+      }
     }
   } catch (err: any) {
     loadError.value = err?.message ?? String(err);
@@ -245,6 +274,98 @@ async function loadProject() {
 
 function isViewable(art: ArtifactDto): boolean {
   return art.Kind === 'MeshGlb' || art.Kind === 'MeshStl';
+}
+
+function pickLatestAssemblyGlb(data: ProjectDetail): ArtifactDto | null {
+  let best: ArtifactDto | null = null;
+  for (const rev of data.revisions) {
+    for (const a of rev.Artifacts) {
+      if (a.Role !== 'assembly-snapshot') continue;
+      if (a.Kind !== 'MeshGlb') continue;
+      if (a.SupersededByArtifactID) continue;
+      if (!best || a.CreatedAt > best.CreatedAt) best = a;
+    }
+  }
+  return best;
+}
+
+async function loadAssemblyIntoViewer(art?: ArtifactDto) {
+  if (!project.value) return;
+  const assembly = art ?? pickLatestAssemblyGlb(project.value);
+  if (!assembly) return;
+  // Find the revision that owns the assembly artifact and select it so the artifact panel
+  // reflects what's in the viewer.
+  for (const rev of project.value.revisions) {
+    if (rev.Artifacts.some(a => a.ArtifactID === assembly.ArtifactID)) {
+      selectedRevisionID.value = rev.RevisionID;
+      break;
+    }
+  }
+  selectedArtifactID.value = assembly.ArtifactID;
+  releaseViewerUrl();
+  wiringGraph.value = null;
+  bom.value = null;
+  firmwareSource.value = null;
+  const res = await RequestGETFromKliveAPI(
+    `/stratum/artifacts/download?projectID=${encodeURIComponent(projectId)}&artifactID=${encodeURIComponent(assembly.ArtifactID)}`,
+    false, false,
+  );
+  if (!res.ok) return;
+  const blob = await res.blob();
+  activeBlobUrl = URL.createObjectURL(blob);
+  viewerUrl.value = activeBlobUrl;
+  viewerType.value = 'glb';
+  showingAssembly.value = true;
+  activeAssemblyArtifactID.value = assembly.ArtifactID;
+  highlightedSubtask.value = null;
+}
+
+async function downloadBundle(scope: 'printables' | 'current' | 'all') {
+  if (downloading.value) return;
+  downloading.value = scope;
+  try {
+    const res = await RequestGETFromKliveAPI(
+      `/stratum/projects/download-bundle?projectID=${encodeURIComponent(projectId)}&include=${scope}`,
+      false, false,
+    );
+    if (!res.ok) {
+      console.error('bundle download failed', await res.text());
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const safeName = (project.value?.name || 'project').replace(/[^A-Za-z0-9_-]/g, '_');
+    a.href = url;
+    a.download = `${safeName}_${scope}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  } finally {
+    downloading.value = null;
+  }
+}
+
+async function onChatReference(artifactID: string) {
+  // Find the referenced artifact. If it's a current part, highlight it inside the assembly.
+  if (!project.value) return;
+  for (const rev of project.value.revisions) {
+    const art = rev.Artifacts.find(a => a.ArtifactID === artifactID);
+    if (!art) continue;
+    if (art.Role === 'part' && art.SubtaskTitle && showingAssembly.value) {
+      highlightedSubtask.value = art.SubtaskTitle;
+      return;
+    }
+    // Otherwise load the artifact directly into the viewer / inspector.
+    await selectArtifact(art);
+    return;
+  }
+}
+
+function onAmendmentSpawned(_runID: string) {
+  // Refresh project state so the artifact tree and assembly snapshot pick up the new run's outputs.
+  loadProject();
 }
 
 function isWiring(art: ArtifactDto): boolean { return art.Kind === 'WiringDiagram'; }
@@ -281,6 +402,12 @@ async function selectArtifact(art: ArtifactDto) {
   wiringGraph.value = null;
   bom.value = null;
   firmwareSource.value = null;
+  // If the user picked an assembly GLB, keep the persistent-assembly flag on so a later
+  // gate-resolution refresh can swap to a newer snapshot automatically. Otherwise pin to
+  // the explicit selection.
+  showingAssembly.value = (art.Role === 'assembly-snapshot' && art.Kind === 'MeshGlb' && !art.SupersededByArtifactID);
+  if (!showingAssembly.value) activeAssemblyArtifactID.value = null;
+  highlightedSubtask.value = null;
   if (isWiring(art) || isBom(art)) {
     const res = await RequestGETFromKliveAPI(
       `/stratum/artifacts/download?projectID=${encodeURIComponent(projectId)}&artifactID=${encodeURIComponent(art.ArtifactID)}`,

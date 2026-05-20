@@ -2,10 +2,11 @@ body{
     background-color: $main;
 }
 
-* {
+*, *::before, *::after {
     font-family: 'Roboto';
     color: $secondary;
     margin: 0;
+    box-sizing: border-box;
 }
 
 p{

@@ -21,7 +21,17 @@
 
           <nav v-if="isFolder" class="breadcrumbs" aria-label="Folder breadcrumbs">
             <template v-for="(crumb, index) in folderPath" :key="crumb.ItemID">
-              <button class="crumb" :class="{ active: index === folderPath.length - 1 }" @click="openFolder(crumb.ItemID)">{{ crumb.Name }}</button>
+              <button 
+                class="crumb" 
+                :class="{ 
+                  active: index === folderPath.length - 1,
+                  'drag-hover': activeDropTargetID === crumb.ItemID
+                }" 
+                @click="openFolder(crumb.ItemID)"
+                @dragover.prevent="onFolderDragOver($event, crumb)"
+                @dragleave="onFolderDragLeave($event, crumb)"
+                @drop.prevent.stop="onFolderDrop($event, crumb)"
+              >{{ crumb.Name }}</button>
               <span v-if="index < folderPath.length - 1" class="crumb-sep">/</span>
             </template>
           </nav>
@@ -114,7 +124,15 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-if="!sameId(activeFolderId, rootFolderId)" class="table-row-back" @click="openFolder(parentFolderId)">
+                <tr 
+                  v-if="!sameId(activeFolderId, rootFolderId)" 
+                  class="table-row-back" 
+                  :class="{ 'drag-hover': activeDropTargetID === 'parent' }"
+                  @click="openFolder(parentFolderId)"
+                  @dragover.prevent="onFolderDragOver($event, null)"
+                  @dragleave="onFolderDragLeave($event, null)"
+                  @drop.prevent.stop="onFolderDrop($event, null)"
+                >
                   <td class="checkbox-col"></td>
                   <td class="name-cell">
                     <div class="name-cell-inner">
@@ -130,7 +148,16 @@
                 <tr 
                   v-for="item in visibleItems" 
                   :key="item.ItemID"
-                  :class="{ selected: isSelected(item.ItemID) }"
+                  :class="{ 
+                    selected: isSelected(item.ItemID),
+                    'drag-hover': activeDropTargetID === item.ItemID
+                  }"
+                  :draggable="canWrite"
+                  @dragstart="onItemDragStart($event, item)"
+                  @dragend="onItemDragEnd($event)"
+                  @dragover.prevent="item.ItemType === 'Folder' ? onFolderDragOver($event, item) : null"
+                  @dragleave="item.ItemType === 'Folder' ? onFolderDragLeave($event, item) : null"
+                  @drop.prevent.stop="item.ItemType === 'Folder' ? onFolderDrop($event, item) : null"
                   @click="onRowClick($event, item)"
                   @dblclick="onRowDoubleClick(item)"
                 >
@@ -333,6 +360,8 @@ const isUploadPanelOpen = ref(false);
 const uploadInput = ref<HTMLInputElement | null>(null);
 const gridContainer = ref<HTMLElement | null>(null);
 const failedThumbnails = ref<Set<string>>(new Set());
+const draggedItem = ref<NormalizedSharedChildItem | null>(null);
+const activeDropTargetID = ref<string | null>(null);
 
 const isMarqueeing = ref(false);
 const marqueeRect = ref<MarqueeRect | null>(null);
@@ -1040,6 +1069,114 @@ function onRowDoubleClick(item: NormalizedSharedChildItem) {
   }
 }
 
+function onItemDragStart(e: DragEvent, item: NormalizedSharedChildItem) {
+  if (!canWrite.value) return;
+  draggedItem.value = item;
+  if (e.dataTransfer) {
+    e.dataTransfer.setData('text/plain', item.ItemID);
+    e.dataTransfer.effectAllowed = 'move';
+  }
+}
+
+function onItemDragEnd(e: DragEvent) {
+  draggedItem.value = null;
+  activeDropTargetID.value = null;
+}
+
+function onFolderDragOver(e: DragEvent, targetFolder: NormalizedSharedChildItem | null) {
+  if (!canWrite.value || !draggedItem.value) return;
+
+  const targetID = targetFolder ? targetFolder.ItemID : 'parent';
+
+  // Cannot move a folder into itself
+  if (draggedItem.value.ItemID === targetID) return;
+
+  // Cannot move a folder into one of its descendants
+  if (draggedItem.value.ItemType === 'Folder' && targetFolder) {
+    if (targetFolder.RelativePath.startsWith(draggedItem.value.RelativePath + '/')) {
+      return;
+    }
+  }
+
+  if (e.dataTransfer) {
+    e.dataTransfer.dropEffect = 'move';
+  }
+
+  activeDropTargetID.value = targetID;
+}
+
+function onFolderDragLeave(e: DragEvent, targetFolder: NormalizedSharedChildItem | null) {
+  const targetID = targetFolder ? targetFolder.ItemID : 'parent';
+  if (activeDropTargetID.value === targetID) {
+    activeDropTargetID.value = null;
+  }
+}
+
+async function onFolderDrop(e: DragEvent, targetFolder: NormalizedSharedChildItem | null) {
+  e.preventDefault();
+  activeDropTargetID.value = null;
+
+  if (!canWrite.value || !draggedItem.value) return;
+
+  const sourceItem = draggedItem.value;
+  // If targetFolder is null, we dropped on '..', so parent folder ID is parentFolderId.value
+  const destParentFolderID = targetFolder ? targetFolder.ItemID : parentFolderId.value;
+
+  if (!destParentFolderID) return;
+
+  // Determine the list of items to move
+  let itemsToMove: string[] = [];
+  if (selectedIds.value.has(sourceItem.ItemID)) {
+    itemsToMove = Array.from(selectedIds.value);
+  } else {
+    itemsToMove = [sourceItem.ItemID];
+  }
+
+  itemsToMove = itemsToMove.filter(id => id !== destParentFolderID);
+
+  if (itemsToMove.length === 0) return;
+
+  await moveItems(itemsToMove, destParentFolderID);
+}
+
+async function moveItems(itemIDs: string[], newParentFolderID: string) {
+  isMutating.value = true;
+  mutationError.value = '';
+  let successCount = 0;
+  let failedCount = 0;
+  let lastError = '';
+
+  for (const id of itemIDs) {
+    try {
+      if (id === newParentFolderID) {
+        failedCount++;
+        continue;
+      }
+      
+      const response = await fetch(`${KliveAPIUrl}/KliveCloud/MoveSharedItem?code=${encodeURIComponent(code.value)}&itemID=${encodeURIComponent(id)}&newParentFolderID=${encodeURIComponent(newParentFolderID)}`, { method: 'POST', mode: 'cors' });
+      if (response.ok) {
+        successCount++;
+      } else {
+        failedCount++;
+        lastError = await response.text();
+      }
+    } catch (err: any) {
+      failedCount++;
+      lastError = err.message;
+    }
+  }
+
+  if (successCount > 0) {
+    clearSelection();
+    await refresh();
+  }
+
+  if (failedCount > 0) {
+    mutationError.value = `Failed to move ${failedCount} item(s): ${lastError}`;
+  }
+  isMutating.value = false;
+}
+
 if (sharedItem.value) {
   const item = sharedItem.value;
   const description = normalizeItemType(item.ItemType) === 'Folder'
@@ -1058,83 +1195,78 @@ if (sharedItem.value) {
 </script>
 
 <style scoped>
+* {
+  box-sizing: border-box;
+}
+
 .shared-shell {
   min-height: 100vh;
   position: relative;
-  padding: 28px 22px;
-  background: #050805;
+  padding: 24px;
+  background: #0b0d0b;
   color: #f6fff2;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 .shared-background {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 20% 0%, rgba(83, 192, 58, 0.16), rgba(0, 0, 0, 0) 38%),
-    linear-gradient(rgba(120, 214, 92, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(120, 214, 92, 0.04) 1px, transparent 1px);
-  background-size: auto, 48px 48px, 48px 48px;
-  mask-image: linear-gradient(to bottom, #000 0%, transparent 90%);
+  display: none;
 }
 
 .state-panel,
 .share-console {
   position: relative;
   z-index: 1;
-  width: min(1500px, 100%);
+  width: 100%;
+  max-width: 1200px;
   margin: 0 auto;
 }
 
 .state-panel {
-  max-width: 540px;
-  padding: 44px 34px;
+  max-width: 460px;
+  padding: 32px 24px;
   text-align: center;
-  border-radius: 14px;
-  background: rgba(11, 18, 12, 0.92);
-  border: 1px solid rgba(125, 219, 94, 0.18);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.42);
+  border-radius: 8px;
+  background: #111411;
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .loading-mark,
 .state-icon {
-  width: 64px;
-  height: 64px;
-  margin: 0 auto 18px;
-  border-radius: 12px;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 16px;
+  border-radius: 6px;
 }
 
 .loading-mark {
-  border: 4px solid rgba(125, 219, 94, 0.18);
-  border-top-color: #76d85a;
-  animation: spin 0.9s linear infinite;
+  border: 3px solid rgba(125, 219, 94, 0.1);
+  border-top-color: #55c83c;
+  animation: spin 0.8s linear infinite;
 }
 
 .state-icon {
   display: grid;
   place-items: center;
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.28);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
   color: #ffc6c6;
-  font-size: 1.6rem;
-  font-weight: 800;
+  font-size: 1.4rem;
+  font-weight: 700;
 }
 
 .share-console {
-  display: grid;
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .topbar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 22px;
-  padding: 18px 22px;
-  border-radius: 14px;
-  border: 1px solid rgba(125, 219, 94, 0.16);
-  background: linear-gradient(135deg, rgba(15, 24, 16, 0.95), rgba(7, 11, 8, 0.95));
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .topbar-left { min-width: 0; flex: 1; }
@@ -1218,42 +1350,50 @@ if (sharedItem.value) {
 }
 
 .btn {
-  border: 0;
+  box-sizing: border-box;
+  border: 1px solid transparent;
   cursor: pointer;
   text-decoration: none;
   font: inherit;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  padding: 10px 16px;
-  border-radius: 8px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 38px;
+  min-height: 34px;
   white-space: nowrap;
-  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  font-size: 0.85rem;
+  transition: background 0.1s ease, border-color 0.1s ease;
 }
 
-.btn:hover { transform: translateY(-1px); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .btn-primary {
-  color: #061006;
-  background: linear-gradient(180deg, #a2ff87, #55c83c);
-  box-shadow: 0 12px 28px rgba(77, 158, 57, 0.22);
+  color: #050b05;
+  background: #55c83c;
+}
+.btn-primary:hover:not(:disabled) {
+  background: #6fe056;
 }
 
 .btn-ghost {
   color: #dfffd8;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.12);
 }
-.btn-ghost:hover { background: rgba(255, 255, 255, 0.08); }
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+}
 
 .btn-danger {
   color: #fff;
-  background: linear-gradient(180deg, #ef4444, #b32424);
-  box-shadow: 0 12px 28px rgba(239, 68, 68, 0.18);
+  background: #b32424;
+  border-color: #cf3c3c;
+}
+.btn-danger:hover:not(:disabled) {
+  background: #d63636;
 }
 
 .full-width { width: 100%; margin-top: 8px; }
@@ -1797,6 +1937,18 @@ if (sharedItem.value) {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.shared-files-table tbody tr.drag-hover {
+  background: rgba(125, 219, 94, 0.16) !important;
+  outline: 2px dashed rgba(125, 219, 94, 0.5);
+  outline-offset: -2px;
+}
+
+.breadcrumbs .crumb.drag-hover {
+  background: rgba(125, 219, 94, 0.2) !important;
+  color: #fff !important;
+  box-shadow: 0 0 0 1px rgba(125, 219, 94, 0.4);
 }
 
 @media (max-width: 1024px) {

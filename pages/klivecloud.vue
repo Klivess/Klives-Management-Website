@@ -1309,10 +1309,12 @@ const handleFileUpload = (event: Event) => {
 
 // Drag and Drop
 const onDragOver = (e: DragEvent) => {
+    if (draggedItem.value) return;
     isDragging.value = true;
 };
 
 const onDragLeave = (e: DragEvent) => {
+    if (draggedItem.value) return;
     // Only set to false if we're leaving the main container
     // This can be tricky with child elements, but a simple toggle often works for simple UIs
     // or checking relatedTarget
@@ -1323,6 +1325,7 @@ const onDragLeave = (e: DragEvent) => {
 };
 
 const onDrop = async (e: DragEvent) => {
+    if (draggedItem.value) return;
     isDragging.value = false;
     const files = e.dataTransfer?.files;
     if (files && files.length > 0) {

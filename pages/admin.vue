@@ -1560,7 +1560,7 @@ export default {
 
 <style scoped>
 .admin-container {
-    padding: 20px 0;
+    padding: 20px 24px;
     background-color: #201f20;
     min-height: 100vh;
 }
@@ -2446,7 +2446,7 @@ export default {
 /* Responsive */
 @media (max-width: 768px) {
     .admin-container {
-        padding: 15px 0;
+        padding: 15px 12px;
     }
 
     .admin-title {

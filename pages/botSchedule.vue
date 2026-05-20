@@ -327,7 +327,7 @@ export default {
 
 <style scoped>
 .bot-schedule-page {
-    padding: 20px 0;
+    padding: 20px 24px;
 }
 
 .page-header {

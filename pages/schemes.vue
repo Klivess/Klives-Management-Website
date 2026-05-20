@@ -350,7 +350,7 @@ onMounted(() => {
 
 <style scoped>
 .schemes-container {
-    padding: 20px 0;
+    padding: 20px 24px;
     background-color: #201f20;
     min-height: 100vh;
 }

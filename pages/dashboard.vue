@@ -1006,7 +1006,7 @@ export default {
 
 <style scoped>
 .dashboard-container {
-    padding: 20px 0;
+    padding: 20px 24px;
     background-color: #201f20;
     min-height: 100vh;
 }
@@ -1315,7 +1315,7 @@ export default {
 
 @media (max-width: 768px) {
     .dashboard-container {
-        padding: 15px 0;
+        padding: 15px 12px;
     }
     
     .dashboard-title {

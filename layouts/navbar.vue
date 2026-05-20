@@ -346,7 +346,7 @@ export default {
 }
 
 .vnav-main {
-  padding: 18px 22px;
+  padding: 0;
   transition: margin-left 160ms ease;
   min-height: 100vh;
 }

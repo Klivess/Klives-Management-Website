@@ -226,7 +226,7 @@ onUnmounted(() => {
 
 <style scoped>
 .klivechat-lobby {
-    min-height: calc(100vh - 70px);
+    min-height: 100vh;
     position: relative;
     overflow: hidden;
     padding: 18px 0 40px;

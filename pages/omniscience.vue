@@ -949,7 +949,7 @@ onMounted(refreshAll);
 <style scoped>
 /* ═════ Shell ═════ */
 .os-shell {
-    min-height: calc(100vh - 70px);
+    min-height: 100vh;
     padding: 18px;
     color: #d6ecff;
     background:

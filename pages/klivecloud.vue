@@ -220,26 +220,45 @@
 
       <!-- Share Links Section -->
       <div v-if="sharedLinks.length > 0" class="shared-links-section">
-          <!-- ... existing share links code ... -->
           <h3 class="section-title">Active Share Links ({{ sharedLinks.length }})</h3>
-          <div class="shared-links-grid">
-              <div v-for="link in sharedLinks" :key="link.ShareCode" class="shared-link-card">
-                  <div class="link-details">
-                      <div class="link-name" :title="link.ItemName">{{ link.ItemName || 'Loading item info...' }}<span v-if="link.ItemType" class="link-item-type">{{ link.ItemType }}</span></div>
-                      <div class="link-path" v-if="link.ItemPath" :title="link.ItemPath">{{ link.ItemPath.replace(/\\/g, '/') }}</div>
-                      <div class="link-meta">
-                          <span class="code">Code: {{ link.ShareCode.substring(0, 8) }}...</span>
-                          <span v-if="link.ItemType === 'Folder'">{{ formatSharePermissionMode(getShareLinkPermissionMode(link)) }}</span>
-                          <span v-if="link.ExpirationDate">Exp: {{ formatDate(link.ExpirationDate) }}</span>
-                          <span v-else>No Expiration</span>
-                      </div>
-                  </div>
-                  <div class="link-actions">
-                      <button v-if="link.ItemType === 'Folder'" @click="editShareLinkPermission(link)" title="Edit Permissions" class="permission-link-btn">⚙️</button>
-                      <button @click="copyShareLink(link.ShareCode)" title="Copy Link" class="copy-btn">📋</button>
-                      <button @click="deleteSharedLink(link.ShareCode)" title="Delete Link" class="delete-link-btn">🗑️</button>
-                  </div>
-              </div>
+          <div class="shared-links-table-container">
+              <table class="shared-links-table">
+                  <thead>
+                      <tr>
+                          <th>Item</th>
+                          <th>Code</th>
+                          <th>Permission</th>
+                          <th>Expiration</th>
+                          <th class="actions-col">Actions</th>
+                      </tr>
+                  </thead>
+                  <tbody>
+                      <tr v-for="link in sharedLinks" :key="link.ShareCode">
+                          <td class="name-cell" :title="link.ItemPath || link.ItemName">
+                              <span class="type-icon">{{ link.ItemType === 'Folder' ? '📁' : '📄' }}</span>
+                              <span class="item-name-text">{{ link.ItemName || 'Loading...' }}</span>
+                          </td>
+                          <td class="code-cell">
+                              <code>{{ link.ShareCode.substring(0, 8) }}...</code>
+                          </td>
+                          <td>
+                              <span class="perm-badge" :class="getShareLinkPermissionMode(link).toLowerCase()">
+                                  {{ link.ItemType === 'Folder' ? formatSharePermissionMode(getShareLinkPermissionMode(link)) : 'Read Only' }}
+                              </span>
+                          </td>
+                          <td class="exp-cell">
+                              {{ link.ExpirationDate ? formatDate(link.ExpirationDate) : 'No Expiration' }}
+                          </td>
+                          <td class="actions-col">
+                              <div class="table-actions">
+                                  <button v-if="link.ItemType === 'Folder'" @click="editShareLinkPermission(link)" title="Edit Permissions" class="permission-link-btn">⚙️</button>
+                                  <button @click="copyShareLink(link.ShareCode)" title="Copy Link" class="copy-btn">📋</button>
+                                  <button @click="deleteSharedLink(link.ShareCode)" title="Delete Link" class="delete-link-btn">🗑️</button>
+                              </div>
+                          </td>
+                      </tr>
+                  </tbody>
+              </table>
           </div>
       </div>
 
@@ -1988,80 +2007,135 @@ const loadPreview = async (id: string) => {
 
     .section-title {
         color: #ebcb8b;
-        margin-bottom: 15px;
+        margin-bottom: 12px;
+        font-size: 0.95rem;
     }
 
-    .shared-links-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 15px;
-    }
-
-    .shared-link-card {
-        background: #252525;
-        border: 1px solid #3a3a3a;
-        padding: 12px;
+    .shared-links-table-container {
+        background: #1e1e1e;
+        border: 1px solid #2d2d2d;
         border-radius: 6px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        
-        .link-details {
-            flex: 1;
+        overflow-x: auto;
+    }
+
+    .shared-links-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        font-size: 0.8rem;
+        color: #d8dee9;
+
+        th, td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #2d2d2d;
+            white-space: nowrap;
+        }
+
+        th {
+            background: #252525;
+            color: #88c0d0;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.5px;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background: #252525;
+        }
+
+        .name-cell {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            max-width: 250px;
             overflow: hidden;
+            text-overflow: ellipsis;
 
-            .link-name {
-                font-weight: bold;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                margin-bottom: 2px;
-                color: #88c0d0;
-            }
-            
-            .link-path {
-                font-size: 0.75rem;
-                color: #aaa;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                margin-bottom: 4px;
+            .type-icon {
+                font-size: 0.85rem;
             }
 
-            .link-meta {
-                font-size: 0.7rem;
-                color: #666;
-                display: flex;
-                gap: 8px;
-
-                .code {
-                    font-family: monospace;
-                    background: #111;
-                    padding: 2px 4px;
-                    border-radius: 3px;
-                }
+            .item-name-text {
+                font-weight: 500;
+                color: #e5e9f0;
             }
         }
 
-        .link-actions {
-            display: flex;
-            gap: 5px;
-            margin-left: 10px;
+        .code-cell code {
+            font-family: monospace;
+            background: #111;
+            padding: 2px 4px;
+            border-radius: 3px;
+            color: #a3be8c;
+        }
+
+        .perm-badge {
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: #3b4252;
+            color: #eceff4;
+
+            &.write {
+                background: #ebcb8b;
+                color: #2e3440;
+            }
+
+            &.writedelete {
+                background: #bf616a;
+                color: #eceff4;
+            }
+        }
+
+        .exp-cell {
+            color: #999;
+        }
+
+        .actions-col {
+            text-align: right;
+            width: 100px;
+        }
+
+        .table-actions {
+            display: inline-flex;
+            gap: 6px;
 
             button {
-               background: #333;
-               border: none;
-               color: white;
-               padding: 6px;
-               border-radius: 4px;
-               cursor: pointer;
-               transition: background 0.2s;
+                background: #2e2e2e;
+                border: 1px solid #3e3e3e;
+                color: white;
+                padding: 4px 6px;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+                font-size: 0.75rem;
+                line-height: 1;
 
-               &:hover { background: #444; }
+                &:hover {
+                    background: #3e3e3e;
+                    border-color: #4c566a;
+                }
 
-               &.delete-link-btn:hover { background: #bf616a; }
-               &.copy-btn:hover { background: #5e81ac; }
-               &.permission-link-btn:hover { background: #ebcb8b; color: #2e3440; }
+                &.delete-link-btn:hover {
+                    background: #bf616a;
+                    border-color: #bf616a;
+                }
+
+                &.copy-btn:hover {
+                    background: #5e81ac;
+                    border-color: #5e81ac;
+                }
+
+                &.permission-link-btn:hover {
+                    background: #ebcb8b;
+                    border-color: #ebcb8b;
+                    color: #2e3440;
+                }
             }
         }
     }

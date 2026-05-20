@@ -235,8 +235,10 @@
                   <tbody>
                       <tr v-for="link in sharedLinks" :key="link.ShareCode">
                           <td class="name-cell" :title="link.ItemPath || link.ItemName">
-                              <span class="type-icon">{{ link.ItemType === 'Folder' ? '📁' : '📄' }}</span>
-                              <span class="item-name-text">{{ link.ItemName || 'Loading...' }}</span>
+                              <div class="name-cell-inner">
+                                  <span class="type-icon">{{ link.ItemType === 'Folder' ? '📁' : '📄' }}</span>
+                                  <span class="item-name-text">{{ link.ItemName || 'Loading...' }}</span>
+                              </div>
                           </td>
                           <td class="code-cell">
                               <code>{{ link.ShareCode.substring(0, 8) }}...</code>
@@ -390,7 +392,9 @@ const startSelection = (event: MouseEvent) => {
     if ((event.target as HTMLElement).closest('.file-item') || 
         (event.target as HTMLElement).closest('button') || 
         (event.target as HTMLElement).closest('input') ||
-        (event.target as HTMLElement).closest('select')) {
+        (event.target as HTMLElement).closest('select') ||
+        (event.target as HTMLElement).closest('.shared-links-section') ||
+        (event.target as HTMLElement).closest('.upload-panel')) {
         return;
     }
     
@@ -2049,12 +2053,15 @@ const loadPreview = async (id: string) => {
         }
 
         .name-cell {
-            display: flex;
-            align-items: center;
-            gap: 6px;
             max-width: 250px;
             overflow: hidden;
             text-overflow: ellipsis;
+        }
+
+        .name-cell-inner {
+            display: flex;
+            align-items: center;
+            gap: 6px;
 
             .type-icon {
                 font-size: 0.85rem;

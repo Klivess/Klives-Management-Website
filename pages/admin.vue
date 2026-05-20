@@ -408,6 +408,92 @@
             </KMInfoBox>
         </KMInfoGrid>
 
+        <!-- Port Forwarding Manager (Klives Only) -->
+        <KMInfoGrid v-if="isKlives" columns="1" rows="1" rowHeight="auto" style="margin-bottom: 24px;">
+            <KMInfoBox caption="UPnP Port Forwarding Manager">
+                <div class="pf-dashboard">
+                    <!-- Status Header -->
+                    <div class="pf-header">
+                        <div class="pf-meta">
+                            <div class="pf-status-item">
+                                <span class="pf-label">Gateway Status:</span>
+                                <span v-if="pfLoading" class="pf-value" style="color: #fde047;">Discovering...</span>
+                                <span v-else-if="pfGatewayStatus === 'connected'" class="pf-value" style="color: #4d9e39;">● Connected (UPnP)</span>
+                                <span v-else-if="pfGatewayStatus === 'not_found'" class="pf-value" style="color: #fca5a5;">✕ Discovered with warnings</span>
+                                <span v-else class="pf-value" style="color: #ef4444;">✕ Error</span>
+                            </div>
+                            <div class="pf-status-item">
+                                <span class="pf-label">Local IP:</span>
+                                <span class="pf-value" style="color: #38bdf8;">{{ pfLocalIp }}</span>
+                            </div>
+                            <div class="pf-status-item">
+                                <span class="pf-label">WAN IP:</span>
+                                <span class="pf-value" style="color: #62ce47;">{{ pfExternalIp }}</span>
+                            </div>
+                        </div>
+                        <div class="pf-actions">
+                            <button class="pf-btn refresh" @click="loadPortMappings" :disabled="pfLoading">
+                                {{ pfLoading ? 'Refreshing...' : 'Refresh List' }}
+                            </button>
+                            <button class="pf-btn add" @click="openAddPortMappingModal" :disabled="pfGatewayStatus === 'error'">
+                                + Add Mapping
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Warning for Not Found -->
+                    <div v-if="pfGatewayStatus === 'not_found'" class="pf-warning-banner">
+                        <strong>Warning:</strong> {{ pfError || 'No UPnP gateway device was found. Mappings cannot be managed until UPnP is enabled on your router.' }}
+                    </div>
+
+                    <!-- Table of Mappings -->
+                    <div class="pf-table-wrapper">
+                        <table class="pf-table">
+                            <thead>
+                                <tr>
+                                    <th>Description</th>
+                                    <th>Protocol</th>
+                                    <th>Public Port</th>
+                                    <th>Private Port</th>
+                                    <th>Target IP</th>
+                                    <th>Expiration</th>
+                                    <th style="text-align: right; padding-right: 20px;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="mapping in pfMappings" :key="mapping.Protocol + '-' + mapping.PublicPort">
+                                    <td class="pf-desc">{{ mapping.Description || 'N/A' }}</td>
+                                    <td>
+                                        <span class="pf-proto-badge" :class="mapping.Protocol.toLowerCase()">
+                                            {{ mapping.Protocol }}
+                                        </span>
+                                    </td>
+                                    <td class="pf-port">{{ mapping.PublicPort }}</td>
+                                    <td class="pf-port">{{ mapping.PrivatePort }}</td>
+                                    <td class="pf-ip">{{ mapping.PrivateIp }}</td>
+                                    <td class="pf-exp">{{ mapping.ExpirationDate }}</td>
+                                    <td class="pf-row-actions" style="padding-right: 20px;">
+                                        <button class="pf-action-btn edit" @click="openEditPortMappingModal(mapping)">Edit</button>
+                                        <button class="pf-action-btn delete" @click="deletePortMapping(mapping)">Delete</button>
+                                    </td>
+                                </tr>
+                                <tr v-if="pfMappings.length === 0 && !pfLoading">
+                                    <td colspan="7" class="pf-empty">
+                                        No active UPnP port forwards mapped.
+                                    </td>
+                                </tr>
+                                <tr v-if="pfLoading && pfMappings.length === 0">
+                                    <td colspan="7" class="pf-empty">
+                                        Querying UPnP device...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </KMInfoBox>
+        </KMInfoGrid>
+
         <!-- Terminal CLI -->
         <KMInfoGrid columns="1" rows="1" rowHeight="550">
             <div style="height: 100%; width: 100%;">
@@ -433,6 +519,13 @@ export default {
     components: { KMInfoGrid, KMInfoBox, KMButton, TerminalUI },
     data() {
         return {
+            isKlives: false,
+            pfLoading: false,
+            pfGatewayStatus: 'unknown',
+            pfLocalIp: '127.0.0.1',
+            pfExternalIp: 'Unknown',
+            pfMappings: [],
+            pfError: null,
             statsLoading: false,
             statsError: false,
             uptimeStats: {
@@ -696,6 +789,342 @@ export default {
         }
     },
     methods: {
+        async loadPortMappings() {
+            this.pfLoading = true;
+            this.pfError = null;
+            try {
+                const response = await RequestGETFromKliveAPI('/admin/portforwarding/list', false, false);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success !== false) {
+                        this.pfMappings = data.mappings || [];
+                        this.pfLocalIp = data.localIp || '127.0.0.1';
+                        this.pfExternalIp = data.externalIp || 'Unknown';
+                        this.pfGatewayStatus = 'connected';
+                    } else {
+                        this.pfMappings = [];
+                        this.pfLocalIp = data.localIp || '127.0.0.1';
+                        this.pfExternalIp = 'Unknown';
+                        this.pfGatewayStatus = 'not_found';
+                        this.pfError = data.error || 'No UPnP gateway device found.';
+                    }
+                } else {
+                    this.pfGatewayStatus = 'error';
+                    this.pfError = `Failed to load port mappings (HTTP ${response.status}).`;
+                }
+            } catch (e) {
+                console.error('Failed to load port mappings:', e);
+                this.pfGatewayStatus = 'error';
+                this.pfError = 'Network error: could not connect to port forwarding service.';
+            } finally {
+                this.pfLoading = false;
+            }
+        },
+        async openAddPortMappingModal() {
+            const localIp = this.pfLocalIp || '127.0.0.1';
+            const { value: formValues } = await Swal.fire({
+                title: 'Add Port Forwarding Rule',
+                background: '#161516',
+                color: '#ffffff',
+                customClass: { popup: 'swal-dark-theme' },
+                html:
+                    '<div style="text-align: left; display: flex; flex-direction: column; gap: 12px; padding: 10px 0;">' +
+                    '  <div>' +
+                    '    <label style="display: block; font-size: 0.85rem; color: #a3a3a3; margin-bottom: 4px;">Description</label>' +
+                    '    <input id="swal-pf-desc" class="swal2-input" style="margin: 0; width: 100%; box-sizing: border-box; background: #252425; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 8px 12px;" placeholder="My Game Server">' +
+                    '  </div>' +
+                    '  <div style="display: flex; gap: 10px;">' +
+                    '    <div style="flex: 1;">' +
+                    '      <label style="display: block; font-size: 0.85rem; color: #a3a3a3; margin-bottom: 4px;">Public Port</label>' +
+                    '      <input id="swal-pf-pub" type="number" class="swal2-input" style="margin: 0; width: 100%; box-sizing: border-box; background: #252425; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 8px 12px;" placeholder="27015">' +
+                    '    </div>' +
+                    '    <div style="flex: 1;">' +
+                    '      <label style="display: block; font-size: 0.85rem; color: #a3a3a3; margin-bottom: 4px;">Private Port</label>' +
+                    '      <input id="swal-pf-priv" type="number" class="swal2-input" style="margin: 0; width: 100%; box-sizing: border-box; background: #252425; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 8px 12px;" placeholder="27015">' +
+                    '    </div>' +
+                    '  </div>' +
+                    '  <div style="display: flex; gap: 10px;">' +
+                    '    <div style="flex: 1;">' +
+                    '      <label style="display: block; font-size: 0.85rem; color: #a3a3a3; margin-bottom: 4px;">Protocol</label>' +
+                    '      <select id="swal-pf-proto" class="swal2-input" style="margin: 0; width: 100%; box-sizing: border-box; background: #252425; color: #fff; border: 1px solid #444; border-radius: 4px; height: 38px; padding: 4px 8px;">' +
+                    '        <option value="TCP">TCP</option>' +
+                    '        <option value="UDP">UDP</option>' +
+                    '      </select>' +
+                    '    </div>' +
+                    '    <div style="flex: 1;">' +
+                    '      <label style="display: block; font-size: 0.85rem; color: #a3a3a3; margin-bottom: 4px;">Private IP</label>' +
+                    '      <input id="swal-pf-ip" class="swal2-input" style="margin: 0; width: 100%; box-sizing: border-box; background: #252425; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 8px 12px;" value="' + localIp + '">' +
+                    '    </div>' +
+                    '  </div>' +
+                    '  <div>' +
+                    '    <label style="display: block; font-size: 0.85rem; color: #a3a3a3; margin-bottom: 4px;">Lifetime</label>' +
+                    '    <select id="swal-pf-lifetime" class="swal2-input" style="margin: 0; width: 100%; box-sizing: border-box; background: #252425; color: #fff; border: 1px solid #444; border-radius: 4px; height: 38px; padding: 4px 8px;">' +
+                    '      <option value="0">Permanent (Always)</option>' +
+                    '      <option value="86400">1 Day (24 Hours)</option>' +
+                    '      <option value="3600">1 Hour</option>' +
+                    '    </select>' +
+                    '  </div>' +
+                    '</div>',
+                focusConfirm: false,
+                showCancelButton: true,
+                confirmButtonText: 'Add Mapping',
+                confirmButtonColor: '#4d9e39',
+                cancelButtonColor: '#5f5f5f',
+                preConfirm: () => {
+                    const desc = document.getElementById('swal-pf-desc').value.trim();
+                    const pub = parseInt(document.getElementById('swal-pf-pub').value);
+                    const priv = parseInt(document.getElementById('swal-pf-priv').value);
+                    const proto = document.getElementById('swal-pf-proto').value;
+                    const ip = document.getElementById('swal-pf-ip').value.trim();
+                    const lifetime = parseInt(document.getElementById('swal-pf-lifetime').value);
+
+                    if (!pub || pub < 1 || pub > 65535) {
+                        Swal.showValidationMessage('Please enter a valid public port (1-65535)');
+                        return false;
+                    }
+                    if (!priv || priv < 1 || priv > 65535) {
+                        Swal.showValidationMessage('Please enter a valid private port (1-65535)');
+                        return false;
+                    }
+                    if (!ip) {
+                        Swal.showValidationMessage('Please enter a target private IP');
+                        return false;
+                    }
+                    return { Description: desc, PublicPort: pub, PrivatePort: priv, Protocol: proto, PrivateIp: ip, LifetimeSeconds: lifetime };
+                }
+            });
+
+            if (formValues) {
+                await this.addPortMapping(formValues);
+            }
+        },
+        async openEditPortMappingModal(mapping) {
+            const { value: formValues } = await Swal.fire({
+                title: 'Edit Port Forwarding Rule',
+                background: '#161516',
+                color: '#ffffff',
+                customClass: { popup: 'swal-dark-theme' },
+                html:
+                    `<div style="text-align: left; display: flex; flex-direction: column; gap: 12px; padding: 10px 0;">` +
+                    `  <div>` +
+                    `    <label style="display: block; font-size: 0.85rem; color: #a3a3a3; margin-bottom: 4px;">Description</label>` +
+                    `    <input id="swal-pf-desc" class="swal2-input" style="margin: 0; width: 100%; box-sizing: border-box; background: #252425; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 8px 12px;" value="${mapping.Description || ''}" placeholder="My Game Server">` +
+                    `  </div>` +
+                    `  <div style="display: flex; gap: 10px;">` +
+                    `    <div style="flex: 1;">` +
+                    `      <label style="display: block; font-size: 0.85rem; color: #a3a3a3; margin-bottom: 4px;">Public Port</label>` +
+                    `      <input id="swal-pf-pub" type="number" class="swal2-input" style="margin: 0; width: 100%; box-sizing: border-box; background: #252425; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 8px 12px;" value="${mapping.PublicPort}" placeholder="27015">` +
+                    `    </div>` +
+                    `    <div style="flex: 1;">` +
+                    `      <label style="display: block; font-size: 0.85rem; color: #a3a3a3; margin-bottom: 4px;">Private Port</label>` +
+                    `      <input id="swal-pf-priv" type="number" class="swal2-input" style="margin: 0; width: 100%; box-sizing: border-box; background: #252425; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 8px 12px;" value="${mapping.PrivatePort}" placeholder="27015">` +
+                    `    </div>` +
+                    `  </div>` +
+                    `  <div style="display: flex; gap: 10px;">` +
+                    `    <div style="flex: 1;">` +
+                    `      <label style="display: block; font-size: 0.85rem; color: #a3a3a3; margin-bottom: 4px;">Protocol</label>` +
+                    `      <select id="swal-pf-proto" class="swal2-input" style="margin: 0; width: 100%; box-sizing: border-box; background: #252425; color: #fff; border: 1px solid #444; border-radius: 4px; height: 38px; padding: 4px 8px;">` +
+                    `        <option value="TCP" ${mapping.Protocol === 'TCP' ? 'selected' : ''}>TCP</option>` +
+                    `        <option value="UDP" ${mapping.Protocol === 'UDP' ? 'selected' : ''}>UDP</option>` +
+                    `      </select>` +
+                    `    </div>` +
+                    `    <div style="flex: 1;">` +
+                    `      <label style="display: block; font-size: 0.85rem; color: #a3a3a3; margin-bottom: 4px;">Private IP</label>` +
+                    `      <input id="swal-pf-ip" class="swal2-input" style="margin: 0; width: 100%; box-sizing: border-box; background: #252425; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 8px 12px;" value="${mapping.PrivateIp}">` +
+                    `    </div>` +
+                    `  </div>` +
+                    `  <div>` +
+                    `    <label style="display: block; font-size: 0.85rem; color: #a3a3a3; margin-bottom: 4px;">Lifetime</label>` +
+                    `    <select id="swal-pf-lifetime" class="swal2-input" style="margin: 0; width: 100%; box-sizing: border-box; background: #252425; color: #fff; border: 1px solid #444; border-radius: 4px; height: 38px; padding: 4px 8px;">` +
+                    `      <option value="0" ${mapping.LifetimeSeconds === 0 ? 'selected' : ''}>Permanent (Always)</option>` +
+                    `      <option value="86400" ${mapping.LifetimeSeconds === 86400 ? 'selected' : ''}>1 Day (24 Hours)</option>` +
+                    `      <option value="3600" ${mapping.LifetimeSeconds === 3600 ? 'selected' : ''}>1 Hour</option>` +
+                    `    </select>` +
+                    `  </div>` +
+                    `</div>`,
+                focusConfirm: false,
+                showCancelButton: true,
+                confirmButtonText: 'Save Changes',
+                confirmButtonColor: '#4d9e39',
+                cancelButtonColor: '#5f5f5f',
+                preConfirm: () => {
+                    const desc = document.getElementById('swal-pf-desc').value.trim();
+                    const pub = parseInt(document.getElementById('swal-pf-pub').value);
+                    const priv = parseInt(document.getElementById('swal-pf-priv').value);
+                    const proto = document.getElementById('swal-pf-proto').value;
+                    const ip = document.getElementById('swal-pf-ip').value.trim();
+                    const lifetime = parseInt(document.getElementById('swal-pf-lifetime').value);
+
+                    if (!pub || pub < 1 || pub > 65535) {
+                        Swal.showValidationMessage('Please enter a valid public port (1-65535)');
+                        return false;
+                    }
+                    if (!priv || priv < 1 || priv > 65535) {
+                        Swal.showValidationMessage('Please enter a valid private port (1-65535)');
+                        return false;
+                    }
+                    if (!ip) {
+                        Swal.showValidationMessage('Please enter a target private IP');
+                        return false;
+                    }
+                    return { Description: desc, PublicPort: pub, PrivatePort: priv, Protocol: proto, PrivateIp: ip, LifetimeSeconds: lifetime };
+                }
+            });
+
+            if (formValues) {
+                await this.editPortMapping(mapping, formValues);
+            }
+        },
+        async addPortMapping(values) {
+            this.pfLoading = true;
+            try {
+                const response = await RequestPOSTFromKliveAPI('/admin/portforwarding/add', JSON.stringify(values), false, false);
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Mapping Created',
+                        text: result.message || 'Port mapping successfully added.',
+                        background: '#161516',
+                        color: '#ffffff',
+                        customClass: { popup: 'swal-dark-theme' }
+                    });
+                    await this.loadPortMappings();
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Failed to Add Mapping',
+                        text: result.error || 'The router rejected the port mapping request.',
+                        background: '#161516',
+                        color: '#ffffff',
+                        customClass: { popup: 'swal-dark-theme' }
+                    });
+                }
+            } catch (e) {
+                console.error(e);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Network Error',
+                    text: 'An error occurred while contacting the server.',
+                    background: '#161516',
+                    color: '#ffffff',
+                    customClass: { popup: 'swal-dark-theme' }
+                });
+            } finally {
+                this.pfLoading = false;
+            }
+        },
+        async editPortMapping(oldMapping, newMappingValues) {
+            this.pfLoading = true;
+            try {
+                const payload = {
+                    OldMapping: {
+                        Protocol: oldMapping.Protocol,
+                        PublicPort: oldMapping.PublicPort,
+                        PrivatePort: oldMapping.PrivatePort,
+                        PrivateIp: oldMapping.PrivateIp,
+                        Description: oldMapping.Description,
+                        LifetimeSeconds: oldMapping.LifetimeSeconds
+                    },
+                    NewMapping: newMappingValues
+                };
+                const response = await RequestPOSTFromKliveAPI('/admin/portforwarding/edit', JSON.stringify(payload), false, false);
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Mapping Updated',
+                        text: result.message || 'Port mapping successfully updated.',
+                        background: '#161516',
+                        color: '#ffffff',
+                        customClass: { popup: 'swal-dark-theme' }
+                    });
+                    await this.loadPortMappings();
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Failed to Edit Mapping',
+                        text: result.error || 'The router rejected the edit port mapping request.',
+                        background: '#161516',
+                        color: '#ffffff',
+                        customClass: { popup: 'swal-dark-theme' }
+                    });
+                }
+            } catch (e) {
+                console.error(e);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Network Error',
+                    text: 'An error occurred while contacting the server.',
+                    background: '#161516',
+                    color: '#ffffff',
+                    customClass: { popup: 'swal-dark-theme' }
+                });
+            } finally {
+                this.pfLoading = false;
+            }
+        },
+        async deletePortMapping(mapping) {
+            const confirm = await Swal.fire({
+                title: 'Delete Port Forwarding?',
+                text: `Are you sure you want to delete forwarding for port ${mapping.PublicPort} (${mapping.Protocol})?`,
+                icon: 'warning',
+                background: '#161516',
+                color: '#ffffff',
+                customClass: { popup: 'swal-dark-theme' },
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444',
+                cancelButtonColor: '#5f5f5f',
+                confirmButtonText: 'Yes, delete it!'
+            });
+
+            if (!confirm.isConfirmed) return;
+
+            this.pfLoading = true;
+            try {
+                const response = await RequestPOSTFromKliveAPI('/admin/portforwarding/delete', JSON.stringify({
+                    Protocol: mapping.Protocol,
+                    PublicPort: mapping.PublicPort,
+                    PrivatePort: mapping.PrivatePort,
+                    PrivateIp: mapping.PrivateIp,
+                    Description: mapping.Description,
+                    LifetimeSeconds: mapping.LifetimeSeconds
+                }), false, false);
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Mapping Deleted',
+                        text: result.message || 'Port mapping successfully removed.',
+                        background: '#161516',
+                        color: '#ffffff',
+                        customClass: { popup: 'swal-dark-theme' }
+                    });
+                    await this.loadPortMappings();
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Failed to Delete Mapping',
+                        text: result.error || 'The router rejected the delete request.',
+                        background: '#161516',
+                        color: '#ffffff',
+                        customClass: { popup: 'swal-dark-theme' }
+                    });
+                }
+            } catch (e) {
+                console.error(e);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Network Error',
+                    text: 'An error occurred while contacting the server.',
+                    background: '#161516',
+                    color: '#ffffff',
+                    customClass: { popup: 'swal-dark-theme' }
+                });
+            } finally {
+                this.pfLoading = false;
+            }
+        },
         isServiceActionPending(serviceName) {
             return Boolean(this.serviceActionState[serviceName]);
         },
@@ -1096,12 +1525,32 @@ export default {
             return ms.toFixed(2) + ' ms';
         }
     },
-    mounted() {
+    async mounted() {
         this.loadStats();
         this.loadSeleniumInstances();
         this.loadUptimeStats();
         this.loadApiStats();
-        this.refreshInterval = setInterval(() => { this.loadStats(); this.loadSeleniumInstances(); this.loadUptimeStats(); this.loadApiStats(); }, 10000);
+        try {
+            const r = await RequestGETFromKliveAPI('/KMProfiles/GetCurrentProfile', false, false);
+            if (r.ok) {
+                const p = await r.json();
+                this.isKlives = Number(p?.KlivesManagementRank) === 5;
+                if (this.isKlives) {
+                    this.loadPortMappings();
+                }
+            }
+        } catch (e) {
+            console.error('Failed to load profile for Klives check:', e);
+        }
+        this.refreshInterval = setInterval(() => { 
+            this.loadStats(); 
+            this.loadSeleniumInstances(); 
+            this.loadUptimeStats(); 
+            this.loadApiStats(); 
+            if (this.isKlives) {
+                this.loadPortMappings();
+            }
+        }, 10000);
     },
     beforeUnmount() {
         if (this.refreshInterval) clearInterval(this.refreshInterval);
@@ -2076,5 +2525,216 @@ export default {
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+/* Port Forwarding Dashboard */
+.pf-dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 10px;
+    height: 100%;
+}
+
+.pf-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.pf-meta {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+}
+
+.pf-status-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pf-label {
+    font-size: 0.85rem;
+    color: #969696;
+}
+
+.pf-value {
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.pf-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.pf-btn {
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.pf-btn.refresh {
+    background: rgba(255, 255, 255, 0.05);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pf-btn.refresh:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.pf-btn.add {
+    background: #4d9e39;
+    color: #ffffff;
+    box-shadow: 0 0 10px rgba(77, 158, 57, 0.25);
+}
+
+.pf-btn.add:hover:not(:disabled) {
+    background: #5dc045;
+}
+
+.pf-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pf-warning-banner {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    color: #fca5a5;
+}
+
+.pf-table-wrapper {
+    overflow-x: auto;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.15);
+    max-height: 380px;
+    overflow-y: auto;
+}
+
+.pf-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    text-align: left;
+}
+
+.pf-table th {
+    padding: 12px 14px;
+    font-weight: 700;
+    color: #969696;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.pf-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    color: #ffffff;
+    vertical-align: middle;
+}
+
+.pf-table tr:hover td {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.pf-desc {
+    font-weight: 600;
+}
+
+.pf-proto-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-align: center;
+}
+
+.pf-proto-badge.tcp {
+    background: rgba(59, 130, 246, 0.15);
+    color: #93c5fd;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.pf-proto-badge.udp {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fde047;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.pf-port {
+    font-family: monospace;
+    font-weight: 600;
+    color: #38bdf8;
+}
+
+.pf-ip {
+    font-family: monospace;
+    color: #e2e8f0;
+}
+
+.pf-exp {
+    color: #a3a3a3;
+}
+
+.pf-row-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.pf-action-btn {
+    border: none;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.pf-action-btn.edit {
+    background: rgba(255, 255, 255, 0.06);
+    color: #d1d5db;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pf-action-btn.edit:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+}
+
+.pf-action-btn.delete {
+    background: rgba(239, 68, 68, 0.1);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.pf-action-btn.delete:hover {
+    background: rgba(239, 68, 68, 0.25);
+    color: #ffffff;
+    border-color: rgba(239, 68, 68, 0.4);
+}
+
+.pf-empty {
+    text-align: center;
+    padding: 30px !important;
+    color: #777777;
+    font-style: italic;
 }
 </style>

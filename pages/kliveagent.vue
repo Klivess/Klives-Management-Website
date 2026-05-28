@@ -27,8 +27,9 @@
                 <div class="script-header">
                   <span>{{ script.success ? '✓ Script' : '✗ Script Failed' }}</span>
                   <span class="script-time">{{ script.executionTimeMs }}ms</span>
+                  <button class="script-copy" @click="copyToClipboard(script.code)" title="Copy code">⧉ Copy</button>
                 </div>
-                <pre class="script-code">{{ script.code }}</pre>
+                <pre class="script-code hljs"><code v-html="highlightCsharp(script.code)"></code></pre>
                 <pre v-if="script.output" class="script-output">{{ script.output }}</pre>
                 <pre v-if="script.errorMessage" class="script-error">{{ script.errorMessage }}</pre>
               </div>
@@ -152,7 +153,12 @@
     <div v-if="analytics?.lifetime" class="dash-section">
       <div class="dash-header">
         <h2 class="dash-title">Analytics Dashboard</h2>
-        <button @click="loadAnalytics" class="refresh-btn" style="width:auto;padding:6px 14px;">Refresh</button>
+        <div class="dash-controls">
+          <div class="range-toggle">
+            <button v-for="r in ['day','week','month']" :key="r" class="range-btn" :class="{ 'range-active': chartRange === r }" @click="chartRange = r">{{ r }}</button>
+          </div>
+          <button @click="loadAnalytics" class="refresh-btn" style="width:auto;padding:6px 14px;margin:0;">Refresh</button>
+        </div>
       </div>
 
       <!-- Summary KPIs -->
@@ -182,6 +188,22 @@
           <div class="kpi-key">Script Success Rate</div>
         </div>
         <div class="kpi-card">
+          <div class="kpi-val">{{ fmtMs(analytics.lifetime.avgLatencyMs) }}</div>
+          <div class="kpi-key">Avg Response Time</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val">{{ fmtCost(analytics.lifetime.estimatedCostUsd) }}</div>
+          <div class="kpi-key">Est. Cost</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val">{{ analytics.lifetime.memorySaves }}</div>
+          <div class="kpi-key">Memories Saved</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val">{{ analytics.lifetime.discordMessages }}<span class="kpi-sub"> / {{ analytics.lifetime.apiMessages }}</span></div>
+          <div class="kpi-key">Discord / API Msgs</div>
+        </div>
+        <div class="kpi-card">
           <div class="kpi-val">{{ analytics.historyWindow?.totalDays || chartDays.length }}</div>
           <div class="kpi-key">Days Recorded</div>
         </div>
@@ -190,9 +212,9 @@
       <!-- Charts row -->
       <div class="charts-row">
 
-        <!-- Tokens per day line chart -->
+        <!-- Tokens per period line chart -->
         <div class="chart-card wide">
-          <div class="chart-title">Tokens Per Day (Total History)</div>
+          <div class="chart-title">Tokens Per {{ rangeLabel }}</div>
           <svg :viewBox="`0 0 ${chartW} ${chartH}`" class="chart-svg" preserveAspectRatio="none">
             <!-- grid lines -->
             <line v-for="y in [0.25,0.5,0.75,1]" :key="y"
@@ -222,9 +244,9 @@
           </div>
         </div>
 
-        <!-- Messages per day bar chart -->
+        <!-- Messages per period bar chart -->
         <div class="chart-card">
-          <div class="chart-title">Messages Per Day (Total History)</div>
+          <div class="chart-title">Messages Per {{ rangeLabel }}</div>
           <svg :viewBox="`0 0 ${chartW} ${chartH}`" class="chart-svg" preserveAspectRatio="none">
             <line v-for="y in [0.25,0.5,0.75,1]" :key="y"
               :x1="chartPad" :y1="chartPad + (1-y)*(chartH-2*chartPad)"
@@ -241,9 +263,9 @@
           </svg>
         </div>
 
-        <!-- Iterations per day line chart -->
+        <!-- Iterations per period line chart -->
         <div class="chart-card">
-          <div class="chart-title">Avg Iterations Per Day</div>
+          <div class="chart-title">Avg Iterations Per {{ rangeLabel }}</div>
           <svg :viewBox="`0 0 ${chartW} ${chartH}`" class="chart-svg" preserveAspectRatio="none">
             <line v-for="y in [0.25,0.5,0.75,1]" :key="y"
               :x1="chartPad" :y1="chartPad + (1-y)*(chartH-2*chartPad)"
@@ -254,6 +276,23 @@
             <circle v-for="(d,i) in chartDays" :key="'iter'+i"
               :cx="tokenX(i)" :cy="tokenY(d.messages > 0 ? d.iterations/d.messages : 0, 'iter')" r="3" fill="#f59e0b"/>
             <text v-for="(d,i) in chartDaysLabeled" :key="'ixl'+i"
+              :x="tokenX(d.idx)" :y="chartH - 4" fill="#555" font-size="9" text-anchor="middle">{{ d.label }}</text>
+          </svg>
+        </div>
+
+        <!-- Response time per period line chart -->
+        <div class="chart-card">
+          <div class="chart-title">Avg Response Time Per {{ rangeLabel }}</div>
+          <svg :viewBox="`0 0 ${chartW} ${chartH}`" class="chart-svg" preserveAspectRatio="none">
+            <line v-for="y in [0.25,0.5,0.75,1]" :key="y"
+              :x1="chartPad" :y1="chartPad + (1-y)*(chartH-2*chartPad)"
+              :x2="chartW - chartPad" :y2="chartPad + (1-y)*(chartH-2*chartPad)"
+              stroke="#2a2a2a" stroke-width="1"/>
+            <polygon :points="latencyAreaPoints" fill="#a855f722"/>
+            <polyline :points="latencyLinePoints" fill="none" stroke="#a855f7" stroke-width="2" stroke-linejoin="round"/>
+            <circle v-for="(d,i) in chartDays" :key="'lat'+i"
+              :cx="tokenX(i)" :cy="tokenY(d.avgLatencyMs, 'latency')" r="3" fill="#a855f7"/>
+            <text v-for="(d,i) in chartDaysLabeled" :key="'lxl'+i"
               :x="tokenX(d.idx)" :y="chartH - 4" fill="#555" font-size="9" text-anchor="middle">{{ d.label }}</text>
           </svg>
         </div>
@@ -334,8 +373,42 @@
 <script setup>
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import MarkdownIt from 'markdown-it';
+import hljs from 'highlight.js';
+import 'highlight.js/styles/github-dark.css';
 
 definePageMeta({ layout: 'navbar' });
+
+// Markdown renderer with code-fence syntax highlighting (replaces the old regex renderer).
+const md = new MarkdownIt({
+  html: false,
+  linkify: true,
+  breaks: true,
+  highlight(str, lang) {
+    try {
+      if (lang && hljs.getLanguage(lang)) {
+        return hljs.highlight(str, { language: lang, ignoreIllegals: true }).value;
+      }
+      return hljs.highlightAuto(str).value;
+    } catch {
+      return '';
+    }
+  }
+});
+
+// Highlight a raw C# script body for the script-result cards.
+function highlightCsharp(code) {
+  if (!code) return '';
+  try {
+    return hljs.highlight(code, { language: 'csharp', ignoreIllegals: true }).value;
+  } catch {
+    return md.utils.escapeHtml(code);
+  }
+}
+
+async function copyToClipboard(text) {
+  try { await navigator.clipboard.writeText(text ?? ''); } catch { }
+}
 
 const messages = ref([]);
 const inputMessage = ref('');
@@ -479,8 +552,10 @@ async function pollPendingResponse(pendingMessage) {
       }
 
       if (data.status === 'Running') {
+        // Live "talking while working": the server streams the agent's prose + script
+        // progress into data.response between iterations.
         pendingMessage.content = data.response || pendingMessage.content;
-        await waitForPendingPoll(1200);
+        await waitForPendingPoll(600);
         continue;
       }
 
@@ -523,11 +598,7 @@ function scrollToBottom() {
 
 function renderMarkdown(text) {
   if (!text) return '';
-  return text
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/\n/g, '<br>');
+  return md.render(text);
 }
 
 function formatTime(ts) {
@@ -566,22 +637,39 @@ function normalizeTask(task) {
   };
 }
 
-function normalizeAnalyticsDay(day) {
-  const promptTokens = toFiniteNumber(day?.promptTokens);
-  const completionTokens = toFiniteNumber(day?.completionTokens);
+function bucketLabel(value, keyName) {
+  if (!value) return '';
+  if (keyName === 'date') return value.slice(5);   // MM-DD
+  if (keyName === 'week') return value.slice(5);    // Www
+  return value;                                     // month: yyyy-MM
+}
+
+// Normalizes a day/week/month time bucket. keyName is 'date' | 'week' | 'month'.
+function normalizeBucket(b, keyName) {
+  const promptTokens = toFiniteNumber(b?.promptTokens);
+  const completionTokens = toFiniteNumber(b?.completionTokens);
+  const keyValue = typeof b?.[keyName] === 'string' ? b[keyName] : '';
 
   return {
-    date: typeof day?.date === 'string' ? day.date : '',
-    messages: toFiniteNumber(day?.messages),
+    key: keyValue,
+    label: bucketLabel(keyValue, keyName),
+    date: keyValue, // kept so existing date-keyed template bits keep working
+    messages: toFiniteNumber(b?.messages),
     promptTokens,
     completionTokens,
-    totalTokens: toFiniteNumber(day?.totalTokens, promptTokens + completionTokens),
-    iterations: toFiniteNumber(day?.iterations),
-    scripts: toFiniteNumber(day?.scripts),
-    scriptFailures: toFiniteNumber(day?.scriptFailures),
-    capabilityCalls: toFiniteNumber(day?.capabilityCalls),
-    capabilityFailures: toFiniteNumber(day?.capabilityFailures),
-    capabilityConfirmationBlocks: toFiniteNumber(day?.capabilityConfirmationBlocks)
+    totalTokens: toFiniteNumber(b?.totalTokens, promptTokens + completionTokens),
+    iterations: toFiniteNumber(b?.iterations),
+    scripts: toFiniteNumber(b?.scripts),
+    scriptFailures: toFiniteNumber(b?.scriptFailures),
+    capabilityCalls: toFiniteNumber(b?.capabilityCalls),
+    capabilityFailures: toFiniteNumber(b?.capabilityFailures),
+    apiMessages: toFiniteNumber(b?.apiMessages),
+    discordMessages: toFiniteNumber(b?.discordMessages),
+    avgLatencyMs: toFiniteNumber(b?.avgLatencyMs),
+    maxLatencyMs: toFiniteNumber(b?.maxLatencyMs),
+    memorySaves: toFiniteNumber(b?.memorySaves),
+    memoryRecalls: toFiniteNumber(b?.memoryRecalls),
+    estimatedCostUsd: toFiniteNumber(b?.estimatedCostUsd)
   };
 }
 
@@ -604,9 +692,17 @@ function normalizeAnalyticsPeriod(period) {
     capabilityCalls: toFiniteNumber(period.capabilityCalls),
     capabilityFailures: toFiniteNumber(period.capabilityFailures),
     capabilityConfirmationBlocks: toFiniteNumber(period.capabilityConfirmationBlocks),
+    apiMessages: toFiniteNumber(period.apiMessages),
+    discordMessages: toFiniteNumber(period.discordMessages),
+    memorySaves: toFiniteNumber(period.memorySaves),
+    memoryRecalls: toFiniteNumber(period.memoryRecalls),
     avgPromptTokensPerMessage: toFiniteNumber(period.avgPromptTokensPerMessage),
     avgCompletionTokensPerMessage: toFiniteNumber(period.avgCompletionTokensPerMessage),
     avgIterationsPerMessage: toFiniteNumber(period.avgIterationsPerMessage),
+    avgLatencyMs: toFiniteNumber(period.avgLatencyMs),
+    maxLatencyMs: toFiniteNumber(period.maxLatencyMs),
+    avgCapabilityDurationMs: toFiniteNumber(period.avgCapabilityDurationMs),
+    estimatedCostUsd: toFiniteNumber(period.estimatedCostUsd),
     scriptSuccessRatePct: toFiniteNumber(period.scriptSuccessRatePct, 100),
     capabilitySuccessRatePct: toFiniteNumber(period.capabilitySuccessRatePct, 100)
   };
@@ -615,7 +711,9 @@ function normalizeAnalyticsPeriod(period) {
 function normalizeAnalytics(data) {
   const lifetime = normalizeAnalyticsPeriod(data?.lifetime) || normalizeAnalyticsPeriod({}) || {};
   const today = normalizeAnalyticsPeriod(data?.today);
-  const dailyHistory = Array.isArray(data?.dailyHistory) ? data.dailyHistory.map(normalizeAnalyticsDay) : [];
+  const dailyHistory = Array.isArray(data?.dailyHistory) ? data.dailyHistory.map(d => normalizeBucket(d, 'date')) : [];
+  const weeklyHistory = Array.isArray(data?.weeklyHistory) ? data.weeklyHistory.map(d => normalizeBucket(d, 'week')) : [];
+  const monthlyHistory = Array.isArray(data?.monthlyHistory) ? data.monthlyHistory.map(d => normalizeBucket(d, 'month')) : [];
 
   return {
     lifetime,
@@ -626,6 +724,8 @@ function normalizeAnalytics(data) {
       totalDays: toFiniteNumber(data?.historyWindow?.totalDays, dailyHistory.length)
     },
     dailyHistory,
+    weeklyHistory,
+    monthlyHistory,
     topCapabilities: Array.isArray(data?.topCapabilities) ? data.topCapabilities : []
   };
 }
@@ -692,6 +792,8 @@ async function loadConversation(convId) {
     messages.value = data.messages.map(m => ({
       role: m.role === 'User' ? 'User' : 'KliveAgent',
       content: m.content,
+      // Replay the scripts+outputs the agent ran on this turn (persisted server-side).
+      scripts: m.scriptResults || (m.scriptResult ? [m.scriptResult] : []),
       timestamp: m.timestamp
     }));
     scrollToBottom();
@@ -704,13 +806,25 @@ const chartH = 130;
 const chartPad = 18;
 const barW = 10;
 
-const chartDays = computed(() => analytics.value?.dailyHistory ?? []);
+// day | week | month — drives every dashboard time-series chart.
+const chartRange = ref('day');
+
+const chartDays = computed(() => {
+  const a = analytics.value;
+  if (!a) return [];
+  if (chartRange.value === 'week') return a.weeklyHistory ?? [];
+  if (chartRange.value === 'month') return a.monthlyHistory ?? [];
+  return a.dailyHistory ?? [];
+});
+
+const rangeLabel = computed(() =>
+  chartRange.value === 'week' ? 'Week' : chartRange.value === 'month' ? 'Month' : 'Day');
 
 const chartDaysLabeled = computed(() => {
   const days = chartDays.value;
   if (!days.length) return [];
   const step = Math.max(1, Math.floor(days.length / 6));
-  return days.map((d, i) => ({ idx: i, label: d.date?.slice(5) ?? '' }))
+  return days.map((d, i) => ({ idx: i, label: d.label ?? '' }))
     .filter((_, i) => i % step === 0 || i === days.length - 1);
 });
 
@@ -726,6 +840,7 @@ function tokenY(val, kind) {
   if (kind === 'tokens') max = Math.max(1, ...days.map(d => Math.max(d.promptTokens, d.completionTokens)));
   else if (kind === 'messages') max = Math.max(1, ...days.map(d => d.messages));
   else if (kind === 'iter') max = Math.max(1, ...days.map(d => d.messages > 0 ? d.iterations / d.messages : 0));
+  else if (kind === 'latency') max = Math.max(1, ...days.map(d => d.avgLatencyMs));
   const ratio = Math.min(1, val / max);
   return chartPad + (1 - ratio) * (chartH - 2 * chartPad);
 }
@@ -756,6 +871,27 @@ const iterAreaPoints = computed(() => {
   }).join(' ');
   return top + ` ${tokenX(days.length - 1)},${chartH - chartPad} ${tokenX(0)},${chartH - chartPad}`;
 });
+
+const latencyLinePoints = computed(() =>
+  chartDays.value.map((d, i) => `${tokenX(i)},${tokenY(d.avgLatencyMs, 'latency')}`).join(' '));
+
+const latencyAreaPoints = computed(() => {
+  const days = chartDays.value;
+  if (!days.length) return '';
+  const top = days.map((d, i) => `${tokenX(i)},${tokenY(d.avgLatencyMs, 'latency')}`).join(' ');
+  return top + ` ${tokenX(days.length - 1)},${chartH - chartPad} ${tokenX(0)},${chartH - chartPad}`;
+});
+
+function fmtMs(ms) {
+  const n = Number(ms) || 0;
+  if (n >= 1000) return (n / 1000).toFixed(1) + 's';
+  return Math.round(n) + 'ms';
+}
+
+function fmtCost(usd) {
+  const n = Number(usd) || 0;
+  return '$' + n.toFixed(n >= 1 ? 2 : 4);
+}
 
 const maxDailyMessages = computed(() => {
   if (!analytics.value?.dailyHistory?.length) return 1;
@@ -995,13 +1131,25 @@ onUnmounted(() => {
 
 .script-header {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   font-weight: 600;
   margin-bottom: 4px;
   color: #999;
 }
 
-.script-time { color: #666; }
+.script-time { color: #666; margin-left: auto; }
+
+.script-copy {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  color: #888;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.script-copy:hover { color: #7dc96e; border-color: #4d9e39; }
 
 .script-code, .script-output, .script-error {
   margin: 4px 0 0 0;
@@ -1424,6 +1572,37 @@ onUnmounted(() => {
   color: #4d9e39;
   margin: 0;
 }
+
+.dash-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.range-toggle {
+  display: flex;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.range-btn {
+  background: transparent;
+  border: none;
+  color: #888;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: capitalize;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.range-btn:hover { color: #ccc; background: #222; }
+.range-active { background: #2a4a22; color: #7dc96e; }
+
+.kpi-sub { font-size: 14px; color: #5a8a4a; font-weight: 600; }
 
 .kpi-row {
   display: grid;

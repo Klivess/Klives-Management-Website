@@ -1,74 +1,88 @@
 <template>
-  <div class="agent-container">
-    <div class="agent-header">
-      <div>
-        <h1 class="agent-title">KliveAgent</h1>
-        <p class="agent-subtitle">AI assistant for Omnipotent</p>
+  <div class="ka">
+    <!-- ── Header + view switcher ── -->
+    <header class="ka-header">
+      <div class="ka-brand">
+        <span class="ka-glyph">◈</span>
+        <div>
+          <h1 class="ka-title">KliveAgent</h1>
+          <p class="ka-subtitle">Runtime orchestrator for Omnipotent</p>
+        </div>
       </div>
-      <button @click="reindexCodebase" class="reindex-btn" :disabled="reindexing" :title="reindexStatus">
-        <span v-if="reindexing">Reindexing...</span>
-        <span v-else-if="reindexDone">✓ Reindexed</span>
-        <span v-else>Reindex Codebase</span>
-      </button>
-    </div>
 
-    <div class="agent-layout">
-      <!-- Chat Panel -->
-      <div class="agent-chat-panel">
+      <div class="ka-header-actions">
+        <div class="seg" role="tablist">
+          <button
+            v-for="v in views"
+            :key="v.id"
+            class="seg-btn"
+            :class="{ 'seg-active': view === v.id }"
+            type="button"
+            @click="setView(v.id)"
+          >{{ v.label }}</button>
+        </div>
+        <button class="ka-reindex" type="button" @click="reindexCodebase" :disabled="reindexing" :title="reindexStatus">
+          <span v-if="reindexing">Reindexing…</span>
+          <span v-else-if="reindexDone">✓ Reindexed</span>
+          <span v-else>⟳ Reindex Codebase</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ════════════════ CHAT VIEW ════════════════ -->
+    <section v-show="view === 'chat'" class="view view-chat">
+      <div class="chat-panel">
         <div class="chat-messages" ref="chatMessages">
           <div v-if="messages.length === 0" class="chat-empty">
-            <p>No messages yet. Say something to KliveAgent.</p>
+            <div class="chat-empty-glyph">◈</div>
+            <p class="chat-empty-title">Start a conversation</p>
+            <p class="chat-empty-sub">Ask KliveAgent to inspect services, run scripts, or recall what it knows.</p>
           </div>
-          <div v-for="(msg, i) in messages" :key="i" class="chat-bubble" :class="msg.role === 'User' ? 'bubble-user' : 'bubble-agent'">
-            <div class="bubble-role">{{ msg.role }}</div>
-            <div class="bubble-content" v-html="renderMarkdown(msg.content)"></div>
-            <div v-if="msg.scripts && msg.scripts.length" class="bubble-scripts">
-              <div v-for="(script, si) in msg.scripts" :key="si" class="script-result" :class="script.success ? 'script-ok' : 'script-err'">
-                <div class="script-header">
-                  <span>{{ script.success ? '✓ Script' : '✗ Script Failed' }}</span>
-                  <span class="script-time">{{ script.executionTimeMs }}ms</span>
-                  <button class="script-copy" @click="copyToClipboard(script.code)" title="Copy code">⧉ Copy</button>
-                </div>
-                <pre class="script-code hljs"><code v-html="highlightCsharp(script.code)"></code></pre>
-                <pre v-if="script.output" class="script-output">{{ script.output }}</pre>
-                <pre v-if="script.errorMessage" class="script-error">{{ script.errorMessage }}</pre>
-              </div>
-            </div>
-            <div v-if="msg.pending" class="bubble-pending-note">Running scripts...</div>
-            <div class="bubble-time">{{ formatTime(msg.timestamp) }}</div>
-          </div>
-          <div v-if="loading && !pendingRequestId" class="chat-bubble bubble-agent">
-            <div class="bubble-role">KliveAgent</div>
-            <div class="bubble-content typing-indicator">
-              <span></span><span></span><span></span>
-            </div>
+
+          <AgentMessage v-for="(msg, i) in messages" :key="i" :message="msg" />
+
+          <div v-if="loading && !pendingRequestId" class="chat-thinking">
+            <span class="chat-thinking-glyph">◈</span>
+            <span class="msg-typing"><span></span><span></span><span></span></span>
           </div>
         </div>
 
         <div class="chat-input-row">
-          <input v-model="inputMessage" @keydown.enter="sendMessage" placeholder="Ask KliveAgent anything..." class="chat-input" :disabled="loading" />
-          <button @click="sendMessage" type="button" class="chat-send-btn" :disabled="isSendDisabled" :title="sendButtonTitle">Send</button>
+          <textarea
+            ref="chatInput"
+            v-model="inputMessage"
+            class="chat-input"
+            rows="1"
+            placeholder="Ask KliveAgent anything…  (Enter to send, Shift+Enter for newline)"
+            :disabled="loading"
+            @input="autoGrowInput"
+            @keydown.enter.exact.prevent="sendMessage"
+          ></textarea>
+          <button @click="sendMessage" type="button" class="chat-send-btn" :disabled="isSendDisabled" :title="sendButtonTitle">
+            Send
+          </button>
         </div>
       </div>
 
-      <!-- Side Panel -->
-      <div class="agent-side-panel">
-        <!-- Tabs -->
-        <div class="side-tabs">
-          <button @click="activeTab = 'tasks'" :class="{ 'tab-active': activeTab === 'tasks' }" class="side-tab">Tasks</button>
-          <button @click="activeTab = 'memories'" :class="{ 'tab-active': activeTab === 'memories' }" class="side-tab">Memories</button>
-          <button @click="activeTab = 'conversations'" :class="{ 'tab-active': activeTab === 'conversations' }" class="side-tab">History</button>
-          <button @click="activeTab = 'analytics'; loadAnalytics()" :class="{ 'tab-active': activeTab === 'analytics' }" class="side-tab">Analytics</button>
+      <!-- Context rail: live tasks + quick conversation access -->
+      <aside class="chat-rail">
+        <div class="rail-block">
+          <div class="rail-head">
+            <span class="rail-title">Session</span>
+          </div>
+          <button class="rail-newchat" type="button" @click="newChat">＋ New chat</button>
         </div>
 
-        <!-- Tasks Tab -->
-        <div v-if="activeTab === 'tasks'" class="side-content">
-          <button @click="loadTasks" class="refresh-btn">Refresh</button>
-          <div v-if="tasks.length === 0" class="side-empty">No background tasks.</div>
+        <div class="rail-block">
+          <div class="rail-head">
+            <span class="rail-title">Live Tasks</span>
+            <button class="rail-refresh" type="button" @click="loadTasks" title="Refresh tasks">⟳</button>
+          </div>
+          <div v-if="tasks.length === 0" class="rail-empty">No background tasks.</div>
           <div v-for="task in tasks" :key="task.taskId" class="task-card">
             <div class="task-header">
               <span class="task-status" :class="getTaskStatusClass(task)">{{ getTaskStatusLabel(task) }}</span>
-              <button v-if="canCancelTask(task)" @click="cancelTask(task.taskId)" class="cancel-btn">Cancel</button>
+              <button v-if="canCancelTask(task)" @click="cancelTask(task.taskId)" class="cancel-btn" type="button">Cancel</button>
             </div>
             <div class="task-desc">{{ task.description || 'Background task' }}</div>
             <div class="task-time">{{ formatTime(task.createdAt) }}</div>
@@ -77,348 +91,298 @@
           </div>
         </div>
 
-        <!-- Memories Tab -->
-        <div v-if="activeTab === 'memories'" class="side-content">
-          <div class="memory-controls">
-            <input v-model="memorySearch" placeholder="Search memories..." class="memory-search" @input="searchMemories" />
-            <button @click="showAddMemory = !showAddMemory" class="add-memory-btn">+</button>
+        <div class="rail-block">
+          <div class="rail-head">
+            <span class="rail-title">Recent</span>
+            <button class="rail-refresh" type="button" @click="loadConversations" title="Refresh conversations">⟳</button>
           </div>
-          <div v-if="showAddMemory" class="add-memory-form">
-            <input v-model="newMemory.content" placeholder="Memory content..." class="memory-input" />
-            <input v-model="newMemory.tags" placeholder="Tags (comma-separated)" class="memory-input" />
-            <button @click="addMemory" class="save-memory-btn">Save</button>
+          <div v-if="conversationList.length === 0" class="rail-empty">No conversations yet.</div>
+          <button
+            v-for="conv in recentConversations"
+            :key="conv.conversationId"
+            class="rail-conv"
+            type="button"
+            @click="loadConversation(conv.conversationId)"
+          >
+            <span class="rail-conv-preview">{{ conv.lastMessage || 'Empty conversation' }}</span>
+            <span class="rail-conv-meta">{{ conv.sourceChannel }} · {{ formatTime(conv.lastUpdated) }}</span>
+          </button>
+        </div>
+      </aside>
+    </section>
+
+    <!-- ════════════════ ANALYTICS VIEW ════════════════ -->
+    <section v-show="view === 'analytics'" class="view view-analytics">
+      <div v-if="!analytics?.lifetime" class="view-loading">
+        <p>Loading analytics…</p>
+        <button @click="loadAnalytics" class="ghost-btn" type="button">Retry</button>
+      </div>
+
+      <template v-else>
+        <div class="dash-header">
+          <div>
+            <h2 class="section-title">Usage &amp; Performance</h2>
+            <p class="dash-period">Showing {{ periodLabel }}</p>
           </div>
-          <div v-if="memories.length === 0" class="side-empty">No memories found.</div>
-          <div v-for="mem in memories" :key="mem.id" class="memory-card">
-            <div class="memory-content">{{ mem.content }}</div>
-            <div class="memory-meta">
-              <span v-for="tag in mem.tags" :key="tag" class="memory-tag">{{ tag }}</span>
-              <span class="memory-date">{{ formatTime(mem.createdAt) }}</span>
+          <div class="dash-controls">
+            <div class="seg seg-sm">
+              <button v-for="r in ['day','week','month']" :key="r" class="seg-btn" :class="{ 'seg-active': chartRange === r }" type="button" @click="chartRange = r">{{ r }}</button>
             </div>
-            <button @click="deleteMemory(mem.id)" class="delete-memory-btn">×</button>
+            <button @click="loadAnalytics" class="ghost-btn" type="button">⟳ Refresh</button>
           </div>
         </div>
 
-        <!-- Conversations Tab -->
-        <div v-if="activeTab === 'conversations'" class="side-content">
-          <button @click="loadConversations" class="refresh-btn">Refresh</button>
-          <div v-if="conversationList.length === 0" class="side-empty">No conversations.</div>
-          <div v-for="conv in conversationList" :key="conv.conversationId" class="conv-card" @click="loadConversation(conv.conversationId)">
+        <!-- KPI grid — reflects the selected day/week/month period -->
+        <div v-if="periodSummary" class="kpi-grid">
+          <AgentStatCard :value="periodSummary.messages" label="Messages" />
+          <AgentStatCard :value="fmtTokens(periodSummary.totalTokens)" label="Total Tokens" />
+          <AgentStatCard :value="fmtTokens(periodSummary.avgPromptTokensPerMessage)" label="Avg Prompt / Msg" />
+          <AgentStatCard :value="fmtTokens(periodSummary.avgCompletionTokensPerMessage)" label="Avg Output / Msg" />
+          <AgentStatCard :value="periodSummary.avgIterationsPerMessage?.toFixed(2)" label="Avg Iterations" />
+          <AgentStatCard :value="`${periodSummary.scriptSuccessRatePct?.toFixed(1)}%`" label="Script Success Rate" />
+          <AgentStatCard :value="fmtMs(periodSummary.avgLatencyMs)" label="Avg Response Time" />
+          <AgentStatCard :value="fmtCost(periodSummary.estimatedCostUsd)" label="Est. Cost" />
+          <AgentStatCard :value="periodSummary.memorySaves" label="Memories Saved" />
+          <AgentStatCard :value="periodSummary.discordMessages" :sub="`/ ${periodSummary.apiMessages}`" label="Discord / API Msgs" />
+          <AgentStatCard :value="fmtTokens(analytics.lifetime.totalTokens)" :sub="`· ${analytics.historyWindow?.totalDays || chartDays.length}d`" label="Lifetime Tokens" />
+        </div>
+
+        <!-- Time-series charts -->
+        <div class="charts-row">
+          <AgentChartCard :title="`Tokens Per ${rangeLabel}`" variant="wide">
+            <svg :viewBox="`0 0 ${chartW} ${chartH}`" class="chart-svg" preserveAspectRatio="none">
+              <line v-for="y in [0.25,0.5,0.75,1]" :key="y"
+                :x1="chartPad" :y1="chartPad + (1-y)*(chartH-2*chartPad)"
+                :x2="chartW - chartPad" :y2="chartPad + (1-y)*(chartH-2*chartPad)"
+                stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+              <polygon :points="tokenAreaPoints('prompt')" fill="#4d9e3922"/>
+              <polygon :points="tokenAreaPoints('completion')" fill="#3b82f622"/>
+              <polyline :points="tokenLinePoints('prompt')" fill="none" stroke="#4d9e39" stroke-width="2" stroke-linejoin="round"/>
+              <polyline :points="tokenLinePoints('completion')" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round"/>
+              <circle v-for="(d,i) in chartDays" :key="'pd'+i" :cx="tokenX(i)" :cy="tokenY(d.promptTokens, 'tokens')" r="3" fill="#4d9e39"/>
+              <circle v-for="(d,i) in chartDays" :key="'cd'+i" :cx="tokenX(i)" :cy="tokenY(d.completionTokens, 'tokens')" r="3" fill="#3b82f6"/>
+              <text v-for="(d,i) in chartDaysLabeled" :key="'xl'+i" :x="tokenX(d.idx)" :y="chartH - 4" fill="#555" font-size="9" text-anchor="middle">{{ d.label }}</text>
+            </svg>
+            <template #legend>
+              <span class="legend-dot" style="background:#4d9e39"></span>Prompt tokens
+              <span class="legend-dot" style="background:#3b82f6;margin-left:12px"></span>Completion tokens
+            </template>
+          </AgentChartCard>
+
+          <AgentChartCard :title="`Messages Per ${rangeLabel}`">
+            <svg :viewBox="`0 0 ${chartW} ${chartH}`" class="chart-svg" preserveAspectRatio="none">
+              <line v-for="y in [0.25,0.5,0.75,1]" :key="y"
+                :x1="chartPad" :y1="chartPad + (1-y)*(chartH-2*chartPad)"
+                :x2="chartW - chartPad" :y2="chartPad + (1-y)*(chartH-2*chartPad)"
+                stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+              <rect v-for="(d,i) in chartDays" :key="'mb'+i"
+                :x="tokenX(i) - barW/2" :y="tokenY(d.messages, 'messages')" :width="barW"
+                :height="chartH - 2*chartPad - (tokenY(d.messages, 'messages') - chartPad)" fill="#4d9e39" rx="2"/>
+              <text v-for="(d,i) in chartDaysLabeled" :key="'mxl'+i" :x="tokenX(d.idx)" :y="chartH - 4" fill="#555" font-size="9" text-anchor="middle">{{ d.label }}</text>
+            </svg>
+          </AgentChartCard>
+
+          <AgentChartCard :title="`Avg Iterations Per ${rangeLabel}`">
+            <svg :viewBox="`0 0 ${chartW} ${chartH}`" class="chart-svg" preserveAspectRatio="none">
+              <line v-for="y in [0.25,0.5,0.75,1]" :key="y"
+                :x1="chartPad" :y1="chartPad + (1-y)*(chartH-2*chartPad)"
+                :x2="chartW - chartPad" :y2="chartPad + (1-y)*(chartH-2*chartPad)"
+                stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+              <polygon :points="iterAreaPoints" fill="#f59e0b22"/>
+              <polyline :points="iterLinePoints" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linejoin="round"/>
+              <circle v-for="(d,i) in chartDays" :key="'iter'+i" :cx="tokenX(i)" :cy="tokenY(d.messages > 0 ? d.iterations/d.messages : 0, 'iter')" r="3" fill="#f59e0b"/>
+              <text v-for="(d,i) in chartDaysLabeled" :key="'ixl'+i" :x="tokenX(d.idx)" :y="chartH - 4" fill="#555" font-size="9" text-anchor="middle">{{ d.label }}</text>
+            </svg>
+          </AgentChartCard>
+
+          <AgentChartCard :title="`Avg Response Time Per ${rangeLabel}`">
+            <svg :viewBox="`0 0 ${chartW} ${chartH}`" class="chart-svg" preserveAspectRatio="none">
+              <line v-for="y in [0.25,0.5,0.75,1]" :key="y"
+                :x1="chartPad" :y1="chartPad + (1-y)*(chartH-2*chartPad)"
+                :x2="chartW - chartPad" :y2="chartPad + (1-y)*(chartH-2*chartPad)"
+                stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+              <polygon :points="latencyAreaPoints" fill="#a855f722"/>
+              <polyline :points="latencyLinePoints" fill="none" stroke="#a855f7" stroke-width="2" stroke-linejoin="round"/>
+              <circle v-for="(d,i) in chartDays" :key="'lat'+i" :cx="tokenX(i)" :cy="tokenY(d.avgLatencyMs, 'latency')" r="3" fill="#a855f7"/>
+              <text v-for="(d,i) in chartDaysLabeled" :key="'lxl'+i" :x="tokenX(d.idx)" :y="chartH - 4" fill="#555" font-size="9" text-anchor="middle">{{ d.label }}</text>
+            </svg>
+          </AgentChartCard>
+        </div>
+
+        <!-- Donuts -->
+        <div class="charts-row">
+          <AgentChartCard title="Script Outcomes (Lifetime)" variant="donut">
+            <div class="donut-wrap">
+              <svg viewBox="0 0 120 120" class="donut-svg">
+                <circle cx="60" cy="60" r="46" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="16"/>
+                <circle cx="60" cy="60" r="46" fill="none" stroke="#4d9e39" stroke-width="16"
+                  :stroke-dasharray="`${scriptSuccessDash} ${288.5 - scriptSuccessDash}`" stroke-dashoffset="72" stroke-linecap="round"/>
+                <circle cx="60" cy="60" r="46" fill="none" stroke="#e0584b" stroke-width="16"
+                  :stroke-dasharray="`${scriptFailDash} ${288.5 - scriptFailDash}`" :stroke-dashoffset="72 - scriptSuccessDash" stroke-linecap="round"/>
+              </svg>
+              <div class="donut-center">
+                <div class="donut-pct">{{ analytics.lifetime.scriptSuccessRatePct?.toFixed(0) }}%</div>
+                <div class="donut-label">success</div>
+              </div>
+            </div>
+            <template #legend>
+              <span class="legend-dot" style="background:#4d9e39"></span>{{ analytics.lifetime.scripts - analytics.lifetime.scriptFailures }} passed
+              <span class="legend-dot" style="background:#e0584b;margin-left:12px"></span>{{ analytics.lifetime.scriptFailures }} failed
+            </template>
+          </AgentChartCard>
+
+          <AgentChartCard title="Token Split (Lifetime)" variant="donut">
+            <div class="donut-wrap">
+              <svg viewBox="0 0 120 120" class="donut-svg">
+                <circle cx="60" cy="60" r="46" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="16"/>
+                <circle cx="60" cy="60" r="46" fill="none" stroke="#4d9e39" stroke-width="16"
+                  :stroke-dasharray="`${promptTokenDash} ${288.5 - promptTokenDash}`" stroke-dashoffset="72" stroke-linecap="round"/>
+                <circle cx="60" cy="60" r="46" fill="none" stroke="#3b82f6" stroke-width="16"
+                  :stroke-dasharray="`${completionTokenDash} ${288.5 - completionTokenDash}`" :stroke-dashoffset="72 - promptTokenDash" stroke-linecap="round"/>
+              </svg>
+              <div class="donut-center">
+                <div class="donut-pct" style="font-size:13px">{{ fmtTokens(analytics.lifetime.totalTokens) }}</div>
+                <div class="donut-label">total</div>
+              </div>
+            </div>
+            <template #legend>
+              <span class="legend-dot" style="background:#4d9e39"></span>{{ fmtTokens(analytics.lifetime.promptTokens) }} prompt
+              <span class="legend-dot" style="background:#3b82f6;margin-left:12px"></span>{{ fmtTokens(analytics.lifetime.completionTokens) }} output
+            </template>
+          </AgentChartCard>
+
+          <AgentChartCard v-if="analytics.today" title="Today" variant="default">
+            <div class="today-grid">
+              <AgentStatCard :value="analytics.today.messages" label="Messages" />
+              <AgentStatCard :value="fmtTokens(analytics.today.promptTokens + analytics.today.completionTokens)" label="Tokens" />
+              <AgentStatCard :value="fmtTokens(analytics.today.promptTokens)" label="Prompt" />
+              <AgentStatCard :value="fmtTokens(analytics.today.completionTokens)" label="Output" />
+            </div>
+          </AgentChartCard>
+        </div>
+      </template>
+    </section>
+
+    <!-- ════════════════ LIBRARY VIEW ════════════════ -->
+    <section v-show="view === 'library'" class="view view-library">
+      <div class="lib-header">
+        <h2 class="section-title">Library</h2>
+        <div class="seg seg-sm">
+          <button class="seg-btn" :class="{ 'seg-active': libTab === 'memories' }" type="button" @click="libTab = 'memories'">Memories</button>
+          <button class="seg-btn" :class="{ 'seg-active': libTab === 'conversations' }" type="button" @click="libTab = 'conversations'">Conversations</button>
+          <button class="seg-btn" :class="{ 'seg-active': libTab === 'shortcuts' }" type="button" @click="libTab = 'shortcuts'">Shortcuts</button>
+        </div>
+      </div>
+
+      <!-- Memories -->
+      <div v-show="libTab === 'memories'" class="lib-pane">
+        <div class="memory-controls">
+          <input v-model="memorySearch" placeholder="Search memories…" class="text-input" @input="searchMemories" />
+          <button @click="showAddMemory = !showAddMemory" class="ghost-btn" type="button">{{ showAddMemory ? 'Cancel' : '＋ Add' }}</button>
+        </div>
+        <div v-if="showAddMemory" class="add-memory-form">
+          <input v-model="newMemory.content" placeholder="Memory content…" class="text-input" />
+          <input v-model="newMemory.tags" placeholder="Tags (comma-separated)" class="text-input" />
+          <button @click="addMemory" class="primary-btn" type="button">Save Memory</button>
+        </div>
+        <div v-if="memories.length === 0" class="view-empty">No memories found.</div>
+        <div class="card-grid">
+          <div v-for="mem in memories" :key="mem.id" class="lib-card">
+            <button @click="deleteMemory(mem.id)" class="card-del" type="button" title="Delete">×</button>
+            <div class="lib-card-content">{{ mem.content }}</div>
+            <div class="lib-card-meta">
+              <span v-for="tag in mem.tags" :key="tag" class="tag">{{ tag }}</span>
+              <span class="lib-card-date">{{ formatTime(mem.createdAt) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Conversations -->
+      <div v-show="libTab === 'conversations'" class="lib-pane">
+        <div class="memory-controls">
+          <button @click="loadConversations" class="ghost-btn" type="button">⟳ Refresh</button>
+        </div>
+        <div v-if="conversationList.length === 0" class="view-empty">No conversations.</div>
+        <div class="card-grid">
+          <button v-for="conv in conversationList" :key="conv.conversationId" class="lib-card lib-card-btn" type="button" @click="loadConversation(conv.conversationId)">
             <div class="conv-channel">{{ conv.sourceChannel }}</div>
-            <div class="conv-preview">{{ conv.lastMessage || 'Empty' }}</div>
-            <div class="conv-meta">{{ conv.messageCount }} messages · {{ formatTime(conv.lastUpdated) }}</div>
-          </div>
-        </div>
-
-        <!-- Analytics Tab -->
-        <div v-if="activeTab === 'analytics'" class="side-content">
-          <button @click="loadAnalytics" class="refresh-btn">Refresh</button>
-          <div v-if="!analytics?.lifetime" class="side-empty">Loading analytics...</div>
-          <template v-else>
-            <div class="analytics-section">
-              <div class="analytics-label">Lifetime Totals</div>
-              <div class="analytics-grid">
-                <div class="stat-box"><div class="stat-val">{{ analytics.lifetime.messages }}</div><div class="stat-key">Messages</div></div>
-                <div class="stat-box"><div class="stat-val">{{ fmtTokens(analytics.lifetime.totalTokens) }}</div><div class="stat-key">Total Tokens</div></div>
-                <div class="stat-box"><div class="stat-val">{{ fmtTokens(analytics.lifetime.avgPromptTokensPerMessage) }}</div><div class="stat-key">Avg Prompt/Msg</div></div>
-                <div class="stat-box"><div class="stat-val">{{ fmtTokens(analytics.lifetime.avgCompletionTokensPerMessage) }}</div><div class="stat-key">Avg Completion/Msg</div></div>
-                <div class="stat-box"><div class="stat-val">{{ analytics.lifetime.avgIterationsPerMessage?.toFixed(1) }}</div><div class="stat-key">Avg Iterations</div></div>
-                <div class="stat-box"><div class="stat-val">{{ analytics.lifetime.scriptSuccessRatePct?.toFixed(1) }}%</div><div class="stat-key">Script Success</div></div>
-              </div>
+            <div class="lib-card-content">{{ conv.lastMessage || 'Empty conversation' }}</div>
+            <div class="lib-card-meta">
+              <span class="lib-card-date">{{ conv.messageCount }} messages · {{ formatTime(conv.lastUpdated) }}</span>
             </div>
-            <div v-if="analytics.today" class="analytics-section">
-              <div class="analytics-label">Today</div>
-              <div class="analytics-grid">
-                <div class="stat-box"><div class="stat-val">{{ analytics.today.messages }}</div><div class="stat-key">Messages</div></div>
-                <div class="stat-box"><div class="stat-val">{{ fmtTokens(analytics.today.promptTokens + analytics.today.completionTokens) }}</div><div class="stat-key">Total Tokens</div></div>
-                <div class="stat-box"><div class="stat-val">{{ fmtTokens(analytics.today.promptTokens) }}</div><div class="stat-key">Prompt</div></div>
-                <div class="stat-box"><div class="stat-val">{{ fmtTokens(analytics.today.completionTokens) }}</div><div class="stat-key">Completion</div></div>
-              </div>
-            </div>
-            <div v-if="analytics.dailyHistory && analytics.dailyHistory.length > 0" class="analytics-section">
-              <div class="analytics-label">Total History ({{ analytics.historyWindow?.totalDays || analytics.dailyHistory.length }} days)</div>
-              <div class="daily-bars">
-                <div v-for="day in analytics.dailyHistory" :key="day.date" class="daily-bar-wrap" :title="day.date + ': ' + day.messages + ' msgs, ' + fmtTokens(day.promptTokens + day.completionTokens) + ' tokens'">
-                  <div class="daily-bar" :style="{ height: Math.max(4, (day.messages / maxDailyMessages) * 80) + 'px' }"></div>
-                  <div class="daily-bar-label">{{ day.date.slice(5) }}</div>
-                </div>
-              </div>
-            </div>
-          </template>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── Full-width Analytics Dashboard (below chat layout) ── -->
-    <div v-if="analytics?.lifetime" class="dash-section">
-      <div class="dash-header">
-        <h2 class="dash-title">Analytics Dashboard</h2>
-        <div class="dash-controls">
-          <div class="range-toggle">
-            <button v-for="r in ['day','week','month']" :key="r" class="range-btn" :class="{ 'range-active': chartRange === r }" @click="chartRange = r">{{ r }}</button>
-          </div>
-          <button @click="loadAnalytics" class="refresh-btn" style="width:auto;padding:6px 14px;margin:0;">Refresh</button>
+          </button>
         </div>
       </div>
 
-      <!-- Summary KPIs -->
-      <div class="kpi-row">
-        <div class="kpi-card">
-          <div class="kpi-val">{{ analytics.lifetime.messages }}</div>
-          <div class="kpi-key">Total Messages</div>
+      <!-- Shortcuts -->
+      <div v-show="libTab === 'shortcuts'" class="lib-pane">
+        <div class="memory-controls">
+          <button @click="loadShortcuts" class="ghost-btn" type="button">⟳ Refresh</button>
         </div>
-        <div class="kpi-card">
-          <div class="kpi-val">{{ fmtTokens(analytics.lifetime.totalTokens) }}</div>
-          <div class="kpi-key">Total Tokens</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-val">{{ fmtTokens(analytics.lifetime.avgPromptTokensPerMessage) }}</div>
-          <div class="kpi-key">Avg Prompt / Msg</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-val">{{ fmtTokens(analytics.lifetime.avgCompletionTokensPerMessage) }}</div>
-          <div class="kpi-key">Avg Output / Msg</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-val">{{ analytics.lifetime.avgIterationsPerMessage?.toFixed(2) }}</div>
-          <div class="kpi-key">Avg Iterations</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-val">{{ analytics.lifetime.scriptSuccessRatePct?.toFixed(1) }}%</div>
-          <div class="kpi-key">Script Success Rate</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-val">{{ fmtMs(analytics.lifetime.avgLatencyMs) }}</div>
-          <div class="kpi-key">Avg Response Time</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-val">{{ fmtCost(analytics.lifetime.estimatedCostUsd) }}</div>
-          <div class="kpi-key">Est. Cost</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-val">{{ analytics.lifetime.memorySaves }}</div>
-          <div class="kpi-key">Memories Saved</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-val">{{ analytics.lifetime.discordMessages }}<span class="kpi-sub"> / {{ analytics.lifetime.apiMessages }}</span></div>
-          <div class="kpi-key">Discord / API Msgs</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-val">{{ analytics.historyWindow?.totalDays || chartDays.length }}</div>
-          <div class="kpi-key">Days Recorded</div>
-        </div>
-      </div>
-
-      <!-- Charts row -->
-      <div class="charts-row">
-
-        <!-- Tokens per period line chart -->
-        <div class="chart-card wide">
-          <div class="chart-title">Tokens Per {{ rangeLabel }}</div>
-          <svg :viewBox="`0 0 ${chartW} ${chartH}`" class="chart-svg" preserveAspectRatio="none">
-            <!-- grid lines -->
-            <line v-for="y in [0.25,0.5,0.75,1]" :key="y"
-              :x1="chartPad" :y1="chartPad + (1-y)*(chartH-2*chartPad)"
-              :x2="chartW - chartPad" :y2="chartPad + (1-y)*(chartH-2*chartPad)"
-              stroke="#2a2a2a" stroke-width="1"/>
-            <!-- prompt tokens area -->
-            <polygon :points="tokenAreaPoints('prompt')" fill="#4d9e3922"/>
-            <!-- completion tokens area -->
-            <polygon :points="tokenAreaPoints('completion')" fill="#3b82f622"/>
-            <!-- prompt tokens line -->
-            <polyline :points="tokenLinePoints('prompt')" fill="none" stroke="#4d9e39" stroke-width="2" stroke-linejoin="round"/>
-            <!-- completion tokens line -->
-            <polyline :points="tokenLinePoints('completion')" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round"/>
-            <!-- dots -->
-            <circle v-for="(d,i) in chartDays" :key="'pd'+i"
-              :cx="tokenX(i)" :cy="tokenY(d.promptTokens, 'tokens')" r="3" fill="#4d9e39"/>
-            <circle v-for="(d,i) in chartDays" :key="'cd'+i"
-              :cx="tokenX(i)" :cy="tokenY(d.completionTokens, 'tokens')" r="3" fill="#3b82f6"/>
-            <!-- x labels -->
-            <text v-for="(d,i) in chartDaysLabeled" :key="'xl'+i"
-              :x="tokenX(d.idx)" :y="chartH - 4" fill="#555" font-size="9" text-anchor="middle">{{ d.label }}</text>
-          </svg>
-          <div class="chart-legend">
-            <span class="legend-dot" style="background:#4d9e39"></span>Prompt tokens
-            <span class="legend-dot" style="background:#3b82f6;margin-left:12px"></span>Completion tokens
-          </div>
-        </div>
-
-        <!-- Messages per period bar chart -->
-        <div class="chart-card">
-          <div class="chart-title">Messages Per {{ rangeLabel }}</div>
-          <svg :viewBox="`0 0 ${chartW} ${chartH}`" class="chart-svg" preserveAspectRatio="none">
-            <line v-for="y in [0.25,0.5,0.75,1]" :key="y"
-              :x1="chartPad" :y1="chartPad + (1-y)*(chartH-2*chartPad)"
-              :x2="chartW - chartPad" :y2="chartPad + (1-y)*(chartH-2*chartPad)"
-              stroke="#2a2a2a" stroke-width="1"/>
-            <rect v-for="(d,i) in chartDays" :key="'mb'+i"
-              :x="tokenX(i) - barW/2"
-              :y="tokenY(d.messages, 'messages')"
-              :width="barW"
-              :height="chartH - 2*chartPad - (tokenY(d.messages, 'messages') - chartPad)"
-              fill="#4d9e39" rx="2"/>
-            <text v-for="(d,i) in chartDaysLabeled" :key="'mxl'+i"
-              :x="tokenX(d.idx)" :y="chartH - 4" fill="#555" font-size="9" text-anchor="middle">{{ d.label }}</text>
-          </svg>
-        </div>
-
-        <!-- Iterations per period line chart -->
-        <div class="chart-card">
-          <div class="chart-title">Avg Iterations Per {{ rangeLabel }}</div>
-          <svg :viewBox="`0 0 ${chartW} ${chartH}`" class="chart-svg" preserveAspectRatio="none">
-            <line v-for="y in [0.25,0.5,0.75,1]" :key="y"
-              :x1="chartPad" :y1="chartPad + (1-y)*(chartH-2*chartPad)"
-              :x2="chartW - chartPad" :y2="chartPad + (1-y)*(chartH-2*chartPad)"
-              stroke="#2a2a2a" stroke-width="1"/>
-            <polygon :points="iterAreaPoints" fill="#f59e0b22"/>
-            <polyline :points="iterLinePoints" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linejoin="round"/>
-            <circle v-for="(d,i) in chartDays" :key="'iter'+i"
-              :cx="tokenX(i)" :cy="tokenY(d.messages > 0 ? d.iterations/d.messages : 0, 'iter')" r="3" fill="#f59e0b"/>
-            <text v-for="(d,i) in chartDaysLabeled" :key="'ixl'+i"
-              :x="tokenX(d.idx)" :y="chartH - 4" fill="#555" font-size="9" text-anchor="middle">{{ d.label }}</text>
-          </svg>
-        </div>
-
-        <!-- Response time per period line chart -->
-        <div class="chart-card">
-          <div class="chart-title">Avg Response Time Per {{ rangeLabel }}</div>
-          <svg :viewBox="`0 0 ${chartW} ${chartH}`" class="chart-svg" preserveAspectRatio="none">
-            <line v-for="y in [0.25,0.5,0.75,1]" :key="y"
-              :x1="chartPad" :y1="chartPad + (1-y)*(chartH-2*chartPad)"
-              :x2="chartW - chartPad" :y2="chartPad + (1-y)*(chartH-2*chartPad)"
-              stroke="#2a2a2a" stroke-width="1"/>
-            <polygon :points="latencyAreaPoints" fill="#a855f722"/>
-            <polyline :points="latencyLinePoints" fill="none" stroke="#a855f7" stroke-width="2" stroke-linejoin="round"/>
-            <circle v-for="(d,i) in chartDays" :key="'lat'+i"
-              :cx="tokenX(i)" :cy="tokenY(d.avgLatencyMs, 'latency')" r="3" fill="#a855f7"/>
-            <text v-for="(d,i) in chartDaysLabeled" :key="'lxl'+i"
-              :x="tokenX(d.idx)" :y="chartH - 4" fill="#555" font-size="9" text-anchor="middle">{{ d.label }}</text>
-          </svg>
-        </div>
-      </div>
-
-      <!-- Scripts row -->
-      <div class="charts-row">
-        <!-- Scripts donut -->
-        <div class="chart-card donut-card">
-          <div class="chart-title">Script Outcomes (Lifetime)</div>
-          <div class="donut-wrap">
-            <svg viewBox="0 0 120 120" class="donut-svg">
-              <circle cx="60" cy="60" r="46" fill="none" stroke="#2a2a2a" stroke-width="16"/>
-              <circle cx="60" cy="60" r="46" fill="none" stroke="#4d9e39" stroke-width="16"
-                :stroke-dasharray="`${scriptSuccessDash} ${288.5 - scriptSuccessDash}`"
-                stroke-dashoffset="72" stroke-linecap="round"/>
-              <circle cx="60" cy="60" r="46" fill="none" stroke="#e74c3c" stroke-width="16"
-                :stroke-dasharray="`${scriptFailDash} ${288.5 - scriptFailDash}`"
-                :stroke-dashoffset="72 - scriptSuccessDash" stroke-linecap="round"/>
-            </svg>
-            <div class="donut-center">
-              <div class="donut-pct">{{ analytics.lifetime.scriptSuccessRatePct?.toFixed(0) }}%</div>
-              <div class="donut-label">success</div>
-            </div>
-          </div>
-          <div class="chart-legend">
-            <span class="legend-dot" style="background:#4d9e39"></span>{{ analytics.lifetime.scripts - analytics.lifetime.scriptFailures }} passed
-            <span class="legend-dot" style="background:#e74c3c;margin-left:12px"></span>{{ analytics.lifetime.scriptFailures }} failed
-          </div>
-        </div>
-
-        <!-- Token split donut -->
-        <div class="chart-card donut-card">
-          <div class="chart-title">Token Split (Lifetime)</div>
-          <div class="donut-wrap">
-            <svg viewBox="0 0 120 120" class="donut-svg">
-              <circle cx="60" cy="60" r="46" fill="none" stroke="#2a2a2a" stroke-width="16"/>
-              <circle cx="60" cy="60" r="46" fill="none" stroke="#4d9e39" stroke-width="16"
-                :stroke-dasharray="`${promptTokenDash} ${288.5 - promptTokenDash}`"
-                stroke-dashoffset="72" stroke-linecap="round"/>
-              <circle cx="60" cy="60" r="46" fill="none" stroke="#3b82f6" stroke-width="16"
-                :stroke-dasharray="`${completionTokenDash} ${288.5 - completionTokenDash}`"
-                :stroke-dashoffset="72 - promptTokenDash" stroke-linecap="round"/>
-            </svg>
-            <div class="donut-center">
-              <div class="donut-pct" style="font-size:11px">{{ fmtTokens(analytics.lifetime.totalTokens) }}</div>
-              <div class="donut-label">total</div>
-            </div>
-          </div>
-          <div class="chart-legend">
-            <span class="legend-dot" style="background:#4d9e39"></span>{{ fmtTokens(analytics.lifetime.promptTokens) }} prompt
-            <span class="legend-dot" style="background:#3b82f6;margin-left:12px"></span>{{ fmtTokens(analytics.lifetime.completionTokens) }} output
-          </div>
-        </div>
-
-        <!-- Shortcuts panel -->
-        <div class="chart-card shortcuts-card">
-          <div class="chart-title">Shortcuts ({{ shortcuts.length }})</div>
-          <div v-if="shortcuts.length === 0" class="side-empty">No shortcuts saved yet. The agent saves shortcuts as it learns.</div>
-          <div v-for="sc in shortcuts" :key="sc.id" class="shortcut-row">
+        <div v-if="shortcuts.length === 0" class="view-empty">No shortcuts saved yet. KliveAgent saves shortcuts as it learns reusable recipes.</div>
+        <div class="card-grid">
+          <div v-for="sc in shortcuts" :key="sc.id" class="lib-card">
+            <button @click="deleteMemory(sc.id)" class="card-del" type="button" title="Delete">×</button>
             <div class="shortcut-title">{{ sc.title || 'Untitled' }}</div>
-            <div class="shortcut-content">{{ sc.content }}</div>
-            <div class="shortcut-meta">
-              <span v-for="t in sc.tags" :key="t" class="memory-tag">{{ t }}</span>
-              <span class="memory-date">{{ sc.createdAt ? new Date(sc.createdAt).toLocaleDateString() : '' }}</span>
-              <button @click="deleteMemory(sc.id)" class="delete-memory-btn" style="position:static;margin-left:auto">×</button>
+            <div class="lib-card-content">{{ sc.content }}</div>
+            <div class="lib-card-meta">
+              <span v-for="t in sc.tags" :key="t" class="tag">{{ t }}</span>
+              <span class="lib-card-date">{{ sc.createdAt ? new Date(sc.createdAt).toLocaleDateString() : '' }}</span>
             </div>
           </div>
         </div>
       </div>
-    </div>
-    <div v-else class="dash-placeholder">
-      <button @click="loadAnalytics" class="refresh-btn" style="width:auto;padding:8px 24px;margin-top:16px">Load Analytics Dashboard</button>
-    </div>
+    </section>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
-import MarkdownIt from 'markdown-it';
-import hljs from 'highlight.js';
+import { renderMarkdown } from '~/scripts/agentMarkdown';
+import AgentMessage from '~/components/KliveAgent/AgentMessage.vue';
+import AgentStatCard from '~/components/KliveAgent/AgentStatCard.vue';
+import AgentChartCard from '~/components/KliveAgent/AgentChartCard.vue';
 import 'highlight.js/styles/github-dark.css';
 
 definePageMeta({ layout: 'navbar' });
 
-// Markdown renderer with code-fence syntax highlighting (replaces the old regex renderer).
-const md = new MarkdownIt({
-  html: false,
-  linkify: true,
-  breaks: true,
-  highlight(str, lang) {
-    try {
-      if (lang && hljs.getLanguage(lang)) {
-        return hljs.highlight(str, { language: lang, ignoreIllegals: true }).value;
-      }
-      return hljs.highlightAuto(str).value;
-    } catch {
-      return '';
-    }
-  }
-});
+// ── View switching ──
+const views = [
+  { id: 'chat', label: 'Chat' },
+  { id: 'analytics', label: 'Analytics' },
+  { id: 'library', label: 'Library' },
+];
+const view = ref('chat');
+const loadedViews = ref(new Set());
+const libTab = ref('memories');
 
-// Highlight a raw C# script body for the script-result cards.
-function highlightCsharp(code) {
-  if (!code) return '';
-  try {
-    return hljs.highlight(code, { language: 'csharp', ignoreIllegals: true }).value;
-  } catch {
-    return md.utils.escapeHtml(code);
+function setView(v) {
+  view.value = v;
+  if (v === 'analytics' && !loadedViews.value.has('analytics')) {
+    loadedViews.value.add('analytics');
+    loadAnalytics();
+  }
+  if (v === 'library' && !loadedViews.value.has('library')) {
+    loadedViews.value.add('library');
+    searchMemories();
+    loadShortcuts();
+    loadConversations();
   }
 }
 
-async function copyToClipboard(text) {
-  try { await navigator.clipboard.writeText(text ?? ''); } catch { }
-}
-
+// ── Chat state ──
 const messages = ref([]);
 const inputMessage = ref('');
 const loading = ref(false);
 const pendingRequestId = ref(null);
 const conversationId = ref(null);
 const chatMessages = ref(null);
+const chatInput = ref(null);
 let pendingPollHandle = null;
 
-const activeTab = ref('tasks');
+// ── Side data ──
 const tasks = ref([]);
 const memories = ref([]);
 const memorySearch = ref('');
@@ -432,6 +396,8 @@ const reindexing = ref(false);
 const reindexDone = ref(false);
 const reindexStatus = ref('');
 
+const recentConversations = computed(() => conversationList.value.slice(0, 6));
+
 const isSendDisabled = computed(() => loading.value || !inputMessage.value.trim());
 
 const sendButtonTitle = computed(() => {
@@ -440,24 +406,37 @@ const sendButtonTitle = computed(() => {
       ? 'KliveAgent is finishing the current request.'
       : 'KliveAgent is processing your message.';
   }
-
-  return inputMessage.value.trim()
-    ? 'Send message'
-    : 'Type a message to enable Send.';
+  return inputMessage.value.trim() ? 'Send message' : 'Type a message to enable Send.';
 });
+
+function autoGrowInput() {
+  const el = chatInput.value;
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+}
+
+function resetInputHeight() {
+  nextTick(() => {
+    if (chatInput.value) chatInput.value.style.height = 'auto';
+  });
+}
+
+function newChat() {
+  if (loading.value) return;
+  messages.value = [];
+  conversationId.value = null;
+  inputMessage.value = '';
+  resetInputHeight();
+}
 
 async function readAgentApiResponse(res) {
   const contentType = res.headers.get('content-type') || '';
-
   if (contentType.includes('application/json')) {
     return { data: await res.json(), rawText: '' };
   }
-
   const rawText = await res.text();
-  if (!rawText) {
-    return { data: null, rawText: '' };
-  }
-
+  if (!rawText) return { data: null, rawText: '' };
   try {
     return { data: JSON.parse(rawText), rawText };
   } catch {
@@ -471,6 +450,7 @@ async function sendMessage() {
 
   messages.value.push({ role: 'User', content: msg, timestamp: new Date().toISOString() });
   inputMessage.value = '';
+  resetInputHeight();
   loading.value = true;
   scrollToBottom();
 
@@ -481,14 +461,9 @@ async function sendMessage() {
 
     if (!res.ok) {
       throw new Error(
-        data?.response ||
-        data?.error ||
-        data?.errorMessage ||
-        rawText ||
-        `KliveAgent API request failed with HTTP ${res.status}`
+        data?.response || data?.error || data?.errorMessage || rawText || `KliveAgent API request failed with HTTP ${res.status}`
       );
     }
-
     if (!data) {
       throw new Error(rawText || 'KliveAgent API returned an empty response.');
     }
@@ -497,36 +472,36 @@ async function sendMessage() {
       conversationId.value = data.conversationId;
       if (data.isPending && data.pendingRequestId) {
         pendingRequestId.value = data.pendingRequestId;
-        const pendingMessage = {
+        messages.value.push({
           role: 'KliveAgent',
           content: data.response,
           scripts: [],
           pending: true,
-          timestamp: new Date().toISOString()
-        };
-        messages.value.push(pendingMessage);
+          timestamp: new Date().toISOString(),
+        });
         scrollToBottom();
-        await pollPendingResponse(pendingMessage);
+        // Mutate through the array index so updates are reactive (streaming + final).
+        await pollPendingResponse(messages.value.length - 1);
       } else {
         messages.value.push({
           role: 'KliveAgent',
           content: data.response,
           scripts: data.scriptsExecuted || [],
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         });
       }
     } else {
       messages.value.push({
         role: 'KliveAgent',
         content: data.response || data.errorMessage || 'Something went wrong.',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
     }
   } catch (err) {
     messages.value.push({
       role: 'KliveAgent',
       content: 'Failed to reach KliveAgent API: ' + err.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   }
 
@@ -541,10 +516,19 @@ function waitForPendingPoll(ms) {
   });
 }
 
-async function pollPendingResponse(pendingMessage) {
+async function pollPendingResponse(messageIndex) {
+  // Mutate the message via its array index (messages.value[messageIndex].*) rather
+  // than a captured object reference — direct mutation of a pushed plain object does
+  // not trigger Vue reactivity, so streaming/final updates would not render.
+  const msg = () => messages.value[messageIndex];
+
   while (pendingRequestId.value) {
     try {
-      const res = await RequestGETFromKliveAPI(`/kliveagent/chat/pending?requestId=${encodeURIComponent(pendingRequestId.value)}`);
+      // Cache-buster (`_t`): the poll URL is otherwise identical every tick, so the
+      // browser can serve a cached "Running" response forever and the request never
+      // resolves in the UI (the answer only shows after a manual refresh). A unique
+      // param per poll forces a fresh network read each time.
+      const res = await RequestGETFromKliveAPI(`/kliveagent/chat/pending?requestId=${encodeURIComponent(pendingRequestId.value)}&_t=${Date.now()}`);
       const data = await res.json();
 
       if (!res.ok) {
@@ -552,29 +536,30 @@ async function pollPendingResponse(pendingMessage) {
       }
 
       if (data.status === 'Running') {
-        // Live "talking while working": the server streams the agent's prose + script
-        // progress into data.response between iterations.
-        pendingMessage.content = data.response || pendingMessage.content;
+        // Live "talking while working": the server streams the agent's prose into
+        // data.response and the code it runs into data.scriptsExecuted between iterations.
+        if (data.response != null) msg().content = data.response;
+        if (Array.isArray(data.scriptsExecuted)) msg().scripts = data.scriptsExecuted;
+        scrollToBottom();
         await waitForPendingPoll(600);
         continue;
       }
 
       const finalResponse = data.finalResponse;
-      pendingMessage.pending = false;
-      pendingMessage.timestamp = new Date().toISOString();
+      msg().pending = false;
+      msg().timestamp = new Date().toISOString();
 
       if (finalResponse) {
         conversationId.value = finalResponse.conversationId || data.conversationId || conversationId.value;
-        pendingMessage.content = finalResponse.response || pendingMessage.content;
-        pendingMessage.scripts = finalResponse.scriptsExecuted || [];
+        msg().content = finalResponse.response || msg().content;
+        msg().scripts = finalResponse.scriptsExecuted || [];
       } else {
-        pendingMessage.content = data.errorMessage || 'KliveAgent did not return a final response.';
+        msg().content = data.errorMessage || 'KliveAgent did not return a final response.';
       }
-
       break;
     } catch (err) {
-      pendingMessage.pending = false;
-      pendingMessage.content = 'Failed to retrieve KliveAgent response: ' + err.message;
+      msg().pending = false;
+      msg().content = 'Failed to retrieve KliveAgent response: ' + err.message;
       break;
     }
   }
@@ -596,11 +581,6 @@ function scrollToBottom() {
   });
 }
 
-function renderMarkdown(text) {
-  if (!text) return '';
-  return md.render(text);
-}
-
 function formatTime(ts) {
   if (!ts) return '';
   const d = new Date(ts);
@@ -608,24 +588,20 @@ function formatTime(ts) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-// Tasks
+// ── Tasks ──
 function getTaskStatusLabel(task) {
   return String(task?.status || 'Unknown');
 }
-
 function getTaskStatusClass(task) {
   return 'status-' + getTaskStatusLabel(task).toLowerCase().replace(/[^a-z0-9-]/g, '-');
 }
-
 function canCancelTask(task) {
   return Boolean(task?.taskId) && getTaskStatusLabel(task) === 'Running';
 }
-
 function toFiniteNumber(value, fallback = 0) {
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
 }
-
 function normalizeTask(task) {
   return {
     taskId: task?.taskId || crypto.randomUUID(),
@@ -633,27 +609,25 @@ function normalizeTask(task) {
     status: task?.status || 'Unknown',
     createdAt: task?.createdAt || null,
     result: task?.result || '',
-    errorMessage: task?.errorMessage || ''
+    errorMessage: task?.errorMessage || '',
   };
 }
 
 function bucketLabel(value, keyName) {
   if (!value) return '';
-  if (keyName === 'date') return value.slice(5);   // MM-DD
-  if (keyName === 'week') return value.slice(5);    // Www
-  return value;                                     // month: yyyy-MM
+  if (keyName === 'date') return value.slice(5);
+  if (keyName === 'week') return value.slice(5);
+  return value;
 }
 
-// Normalizes a day/week/month time bucket. keyName is 'date' | 'week' | 'month'.
 function normalizeBucket(b, keyName) {
   const promptTokens = toFiniteNumber(b?.promptTokens);
   const completionTokens = toFiniteNumber(b?.completionTokens);
   const keyValue = typeof b?.[keyName] === 'string' ? b[keyName] : '';
-
   return {
     key: keyValue,
     label: bucketLabel(keyValue, keyName),
-    date: keyValue, // kept so existing date-keyed template bits keep working
+    date: keyValue,
     messages: toFiniteNumber(b?.messages),
     promptTokens,
     completionTokens,
@@ -669,18 +643,14 @@ function normalizeBucket(b, keyName) {
     maxLatencyMs: toFiniteNumber(b?.maxLatencyMs),
     memorySaves: toFiniteNumber(b?.memorySaves),
     memoryRecalls: toFiniteNumber(b?.memoryRecalls),
-    estimatedCostUsd: toFiniteNumber(b?.estimatedCostUsd)
+    estimatedCostUsd: toFiniteNumber(b?.estimatedCostUsd),
   };
 }
 
 function normalizeAnalyticsPeriod(period) {
-  if (!period || typeof period !== 'object') {
-    return null;
-  }
-
+  if (!period || typeof period !== 'object') return null;
   const promptTokens = toFiniteNumber(period.promptTokens);
   const completionTokens = toFiniteNumber(period.completionTokens);
-
   return {
     messages: toFiniteNumber(period.messages),
     promptTokens,
@@ -704,29 +674,28 @@ function normalizeAnalyticsPeriod(period) {
     avgCapabilityDurationMs: toFiniteNumber(period.avgCapabilityDurationMs),
     estimatedCostUsd: toFiniteNumber(period.estimatedCostUsd),
     scriptSuccessRatePct: toFiniteNumber(period.scriptSuccessRatePct, 100),
-    capabilitySuccessRatePct: toFiniteNumber(period.capabilitySuccessRatePct, 100)
+    capabilitySuccessRatePct: toFiniteNumber(period.capabilitySuccessRatePct, 100),
   };
 }
 
 function normalizeAnalytics(data) {
   const lifetime = normalizeAnalyticsPeriod(data?.lifetime) || normalizeAnalyticsPeriod({}) || {};
   const today = normalizeAnalyticsPeriod(data?.today);
-  const dailyHistory = Array.isArray(data?.dailyHistory) ? data.dailyHistory.map(d => normalizeBucket(d, 'date')) : [];
-  const weeklyHistory = Array.isArray(data?.weeklyHistory) ? data.weeklyHistory.map(d => normalizeBucket(d, 'week')) : [];
-  const monthlyHistory = Array.isArray(data?.monthlyHistory) ? data.monthlyHistory.map(d => normalizeBucket(d, 'month')) : [];
-
+  const dailyHistory = Array.isArray(data?.dailyHistory) ? data.dailyHistory.map((d) => normalizeBucket(d, 'date')) : [];
+  const weeklyHistory = Array.isArray(data?.weeklyHistory) ? data.weeklyHistory.map((d) => normalizeBucket(d, 'week')) : [];
+  const monthlyHistory = Array.isArray(data?.monthlyHistory) ? data.monthlyHistory.map((d) => normalizeBucket(d, 'month')) : [];
   return {
     lifetime,
     today,
     historyWindow: {
       firstDay: typeof data?.historyWindow?.firstDay === 'string' ? data.historyWindow.firstDay : null,
       lastDay: typeof data?.historyWindow?.lastDay === 'string' ? data.historyWindow.lastDay : null,
-      totalDays: toFiniteNumber(data?.historyWindow?.totalDays, dailyHistory.length)
+      totalDays: toFiniteNumber(data?.historyWindow?.totalDays, dailyHistory.length),
     },
     dailyHistory,
     weeklyHistory,
     monthlyHistory,
-    topCapabilities: Array.isArray(data?.topCapabilities) ? data.topCapabilities : []
+    topCapabilities: Array.isArray(data?.topCapabilities) ? data.topCapabilities : [],
   };
 }
 
@@ -735,23 +704,23 @@ async function loadTasks() {
     const res = await RequestGETFromKliveAPI('/kliveagent/tasks');
     const data = await res.json();
     tasks.value = Array.isArray(data) ? data.map(normalizeTask) : [];
-  } catch { }
+  } catch {}
 }
 
 async function cancelTask(taskId) {
   try {
     await RequestPOSTFromKliveAPI('/kliveagent/tasks/cancel', JSON.stringify({ taskId }), true, true);
     await loadTasks();
-  } catch { }
+  } catch {}
 }
 
-// Memories
+// ── Memories ──
 async function searchMemories() {
   try {
     const q = memorySearch.value ? `?query=${encodeURIComponent(memorySearch.value)}` : '';
     const res = await RequestGETFromKliveAPI('/kliveagent/memories' + q);
     memories.value = await res.json();
-  } catch { }
+  } catch {}
 }
 
 async function addMemory() {
@@ -759,29 +728,30 @@ async function addMemory() {
   try {
     const body = JSON.stringify({
       content: newMemory.value.content,
-      tags: newMemory.value.tags.split(',').map(t => t.trim()).filter(Boolean),
-      importance: 1
+      tags: newMemory.value.tags.split(',').map((t) => t.trim()).filter(Boolean),
+      importance: 1,
     });
     await RequestPOSTFromKliveAPI('/kliveagent/memories/add', body, true, true);
     newMemory.value = { content: '', tags: '' };
     showAddMemory.value = false;
     await searchMemories();
-  } catch { }
+  } catch {}
 }
 
 async function deleteMemory(id) {
   try {
     await RequestPOSTFromKliveAPI('/kliveagent/memories/delete', JSON.stringify({ id }), true, true);
     await searchMemories();
-  } catch { }
+    await loadShortcuts();
+  } catch {}
 }
 
-// Conversations
+// ── Conversations ──
 async function loadConversations() {
   try {
     const res = await RequestGETFromKliveAPI('/kliveagent/conversations');
     conversationList.value = await res.json();
-  } catch { }
+  } catch {}
 }
 
 async function loadConversation(convId) {
@@ -789,24 +759,23 @@ async function loadConversation(convId) {
     const res = await RequestGETFromKliveAPI(`/kliveagent/conversations/get?id=${convId}`);
     const data = await res.json();
     conversationId.value = convId;
-    messages.value = data.messages.map(m => ({
+    messages.value = data.messages.map((m) => ({
       role: m.role === 'User' ? 'User' : 'KliveAgent',
       content: m.content,
       // Replay the scripts+outputs the agent ran on this turn (persisted server-side).
       scripts: m.scriptResults || (m.scriptResult ? [m.scriptResult] : []),
-      timestamp: m.timestamp
+      timestamp: m.timestamp,
     }));
+    view.value = 'chat';
     scrollToBottom();
-  } catch { }
+  } catch {}
 }
 
-// Analytics
+// ── Analytics charts ──
 const chartW = 560;
 const chartH = 130;
 const chartPad = 18;
 const barW = 10;
-
-// day | week | month — drives every dashboard time-series chart.
 const chartRange = ref('day');
 
 const chartDays = computed(() => {
@@ -818,29 +787,64 @@ const chartDays = computed(() => {
 });
 
 const rangeLabel = computed(() =>
-  chartRange.value === 'week' ? 'Week' : chartRange.value === 'month' ? 'Month' : 'Day');
+  chartRange.value === 'week' ? 'Week' : chartRange.value === 'month' ? 'Month' : 'Day'
+);
+
+// The KPI cards reflect the *latest* bucket of the selected granularity (current
+// day / week / month) — not lifetime — so the Day/Week/Month toggle actually
+// changes the headline numbers. Averages/rates are recomputed from the bucket's
+// raw counts since the backend only stores per-message averages at the lifetime level.
+const periodSummary = computed(() => {
+  const buckets = chartDays.value;
+  if (!buckets.length) return analytics.value?.lifetime ?? null;
+  const b = buckets[buckets.length - 1];
+  const messages = b.messages || 0;
+  return {
+    label: b.key || b.label || '',
+    messages,
+    totalTokens: b.totalTokens,
+    promptTokens: b.promptTokens,
+    completionTokens: b.completionTokens,
+    avgPromptTokensPerMessage: messages ? b.promptTokens / messages : 0,
+    avgCompletionTokensPerMessage: messages ? b.completionTokens / messages : 0,
+    avgIterationsPerMessage: messages ? b.iterations / messages : 0,
+    scriptSuccessRatePct: b.scripts ? ((b.scripts - b.scriptFailures) / b.scripts) * 100 : 100,
+    avgLatencyMs: b.avgLatencyMs,
+    estimatedCostUsd: b.estimatedCostUsd,
+    memorySaves: b.memorySaves,
+    discordMessages: b.discordMessages,
+    apiMessages: b.apiMessages,
+  };
+});
+
+const periodLabel = computed(() => {
+  const lbl = periodSummary.value?.label;
+  const noun = chartRange.value === 'week' ? 'week' : chartRange.value === 'month' ? 'month' : 'day';
+  return lbl ? `latest ${noun} · ${lbl}` : `latest ${noun}`;
+});
 
 const chartDaysLabeled = computed(() => {
   const days = chartDays.value;
   if (!days.length) return [];
   const step = Math.max(1, Math.floor(days.length / 6));
-  return days.map((d, i) => ({ idx: i, label: d.label ?? '' }))
+  return days
+    .map((d, i) => ({ idx: i, label: d.label ?? '' }))
     .filter((_, i) => i % step === 0 || i === days.length - 1);
 });
 
 function tokenX(i) {
   const n = chartDays.value.length;
-  if (n <= 1) return chartPad;
+  if (n <= 1) return chartW / 2; // center a lone data point instead of pinning it left
   return chartPad + i * ((chartW - 2 * chartPad) / (n - 1));
 }
 
 function tokenY(val, kind) {
   const days = chartDays.value;
   let max = 1;
-  if (kind === 'tokens') max = Math.max(1, ...days.map(d => Math.max(d.promptTokens, d.completionTokens)));
-  else if (kind === 'messages') max = Math.max(1, ...days.map(d => d.messages));
-  else if (kind === 'iter') max = Math.max(1, ...days.map(d => d.messages > 0 ? d.iterations / d.messages : 0));
-  else if (kind === 'latency') max = Math.max(1, ...days.map(d => d.avgLatencyMs));
+  if (kind === 'tokens') max = Math.max(1, ...days.map((d) => Math.max(d.promptTokens, d.completionTokens)));
+  else if (kind === 'messages') max = Math.max(1, ...days.map((d) => d.messages));
+  else if (kind === 'iter') max = Math.max(1, ...days.map((d) => (d.messages > 0 ? d.iterations / d.messages : 0)));
+  else if (kind === 'latency') max = Math.max(1, ...days.map((d) => d.avgLatencyMs));
   const ratio = Math.min(1, val / max);
   return chartPad + (1 - ratio) * (chartH - 2 * chartPad);
 }
@@ -857,23 +861,28 @@ function tokenAreaPoints(type) {
   return top + ' ' + bottom;
 }
 
-const iterLinePoints = computed(() => chartDays.value.map((d, i) => {
-  const v = d.messages > 0 ? d.iterations / d.messages : 0;
-  return `${tokenX(i)},${tokenY(v, 'iter')}`;
-}).join(' '));
+const iterLinePoints = computed(() =>
+  chartDays.value
+    .map((d, i) => {
+      const v = d.messages > 0 ? d.iterations / d.messages : 0;
+      return `${tokenX(i)},${tokenY(v, 'iter')}`;
+    })
+    .join(' ')
+);
 
 const iterAreaPoints = computed(() => {
   const days = chartDays.value;
   if (!days.length) return '';
-  const top = days.map((d, i) => {
-    const v = d.messages > 0 ? d.iterations / d.messages : 0;
-    return `${tokenX(i)},${tokenY(v, 'iter')}`;
-  }).join(' ');
+  const top = days
+    .map((d, i) => {
+      const v = d.messages > 0 ? d.iterations / d.messages : 0;
+      return `${tokenX(i)},${tokenY(v, 'iter')}`;
+    })
+    .join(' ');
   return top + ` ${tokenX(days.length - 1)},${chartH - chartPad} ${tokenX(0)},${chartH - chartPad}`;
 });
 
-const latencyLinePoints = computed(() =>
-  chartDays.value.map((d, i) => `${tokenX(i)},${tokenY(d.avgLatencyMs, 'latency')}`).join(' '));
+const latencyLinePoints = computed(() => chartDays.value.map((d, i) => `${tokenX(i)},${tokenY(d.avgLatencyMs, 'latency')}`).join(' '));
 
 const latencyAreaPoints = computed(() => {
   const days = chartDays.value;
@@ -892,11 +901,6 @@ function fmtCost(usd) {
   const n = Number(usd) || 0;
   return '$' + n.toFixed(n >= 1 ? 2 : 4);
 }
-
-const maxDailyMessages = computed(() => {
-  if (!analytics.value?.dailyHistory?.length) return 1;
-  return Math.max(1, ...analytics.value.dailyHistory.map(d => d.messages));
-});
 
 // Donut helpers — circumference of r=46 circle ≈ 288.5
 const scriptSuccessDash = computed(() => {
@@ -946,7 +950,9 @@ async function reindexCodebase() {
     const data = await res.json();
     reindexStatus.value = data.message || 'Reindex triggered.';
     reindexDone.value = true;
-    setTimeout(() => { reindexDone.value = false; }, 4000);
+    setTimeout(() => {
+      reindexDone.value = false;
+    }, 4000);
   } catch (err) {
     reindexStatus.value = 'Reindex failed: ' + err.message;
   } finally {
@@ -958,15 +964,13 @@ async function loadShortcuts() {
   try {
     const res = await RequestGETFromKliveAPI('/kliveagent/shortcuts');
     shortcuts.value = await res.json();
-  } catch { }
+  } catch {}
 }
 
 onMounted(() => {
+  // Chat is the default view — load just what the chat rail needs up front.
   loadTasks();
-  searchMemories();
   loadConversations();
-  loadAnalytics();
-  loadShortcuts();
 });
 
 onUnmounted(() => {
@@ -978,599 +982,495 @@ onUnmounted(() => {
 });
 </script>
 
-<style scoped>
-.agent-container {
+<style scoped lang="scss">
+.ka {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 20px 24px;
   font-family: 'Segoe UI', sans-serif;
-  color: #e0e0e0;
+  color: #dcdcdc;
 }
 
-.agent-header {
-  margin-bottom: 24px;
+/* ── Header ── */
+.ka-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
 }
 
-.reindex-btn {
-  background: #1a1a1a;
-  border: 1px solid #2a2a2a;
-  color: #888;
-  padding: 7px 14px;
-  border-radius: 8px;
+.ka-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.ka-glyph {
+  font-size: 26px;
+  color: $secondary;
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba($secondary, 0.12);
+  border: 1px solid rgba($secondary, 0.25);
+  border-radius: 12px;
+}
+
+.ka-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: $white;
+  margin: 0;
+  letter-spacing: 0.3px;
+}
+
+.ka-subtitle {
+  color: #7a7a7a;
+  margin: 2px 0 0;
   font-size: 13px;
+}
+
+.ka-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ── Segmented control (shared) ── */
+.seg {
+  display: inline-flex;
+  background: $mainDarker;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.seg-btn {
+  background: transparent;
+  border: none;
+  color: #8a8a8a;
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 7px;
+  cursor: pointer;
+  text-transform: capitalize;
+  transition: background 140ms ease, color 140ms ease;
+}
+.seg-btn:hover {
+  color: #d0d0d0;
+}
+.seg-active {
+  background: rgba($secondary, 0.16);
+  color: $teritary;
+}
+
+.seg-sm .seg-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+.ka-reindex {
+  background: $mainDarker;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #8a8a8a;
+  padding: 9px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: border-color 0.2s, color 0.2s;
-  margin-top: 4px;
+  transition: border-color 140ms ease, color 140ms ease;
 }
-.reindex-btn:hover:not(:disabled) {
-  border-color: #4d9e39;
-  color: #4d9e39;
+.ka-reindex:hover:not(:disabled) {
+  border-color: rgba($secondary, 0.5);
+  color: $teritary;
 }
-.reindex-btn:disabled {
+.ka-reindex:disabled {
   opacity: 0.6;
   cursor: default;
 }
 
-.agent-title {
-  font-size: 28px;
+/* ── Shared buttons / inputs ── */
+.ghost-btn {
+  background: #1c1c1c;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #9a9a9a;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+.ghost-btn:hover {
+  border-color: rgba($secondary, 0.45);
+  color: $teritary;
+}
+
+.primary-btn {
+  background: $secondary;
+  color: #fff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+.primary-btn:hover {
+  background: #3d8e29;
+}
+
+.text-input {
+  flex: 1;
+  padding: 9px 13px;
+  background: $mainDarker;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: #dcdcdc;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 140ms ease;
+}
+.text-input:focus {
+  border-color: rgba($secondary, 0.55);
+}
+.text-input::placeholder {
+  color: #5a5a5a;
+}
+
+.section-title {
+  font-size: 18px;
   font-weight: 700;
-  color: #4d9e39;
+  color: $white;
   margin: 0;
 }
 
-.agent-subtitle {
-  color: #888;
-  margin: 4px 0 0 0;
+.view-loading,
+.view-empty {
+  text-align: center;
+  color: #6a6a6a;
+  padding: 48px 20px;
   font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
 }
 
-.agent-layout {
+/* ════════ CHAT VIEW ════════ */
+.view-chat {
   display: flex;
   gap: 20px;
-  height: calc(100vh - 180px);
+  height: calc(100vh - 150px);
 }
 
-/* Chat Panel */
-.agent-chat-panel {
+.chat-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
   background: #1a1a1a;
-  border-radius: 12px;
-  border: 1px solid #2a2a2a;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
   overflow: hidden;
+  min-width: 0;
 }
 
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .chat-empty {
+  margin: auto;
   text-align: center;
-  color: #555;
-  padding: 40px;
+  color: #5a5a5a;
+  max-width: 360px;
 }
-
-.chat-bubble {
-  max-width: 80%;
-  padding: 10px 14px;
-  border-radius: 12px;
-  font-size: 14px;
+.chat-empty-glyph {
+  font-size: 40px;
+  color: rgba($secondary, 0.5);
+  margin-bottom: 12px;
+}
+.chat-empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #b0b0b0;
+  margin: 0 0 6px;
+}
+.chat-empty-sub {
+  font-size: 13px;
+  margin: 0;
   line-height: 1.5;
 }
 
-.bubble-user {
-  align-self: flex-end;
-  background: #2a4a22;
-  border: 1px solid #3a6a30;
-}
-
-.bubble-agent {
-  align-self: flex-start;
-  background: #252525;
-  border: 1px solid #333;
-}
-
-.bubble-role {
-  font-size: 11px;
-  font-weight: 600;
-  color: #4d9e39;
-  margin-bottom: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.bubble-user .bubble-role { color: #7dc96e; }
-
-.bubble-content { word-break: break-word; }
-.bubble-content code {
-  background: #111;
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-size: 13px;
-  color: #7dc96e;
-}
-
-.bubble-time {
-  font-size: 10px;
-  color: #555;
-  margin-top: 4px;
-  text-align: right;
-}
-
-.bubble-pending-note {
-  margin-top: 8px;
-  color: #9fb4ff;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-/* Script results */
-.bubble-scripts { margin-top: 8px; }
-
-.script-result {
-  background: #111;
-  border-radius: 6px;
-  padding: 8px;
-  margin-top: 6px;
-  font-size: 12px;
-  border-left: 3px solid #4d9e39;
-}
-
-.script-err { border-left-color: #c0392b; }
-
-.script-header {
+.chat-thinking {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  margin-bottom: 4px;
-  color: #999;
+  gap: 12px;
+  padding-left: 2px;
 }
-
-.script-time { color: #666; margin-left: auto; }
-
-.script-copy {
-  background: #1a1a1a;
-  border: 1px solid #333;
-  color: #888;
-  font-size: 10px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  cursor: pointer;
+.chat-thinking-glyph {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1c1c1c;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: #8a8a8a;
+  font-size: 14px;
 }
-.script-copy:hover { color: #7dc96e; border-color: #4d9e39; }
-
-.script-code, .script-output, .script-error {
-  margin: 4px 0 0 0;
-  padding: 6px;
-  background: #0a0a0a;
-  border-radius: 4px;
-  overflow-x: auto;
-  font-size: 11px;
-  white-space: pre-wrap;
-  font-family: 'Cascadia Code', 'Fira Code', monospace;
+.msg-typing {
+  display: flex;
+  gap: 5px;
 }
-
-.script-output { color: #7dc96e; }
-.script-error { color: #e74c3c; }
-
-/* Typing indicator */
-.typing-indicator span {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
+.msg-typing span {
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: #4d9e39;
-  margin-right: 4px;
-  animation: blink 1.4s infinite both;
+  background: $secondary;
+  animation: ka-blink 1.4s infinite both;
 }
-
-.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
-.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
-
-@keyframes blink {
-  0%, 80%, 100% { opacity: 0.3; }
+.msg-typing span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.msg-typing span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes ka-blink {
+  0%, 80%, 100% { opacity: 0.25; }
   40% { opacity: 1; }
 }
 
-/* Chat input */
 .chat-input-row {
   display: flex;
-  padding: 12px;
-  background: #151515;
-  border-top: 1px solid #2a2a2a;
-  gap: 8px;
+  align-items: flex-end;
+  padding: 14px;
+  background: $mainDarker;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  gap: 10px;
 }
 
 .chat-input {
   flex: 1;
-  padding: 10px 14px;
-  border: 1px solid #333;
-  border-radius: 8px;
+  padding: 11px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
   background: #1a1a1a;
-  color: #e0e0e0;
+  color: #dcdcdc;
   font-size: 14px;
+  font-family: inherit;
+  line-height: 1.4;
   outline: none;
+  resize: none;
+  max-height: 160px;
+  transition: border-color 140ms ease;
 }
-
-.chat-input:focus { border-color: #4d9e39; }
-.chat-input::placeholder { color: #555; }
+.chat-input:focus {
+  border-color: rgba($secondary, 0.55);
+}
+.chat-input::placeholder {
+  color: #5a5a5a;
+}
 
 .chat-send-btn {
-  padding: 10px 20px;
-  background: #4d9e39;
+  padding: 11px 22px;
+  background: $secondary;
   color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   font-weight: 600;
+  font-size: 14px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 140ms ease;
+}
+.chat-send-btn:hover:not(:disabled) {
+  background: #3d8e29;
+}
+.chat-send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
-.chat-send-btn:hover:not(:disabled) { background: #3d8e29; }
-.chat-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-/* Side Panel */
-.agent-side-panel {
-  width: 340px;
+/* ── Context rail ── */
+.chat-rail {
+  width: 300px;
+  flex: 0 0 300px;
   display: flex;
   flex-direction: column;
-  background: #1a1a1a;
-  border-radius: 12px;
-  border: 1px solid #2a2a2a;
-  overflow: hidden;
-}
-
-.side-tabs {
-  display: flex;
-  border-bottom: 1px solid #2a2a2a;
-}
-
-.side-tab {
-  flex: 1;
-  padding: 10px;
-  background: transparent;
-  border: none;
-  color: #888;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  transition: color 0.2s, background 0.2s;
-}
-
-.side-tab:hover { color: #ccc; background: #222; }
-.tab-active { color: #4d9e39; border-bottom: 2px solid #4d9e39; }
-
-.side-content {
-  flex: 1;
+  gap: 14px;
   overflow-y: auto;
-  padding: 12px;
+  padding-right: 2px;
 }
 
-.side-empty {
-  text-align: center;
-  color: #555;
-  padding: 20px;
-  font-size: 13px;
+.rail-block {
+  background: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 14px;
 }
 
-.refresh-btn {
-  width: 100%;
-  padding: 6px;
-  background: #252525;
-  border: 1px solid #333;
-  border-radius: 6px;
-  color: #888;
-  font-size: 12px;
-  cursor: pointer;
-  margin-bottom: 8px;
+.rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
 }
 
-.refresh-btn:hover { background: #2a2a2a; color: #ccc; }
-
-/* Task cards */
-.task-card {
-  background: #222;
-  border-radius: 8px;
-  padding: 10px;
-  margin-bottom: 8px;
-  border: 1px solid #2a2a2a;
-}
-
-.task-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-
-.task-status {
+.rail-title {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  padding: 2px 6px;
-  border-radius: 4px;
+  letter-spacing: 0.6px;
+  color: #8a8a8a;
 }
 
-.status-running { background: #2a4a22; color: #7dc96e; }
-.status-completed { background: #1a3a1a; color: #4d9e39; }
-.status-failed { background: #3a1a1a; color: #e74c3c; }
-.status-cancelled { background: #3a3a1a; color: #f39c12; }
-.status-unknown { background: #2a2a2a; color: #aaa; }
-
-.cancel-btn {
-  font-size: 11px;
-  padding: 2px 8px;
-  background: #3a1a1a;
-  color: #e74c3c;
-  border: 1px solid #e74c3c33;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.task-desc { font-size: 13px; color: #ccc; }
-.task-time { font-size: 11px; color: #555; margin-top: 4px; }
-.task-result, .task-error {
-  font-size: 11px;
-  margin-top: 6px;
-  padding: 6px;
-  background: #111;
-  border-radius: 4px;
-  white-space: pre-wrap;
-  font-family: monospace;
-}
-.task-error { color: #e74c3c; }
-
-/* Memory cards */
-.memory-controls {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.memory-search {
-  flex: 1;
-  padding: 6px 10px;
-  background: #222;
-  border: 1px solid #333;
-  border-radius: 6px;
-  color: #e0e0e0;
-  font-size: 12px;
-  outline: none;
-}
-
-.memory-search:focus { border-color: #4d9e39; }
-
-.add-memory-btn {
-  width: 32px;
-  background: #4d9e39;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  font-size: 18px;
-  cursor: pointer;
-}
-
-.add-memory-form {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.memory-input {
-  padding: 6px 10px;
-  background: #222;
-  border: 1px solid #333;
-  border-radius: 6px;
-  color: #e0e0e0;
-  font-size: 12px;
-  outline: none;
-}
-
-.save-memory-btn {
-  padding: 6px;
-  background: #4d9e39;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.memory-card {
-  background: #222;
-  border-radius: 8px;
-  padding: 10px;
-  margin-bottom: 8px;
-  border: 1px solid #2a2a2a;
-  position: relative;
-}
-
-.memory-content { font-size: 13px; color: #ccc; }
-
-.memory-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 6px;
-  align-items: center;
-}
-
-.memory-tag {
-  font-size: 10px;
-  background: #2a4a22;
-  color: #7dc96e;
-  padding: 1px 6px;
-  border-radius: 3px;
-}
-
-.memory-date { font-size: 10px; color: #555; }
-
-.delete-memory-btn {
-  position: absolute;
-  top: 6px;
-  right: 8px;
+.rail-refresh {
   background: transparent;
   border: none;
-  color: #555;
-  font-size: 16px;
+  color: #6a6a6a;
+  font-size: 14px;
   cursor: pointer;
+  padding: 0 4px;
+  transition: color 140ms ease;
+}
+.rail-refresh:hover {
+  color: $teritary;
 }
 
-.delete-memory-btn:hover { color: #e74c3c; }
-
-/* Conversation cards */
-.conv-card {
-  background: #222;
+.rail-newchat {
+  width: 100%;
+  padding: 9px;
+  background: rgba($secondary, 0.12);
+  border: 1px solid rgba($secondary, 0.3);
   border-radius: 8px;
-  padding: 10px;
-  margin-bottom: 8px;
-  border: 1px solid #2a2a2a;
-  cursor: pointer;
-  transition: border-color 0.2s;
-}
-
-.conv-card:hover { border-color: #4d9e39; }
-
-.conv-channel {
-  font-size: 10px;
-  text-transform: uppercase;
-  color: #4d9e39;
-  font-weight: 600;
-}
-
-.conv-preview {
+  color: $teritary;
   font-size: 13px;
-  color: #aaa;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+.rail-newchat:hover {
+  background: rgba($secondary, 0.2);
+}
+
+.rail-empty {
+  color: #5a5a5a;
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+.rail-conv {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: #202020;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: border-color 140ms ease;
+}
+.rail-conv:hover {
+  border-color: rgba($secondary, 0.4);
+}
+.rail-conv-preview {
+  display: block;
+  font-size: 12px;
+  color: #c0c0c0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-top: 2px;
+}
+.rail-conv-meta {
+  display: block;
+  font-size: 10px;
+  color: #5a5a5a;
+  margin-top: 3px;
 }
 
-.conv-meta { font-size: 10px; color: #555; margin-top: 4px; }
-
-/* Scrollbar */
-.chat-messages::-webkit-scrollbar,
-.side-content::-webkit-scrollbar {
-  width: 6px;
+/* ── Task cards (rail) ── */
+.task-card {
+  background: #202020;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
 }
-
-.chat-messages::-webkit-scrollbar-track,
-.side-content::-webkit-scrollbar-track {
-  background: transparent;
+.task-card:last-child {
+  margin-bottom: 0;
 }
-
-.chat-messages::-webkit-scrollbar-thumb,
-.side-content::-webkit-scrollbar-thumb {
-  background: #333;
-  border-radius: 3px;
+.task-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
 }
-
-/* Analytics */
-.analytics-section {
-  margin-bottom: 14px;
-}
-
-.analytics-label {
+.task-status {
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
-  color: #4d9e39;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  letter-spacing: 0.4px;
 }
+.status-running { background: rgba($secondary, 0.18); color: $teritary; }
+.status-completed { background: rgba($secondary, 0.1); color: $secondary; }
+.status-failed { background: rgba(224, 88, 75, 0.16); color: #e0584b; }
+.status-cancelled { background: rgba(243, 156, 18, 0.16); color: #f39c12; }
+.status-unknown { background: rgba(255, 255, 255, 0.08); color: #aaa; }
 
-.analytics-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-
-.stat-box {
-  background: #222;
-  border: 1px solid #2a2a2a;
-  border-radius: 8px;
-  padding: 8px 10px;
-  text-align: center;
-}
-
-.stat-val {
-  font-size: 17px;
-  font-weight: 700;
-  color: #7dc96e;
-}
-
-.stat-key {
+.cancel-btn {
   font-size: 10px;
-  color: #666;
-  margin-top: 2px;
+  padding: 2px 8px;
+  background: rgba(224, 88, 75, 0.12);
+  color: #e0584b;
+  border: 1px solid rgba(224, 88, 75, 0.3);
+  border-radius: 5px;
+  cursor: pointer;
 }
-
-.daily-bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 90px;
-  overflow-x: auto;
-  padding-bottom: 4px;
+.task-desc { font-size: 12px; color: #c0c0c0; }
+.task-time { font-size: 10px; color: #5a5a5a; margin-top: 4px; }
+.task-result,
+.task-error {
+  font-size: 11px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: #0e0e0e;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  font-family: 'Cascadia Code', monospace;
 }
+.task-error { color: #e0584b; }
 
-.daily-bar-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex-shrink: 0;
-  cursor: default;
-}
-
-.daily-bar {
-  width: 8px;
-  background: #4d9e39;
-  border-radius: 2px 2px 0 0;
-  min-height: 4px;
-  transition: background 0.2s;
-}
-
-.daily-bar-wrap:hover .daily-bar { background: #7dc96e; }
-
-.daily-bar-label {
-  font-size: 8px;
-  color: #555;
-  margin-top: 2px;
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
-  white-space: nowrap;
-}
-
-/* ── Analytics Dashboard ── */
-.dash-section {
-  margin-top: 28px;
-  padding-top: 20px;
-  border-top: 1px solid #2a2a2a;
-}
-
+/* ════════ ANALYTICS VIEW ════════ */
 .dash-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
 }
-
-.dash-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: #4d9e39;
-  margin: 0;
+.dash-period {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: #6a6a6a;
 }
 
 .dash-controls {
@@ -1579,99 +1479,24 @@ onUnmounted(() => {
   gap: 10px;
 }
 
-.range-toggle {
-  display: flex;
-  background: #1a1a1a;
-  border: 1px solid #2a2a2a;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.range-btn {
-  background: transparent;
-  border: none;
-  color: #888;
-  padding: 6px 14px;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: capitalize;
-  cursor: pointer;
-  transition: background 0.2s, color 0.2s;
-}
-
-.range-btn:hover { color: #ccc; background: #222; }
-.range-active { background: #2a4a22; color: #7dc96e; }
-
-.kpi-sub { font-size: 14px; color: #5a8a4a; font-weight: 600; }
-
-.kpi-row {
+.kpi-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.kpi-card {
-  background: #1a1a1a;
-  border: 1px solid #2a2a2a;
-  border-radius: 10px;
-  padding: 14px 10px;
-  text-align: center;
-}
-
-.kpi-val {
-  font-size: 22px;
-  font-weight: 700;
-  color: #7dc96e;
-}
-
-.kpi-key {
-  font-size: 11px;
-  color: #666;
-  margin-top: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
 }
 
 .charts-row {
   display: flex;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 14px;
+  margin-bottom: 14px;
   flex-wrap: wrap;
-}
-
-.chart-card {
-  background: #1a1a1a;
-  border: 1px solid #2a2a2a;
-  border-radius: 10px;
-  padding: 14px;
-  flex: 1;
-  min-width: 220px;
-}
-
-.chart-card.wide { flex: 2; min-width: 400px; }
-.chart-card.donut-card { flex: 0 0 200px; }
-.chart-card.shortcuts-card { flex: 2; min-width: 360px; overflow-y: auto; max-height: 260px; }
-
-.chart-title {
-  font-size: 11px;
-  font-weight: 700;
-  color: #888;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 8px;
 }
 
 .chart-svg {
   width: 100%;
   height: 130px;
   display: block;
-}
-
-.chart-legend {
-  display: flex;
-  align-items: center;
-  font-size: 11px;
-  color: #666;
-  margin-top: 6px;
 }
 
 .legend-dot {
@@ -1686,11 +1511,12 @@ onUnmounted(() => {
   position: relative;
   width: 120px;
   height: 120px;
-  margin: 0 auto 8px;
+  margin: 0 auto;
 }
-
-.donut-svg { width: 120px; height: 120px; }
-
+.donut-svg {
+  width: 120px;
+  height: 120px;
+}
 .donut-center {
   position: absolute;
   top: 50%;
@@ -1698,42 +1524,158 @@ onUnmounted(() => {
   transform: translate(-50%, -50%);
   text-align: center;
 }
+.donut-pct {
+  font-size: 18px;
+  font-weight: 700;
+  color: #e0e0e0;
+}
+.donut-label {
+  font-size: 10px;
+  color: #6a6a6a;
+}
 
-.donut-pct { font-size: 18px; font-weight: 700; color: #e0e0e0; }
-.donut-label { font-size: 10px; color: #666; }
+.today-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
 
-.shortcut-row {
-  background: #222;
-  border: 1px solid #2a2a2a;
-  border-radius: 8px;
-  padding: 8px 10px;
+/* ════════ LIBRARY VIEW ════════ */
+.lib-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.memory-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.add-memory-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 14px;
+  background: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.lib-card {
+  position: relative;
+  background: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 14px;
+  text-align: left;
+}
+.lib-card-btn {
+  cursor: pointer;
+  width: 100%;
+  transition: border-color 140ms ease;
+}
+.lib-card-btn:hover {
+  border-color: rgba($secondary, 0.4);
+}
+
+.card-del {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  background: transparent;
+  border: none;
+  color: #5a5a5a;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 140ms ease;
+}
+.card-del:hover {
+  color: #e0584b;
+}
+
+.lib-card-content {
+  font-size: 13px;
+  color: #c8c8c8;
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+  padding-right: 14px;
+}
+
+.lib-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.tag {
+  font-size: 10px;
+  background: rgba($secondary, 0.14);
+  color: $teritary;
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+
+.lib-card-date {
+  font-size: 10px;
+  color: #5a5a5a;
+}
+
+.conv-channel {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: $secondary;
+  font-weight: 700;
   margin-bottom: 6px;
 }
 
 .shortcut-title {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  color: #4d9e39;
-  margin-bottom: 3px;
+  color: $teritary;
+  margin-bottom: 6px;
+  padding-right: 14px;
 }
 
-.shortcut-content {
-  font-size: 12px;
-  color: #aaa;
-  white-space: pre-wrap;
-  word-break: break-word;
+/* ── Scrollbars ── */
+.chat-messages::-webkit-scrollbar,
+.chat-rail::-webkit-scrollbar {
+  width: 6px;
+}
+.chat-messages::-webkit-scrollbar-thumb,
+.chat-rail::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
 }
 
-.shortcut-meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 5px;
-}
-
-.dash-placeholder {
-  text-align: center;
-  padding-bottom: 20px;
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .view-chat {
+    flex-direction: column;
+    height: auto;
+  }
+  .chat-panel {
+    height: 60vh;
+  }
+  .chat-rail {
+    width: 100%;
+    flex: none;
+  }
 }
 </style>

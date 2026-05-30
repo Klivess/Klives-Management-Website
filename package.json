@@ -17,6 +17,7 @@
     "cors": "^2.8.5",
     "highlight.js": "^11.11.1",
     "leaflet": "^1.9.4",
+    "lightweight-charts": "^4.2.3",
     "markdown-it": "^14.2.0",
     "nuxt": "^3.12.4",
     "nuxt-helm": "^0.0.2",

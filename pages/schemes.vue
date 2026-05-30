@@ -159,28 +159,64 @@
                 <div class="card-body">
                     <div class="card-top">
                         <span class="card-icon">📈</span>
-                        <span class="card-badge badge-sim">Simulator</span>
+                        <div class="ot-badge-group">
+                            <span v-if="omnitraderStats.liveArmed > 0" class="card-badge badge-live-armed">Live Armed</span>
+                            <span v-else-if="omnitraderStats.liveCount > 0" class="card-badge badge-live">Live</span>
+                            <span v-if="omnitraderStats.paperCount > 0" class="card-badge badge-paper">Paper</span>
+                            <span v-if="omnitraderStats.liveArmed === 0 && omnitraderStats.liveCount === 0 && omnitraderStats.paperCount === 0" class="card-badge badge-sim">Idle</span>
+                        </div>
                     </div>
                     <h2 class="card-title">OmniTrader</h2>
-                    <p class="card-desc">Runs strategy deployment and analytics in simulator mode with backtesting workflows. Live exchange deployment is coming later.</p>
-                    
-                    <!-- Analytics Section -->
-                    <div v-if="!omnitraderStats.loading" class="omnigram-stats">
-                        <div class="stat-item">
-                            <span class="stat-label">Deployments</span>
-                            <span class="stat-value">{{ omnitraderStats.activeDeployments }}</span>
+                    <p class="card-desc">Algorithmic strategy deployment across paper and live sessions, with backtesting and Kraken execution.</p>
+
+                    <div v-if="!omnitraderStats.loading" class="ot-stats">
+                        <div class="ot-section paper-section">
+                            <div class="ot-section-head paper-head">
+                                <span>PAPER</span>
+                                <span class="ot-session-count">{{ omnitraderStats.paperCount }} running</span>
+                            </div>
+                            <div class="ot-section-body">
+                                <div class="ot-stat">
+                                    <span class="ot-stat-val paper-val">{{ omnitraderStats.paperCount }}</span>
+                                    <span class="ot-stat-label">Sessions</span>
+                                </div>
+                                <div class="ot-stat">
+                                    <span class="ot-stat-val" :class="omnitraderStats.paperPnL >= 0 ? 'paper-val' : 'neg-val'">{{ omnitraderStats.paperPnL >= 0 ? '+' : '' }}{{ omnitraderStats.paperPnL.toFixed(2) }}%</span>
+                                    <span class="ot-stat-label">Net PnL</span>
+                                </div>
+                                <div class="ot-stat">
+                                    <span class="ot-stat-val paper-val">{{ omnitraderStats.backtestCount }}</span>
+                                    <span class="ot-stat-label">Backtests</span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Avg Win Rate</span>
-                            <span class="stat-value">{{ omnitraderStats.avgWinRate.toFixed(1) }}%</span>
+                        <div class="ot-section live-section">
+                            <div class="ot-section-head live-head">
+                                <span>LIVE</span>
+                                <span class="ot-session-count" :class="omnitraderStats.liveArmed > 0 ? 'armed-indicator' : ''">{{ omnitraderStats.liveArmed > 0 ? omnitraderStats.liveArmed + ' armed' : 'none armed' }}</span>
+                            </div>
+                            <div class="ot-section-body">
+                                <div class="ot-stat">
+                                    <span class="ot-stat-val live-val">{{ omnitraderStats.liveCount }}</span>
+                                    <span class="ot-stat-label">Sessions</span>
+                                </div>
+                                <div class="ot-stat">
+                                    <span class="ot-stat-val" :class="omnitraderStats.liveArmed > 0 ? 'armed-val' : 'live-val'">{{ omnitraderStats.liveArmed }}</span>
+                                    <span class="ot-stat-label">Armed</span>
+                                </div>
+                                <div class="ot-stat">
+                                    <span class="ot-stat-val" :class="omnitraderStats.krakenOn ? 'live-val' : 'neg-val'">{{ omnitraderStats.krakenOn ? 'ON' : 'OFF' }}</span>
+                                    <span class="ot-stat-label">Kraken</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div v-else class="omnigram-stats">
                         <span class="stat-loading">Loading stats...</span>
                     </div>
-                    
+
                     <div class="card-footer">
-                        <span class="card-action">Open Simulator →</span>
+                        <span class="card-action">Open OmniTrader →</span>
                     </div>
                 </div>
             </div>
@@ -219,7 +255,7 @@ const omnigramStats = ref({ accounts: 0, followers: 0, postsThisWeek: 0, loading
 const omnitumblrStats = ref({ accounts: 0, followers: 0, postsThisWeek: 0, loading: true });
 const cs2Stats = ref({ successRate: 0, itemsScanned: 0, bestFind: 0, loading: true });
 const memescraperStats = ref({ totalSources: 0, totalMemes: 0, todayDownloads: 0, loading: true });
-const omnitraderStats = ref({ activeDeployments: 0, avgWinRate: 0, loading: true });
+const omnitraderStats = ref({ paperCount: 0, liveCount: 0, liveArmed: 0, paperPnL: 0, backtestCount: 0, krakenOn: false, loading: true });
 
 const fetchOmnigramStats = async () => {
     try {
@@ -314,25 +350,32 @@ const fetchMemescraperStats = async () => {
 
 const fetchOmniTraderStats = async () => {
     try {
-        const [statusResponse, deployedResponse] = await Promise.all([
-            RequestGETFromKliveAPI('/omniTrader/status', false, false),
-            RequestGETFromKliveAPI('/omniTrader/strategies/deployed', false, false)
+        const [statusRes, deploymentsRes, backtestsRes] = await Promise.all([
+            RequestGETFromKliveAPI('/api/omnitrader/status', false, false),
+            RequestGETFromKliveAPI('/api/omnitrader/deployments', false, false),
+            RequestGETFromKliveAPI('/api/omnitrader/backtests', false, false),
         ]);
-        if (statusResponse.ok && deployedResponse.ok) {
-            const status = await statusResponse.json();
-            const deployed = await deployedResponse.json();
-            const deployments = Array.isArray(deployed) ? deployed : [];
-            const avgWinRate = deployments.length > 0
-                ? deployments.reduce((sum, d) => sum + (Number(d.WinRate) || 0), 0) / deployments.length
-                : 0;
-            omnitraderStats.value = {
-                activeDeployments: status?.DeployedCount ?? deployments.length,
-                avgWinRate,
-                loading: false
-            };
-        } else {
-            omnitraderStats.value.loading = false;
-        }
+        const status = statusRes.ok ? await statusRes.json() : null;
+        const deployments = deploymentsRes.ok ? await deploymentsRes.json() : [];
+        const backtests = backtestsRes.ok ? await backtestsRes.json() : [];
+
+        const deps = Array.isArray(deployments) ? deployments : [];
+        const paper = deps.filter(d => d.Mode === 'Paper');
+        const live = deps.filter(d => d.Mode === 'Live');
+
+        const paperEquity = paper.reduce((s, d) => s + (Number(d.EquityCurrent) || 0), 0);
+        const paperInitial = paper.reduce((s, d) => s + (Number(d.EquityInitial) || 0), 0);
+        const paperPnL = paperInitial === 0 ? 0 : (paperEquity - paperInitial) / paperInitial * 100;
+
+        omnitraderStats.value = {
+            paperCount: paper.filter(d => d.Status === 'Running').length,
+            liveCount: live.length,
+            liveArmed: live.filter(d => d.Armed).length,
+            paperPnL,
+            backtestCount: Array.isArray(backtests) ? backtests.length : 0,
+            krakenOn: status?.KrakenConfigured ?? false,
+            loading: false,
+        };
     } catch (error) {
         console.error('Failed to fetch OmniTrader stats:', error);
         omnitraderStats.value.loading = false;
@@ -598,6 +641,35 @@ onMounted(() => {
     color: #969696;
     padding: 5px 0;
 }
+
+/* OmniTrader card */
+.ot-badge-group { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+.badge-live-armed { background: rgba(239, 68, 68, 0.18); color: #ff7a84; border: 1px solid rgba(239, 68, 68, 0.4); }
+.badge-live { background: rgba(245, 158, 11, 0.16); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.35); }
+.badge-paper { background: rgba(56, 189, 248, 0.14); color: #7ad4f7; border: 1px solid rgba(56, 189, 248, 0.32); }
+
+.ot-stats { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+
+.ot-section { border-radius: 8px; overflow: hidden; border: 1px solid; }
+.paper-section { border-color: rgba(56, 189, 248, 0.2); background: rgba(56, 189, 248, 0.03); }
+.live-section { border-color: rgba(245, 158, 11, 0.22); background: rgba(245, 158, 11, 0.03); }
+
+.ot-section-head { display: flex; justify-content: space-between; align-items: center; padding: 5px 10px; font: 800 10px ui-monospace, Consolas, monospace; letter-spacing: 1.2px; }
+.paper-head { background: rgba(56, 189, 248, 0.12); color: #7ad4f7; border-bottom: 1px solid rgba(56, 189, 248, 0.15); }
+.live-head { background: rgba(245, 158, 11, 0.1); color: #fbbf24; border-bottom: 1px solid rgba(245, 158, 11, 0.15); }
+.ot-session-count { font: 600 10px ui-monospace, Consolas, monospace; letter-spacing: 0.5px; opacity: 0.7; }
+.armed-indicator { opacity: 1; color: #ff7a84; }
+
+.ot-section-body { display: grid; grid-template-columns: repeat(3, 1fr); }
+.ot-stat { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 4px; border-right: 1px solid rgba(255, 255, 255, 0.04); }
+.ot-stat:last-child { border-right: none; }
+.ot-stat-val { font-size: 1.05rem; font-weight: 700; line-height: 1; }
+.ot-stat-label { font-size: 0.65rem; color: #696969; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+
+.paper-val { color: #7ad4f7; }
+.live-val { color: #fbbf24; }
+.armed-val { color: #ff7a84; }
+.neg-val { color: #ef4444; }
 
 /* Responsive */
 @media (max-width: 768px) {

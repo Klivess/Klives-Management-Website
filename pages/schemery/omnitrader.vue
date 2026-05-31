@@ -339,6 +339,19 @@
                         <div class="mini"><span>Fills</span><strong>{{ detail.Fills?.length || 0 }}</strong></div>
                     </div>
 
+                    <div class="curve-wrap">
+                        <div class="curve-label">
+                            Live Price · {{ detail.Deployment.Config?.Symbol }} · {{ intervalLabel(detail.Deployment.Config?.Interval) }}
+                            <span class="dp-legend">
+                                <span style="color:#62ce47">▲ Buy</span>
+                                <span style="color:#ef4444">▼ Sell</span>
+                                <span style="color:#ffc247">◆ Exit</span>
+                            </span>
+                        </div>
+                        <div ref="dpPriceContainer" class="dp-chart"></div>
+                        <div v-if="!dpChartData?.Candles?.length" class="dp-chart-empty">Waiting for live candles…</div>
+                    </div>
+
                     <div v-if="equitySeries.length > 1" class="curve-wrap">
                         <div class="curve-label">Equity Curve · {{ equitySeries.length }} pts</div>
                         <svg class="curve" viewBox="0 0 300 70" preserveAspectRatio="none">
@@ -600,6 +613,12 @@ let histChart: Chart | null = null;
 // lightweight-charts (TradingView) instance for the price/candlestick chart
 let priceTvChart: any = null;
 
+// Live candlestick chart for the deployment detail modal (streams via pollLight).
+const dpPriceContainer = ref<HTMLDivElement | null>(null);
+const dpChartData = ref<any>(null);
+let dpChart: any = null;
+let dpSeries: any = null;
+
 const deployForm = reactive({
     strategyClass: '', symbol: 'BTCUSDT', interval: 'OneHour', mode: 'Paper',
     initialQuote: 10000, initialBase: 0, feeFraction: 0.001, slippageFraction: 0.0005,
@@ -772,7 +791,11 @@ async function refreshAll() {
 async function pollLight() {
     await Promise.allSettled([fetchStatus(), fetchDeployments(), fetchBacktests()]);
     lastRefresh.value = new Date().toLocaleTimeString();
-    if (detailOpen.value && detail.value?.Deployment?.Id) await loadDetailData(detail.value.Deployment.Id);
+    if (detailOpen.value && detail.value?.Deployment?.Id) {
+        const id = detail.value.Deployment.Id;
+        await loadDetailData(id);
+        await loadDeploymentChart(id);
+    }
 }
 
 // ---- deploy ----
@@ -874,11 +897,13 @@ async function openDeployment(id: string) {
     loadingDetail.value = true;
     detail.value = null;
     equitySeries.value = [];
+    dpChartData.value = null;
     try { await loadDetailData(id); }
     catch (e) { fail('Detail failed', e instanceof Error ? e.message : String(e)); }
     finally { loadingDetail.value = false; }
+    await loadDeploymentChart(id); // container now rendered; builds the live chart
 }
-function closeDeployment() { detailOpen.value = false; detail.value = null; equitySeries.value = []; }
+function closeDeployment() { detailOpen.value = false; detail.value = null; equitySeries.value = []; destroyDeploymentChart(); }
 
 // ---- backtest ----
 async function createBacktest() {
@@ -1061,6 +1086,79 @@ async function buildPriceChart() {
     chart.timeScale().fitContent();
 }
 
+// ---- live deployment candlestick chart (lightweight-charts) ----
+function snapToTimes(ms: number, times: number[]): number {
+    const t = Math.floor(ms / 1000);
+    if (!times.length) return t;
+    let best = times[0], bestDiff = Math.abs(times[0] - t);
+    for (const ct of times) { const d = Math.abs(ct - t); if (d < bestDiff) { bestDiff = d; best = ct; } }
+    return best;
+}
+// Map backend markers -> lightweight-charts markers, snapped to the nearest candle.
+function dpBuildMarkers(times: number[]): any[] {
+    const raw = dpChartData.value?.Markers;
+    if (!Array.isArray(raw) || !times.length) return [];
+    const markers = raw.map((m: any) => {
+        const time = snapToTimes(new Date(m.Time).getTime(), times);
+        if (m.Kind === 'exit')
+            return { time, position: m.Side === 'sell' ? 'aboveBar' : 'belowBar', color: '#ffc247', shape: m.Side === 'sell' ? 'arrowDown' : 'arrowUp', text: 'Exit' };
+        if (m.Side === 'buy')
+            return { time, position: 'belowBar', color: '#62ce47', shape: 'arrowUp', text: 'Buy' };
+        return { time, position: 'aboveBar', color: '#ef4444', shape: 'arrowDown', text: 'Sell' };
+    });
+    markers.sort((a: any, b: any) => a.time - b.time);
+    return markers;
+}
+function dpApplyData() {
+    if (!dpChart || !dpSeries) return;
+    const candles = dpChartData.value?.Candles;
+    if (!Array.isArray(candles) || !candles.length) return;
+    const data = dedupeByTime(candles.map((c: any) => ({
+        time: Math.floor(new Date(c.Timestamp).getTime() / 1000),
+        open: num(c.Open), high: num(c.High), low: num(c.Low), close: num(c.Close),
+    })));
+    dpSeries.setData(data as any);
+    dpSeries.setMarkers(dpBuildMarkers(data.map(d => d.time)));
+}
+async function buildDeploymentChart() {
+    const container = dpPriceContainer.value;
+    if (!container) return;
+    const lc = await import('lightweight-charts');
+    // Async chunk may resolve after the modal closed / re-rendered.
+    if (!detailOpen.value || dpPriceContainer.value !== container) return;
+    if (dpChart) { try { dpChart.remove(); } catch { /* disposed */ } dpChart = null; dpSeries = null; }
+    const chart = lc.createChart(container, {
+        autoSize: true,
+        layout: { background: { type: lc.ColorType.Solid, color: 'transparent' }, textColor: '#8a958a', fontSize: 11 },
+        grid: { vertLines: { color: 'rgba(255,255,255,0.05)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
+        rightPriceScale: { borderColor: 'rgba(255,255,255,0.12)' },
+        timeScale: { borderColor: 'rgba(255,255,255,0.12)', timeVisible: true, secondsVisible: false },
+        crosshair: { mode: lc.CrosshairMode.Normal },
+    });
+    dpChart = chart;
+    dpSeries = chart.addCandlestickSeries({
+        upColor: '#62ce47', downColor: '#ef4444',
+        borderUpColor: '#62ce47', borderDownColor: '#ef4444',
+        wickUpColor: '#62ce47', wickDownColor: '#ef4444',
+    });
+    dpApplyData();
+    chart.timeScale().fitContent();
+}
+function destroyDeploymentChart() {
+    if (dpChart) { try { dpChart.remove(); } catch { /* disposed */ } }
+    dpChart = null; dpSeries = null; dpChartData.value = null;
+}
+// Fetch candles + markers for the deployment. First call builds the chart; later calls
+// (from pollLight) just re-apply data so the user's zoom/pan is preserved — the "stream".
+async function loadDeploymentChart(id: string) {
+    try { dpChartData.value = await apiGet<any>(`/deployment/chart${qs({ id, limit: 300 })}`); }
+    catch { return; }
+    await nextTick();
+    if (!detailOpen.value) return;
+    if (!dpChart) await buildDeploymentChart();
+    else dpApplyData();
+}
+
 function buildHistChart() {
     histChart?.destroy(); histChart = null;
     const rows = btTradeRows.value;
@@ -1091,7 +1189,7 @@ onMounted(async () => {
     await refreshAll();
     pollTimer = setInterval(pollLight, 8000);
 });
-onBeforeUnmount(() => { if (pollTimer) clearInterval(pollTimer); destroyCharts(); });
+onBeforeUnmount(() => { if (pollTimer) clearInterval(pollTimer); destroyCharts(); destroyDeploymentChart(); });
 </script>
 
 <style scoped>
@@ -1246,6 +1344,9 @@ td.actions { display: flex; gap: 4px; flex-wrap: wrap; }
 .curve-wrap { margin: 12px 0; }
 .curve-label { color: #8a958a; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 5px; }
 .curve { width: 100%; height: 70px; border: 1px solid rgba(98,206,71,.16); border-radius: 6px; background: linear-gradient(180deg, rgba(98,206,71,.07), rgba(98,206,71,.01)); }
+.dp-legend { float: right; display: inline-flex; gap: 12px; font-weight: 700; }
+.dp-chart { position: relative; width: 100%; height: 280px; border: 1px solid rgba(98,206,71,.16); border-radius: 6px; background: linear-gradient(180deg, rgba(98,206,71,.04), rgba(0,0,0,.06)); }
+.dp-chart-empty { color: #83937f; font-size: 11px; padding: 6px 2px; }
 .curve polyline { fill: none; stroke: #62ce47; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
 .sub-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }
 .sub-cols h4 { margin: 0 0 7px; font-size: 12px; color: #9ccf8f; text-transform: uppercase; letter-spacing: .5px; }

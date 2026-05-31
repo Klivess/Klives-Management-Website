@@ -173,22 +173,52 @@
                             </div>
                             <div class="scheme-header">
                                 <h3>OmniTrader</h3>
-                                <div :class="['scheme-status', omniTraderStats.hasAccess ? 'simulator' : 'restricted']">
-                                    {{ omniTraderStats.hasAccess ? 'Simulator' : 'Restricted' }}
+                                <div v-if="!omniTraderStats.hasAccess" class="scheme-status restricted">Restricted</div>
+                                <div v-else-if="omniTraderStats.liveArmed > 0" class="scheme-status ot-live-armed">Live Armed</div>
+                                <div v-else-if="omniTraderStats.liveCount > 0" class="scheme-status ot-live">Live</div>
+                                <div v-else-if="omniTraderStats.paperCount > 0" class="scheme-status ot-paper">Paper</div>
+                                <div v-else class="scheme-status inactive">Idle</div>
+                            </div>
+                            <div v-if="omniTraderStats.hasAccess" class="ot-split">
+                                <div class="ot-split-section ot-split-paper">
+                                    <div class="ot-split-head">PAPER</div>
+                                    <div class="ot-split-stats">
+                                        <div class="ot-split-stat">
+                                            <span class="ot-split-val paper-col">{{ omniTraderStats.paperCount }}</span>
+                                            <span class="ot-split-lbl">Sessions</span>
+                                        </div>
+                                        <div class="ot-split-stat">
+                                            <span class="ot-split-val" :class="omniTraderStats.paperPnL >= 0 ? 'paper-col' : 'neg-col'">{{ omniTraderStats.paperPnL >= 0 ? '+' : '' }}{{ omniTraderStats.paperPnL.toFixed(1) }}%</span>
+                                            <span class="ot-split-lbl">Net PnL</span>
+                                        </div>
+                                        <div class="ot-split-stat">
+                                            <span class="ot-split-val paper-col">{{ omniTraderStats.backtestCount }}</span>
+                                            <span class="ot-split-lbl">Backtests</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="ot-split-section ot-split-live">
+                                    <div class="ot-split-head">LIVE</div>
+                                    <div class="ot-split-stats">
+                                        <div class="ot-split-stat">
+                                            <span class="ot-split-val live-col">{{ omniTraderStats.liveCount }}</span>
+                                            <span class="ot-split-lbl">Sessions</span>
+                                        </div>
+                                        <div class="ot-split-stat">
+                                            <span class="ot-split-val" :class="omniTraderStats.liveArmed > 0 ? 'armed-col' : 'live-col'">{{ omniTraderStats.liveArmed }}</span>
+                                            <span class="ot-split-lbl">Armed</span>
+                                        </div>
+                                        <div class="ot-split-stat">
+                                            <span class="ot-split-val" :class="omniTraderStats.krakenOn ? 'live-col' : 'neg-col'">{{ omniTraderStats.krakenOn ? 'ON' : 'OFF' }}</span>
+                                            <span class="ot-split-lbl">Kraken</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="scheme-metrics">
+                            <div v-else class="scheme-metrics">
                                 <div class="metric">
-                                    <span class="metric-label">Sim Deployments</span>
-                                    <span class="metric-value">{{ omniTraderStats.activeDeployments === 'Restricted' ? 'Restricted' : omniTraderStats.activeDeployments }}</span>
-                                </div>
-                                <div class="metric">
-                                    <span class="metric-label">Avg Win Rate</span>
-                                    <span class="metric-value success">{{ omniTraderStats.avgWinRate === 'Restricted' ? 'Restricted' : omniTraderStats.avgWinRate.toFixed(1) + '%' }}</span>
-                                </div>
-                                <div class="metric">
-                                    <span class="metric-label">Best Sim PnL</span>
-                                    <span class="metric-value profit">{{ omniTraderStats.bestPnL === 'Restricted' ? 'Restricted' : (omniTraderStats.bestPnL >= 0 ? '+' : '') + omniTraderStats.bestPnL.toFixed(2) + '%' }}</span>
+                                    <span class="metric-label">Access</span>
+                                    <span class="metric-value" style="color:#ef4444">Restricted</span>
                                 </div>
                             </div>
                         </div>
@@ -350,9 +380,12 @@ export default {
                 hasAccess: true
             },
             omniTraderStats: {
-                activeDeployments: 0,
-                avgWinRate: 0,
-                bestPnL: 0,
+                paperCount: 0,
+                liveCount: 0,
+                liveArmed: 0,
+                paperPnL: 0,
+                backtestCount: 0,
+                krakenOn: false,
                 hasAccess: true
             },
             omniGramStats: {
@@ -698,61 +731,44 @@ export default {
             this.errorStates.omnitrader = false;
 
             try {
-                const [statusResponse, deployedResponse] = await Promise.all([
-                    RequestGETFromKliveAPI('/omniTrader/status', false, false),
-                    RequestGETFromKliveAPI('/omniTrader/strategies/deployed', false, false)
+                const [statusRes, deploymentsRes, backtestsRes] = await Promise.all([
+                    RequestGETFromKliveAPI('/api/omnitrader/status', false, false),
+                    RequestGETFromKliveAPI('/api/omnitrader/deployments', false, false),
+                    RequestGETFromKliveAPI('/api/omnitrader/backtests', false, false),
                 ]);
 
-                if (statusResponse.status === 401 || deployedResponse.status === 401) {
-                    this.omniTraderStats = {
-                        activeDeployments: 'Restricted',
-                        avgWinRate: 'Restricted',
-                        bestPnL: 'Restricted',
-                        hasAccess: false
-                    };
-                    console.log('OmniTrader analytics access denied - insufficient permissions');
-                } else if (statusResponse.ok && deployedResponse.ok) {
-                    const status = await statusResponse.json();
-                    const deployed = await deployedResponse.json();
-                    const deployments = Array.isArray(deployed) ? deployed : [];
-
-                    const activeDeployments = Number.isFinite(status?.DeployedCount)
-                        ? status.DeployedCount
-                        : deployments.length;
-
-                    let avgWinRate = 0;
-                    let bestPnL = 0;
-
-                    if (deployments.length > 0) {
-                        avgWinRate = deployments.reduce((sum, d) => sum + (Number(d.WinRate) || 0), 0) / deployments.length;
-                        bestPnL = Math.max(...deployments.map(d => Number(d.TotalPnLPercent) || 0));
-                    }
-
-                    this.omniTraderStats = {
-                        activeDeployments,
-                        avgWinRate,
-                        bestPnL,
-                        hasAccess: true
-                    };
-                } else {
-                    console.log('OmniTrader analytics API returned status:', statusResponse.status, deployedResponse.status);
-                    this.errorStates.omnitrader = true;
-                    this.omniTraderStats = {
-                        activeDeployments: 0,
-                        avgWinRate: 0,
-                        bestPnL: 0,
-                        hasAccess: true
-                    };
+                if (statusRes.status === 401 || deploymentsRes.status === 401) {
+                    this.omniTraderStats = { paperCount: 0, liveCount: 0, liveArmed: 0, paperPnL: 0, backtestCount: 0, krakenOn: false, hasAccess: false };
+                    return;
                 }
+
+                if (!statusRes.ok || !deploymentsRes.ok) {
+                    this.errorStates.omnitrader = true;
+                    return;
+                }
+
+                const status = await statusRes.json();
+                const deployments = deploymentsRes.ok ? await deploymentsRes.json() : [];
+                const backtests = backtestsRes.ok ? await backtestsRes.json() : [];
+
+                const deps = Array.isArray(deployments) ? deployments : [];
+                const paper = deps.filter(d => d.Mode === 'Paper');
+                const live = deps.filter(d => d.Mode === 'Live');
+                const paperEquity = paper.reduce((s, d) => s + (Number(d.EquityCurrent) || 0), 0);
+                const paperInitial = paper.reduce((s, d) => s + (Number(d.EquityInitial) || 0), 0);
+
+                this.omniTraderStats = {
+                    paperCount: paper.filter(d => d.Status === 'Running').length,
+                    liveCount: live.length,
+                    liveArmed: live.filter(d => d.Armed).length,
+                    paperPnL: paperInitial === 0 ? 0 : (paperEquity - paperInitial) / paperInitial * 100,
+                    backtestCount: Array.isArray(backtests) ? backtests.length : 0,
+                    krakenOn: status?.KrakenConfigured ?? false,
+                    hasAccess: true,
+                };
             } catch (error) {
                 console.log('OmniTrader analytics API unavailable:', error);
                 this.errorStates.omnitrader = true;
-                this.omniTraderStats = {
-                    activeDeployments: 0,
-                    avgWinRate: 0,
-                    bestPnL: 0,
-                    hasAccess: true
-                };
             } finally {
                 this.loadingStates.omnitrader = false;
                 this.trackLoadCompletion();
@@ -1694,6 +1710,31 @@ button:focus {
     color: #22c55e;
     font-weight: 700;
 }
+
+/* OmniTrader card Paper/Live split */
+.scheme-status.ot-live-armed { background: rgba(239,68,68,.2); color: #ff7a84; border: 1px solid rgba(239,68,68,.35); }
+.scheme-status.ot-live       { background: rgba(245,158,11,.18); color: #fbbf24; border: 1px solid rgba(245,158,11,.35); }
+.scheme-status.ot-paper      { background: rgba(56,189,248,.14); color: #7ad4f7; border: 1px solid rgba(56,189,248,.3); }
+
+.ot-split { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; }
+.ot-split-section { border-radius: 7px; overflow: hidden; border: 1px solid; }
+.ot-split-paper { border-color: rgba(56,189,248,.22); background: rgba(56,189,248,.03); }
+.ot-split-live  { border-color: rgba(245,158,11,.22); background: rgba(245,158,11,.03); }
+
+.ot-split-head { padding: 4px 10px; font: 800 9px ui-monospace, Consolas, monospace; letter-spacing: 1.3px; }
+.ot-split-paper .ot-split-head { background: rgba(56,189,248,.12); color: #7ad4f7; border-bottom: 1px solid rgba(56,189,248,.14); }
+.ot-split-live  .ot-split-head { background: rgba(245,158,11,.1);  color: #fbbf24; border-bottom: 1px solid rgba(245,158,11,.14); }
+
+.ot-split-stats { display: grid; grid-template-columns: repeat(3,1fr); }
+.ot-split-stat  { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; border-right: 1px solid rgba(255,255,255,.04); }
+.ot-split-stat:last-child { border-right: none; }
+.ot-split-val { font-size: 0.9rem; font-weight: 700; line-height: 1; }
+.ot-split-lbl { font-size: 0.62rem; color: #666; text-transform: uppercase; letter-spacing: .4px; font-weight: 600; }
+
+.paper-col { color: #7ad4f7; }
+.live-col   { color: #fbbf24; }
+.armed-col  { color: #ff7a84; }
+.neg-col    { color: #ef4444; }
 
 /* Recent Errors */
 .recent-errors-zone {

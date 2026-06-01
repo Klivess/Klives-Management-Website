@@ -105,12 +105,8 @@
                             <span>Strategy</span>
                             <select v-model="deployForm.strategyClass">
                                 <option value="" disabled>Select a strategy</option>
-                                <option v-for="s in strategies" :key="s.ClassName" :value="s.ClassName">{{ s.Name }}</option>
+                                <option v-for="s in strategies" :key="s.ClassName" :value="s.ClassName">{{ s.Name }}{{ s.RequiresUniverse ? ' · multi-asset' : '' }}</option>
                             </select>
-                        </label>
-                        <label class="field">
-                            <span>Symbol</span>
-                            <input v-model="deployForm.symbol" placeholder="BTCUSDT" />
                         </label>
                         <label class="field">
                             <span>Interval</span>
@@ -118,9 +114,26 @@
                                 <option v-for="i in intervals" :key="i.value" :value="i.value">{{ i.label }}</option>
                             </select>
                         </label>
+                        <template v-for="(plist, group) in deployParamGroups" :key="group">
+                            <div class="param-group-label">{{ group }}</div>
+                            <label v-for="p in plist" :key="p.Name" class="field" :title="p.Help || ''">
+                                <span>{{ p.Label }}</span>
+                                <select v-if="p.Type === 'enum'" v-model="deployParams[p.Name]">
+                                    <option v-for="o in (p.Options || [])" :key="o" :value="o">{{ o }}</option>
+                                </select>
+                                <label v-else-if="p.Type === 'bool'" class="check"><input type="checkbox" v-model="deployParams[p.Name]" /> enabled</label>
+                                <input v-else-if="p.Type === 'int' || p.Type === 'double' || p.Type === 'decimal'" type="number"
+                                       v-model.number="deployParams[p.Name]" :min="p.Min ?? undefined" :max="p.Max ?? undefined" :step="p.Step ?? (p.Type === 'int' ? 1 : 'any')" />
+                                <input v-else v-model="deployParams[p.Name]" />
+                            </label>
+                        </template>
                         <label class="field">
                             <span>Initial Quote</span>
                             <input v-model.number="deployForm.initialQuote" type="number" min="0" step="0.01" />
+                        </label>
+                        <label class="field">
+                            <span>Leverage</span>
+                            <input v-model.number="deployForm.leverage" type="number" min="1" max="10" step="1" />
                         </label>
                         <label class="field">
                             <span>Initial Base</span>
@@ -175,6 +188,7 @@
                             <h3>{{ s.Name }}</h3>
                             <span class="tag mono">{{ s.ClassName }}</span>
                         </div>
+                        <span v-if="s.RequiresUniverse" class="tag universe">Cross-sectional · multi-asset</span>
                         <p>{{ s.Description || 'No description.' }}</p>
                         <div class="strat-actions">
                             <button class="micro" @click="prefillDeploy(s.ClassName)">Use to Deploy</button>
@@ -233,51 +247,87 @@
             <div class="ot-panel">
                 <div class="panel-head"><div><span class="panel-code">SIM</span><h2>Run Backtest</h2></div></div>
                 <div class="panel-body">
-                    <div class="form-grid">
-                        <label class="field span2">
-                            <span>Strategy</span>
-                            <select v-model="backtestForm.strategyClass">
-                                <option value="" disabled>Select a strategy</option>
-                                <option v-for="s in strategies" :key="s.ClassName" :value="s.ClassName">{{ s.Name }}</option>
-                            </select>
-                        </label>
-                        <label class="field">
-                            <span>Coin</span>
-                            <input v-model="backtestForm.coin" placeholder="BTC" />
-                        </label>
-                        <label class="field">
-                            <span>Currency</span>
-                            <input v-model="backtestForm.currency" placeholder="USD" />
-                        </label>
+                    <label class="field span2 strat-select">
+                        <span>Strategy</span>
+                        <select v-model="backtestForm.strategyClass">
+                            <option value="" disabled>Select a strategy</option>
+                            <option v-for="s in strategies" :key="s.ClassName" :value="s.ClassName">{{ s.Name }}{{ s.RequiresUniverse ? ' · multi-asset' : '' }}</option>
+                        </select>
+                    </label>
+
+                    <!-- Cross-sectional momentum: universe + strategy + validation params -->
+                    <template v-if="isMomentumBacktest">
+                        <div class="momentum-note">
+                            <span class="panel-code cyan">UNIVERSE</span>
+                            Builds a point-in-time Binance universe and runs the weekly cross-sectional book.
+                            First run fetches &amp; caches data (slower); later runs reuse the cache.
+                        </div>
+                        <div class="form-grid">
+                            <label class="field"><span>Regime Symbol</span><input v-model="momentumForm.regimeSymbol" placeholder="BTCUSDT" /></label>
+                            <label class="field"><span>Quote Asset</span><input v-model="momentumForm.quoteAsset" placeholder="USDT" /></label>
+                            <label class="field"><span>Universe Top N</span><input v-model.number="momentumForm.universeTopN" type="number" min="20" step="10" /></label>
+                            <label class="field"><span>Min Universe</span><input v-model.number="momentumForm.minUniverseSize" type="number" min="2" step="1" /></label>
+                            <label class="field"><span>From (UTC)</span><input v-model="momentumForm.fromUtc" type="date" /></label>
+                            <label class="field"><span>To (UTC)</span><input v-model="momentumForm.toUtc" type="date" /></label>
+                            <label class="field"><span>Top Fraction</span><input v-model.number="momentumForm.topFraction" type="number" min="0.05" max="0.5" step="0.05" /></label>
+                            <label class="field"><span>Bottom Fraction</span><input v-model.number="momentumForm.bottomFraction" type="number" min="0" max="0.5" step="0.05" /></label>
+                            <label class="field"><span>Lookback Days</span><input v-model.number="momentumForm.lookbackDays" type="number" min="5" step="1" /></label>
+                            <label class="field"><span>Skip Days</span><input v-model.number="momentumForm.skipDays" type="number" min="0" step="1" /></label>
+                            <label class="field"><span>Rebalance Days</span><input v-model.number="momentumForm.rebalanceDays" type="number" min="1" step="1" /></label>
+                            <label class="field"><span>Vol Lookback</span><input v-model.number="momentumForm.volLookbackDays" type="number" min="5" step="1" /></label>
+                            <label class="field"><span>Target Port. Vol</span><input v-model.number="momentumForm.targetPortfolioVol" type="number" min="0.05" step="0.05" /></label>
+                            <label class="field"><span>Max Weight / Asset</span><input v-model.number="momentumForm.maxWeightPerAsset" type="number" min="0.01" max="1" step="0.05" /></label>
+                            <label class="field"><span>Max Gross Lev.</span><input v-model.number="momentumForm.maxGrossLeverage" type="number" min="1" step="0.5" /></label>
+                            <label class="field"><span>Regime MA Days</span><input v-model.number="momentumForm.regimeMaDays" type="number" min="10" step="10" /></label>
+                            <label class="field"><span>DD Killswitch</span><input v-model.number="momentumForm.ddKillswitch" type="number" min="0.05" max="1" step="0.05" /></label>
+                            <label class="field"><span>Leverage (acct)</span><input v-model.number="momentumForm.leverage" type="number" min="1" max="10" step="1" /></label>
+                            <label class="field"><span>Initial Quote</span><input v-model.number="momentumForm.initialQuote" type="number" min="0" step="0.01" /></label>
+                            <label class="field"><span>Fee Fraction</span><input v-model.number="momentumForm.feeFraction" type="number" min="0" step="0.0001" /></label>
+                            <label class="field"><span>Slippage Fraction</span><input v-model.number="momentumForm.slippageFraction" type="number" min="0" step="0.0001" /></label>
+                        </div>
+                        <div class="validation-toggle">
+                            <label class="check"><input type="checkbox" v-model="momentumForm.runValidation" /> Run validation suite (walk-forward, deflated Sharpe, cost sensitivity, survivorship)</label>
+                            <div v-if="momentumForm.runValidation" class="form-grid">
+                                <label class="field"><span>In-Sample Days</span><input v-model.number="momentumForm.inSampleDays" type="number" min="30" step="10" /></label>
+                                <label class="field"><span>OOS Days</span><input v-model.number="momentumForm.oosDays" type="number" min="14" step="7" /></label>
+                                <label class="field"><span>Warmup Days</span><input v-model.number="momentumForm.warmupDays" type="number" min="10" step="1" /></label>
+                            </div>
+                        </div>
+                        <p v-if="momentumForm.bottomFraction > 0 && momentumForm.leverage <= 1" class="live-note warn-note">
+                            A short book (Bottom Fraction &gt; 0) needs account Leverage &gt; 1.
+                        </p>
+                    </template>
+
+                    <!-- Single-symbol backtest -->
+                    <div v-else class="form-grid">
                         <label class="field">
                             <span>Interval</span>
                             <select v-model="backtestForm.interval">
                                 <option v-for="i in intervals" :key="i.value" :value="i.value">{{ i.label }}</option>
                             </select>
                         </label>
-                        <label class="field">
-                            <span>Candles</span>
-                            <input v-model.number="backtestForm.candleCount" type="number" min="1" step="1" />
-                        </label>
-                        <label class="field">
-                            <span>Initial Quote</span>
-                            <input v-model.number="backtestForm.initialQuote" type="number" min="0" step="0.01" />
-                        </label>
-                        <label class="field">
-                            <span>Initial Base</span>
-                            <input v-model.number="backtestForm.initialBase" type="number" min="0" step="0.00000001" />
-                        </label>
-                        <label class="field">
-                            <span>Fee Fraction</span>
-                            <input v-model.number="backtestForm.feeFraction" type="number" min="0" step="0.0001" />
-                        </label>
-                        <label class="field">
-                            <span>Slippage Fraction</span>
-                            <input v-model.number="backtestForm.slippageFraction" type="number" min="0" step="0.0001" />
-                        </label>
+                        <template v-for="(plist, group) in backtestParamGroups" :key="group">
+                            <div class="param-group-label">{{ group }}</div>
+                            <label v-for="p in plist" :key="p.Name" class="field" :title="p.Help || ''">
+                                <span>{{ p.Label }}</span>
+                                <select v-if="p.Type === 'enum'" v-model="backtestParams[p.Name]">
+                                    <option v-for="o in (p.Options || [])" :key="o" :value="o">{{ o }}</option>
+                                </select>
+                                <label v-else-if="p.Type === 'bool'" class="check"><input type="checkbox" v-model="backtestParams[p.Name]" /> enabled</label>
+                                <input v-else-if="p.Type === 'int' || p.Type === 'double' || p.Type === 'decimal'" type="number"
+                                       v-model.number="backtestParams[p.Name]" :min="p.Min ?? undefined" :max="p.Max ?? undefined" :step="p.Step ?? (p.Type === 'int' ? 1 : 'any')" />
+                                <input v-else v-model="backtestParams[p.Name]" />
+                            </label>
+                        </template>
+                        <label class="field"><span>Candles</span><input v-model.number="backtestForm.candleCount" type="number" min="1" step="1" /></label>
+                        <label class="field"><span>Initial Quote</span><input v-model.number="backtestForm.initialQuote" type="number" min="0" step="0.01" /></label>
+                        <label class="field"><span>Initial Base</span><input v-model.number="backtestForm.initialBase" type="number" min="0" step="0.00000001" /></label>
+                        <label class="field"><span>Fee Fraction</span><input v-model.number="backtestForm.feeFraction" type="number" min="0" step="0.0001" /></label>
+                        <label class="field"><span>Slippage Fraction</span><input v-model.number="backtestForm.slippageFraction" type="number" min="0" step="0.0001" /></label>
                     </div>
+
                     <button class="ot-btn primary block" :disabled="creatingBacktest || !backtestForm.strategyClass" @click="createBacktest">
-                        {{ creatingBacktest ? 'Queuing…' : 'Queue Backtest' }}
+                        {{ creatingBacktest ? 'Queuing…' : (isMomentumBacktest ? 'Queue Momentum Backtest' : 'Queue Backtest') }}
                     </button>
                 </div>
             </div>
@@ -432,6 +482,7 @@
                             <button :class="{ active: btTab === 'overview' }" @click="setBtTab('overview')">Overview</button>
                             <button :class="{ active: btTab === 'charts' }" @click="setBtTab('charts')">Charts</button>
                             <button :class="{ active: btTab === 'trades' }" @click="setBtTab('trades')">Trades ({{ btResult.TotalTrades }})</button>
+                            <button v-if="btValidation" :class="{ active: btTab === 'validation' }" @click="setBtTab('validation')">Validation</button>
                         </div>
 
                         <!-- OVERVIEW -->
@@ -496,7 +547,11 @@
                                 <div class="curve-label">Drawdown (underwater)</div>
                                 <div class="chart-wrap"><canvas ref="drawdownCanvas"></canvas></div>
                             </div>
-                            <div class="chart-block">
+                            <div v-if="isPortfolioResult" class="chart-block">
+                                <div class="curve-label">Gross Exposure vs Equity</div>
+                                <div class="chart-wrap"><canvas ref="exposureCanvas"></canvas></div>
+                            </div>
+                            <div v-else class="chart-block">
                                 <div class="curve-label tv-head">
                                     <span>Price &amp; Trade Markers <small v-if="!btHasCandles">· close line (re-run for candlesticks)</small></span>
                                     <button class="micro ghost" @click="fitPrice">Fit</button>
@@ -536,6 +591,56 @@
                                 </table>
                             </div>
                         </section>
+
+                        <!-- VALIDATION (cross-sectional momentum only) -->
+                        <section v-if="btValidation" v-show="btTab === 'validation'" class="report-section">
+                            <h4>Walk-Forward (out-of-sample)</h4>
+                            <div class="mini-grid">
+                                <div class="mini"><span>OOS PnL %</span><strong class="num" :class="pnlClass(btValidation.WalkForwardOosPnLPercent)">{{ fmtSignedPct(btValidation.WalkForwardOosPnLPercent) }}</strong></div>
+                                <div class="mini"><span>OOS Sharpe</span><strong class="num">{{ fmtNum2(btValidation.WalkForwardOosSharpe) }}</strong></div>
+                                <div class="mini"><span>OOS Max DD</span><strong class="num neg">{{ fmtPct(btValidation.WalkForwardOosMaxDrawdownPercent) }}</strong></div>
+                                <div class="mini"><span>Folds</span><strong class="num">{{ btValidation.WalkForwardFolds }}</strong></div>
+                            </div>
+                            <h4>Deflated Sharpe (selection-bias adjusted)</h4>
+                            <div class="mini-grid">
+                                <div class="mini"><span>Deflated Sharpe</span><strong class="num" :class="num(btValidation.DeflatedSharpe) >= 0.95 ? 'pos' : (num(btValidation.DeflatedSharpe) >= 0.5 ? '' : 'neg')">{{ fmtNum2(btValidation.DeflatedSharpe) }}</strong></div>
+                                <div class="mini"><span>Expected Max Sharpe</span><strong class="num">{{ fmtNum2(btValidation.ExpectedMaxSharpe) }}</strong></div>
+                                <div class="mini"><span>Trials Tested</span><strong class="num">{{ btValidation.TrialsTested }}</strong></div>
+                            </div>
+                            <h4>Gross vs Net</h4>
+                            <div class="mini-grid">
+                                <div class="mini"><span>Gross PnL %</span><strong class="num" :class="pnlClass(btValidation.GrossPnLPercent)">{{ fmtSignedPct(btValidation.GrossPnLPercent) }}</strong></div>
+                                <div class="mini"><span>Net PnL %</span><strong class="num" :class="pnlClass(btValidation.NetPnLPercent)">{{ fmtSignedPct(btValidation.NetPnLPercent) }}</strong></div>
+                            </div>
+                            <h4>Cost Sensitivity</h4>
+                            <div class="chart-block"><div class="chart-wrap sm"><canvas ref="costCanvas"></canvas></div></div>
+                            <div class="table-shell short">
+                                <table>
+                                    <thead><tr><th>Cost ×</th><th class="r">Net PnL %</th><th class="r">Sharpe</th><th class="r">Max DD</th><th class="r">Fees</th></tr></thead>
+                                    <tbody>
+                                        <tr v-for="(r, i) in (btValidation.CostSensitivity || [])" :key="i">
+                                            <td class="strong">{{ fmtNum2(r.Multiplier) }}×</td>
+                                            <td class="r num" :class="pnlClass(r.NetPnLPercent)">{{ fmtSignedPct(r.NetPnLPercent) }}</td>
+                                            <td class="r num">{{ fmtNum2(r.SharpeRatio) }}</td>
+                                            <td class="r num neg">{{ fmtPct(r.MaxDrawdownPercent) }}</td>
+                                            <td class="r num">{{ fmtMoney(r.TotalFees) }}</td>
+                                        </tr>
+                                        <tr v-if="!(btValidation.CostSensitivity || []).length"><td colspan="5" class="empty-cell">—</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <h4>Survivorship &amp; Capacity</h4>
+                            <div class="mini-grid">
+                                <div class="mini"><span>Universe Coins</span><strong class="num">{{ btValidation.UniverseCoins }}</strong></div>
+                                <div class="mini"><span>Delisted in Window</span><strong class="num" :class="num(btValidation.DelistedCoins) > 0 ? 'pos' : 'neg'">{{ btValidation.DelistedCoins }}</strong></div>
+                                <div class="mini"><span>Point-in-Time</span><strong>{{ btValidation.PointInTimeUniverse ? 'Yes' : 'No' }}</strong></div>
+                                <div class="mini"><span>Weekly Turnover</span><strong class="num">{{ fmtNum2(btValidation.WeeklyTurnover) }}×</strong></div>
+                                <div class="mini"><span>Annual Turnover</span><strong class="num">{{ fmtNum2(btValidation.AnnualTurnover) }}×</strong></div>
+                                <div class="mini"><span>Est. Capacity</span><strong class="num">{{ fmtMoney(btValidation.EstimatedCapacityUsd) }}</strong></div>
+                            </div>
+                            <p v-if="(btValidation.DelistedExamples || []).length" class="muted sm">Delisted examples: {{ (btValidation.DelistedExamples || []).join(', ') }}</p>
+                            <div v-for="(n, i) in (btValidation.Notes || [])" :key="i" class="ot-error sm">{{ n }}</div>
+                        </section>
                     </template>
                 </div>
             </div>
@@ -544,7 +649,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import Swal from 'sweetalert2';
@@ -556,7 +661,8 @@ const API = '/api/omnitrader';
 const router = useRouter();
 
 interface OmniStatus { Service: string; DbPath: string; DeployedCount: number; ActiveDeploymentIds: string[]; Uptime: string; KrakenConfigured: boolean; }
-interface StrategyMeta { Name: string; ClassName: string; Description: string; }
+interface ParamDescriptor { Name: string; Label: string; Type: string; Default: any; Min?: number | null; Max?: number | null; Step?: number | null; Group: string; Help?: string | null; Options?: string[] | null; }
+interface StrategyMeta { Name: string; ClassName: string; Description: string; RequiresUniverse?: boolean; Parameters?: ParamDescriptor[]; }
 interface Deployment {
     Id: string; StrategyClass: string; Symbol: string; Interval: string; Mode: string; Status: string;
     Armed: boolean; EquityInitial: number; EquityCurrent: number; PnLPercent: number; CreatedUtc: string; Error?: string;
@@ -601,11 +707,15 @@ const equitySeries = ref<EquityPoint[]>([]);
 const btDetailOpen = ref(false);
 const loadingBtDetail = ref(false);
 const btDetail = ref<any>(null);
-const btTab = ref<'overview' | 'charts' | 'trades'>('overview');
+const btTab = ref<'overview' | 'charts' | 'trades' | 'validation'>('overview');
 
 const equityCanvas = ref<HTMLCanvasElement | null>(null);
 const drawdownCanvas = ref<HTMLCanvasElement | null>(null);
 const histCanvas = ref<HTMLCanvasElement | null>(null);
+const exposureCanvas = ref<HTMLCanvasElement | null>(null);
+const costCanvas = ref<HTMLCanvasElement | null>(null);
+let exposureChart: Chart | null = null;
+let costChart: Chart | null = null;
 const priceContainer = ref<HTMLDivElement | null>(null);
 let equityChart: Chart | null = null;
 let drawdownChart: Chart | null = null;
@@ -621,7 +731,7 @@ let dpSeries: any = null;
 
 const deployForm = reactive({
     strategyClass: '', symbol: 'BTCUSDT', interval: 'OneHour', mode: 'Paper',
-    initialQuote: 10000, initialBase: 0, feeFraction: 0.001, slippageFraction: 0.0005,
+    initialQuote: 10000, initialBase: 0, feeFraction: 0.001, slippageFraction: 0.0005, leverage: 1,
     maxPositionQuoteUsd: 100, maxDailyLossUsd: 50, maxOrdersPerHour: 30, allowedSymbols: '',
 });
 const backtestForm = reactive({
@@ -629,11 +739,48 @@ const backtestForm = reactive({
     initialQuote: 10000, initialBase: 0, feeFraction: 0.001, slippageFraction: 0.0005,
 });
 
+// Cross-sectional (multi-asset) momentum backtest form. Defaults mirror the spec's starting point.
+function isoDaysAgo(days: number): string { const d = new Date(); d.setUTCDate(d.getUTCDate() - days); return d.toISOString().slice(0, 10); }
+const momentumForm = reactive({
+    regimeSymbol: 'BTCUSDT', quoteAsset: 'USDT', universeTopN: 100,
+    fromUtc: isoDaysAgo(730), toUtc: isoDaysAgo(1),
+    topFraction: 0.20, bottomFraction: 0.0, minUniverseSize: 20,
+    lookbackDays: 30, skipDays: 1, rebalanceDays: 7, volLookbackDays: 30,
+    targetPortfolioVol: 0.40, maxWeightPerAsset: 0.20, maxGrossLeverage: 1.0,
+    regimeMaDays: 100, ddKillswitch: 0.30,
+    initialQuote: 10000, feeFraction: 0.0007, slippageFraction: 0.001, leverage: 1,
+    runValidation: true, inSampleDays: 180, oosDays: 60, warmupDays: 62,
+});
+
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+let dpTickTimer: ReturnType<typeof setInterval> | null = null;
 
 // ---- computed ----
 const isOnline = computed(() => (status.value?.Service || '').toLowerCase() === 'omnitrader');
 const runningBacktests = computed(() => backtests.value.filter(b => b.Status === 'Running' || b.Status === 'Queued').length);
+
+const selectedBacktestStrategy = computed(() => strategies.value.find(s => s.ClassName === backtestForm.strategyClass));
+const selectedDeployStrategy = computed(() => strategies.value.find(s => s.ClassName === deployForm.strategyClass));
+const isMomentumBacktest = computed(() => !!selectedBacktestStrategy.value?.RequiresUniverse);
+
+// ---- dynamic strategy parameters (schema-driven forms) ----
+const backtestParams = reactive<Record<string, any>>({});
+const deployParams = reactive<Record<string, any>>({});
+
+function groupParams(meta: StrategyMeta | undefined): Record<string, ParamDescriptor[]> {
+    const out: Record<string, ParamDescriptor[]> = {};
+    for (const p of (meta?.Parameters ?? [])) (out[p.Group] ||= []).push(p);
+    return out;
+}
+const backtestParamGroups = computed(() => groupParams(selectedBacktestStrategy.value));
+const deployParamGroups = computed(() => groupParams(selectedDeployStrategy.value));
+
+function resetParams(target: Record<string, any>, meta: StrategyMeta | undefined) {
+    for (const k of Object.keys(target)) delete target[k];
+    for (const p of (meta?.Parameters ?? [])) target[p.Name] = p.Default;
+}
+watch(selectedBacktestStrategy, (m) => resetParams(backtestParams, m));
+watch(selectedDeployStrategy, (m) => resetParams(deployParams, m));
 
 // Paper vs Live split
 const paperDeployments = computed(() => deployments.value.filter(d => d.Mode === 'Paper'));
@@ -663,6 +810,10 @@ const paperAvgWinRate = computed(() => {
 });
 const equityPolyline = computed(() => buildSpark(equitySeries.value.map(p => num(p.Equity))));
 const btResult = computed<any>(() => btDetail.value?.Result ?? null);
+const btValidation = computed<any>(() => btResult.value?.Validation ?? null);
+// Portfolio (cross-sectional) results carry a Validation report; their per-symbol trades shouldn't be
+// crammed onto a single price line, so we show portfolio visuals instead of the price+markers chart.
+const isPortfolioResult = computed<boolean>(() => !!btValidation.value);
 const btEquitySeries = computed<EquityPoint[]>(() => Array.isArray(btResult.value?.EquityCurve) ? btResult.value.EquityCurve : []);
 const btHasCandles = computed<boolean>(() => Array.isArray(btResult.value?.Candles) && btResult.value.Candles.length > 0);
 const btTradeRows = computed<TradeRow[]>(() => {
@@ -815,6 +966,8 @@ async function createDeployment() {
             InitialBaseBalance: deployForm.initialBase,
             FeeFraction: deployForm.feeFraction,
             SlippageFraction: deployForm.slippageFraction,
+            Leverage: deployForm.leverage,
+            Parameters: { ...deployParams },
         };
         if (deployForm.mode === 'Live') {
             body.MaxPositionQuoteUsd = deployForm.maxPositionQuoteUsd;
@@ -902,12 +1055,35 @@ async function openDeployment(id: string) {
     catch (e) { fail('Detail failed', e instanceof Error ? e.message : String(e)); }
     finally { loadingDetail.value = false; }
     await loadDeploymentChart(id); // container now rendered; builds the live chart
+    // Fast live-tick poll so the price moves between closed candles.
+    if (dpTickTimer) clearInterval(dpTickTimer);
+    dpTickTimer = setInterval(pollDpTick, 3000);
 }
-function closeDeployment() { detailOpen.value = false; detail.value = null; equitySeries.value = []; destroyDeploymentChart(); }
+function closeDeployment() {
+    if (dpTickTimer) { clearInterval(dpTickTimer); dpTickTimer = null; }
+    detailOpen.value = false; detail.value = null; equitySeries.value = []; destroyDeploymentChart();
+}
+
+// Update the forming candle live (lightweight-charts series.update upserts the latest bar).
+async function pollDpTick() {
+    const id = detail.value?.Deployment?.Id;
+    if (!detailOpen.value || !id || !dpSeries) return;
+    try {
+        const t = await apiGet<any>(`/deployment/ticks${qs({ id })}`);
+        const f = t?.Forming;
+        if (f && f.Timestamp) {
+            dpSeries.update({
+                time: Math.floor(new Date(f.Timestamp).getTime() / 1000),
+                open: num(f.Open), high: num(f.High), low: num(f.Low), close: num(f.Close),
+            });
+        }
+    } catch { /* transient */ }
+}
 
 // ---- backtest ----
 async function createBacktest() {
     if (!backtestForm.strategyClass) return;
+    if (isMomentumBacktest.value) return createMomentumBacktest();
     creatingBacktest.value = true;
     try {
         const body = {
@@ -920,9 +1096,53 @@ async function createBacktest() {
             InitialBaseBalance: backtestForm.initialBase,
             FeeFraction: backtestForm.feeFraction,
             SlippageFraction: backtestForm.slippageFraction,
+            Parameters: { ...backtestParams },
         };
         await apiPost<{ JobId: string }>('/backtest/create', body, true);
         await ok('Backtest queued', 'It will run in the background — watch the jobs table.');
+        await fetchBacktests();
+    } catch (e) { fail('Backtest failed', e instanceof Error ? e.message : String(e)); }
+    finally { creatingBacktest.value = false; }
+}
+
+// Cross-sectional momentum backtest — posts the universe + strategy + validation settings.
+async function createMomentumBacktest() {
+    const m = momentumForm;
+    creatingBacktest.value = true;
+    try {
+        const toIso = (d: string) => new Date(d + 'T00:00:00Z').toISOString();
+        const body = {
+            StrategyClass: backtestForm.strategyClass,
+            InitialQuoteBalance: m.initialQuote,
+            FeeFraction: m.feeFraction,
+            SlippageFraction: m.slippageFraction,
+            Leverage: m.leverage,
+            Momentum: {
+                UniverseTopN: m.universeTopN,
+                RegimeSymbol: m.regimeSymbol,
+                QuoteAsset: m.quoteAsset,
+                FromUtc: toIso(m.fromUtc),
+                ToUtc: toIso(m.toUtc),
+                TopFraction: m.topFraction,
+                BottomFraction: m.bottomFraction,
+                MinUniverseSize: m.minUniverseSize,
+                LookbackDays: m.lookbackDays,
+                SkipDays: m.skipDays,
+                RebalanceDays: m.rebalanceDays,
+                VolLookbackDays: m.volLookbackDays,
+                TargetPortfolioVol: m.targetPortfolioVol,
+                MaxWeightPerAsset: m.maxWeightPerAsset,
+                MaxGrossLeverage: m.maxGrossLeverage,
+                RegimeMaDays: m.regimeMaDays,
+                DdKillswitch: m.ddKillswitch,
+                RunValidation: m.runValidation,
+                InSampleDays: m.inSampleDays,
+                OosDays: m.oosDays,
+                WarmupDays: m.warmupDays,
+            },
+        };
+        await apiPost<{ JobId: string }>('/backtest/create', body, true);
+        await ok('Momentum backtest queued', 'First run fetches & caches the Binance universe — it may take a minute.');
         await fetchBacktests();
     } catch (e) { fail('Backtest failed', e instanceof Error ? e.message : String(e)); }
     finally { creatingBacktest.value = false; }
@@ -957,14 +1177,58 @@ function destroyCharts() {
     equityChart?.destroy(); equityChart = null;
     drawdownChart?.destroy(); drawdownChart = null;
     histChart?.destroy(); histChart = null;
+    exposureChart?.destroy(); exposureChart = null;
+    costChart?.destroy(); costChart = null;
     if (priceTvChart) { try { priceTvChart.remove(); } catch { /* already disposed */ } priceTvChart = null; }
 }
 
-function setBtTab(tab: 'overview' | 'charts' | 'trades') {
+function setBtTab(tab: 'overview' | 'charts' | 'trades' | 'validation') {
     btTab.value = tab;
     nextTick(() => {
-        if (tab === 'charts') { buildEquityChart(); buildDrawdownChart(); buildPriceChart(); }
+        if (tab === 'charts') {
+            buildEquityChart(); buildDrawdownChart();
+            if (isPortfolioResult.value) buildExposureChart(); else buildPriceChart();
+        }
         else if (tab === 'trades') { buildHistChart(); }
+        else if (tab === 'validation') { buildCostChart(); }
+    });
+}
+
+// Portfolio gross exposure over time (EquityPoint.BaseBalance carries gross notional for portfolio runs).
+function buildExposureChart() {
+    exposureChart?.destroy(); exposureChart = null;
+    const pts = btEquitySeries.value;
+    if (!exposureCanvas.value || pts.length < 2) return;
+    const gross = pts.map(p => num(p.BaseBalance));
+    const equity = pts.map(p => num(p.Equity));
+    exposureChart = new Chart(exposureCanvas.value, {
+        type: 'line',
+        data: {
+            labels: chartLabels(),
+            datasets: [
+                { label: 'Gross Exposure', data: gross, borderColor: '#ffc247', backgroundColor: 'rgba(255,194,71,0.12)', fill: true, pointRadius: 0, borderWidth: 1.6, tension: 0.1 },
+                { label: 'Equity', data: equity, borderColor: '#62ce47', backgroundColor: 'transparent', fill: false, pointRadius: 0, borderWidth: 1.4, tension: 0.1 },
+            ],
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: legendOpts }, scales: darkScales('USD') },
+    });
+}
+
+// Cost-sensitivity bars (net PnL% at 1x/2x/3x) in the Validation tab.
+function buildCostChart() {
+    costChart?.destroy(); costChart = null;
+    const rows = btValidation.value?.CostSensitivity;
+    if (!costCanvas.value || !Array.isArray(rows) || rows.length === 0) return;
+    costChart = new Chart(costCanvas.value, {
+        type: 'bar',
+        data: {
+            labels: rows.map((r: any) => `${fmtNum2(r.Multiplier)}×`),
+            datasets: [{
+                label: 'Net PnL %', data: rows.map((r: any) => num(r.NetPnLPercent)),
+                backgroundColor: rows.map((r: any) => num(r.NetPnLPercent) >= 0 ? 'rgba(98,206,71,0.7)' : 'rgba(239,68,68,0.7)'),
+            }],
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: darkScales('Net PnL %') },
     });
 }
 
@@ -1189,7 +1453,7 @@ onMounted(async () => {
     await refreshAll();
     pollTimer = setInterval(pollLight, 8000);
 });
-onBeforeUnmount(() => { if (pollTimer) clearInterval(pollTimer); destroyCharts(); destroyDeploymentChart(); });
+onBeforeUnmount(() => { if (pollTimer) clearInterval(pollTimer); if (dpTickTimer) clearInterval(dpTickTimer); destroyCharts(); destroyDeploymentChart(); });
 </script>
 
 <style scoped>
@@ -1276,6 +1540,7 @@ onBeforeUnmount(() => { if (pollTimer) clearInterval(pollTimer); destroyCharts()
 .field.span2 { grid-column: 1 / -1; }
 .field span { color: #8a958a; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
 .field input, .field select { border: 1px solid rgba(98,206,71,.22); border-radius: 5px; background: #0c100a; color: #eafbe5; padding: 7px 9px; font-size: 13px; outline: none; min-width: 0; }
+.param-group-label { grid-column: 1 / -1; margin-top: 6px; color: #62ce47; font: 700 10px ui-monospace, Consolas, monospace; letter-spacing: 1px; text-transform: uppercase; border-bottom: 1px solid rgba(98,206,71,.12); padding-bottom: 3px; }
 .field input:focus, .field select:focus { border-color: #62ce47; box-shadow: 0 0 0 1px rgba(98,206,71,.2); }
 
 /* risk box */
@@ -1284,6 +1549,19 @@ onBeforeUnmount(() => { if (pollTimer) clearInterval(pollTimer); destroyCharts()
 .risk-head small { color: #c99a4a; font-size: 11px; }
 .live-note { margin: 9px 0 0; color: #d6b873; font-size: 12px; }
 .live-note strong { color: #ffd98a; }
+.live-note.warn-note { color: #ffc247; }
+
+/* momentum backtest form */
+.panel-code.cyan { color: #5fd3ff; }
+.strat-select { margin-bottom: 11px; }
+.momentum-note { display: block; margin-bottom: 11px; padding: 9px 11px; border: 1px solid rgba(56,189,248,.25); border-radius: 6px; background: rgba(56,189,248,.05); color: #aab8b0; font-size: 12px; line-height: 1.5; }
+.momentum-note .panel-code { margin-right: 6px; }
+.validation-toggle { margin-top: 11px; padding-top: 11px; border-top: 1px solid rgba(255,255,255,.06); }
+.validation-toggle .form-grid { margin-top: 9px; }
+.check { display: flex; align-items: center; gap: 8px; color: #cdd8c9; font-size: 12px; cursor: pointer; }
+.check input { width: 15px; height: 15px; accent-color: #62ce47; }
+.tag.universe { color: #5fd3ff; border-color: rgba(56,189,248,.35); background: rgba(56,189,248,.1); margin: 4px 0 2px; display: inline-block; }
+.muted.sm { font-size: 11px; }
 
 /* strategies */
 .strat-body { display: flex; flex-direction: column; gap: 9px; max-height: 520px; overflow-y: auto; }

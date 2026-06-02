@@ -274,51 +274,9 @@
                         </select>
                     </label>
 
-                    <!-- Cross-sectional momentum: universe + strategy + validation params -->
-                    <template v-if="isMomentumBacktest">
-                        <div class="momentum-note">
-                            <span class="panel-code cyan">UNIVERSE</span>
-                            Builds a point-in-time Binance universe and runs the weekly cross-sectional book.
-                            First run fetches &amp; caches data (slower); later runs reuse the cache.
-                        </div>
-                        <div class="form-grid">
-                            <label class="field"><span>Regime Symbol</span><input v-model="momentumForm.regimeSymbol" placeholder="BTCUSDT" /></label>
-                            <label class="field"><span>Quote Asset</span><input v-model="momentumForm.quoteAsset" placeholder="USDT" /></label>
-                            <label class="field"><span>Universe Top N</span><input v-model.number="momentumForm.universeTopN" type="number" min="20" step="10" /></label>
-                            <label class="field"><span>Min Universe</span><input v-model.number="momentumForm.minUniverseSize" type="number" min="2" step="1" /></label>
-                            <label class="field"><span>From (UTC)</span><input v-model="momentumForm.fromUtc" type="date" /></label>
-                            <label class="field"><span>To (UTC)</span><input v-model="momentumForm.toUtc" type="date" /></label>
-                            <label class="field"><span>Top Fraction</span><input v-model.number="momentumForm.topFraction" type="number" min="0.05" max="0.5" step="0.05" /></label>
-                            <label class="field"><span>Bottom Fraction</span><input v-model.number="momentumForm.bottomFraction" type="number" min="0" max="0.5" step="0.05" /></label>
-                            <label class="field"><span>Lookback Days</span><input v-model.number="momentumForm.lookbackDays" type="number" min="5" step="1" /></label>
-                            <label class="field"><span>Skip Days</span><input v-model.number="momentumForm.skipDays" type="number" min="0" step="1" /></label>
-                            <label class="field"><span>Rebalance Days</span><input v-model.number="momentumForm.rebalanceDays" type="number" min="1" step="1" /></label>
-                            <label class="field"><span>Vol Lookback</span><input v-model.number="momentumForm.volLookbackDays" type="number" min="5" step="1" /></label>
-                            <label class="field"><span>Target Port. Vol</span><input v-model.number="momentumForm.targetPortfolioVol" type="number" min="0.05" step="0.05" /></label>
-                            <label class="field"><span>Max Weight / Asset</span><input v-model.number="momentumForm.maxWeightPerAsset" type="number" min="0.01" max="1" step="0.05" /></label>
-                            <label class="field"><span>Max Gross Lev.</span><input v-model.number="momentumForm.maxGrossLeverage" type="number" min="1" step="0.5" /></label>
-                            <label class="field"><span>Regime MA Days</span><input v-model.number="momentumForm.regimeMaDays" type="number" min="10" step="10" /></label>
-                            <label class="field"><span>DD Killswitch</span><input v-model.number="momentumForm.ddKillswitch" type="number" min="0.05" max="1" step="0.05" /></label>
-                            <label class="field"><span>Leverage (acct)</span><input v-model.number="momentumForm.leverage" type="number" min="1" max="10" step="1" /></label>
-                            <label class="field"><span>Initial Quote</span><input v-model.number="momentumForm.initialQuote" type="number" min="0" step="0.01" /></label>
-                            <label class="field"><span>Fee Fraction</span><input v-model.number="momentumForm.feeFraction" type="number" min="0" step="0.0001" /></label>
-                            <label class="field"><span>Slippage Fraction</span><input v-model.number="momentumForm.slippageFraction" type="number" min="0" step="0.0001" /></label>
-                        </div>
-                        <div class="validation-toggle">
-                            <label class="check"><input type="checkbox" v-model="momentumForm.runValidation" /> Run validation suite (walk-forward, deflated Sharpe, cost sensitivity, survivorship)</label>
-                            <div v-if="momentumForm.runValidation" class="form-grid">
-                                <label class="field"><span>In-Sample Days</span><input v-model.number="momentumForm.inSampleDays" type="number" min="30" step="10" /></label>
-                                <label class="field"><span>OOS Days</span><input v-model.number="momentumForm.oosDays" type="number" min="14" step="7" /></label>
-                                <label class="field"><span>Warmup Days</span><input v-model.number="momentumForm.warmupDays" type="number" min="10" step="1" /></label>
-                            </div>
-                        </div>
-                        <p v-if="momentumForm.bottomFraction > 0 && momentumForm.leverage <= 1" class="live-note warn-note">
-                            A short book (Bottom Fraction &gt; 0) needs account Leverage &gt; 1.
-                        </p>
-                    </template>
-
-                    <!-- Single-symbol backtest -->
-                    <div v-else class="form-grid">
+                    <!-- Schema-driven form: works for any strategy (single-symbol or multi-asset universe).
+                         Universe strategies render their own params (regime symbol, universe cap, etc.). -->
+                    <div class="form-grid">
                         <label class="field">
                             <span>Interval</span>
                             <select v-model="backtestForm.interval">
@@ -343,10 +301,21 @@
                         <label class="field"><span>Initial Base</span><input v-model.number="backtestForm.initialBase" type="number" min="0" step="0.00000001" /></label>
                         <label class="field"><span>Fee Fraction</span><input v-model.number="backtestForm.feeFraction" type="number" min="0" step="0.0001" /></label>
                         <label class="field"><span>Slippage Fraction</span><input v-model.number="backtestForm.slippageFraction" type="number" min="0" step="0.0001" /></label>
+                        <label class="field"><span>Leverage</span><input v-model.number="backtestForm.leverage" type="number" min="1" max="10" step="1" /></label>
+                    </div>
+
+                    <!-- Generic validation (any multi-asset/universe strategy) -->
+                    <div v-if="selectedBacktestStrategy?.RequiresUniverse" class="val-toggle">
+                        <label class="check"><input type="checkbox" v-model="backtestForm.runValidation" /> Run validation (walk-forward param sweep, deflated Sharpe, cost sensitivity, turnover)</label>
+                        <div v-if="backtestForm.runValidation" class="form-grid">
+                            <label class="field"><span>In-Sample (bars)</span><input v-model.number="backtestForm.valInSample" type="number" min="20" step="10" /></label>
+                            <label class="field"><span>OOS (bars)</span><input v-model.number="backtestForm.valOos" type="number" min="10" step="10" /></label>
+                            <label class="field"><span>Warmup (bars)</span><input v-model.number="backtestForm.valWarmup" type="number" min="5" step="5" /></label>
+                        </div>
                     </div>
 
                     <button class="ot-btn primary block" :disabled="creatingBacktest || !backtestForm.strategyClass" @click="createBacktest">
-                        {{ creatingBacktest ? 'Queuing…' : (isMomentumBacktest ? 'Queue Momentum Backtest' : 'Queue Backtest') }}
+                        {{ creatingBacktest ? 'Queuing…' : 'Queue Backtest' }}
                     </button>
                 </div>
             </div>
@@ -614,9 +583,9 @@
                             </div>
                         </section>
 
-                        <!-- VALIDATION (cross-sectional momentum only) -->
+                        <!-- VALIDATION (generic — any strategy that opted into RunValidation) -->
                         <section v-if="btValidation" v-show="btTab === 'validation'" class="report-section">
-                            <h4>Walk-Forward (out-of-sample)</h4>
+                            <h4>Walk-Forward (out-of-sample, swept params)</h4>
                             <div class="mini-grid">
                                 <div class="mini"><span>OOS PnL %</span><strong class="num" :class="pnlClass(btValidation.WalkForwardOosPnLPercent)">{{ fmtSignedPct(btValidation.WalkForwardOosPnLPercent) }}</strong></div>
                                 <div class="mini"><span>OOS Sharpe</span><strong class="num">{{ fmtNum2(btValidation.WalkForwardOosSharpe) }}</strong></div>
@@ -651,18 +620,14 @@
                                     </tbody>
                                 </table>
                             </div>
-                            <h4>Survivorship &amp; Capacity</h4>
+                            <h4>Turnover</h4>
                             <div class="mini-grid">
-                                <div class="mini"><span>Universe Coins</span><strong class="num">{{ btValidation.UniverseCoins }}</strong></div>
-                                <div class="mini"><span>Delisted in Window</span><strong class="num" :class="num(btValidation.DelistedCoins) > 0 ? 'pos' : 'neg'">{{ btValidation.DelistedCoins }}</strong></div>
-                                <div class="mini"><span>Point-in-Time</span><strong>{{ btValidation.PointInTimeUniverse ? 'Yes' : 'No' }}</strong></div>
                                 <div class="mini"><span>Weekly Turnover</span><strong class="num">{{ fmtNum2(btValidation.WeeklyTurnover) }}×</strong></div>
                                 <div class="mini"><span>Annual Turnover</span><strong class="num">{{ fmtNum2(btValidation.AnnualTurnover) }}×</strong></div>
-                                <div class="mini"><span>Est. Capacity</span><strong class="num">{{ fmtMoney(btValidation.EstimatedCapacityUsd) }}</strong></div>
                             </div>
-                            <p v-if="(btValidation.DelistedExamples || []).length" class="muted sm">Delisted examples: {{ (btValidation.DelistedExamples || []).join(', ') }}</p>
                             <div v-for="(n, i) in (btValidation.Notes || [])" :key="i" class="ot-error sm">{{ n }}</div>
                         </section>
+
                     </template>
                 </div>
             </div>
@@ -770,20 +735,8 @@ const deployForm = reactive({
 });
 const backtestForm = reactive({
     strategyClass: '', coin: 'BTC', currency: 'USD', interval: 'OneHour', candleCount: 500,
-    initialQuote: 10000, initialBase: 0, feeFraction: 0.001, slippageFraction: 0.0005,
-});
-
-// Cross-sectional (multi-asset) momentum backtest form. Defaults mirror the spec's starting point.
-function isoDaysAgo(days: number): string { const d = new Date(); d.setUTCDate(d.getUTCDate() - days); return d.toISOString().slice(0, 10); }
-const momentumForm = reactive({
-    regimeSymbol: 'BTCUSDT', quoteAsset: 'USDT', universeTopN: 100,
-    fromUtc: isoDaysAgo(730), toUtc: isoDaysAgo(1),
-    topFraction: 0.20, bottomFraction: 0.0, minUniverseSize: 20,
-    lookbackDays: 30, skipDays: 1, rebalanceDays: 7, volLookbackDays: 30,
-    targetPortfolioVol: 0.40, maxWeightPerAsset: 0.20, maxGrossLeverage: 1.0,
-    regimeMaDays: 100, ddKillswitch: 0.30,
-    initialQuote: 10000, feeFraction: 0.0007, slippageFraction: 0.001, leverage: 1,
-    runValidation: true, inSampleDays: 180, oosDays: 60, warmupDays: 62,
+    initialQuote: 10000, initialBase: 0, feeFraction: 0.001, slippageFraction: 0.0005, leverage: 1,
+    runValidation: false, valInSample: 180, valOos: 60, valWarmup: 30,
 });
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -795,7 +748,6 @@ const runningBacktests = computed(() => backtests.value.filter(b => b.Status ===
 
 const selectedBacktestStrategy = computed(() => strategies.value.find(s => s.ClassName === backtestForm.strategyClass));
 const selectedDeployStrategy = computed(() => strategies.value.find(s => s.ClassName === deployForm.strategyClass));
-const isMomentumBacktest = computed(() => !!selectedBacktestStrategy.value?.RequiresUniverse);
 
 // ---- dynamic strategy parameters (schema-driven forms) ----
 const backtestParams = reactive<Record<string, any>>({});
@@ -844,10 +796,12 @@ const paperAvgWinRate = computed(() => {
 });
 const equityPolyline = computed(() => buildSpark(equitySeries.value.map(p => num(p.Equity))));
 const btResult = computed<any>(() => btDetail.value?.Result ?? null);
+// Generic validation report (any strategy that opted in via RunValidation); null otherwise.
 const btValidation = computed<any>(() => btResult.value?.Validation ?? null);
-// Portfolio (cross-sectional) results carry a Validation report; their per-symbol trades shouldn't be
-// crammed onto a single price line, so we show portfolio visuals instead of the price+markers chart.
-const isPortfolioResult = computed<boolean>(() => !!btValidation.value);
+// Multi-asset (universe) results have per-symbol trades that shouldn't be crammed onto one price line,
+// so we show portfolio visuals instead. Detected generically from the strategy's declared shape.
+const isPortfolioResult = computed<boolean>(() =>
+    !!strategies.value.find(s => s.ClassName === btDetail.value?.StrategyClass)?.RequiresUniverse);
 const btEquitySeries = computed<EquityPoint[]>(() => Array.isArray(btResult.value?.EquityCurve) ? btResult.value.EquityCurve : []);
 const btHasCandles = computed<boolean>(() => Array.isArray(btResult.value?.Candles) && btResult.value.Candles.length > 0);
 const btTradeRows = computed<TradeRow[]>(() => {
@@ -1119,10 +1073,9 @@ async function pollDpTick() {
 // ---- backtest ----
 async function createBacktest() {
     if (!backtestForm.strategyClass) return;
-    if (isMomentumBacktest.value) return createMomentumBacktest();
     creatingBacktest.value = true;
     try {
-        const body = {
+        const body: Record<string, unknown> = {
             StrategyClass: backtestForm.strategyClass,
             Coin: backtestForm.coin,
             Currency: backtestForm.currency,
@@ -1132,53 +1085,18 @@ async function createBacktest() {
             InitialBaseBalance: backtestForm.initialBase,
             FeeFraction: backtestForm.feeFraction,
             SlippageFraction: backtestForm.slippageFraction,
+            Leverage: backtestForm.leverage,
             Parameters: { ...backtestParams },
         };
+        if (backtestForm.runValidation && selectedBacktestStrategy.value?.RequiresUniverse) {
+            body.Validation = {
+                InSampleBars: backtestForm.valInSample,
+                OosBars: backtestForm.valOos,
+                WarmupBars: backtestForm.valWarmup,
+            };
+        }
         await apiPost<{ JobId: string }>('/backtest/create', body, true);
         await ok('Backtest queued', 'It will run in the background — watch the jobs table.');
-        await fetchBacktests();
-    } catch (e) { fail('Backtest failed', e instanceof Error ? e.message : String(e)); }
-    finally { creatingBacktest.value = false; }
-}
-
-// Cross-sectional momentum backtest — posts the universe + strategy + validation settings.
-async function createMomentumBacktest() {
-    const m = momentumForm;
-    creatingBacktest.value = true;
-    try {
-        const toIso = (d: string) => new Date(d + 'T00:00:00Z').toISOString();
-        const body = {
-            StrategyClass: backtestForm.strategyClass,
-            InitialQuoteBalance: m.initialQuote,
-            FeeFraction: m.feeFraction,
-            SlippageFraction: m.slippageFraction,
-            Leverage: m.leverage,
-            Momentum: {
-                UniverseTopN: m.universeTopN,
-                RegimeSymbol: m.regimeSymbol,
-                QuoteAsset: m.quoteAsset,
-                FromUtc: toIso(m.fromUtc),
-                ToUtc: toIso(m.toUtc),
-                TopFraction: m.topFraction,
-                BottomFraction: m.bottomFraction,
-                MinUniverseSize: m.minUniverseSize,
-                LookbackDays: m.lookbackDays,
-                SkipDays: m.skipDays,
-                RebalanceDays: m.rebalanceDays,
-                VolLookbackDays: m.volLookbackDays,
-                TargetPortfolioVol: m.targetPortfolioVol,
-                MaxWeightPerAsset: m.maxWeightPerAsset,
-                MaxGrossLeverage: m.maxGrossLeverage,
-                RegimeMaDays: m.regimeMaDays,
-                DdKillswitch: m.ddKillswitch,
-                RunValidation: m.runValidation,
-                InSampleDays: m.inSampleDays,
-                OosDays: m.oosDays,
-                WarmupDays: m.warmupDays,
-            },
-        };
-        await apiPost<{ JobId: string }>('/backtest/create', body, true);
-        await ok('Momentum backtest queued', 'First run fetches & caches the Binance universe — it may take a minute.');
         await fetchBacktests();
     } catch (e) { fail('Backtest failed', e instanceof Error ? e.message : String(e)); }
     finally { creatingBacktest.value = false; }
@@ -1230,6 +1148,24 @@ function setBtTab(tab: 'overview' | 'charts' | 'trades' | 'validation') {
     });
 }
 
+// Cost-sensitivity bars (net PnL% at each cost multiplier) in the validation tab.
+function buildCostChart() {
+    costChart?.destroy(); costChart = null;
+    const rows = btValidation.value?.CostSensitivity;
+    if (!costCanvas.value || !Array.isArray(rows) || rows.length === 0) return;
+    costChart = new Chart(costCanvas.value, {
+        type: 'bar',
+        data: {
+            labels: rows.map((r: any) => `${fmtNum2(r.Multiplier)}×`),
+            datasets: [{
+                label: 'Net PnL %', data: rows.map((r: any) => num(r.NetPnLPercent)),
+                backgroundColor: rows.map((r: any) => num(r.NetPnLPercent) >= 0 ? 'rgba(98,206,71,0.7)' : 'rgba(239,68,68,0.7)'),
+            }],
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: darkScales('Net PnL %') },
+    });
+}
+
 // Portfolio gross exposure over time (EquityPoint.BaseBalance carries gross notional for portfolio runs).
 function buildExposureChart() {
     exposureChart?.destroy(); exposureChart = null;
@@ -1247,24 +1183,6 @@ function buildExposureChart() {
             ],
         },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: legendOpts }, scales: darkScales('USD') },
-    });
-}
-
-// Cost-sensitivity bars (net PnL% at 1x/2x/3x) in the Validation tab.
-function buildCostChart() {
-    costChart?.destroy(); costChart = null;
-    const rows = btValidation.value?.CostSensitivity;
-    if (!costCanvas.value || !Array.isArray(rows) || rows.length === 0) return;
-    costChart = new Chart(costCanvas.value, {
-        type: 'bar',
-        data: {
-            labels: rows.map((r: any) => `${fmtNum2(r.Multiplier)}×`),
-            datasets: [{
-                label: 'Net PnL %', data: rows.map((r: any) => num(r.NetPnLPercent)),
-                backgroundColor: rows.map((r: any) => num(r.NetPnLPercent) >= 0 ? 'rgba(98,206,71,0.7)' : 'rgba(239,68,68,0.7)'),
-            }],
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: darkScales('Net PnL %') },
     });
 }
 
@@ -1699,13 +1617,10 @@ onBeforeUnmount(() => { if (pollTimer) clearInterval(pollTimer); if (dpTickTimer
 .live-note strong { color: #ffd98a; }
 .live-note.warn-note { color: #ffc247; }
 
-/* momentum backtest form */
 .panel-code.cyan { color: #5fd3ff; }
 .strat-select { margin-bottom: 11px; }
-.momentum-note { display: block; margin-bottom: 11px; padding: 9px 11px; border: 1px solid rgba(56,189,248,.25); border-radius: 6px; background: rgba(56,189,248,.05); color: #aab8b0; font-size: 12px; line-height: 1.5; }
-.momentum-note .panel-code { margin-right: 6px; }
-.validation-toggle { margin-top: 11px; padding-top: 11px; border-top: 1px solid rgba(255,255,255,.06); }
-.validation-toggle .form-grid { margin-top: 9px; }
+.val-toggle { margin-top: 11px; padding-top: 11px; border-top: 1px solid rgba(255,255,255,.06); }
+.val-toggle .form-grid { margin-top: 9px; }
 .check { display: flex; align-items: center; gap: 8px; color: #cdd8c9; font-size: 12px; cursor: pointer; }
 .check input { width: 15px; height: 15px; accent-color: #62ce47; }
 .tag.universe { color: #5fd3ff; border-color: rgba(56,189,248,.35); background: rgba(56,189,248,.1); margin: 4px 0 2px; display: inline-block; }

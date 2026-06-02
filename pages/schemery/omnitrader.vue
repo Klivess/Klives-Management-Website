@@ -1106,12 +1106,12 @@ async function pollDpTick() {
         const t = await apiGet<any>(`/deployment/ticks${qs({ id })}`);
         const f = t?.Forming;
         if (f && f.Timestamp) {
-            const time = Math.floor(new Date(f.Timestamp).getTime() / 1000);
-            // update() requires a time >= the last bar; guard so a stale forming bar can't throw.
-            if (time >= dpLastBarTime) {
-                dpSeries.update({ time, open: num(f.Open), high: num(f.High), low: num(f.Low), close: num(f.Close) });
-                dpLastBarTime = time;
-            }
+            // Never land before the series' last bar (update() requires time >= last). If the forming
+            // bucket reads slightly behind — clock/bucket skew or a just-closed bar — snap it onto the
+            // rightmost bar so the live price still moves instead of being silently dropped.
+            const time = Math.max(toUnixSec(f.Timestamp), dpLastBarTime);
+            dpSeries.update({ time, open: num(f.Open), high: num(f.High), low: num(f.Low), close: num(f.Close) });
+            dpLastBarTime = time;
         }
     } catch { /* transient */ }
 }
@@ -1387,11 +1387,17 @@ async function buildPriceChart() {
 }
 
 // ---- live deployment candlestick chart (lightweight-charts) ----
-function snapToTimes(ms: number, times: number[]): number {
-    const t = Math.floor(ms / 1000);
-    if (!times.length) return t;
-    let best = times[0], bestDiff = Math.abs(times[0] - t);
-    for (const ct of times) { const d = Math.abs(ct - t); if (d < bestDiff) { bestDiff = d; best = ct; } }
+// Parse a timestamp to unix seconds, treating an offset-less string as UTC. Both the chart and the
+// tick endpoints must resolve the same bar to the same value, otherwise the forming candle's update
+// lands on the wrong (or an earlier) bar and the graph appears frozen.
+function toUnixSec(ts: string): number {
+    const s = /[zZ]|[+-]\d\d:?\d\d$/.test(ts) ? ts : ts + 'Z';
+    return Math.floor(new Date(s).getTime() / 1000);
+}
+function snapToTimes(tsec: number, times: number[]): number {
+    if (!times.length) return tsec;
+    let best = times[0], bestDiff = Math.abs(times[0] - tsec);
+    for (const ct of times) { const d = Math.abs(ct - tsec); if (d < bestDiff) { bestDiff = d; best = ct; } }
     return best;
 }
 // Map backend markers -> lightweight-charts markers, snapped to the nearest candle.
@@ -1399,7 +1405,7 @@ function dpBuildMarkers(times: number[]): any[] {
     const raw = dpChartData.value?.Markers;
     if (!Array.isArray(raw) || !times.length) return [];
     const markers = raw.map((m: any) => {
-        const time = snapToTimes(new Date(m.Time).getTime(), times);
+        const time = snapToTimes(toUnixSec(m.Time), times);
         if (m.Kind === 'exit')
             return { time, position: m.Side === 'sell' ? 'aboveBar' : 'belowBar', color: '#ffc247', shape: m.Side === 'sell' ? 'arrowDown' : 'arrowUp', text: 'Exit' };
         if (m.Side === 'buy')
@@ -1416,7 +1422,7 @@ function dpApplyData() {
     const candles = dpChartData.value?.Candles;
     if (!Array.isArray(candles) || !candles.length) return;
     const data = dedupeByTime(candles.map((c: any) => ({
-        time: Math.floor(new Date(c.Timestamp).getTime() / 1000),
+        time: toUnixSec(c.Timestamp),
         open: num(c.Open), high: num(c.High), low: num(c.Low), close: num(c.Close),
     })));
     // Only rebuild the series when the closed candles / markers actually change. Otherwise the

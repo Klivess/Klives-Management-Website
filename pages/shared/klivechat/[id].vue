@@ -173,7 +173,9 @@
 </template>
 
 <script setup>
-definePageMeta({ layout: 'navbar' });
+// KliveChat rooms are a standalone window, deliberately kept off the navbar/dashboard
+// layout so the main KM application's authenticated routes are never queried from here.
+definePageMeta({ layout: 'empty' });
 
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -184,7 +186,7 @@ const route = useRoute();
 const router = useRouter();
 const roomId = String(route.params.id);
 
-const layoutName = ref('navbar');
+const isAuthenticated = ref(false);
 const focusedPeerId = ref(null);
 const copyStatus = ref('');
 let copyStatusTimer = null;
@@ -396,9 +398,43 @@ function syncPeerVideoTrack(videoTrack) {
     });
 }
 
+async function verifyRoomExists() {
+    // The lobby list can be stale and the URL can be hand-typed, so confirm with the
+    // server that this room id maps to a real, still-open room before joining.
+    try {
+        const response = await RequestGETFromKliveAPI(`/klivechat/rooms?id=${encodeURIComponent(roomId)}`, false, false);
+        return Boolean(response && response.ok);
+    } catch (error) {
+        console.error('Failed to verify room existence:', error);
+        return false;
+    }
+}
+
+async function refuseMissingRoom() {
+    if (socketCloseHandled) {
+        return;
+    }
+    socketCloseHandled = true;
+    await Swal.fire({
+        title: 'Room Not Found',
+        text: 'This KliveChat room does not exist or has already been closed.',
+        icon: 'error',
+        background: '#161516',
+        color: '#fff'
+    });
+    // The lobby no longer exists, so drop the user back to the login screen.
+    router.push('/');
+}
+
 async function init() {
     currentUrl.value = window.location.href;
     wsUrl = `${wsBaseUrl}/klivechat/ws?roomId=${roomId}`;
+
+    // Refuse before prompting for a name or requesting media if the room is gone.
+    if (!(await verifyRoomExists())) {
+        await refuseMissingRoom();
+        return;
+    }
 
     let lsName = '';
     try {
@@ -414,9 +450,9 @@ async function init() {
 
     if (!lsName || lsName.trim() === '') {
         lsName = await getGuestName();
-        layoutName.value = 'empty';
+        isAuthenticated.value = false;
     } else {
-        layoutName.value = 'navbar';
+        isAuthenticated.value = true;
     }
 
     myName.value = lsName;
@@ -585,6 +621,24 @@ function connectWebSocket() {
 
     ws.onclose = async (event) => {
         console.log('Disconnected from signaling server');
+        if (!socketCloseHandled && event.reason === 'Invalid Room ID') {
+            // Room was closed between the existence check and the socket handshake.
+            await refuseMissingRoom();
+            return;
+        }
+        if (!socketCloseHandled && event.reason === 'Room deleted') {
+            // The host closed the room while we were still in it: notify and eject.
+            socketCloseHandled = true;
+            await Swal.fire({
+                title: 'Room Closed',
+                text: 'This room has been closed by its host. You have been disconnected.',
+                icon: 'warning',
+                background: '#161516',
+                color: '#fff'
+            });
+            leaveRoom();
+            return;
+        }
         if (!socketCloseHandled && (event.reason === 'Banned from room' || event.reason === 'Removed from room')) {
             socketCloseHandled = true;
             await Swal.fire({
@@ -898,11 +952,9 @@ async function copyShareLink() {
 }
 
 function leaveRoom() {
-    if (layoutName.value === 'empty') {
-        router.push('/');
-    } else {
-        router.push('/dashboard');
-    }
+    // Authenticated users return to the dashboard; guests go to the login screen so
+    // they never land in the authenticated navbar shell.
+    router.push(isAuthenticated.value ? '/dashboard' : '/');
 }
 
 onMounted(() => {

@@ -157,7 +157,34 @@ async function createRoom() {
     }
 }
 
-function joinRoom(id) {
+async function joinRoom(id) {
+    // The room grid refreshes every 10s, so a card can point at a room that was just
+    // closed. Verify it still exists before navigating and refuse if it is gone.
+    try {
+        const response = await RequestGETFromKliveAPI(`/klivechat/rooms?id=${encodeURIComponent(id)}`, false, false);
+        if (!response || !response.ok) {
+            await Swal.fire({
+                icon: 'error',
+                title: 'Room Not Found',
+                text: 'That room no longer exists. Refreshing the list.',
+                background: '#161516',
+                color: '#fff'
+            });
+            await loadRooms();
+            return;
+        }
+    } catch (error) {
+        console.error('Failed to verify room before joining:', error);
+        await Swal.fire({
+            icon: 'error',
+            title: 'Unavailable',
+            text: 'Could not verify that room right now. Please try again.',
+            background: '#161516',
+            color: '#fff'
+        });
+        return;
+    }
+
     router.push(`/shared/klivechat/${id}`);
 }
 

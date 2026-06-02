@@ -89,6 +89,25 @@
             </div>
         </div>
 
+        <!-- Visual overview -->
+        <section v-if="deployments.length" class="ot-overview">
+            <div class="ov-card">
+                <div class="ov-title">PnL % by deployment</div>
+                <div class="ov-canvas"><canvas ref="pnlByDeployCanvas"></canvas></div>
+            </div>
+            <div class="ov-card">
+                <div class="ov-title">Equity allocation</div>
+                <div class="ov-canvas"><canvas ref="allocCanvas"></canvas></div>
+            </div>
+            <div class="ov-card">
+                <div class="ov-title">Total Kraken account value</div>
+                <div class="ov-canvas">
+                    <canvas ref="krakenCanvas"></canvas>
+                    <div v-if="krakenEmpty" class="ov-empty">No live (Kraken) equity yet — value appears once a live deployment is running.</div>
+                </div>
+            </div>
+        </section>
+
         <!-- Deploy + Strategies -->
         <section class="ot-cols deploy-cols">
             <div class="ot-panel">
@@ -335,6 +354,9 @@
             <div class="ot-panel">
                 <div class="panel-head"><div><span class="panel-code">JOBS</span><h2>Backtest Jobs</h2></div></div>
                 <div class="panel-body">
+                    <div v-if="backtestChartHasData" class="bt-overview">
+                        <div class="ov-canvas sm"><canvas ref="backtestPerfCanvas"></canvas></div>
+                    </div>
                     <div class="table-shell">
                         <table>
                             <thead>
@@ -729,6 +751,18 @@ const dpChartData = ref<any>(null);
 let dpChart: any = null;
 let dpSeries: any = null;
 
+// Overview charts (top of page) — visual summary across all deployments.
+const pnlByDeployCanvas = ref<HTMLCanvasElement | null>(null);
+const allocCanvas = ref<HTMLCanvasElement | null>(null);
+const krakenCanvas = ref<HTMLCanvasElement | null>(null);
+const krakenEmpty = ref(false);
+let pnlByDeployChart: Chart | null = null;
+let allocChart: Chart | null = null;
+let krakenChart: Chart | null = null;
+const backtestPerfCanvas = ref<HTMLCanvasElement | null>(null);
+let backtestPerfChart: Chart | null = null;
+const chartPalette = ['#62ce47', '#34d399', '#22d3ee', '#0ea5e9', '#a78bfa', '#f59e0b', '#ec4899', '#84cc16', '#fb923c', '#60a5fa'];
+
 const deployForm = reactive({
     strategyClass: '', symbol: 'BTCUSDT', interval: 'OneHour', mode: 'Paper',
     initialQuote: 10000, initialBase: 0, feeFraction: 0.001, slippageFraction: 0.0005, leverage: 1,
@@ -1072,10 +1106,12 @@ async function pollDpTick() {
         const t = await apiGet<any>(`/deployment/ticks${qs({ id })}`);
         const f = t?.Forming;
         if (f && f.Timestamp) {
-            dpSeries.update({
-                time: Math.floor(new Date(f.Timestamp).getTime() / 1000),
-                open: num(f.Open), high: num(f.High), low: num(f.Low), close: num(f.Close),
-            });
+            const time = Math.floor(new Date(f.Timestamp).getTime() / 1000);
+            // update() requires a time >= the last bar; guard so a stale forming bar can't throw.
+            if (time >= dpLastBarTime) {
+                dpSeries.update({ time, open: num(f.Open), high: num(f.High), low: num(f.Low), close: num(f.Close) });
+                dpLastBarTime = time;
+            }
         }
     } catch { /* transient */ }
 }
@@ -1373,6 +1409,8 @@ function dpBuildMarkers(times: number[]): any[] {
     markers.sort((a: any, b: any) => a.time - b.time);
     return markers;
 }
+let dpLastSig = '';
+let dpLastBarTime = 0;
 function dpApplyData() {
     if (!dpChart || !dpSeries) return;
     const candles = dpChartData.value?.Candles;
@@ -1381,8 +1419,16 @@ function dpApplyData() {
         time: Math.floor(new Date(c.Timestamp).getTime() / 1000),
         open: num(c.Open), high: num(c.High), low: num(c.Low), close: num(c.Close),
     })));
+    // Only rebuild the series when the closed candles / markers actually change. Otherwise the
+    // 8s poll's setData would wipe the live forming bar that the 3s tick poller is updating,
+    // making the price look frozen between bar closes.
+    const markerCount = Array.isArray(dpChartData.value?.Markers) ? dpChartData.value.Markers.length : 0;
+    const sig = `${data.length}:${data[data.length - 1].time}:${markerCount}`;
+    if (sig === dpLastSig) return;
+    dpLastSig = sig;
     dpSeries.setData(data as any);
     dpSeries.setMarkers(dpBuildMarkers(data.map(d => d.time)));
+    dpLastBarTime = data[data.length - 1].time;
 }
 async function buildDeploymentChart() {
     const container = dpPriceContainer.value;
@@ -1405,12 +1451,14 @@ async function buildDeploymentChart() {
         borderUpColor: '#62ce47', borderDownColor: '#ef4444',
         wickUpColor: '#62ce47', wickDownColor: '#ef4444',
     });
+    dpLastSig = ''; dpLastBarTime = 0; // force a fresh apply for the new chart
     dpApplyData();
     chart.timeScale().fitContent();
 }
 function destroyDeploymentChart() {
     if (dpChart) { try { dpChart.remove(); } catch { /* disposed */ } }
     dpChart = null; dpSeries = null; dpChartData.value = null;
+    dpLastSig = ''; dpLastBarTime = 0;
 }
 // Fetch candles + markers for the deployment. First call builds the chart; later calls
 // (from pollLight) just re-apply data so the user's zoom/pan is preserved — the "stream".
@@ -1422,6 +1470,98 @@ async function loadDeploymentChart(id: string) {
     if (!dpChart) await buildDeploymentChart();
     else dpApplyData();
 }
+
+// Overview charts: PnL% per deployment (bars), equity allocation + status mix (doughnuts).
+function buildOverviewCharts() {
+    const ds = deployments.value;
+    if (!ds.length) return;
+
+    if (pnlByDeployCanvas.value) {
+        pnlByDeployChart?.destroy();
+        const sorted = [...ds].sort((a, b) => num(b.PnLPercent) - num(a.PnLPercent));
+        pnlByDeployChart = new Chart(pnlByDeployCanvas.value, {
+            type: 'bar',
+            data: {
+                labels: sorted.map(d => `${d.Symbol} ${shortId(d.Id)}`),
+                datasets: [{
+                    data: sorted.map(d => num(d.PnLPercent)),
+                    backgroundColor: sorted.map(d => num(d.PnLPercent) >= 0 ? 'rgba(98,206,71,.75)' : 'rgba(239,68,68,.75)'),
+                    borderWidth: 0,
+                }],
+            },
+            options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: darkScales('PnL %') },
+        });
+    }
+
+    if (allocCanvas.value) {
+        allocChart?.destroy();
+        const withEq = ds.filter(d => num(d.EquityCurrent) > 0);
+        allocChart = new Chart(allocCanvas.value, {
+            type: 'doughnut',
+            data: {
+                labels: withEq.map(d => `${d.Symbol} ${shortId(d.Id)}`),
+                datasets: [{ data: withEq.map(d => num(d.EquityCurrent)), backgroundColor: withEq.map((_, i) => chartPalette[i % chartPalette.length]), borderWidth: 0 }],
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#9aa79a', boxWidth: 10, font: { size: 10 } } } } },
+        });
+    }
+
+}
+
+// Total Kraken (live) account value over time — summed equity series across live deployments.
+async function loadKrakenValueChart() {
+    if (!krakenCanvas.value) return;
+    let series: any[] = [];
+    try {
+        const r = await apiGet<any>('/portfolio/equity' + qs({ mode: 'Live' }));
+        series = Array.isArray(r?.Series) ? r.Series : [];
+    } catch { return; }
+
+    krakenEmpty.value = series.length === 0;
+    krakenChart?.destroy(); krakenChart = null;
+    if (!krakenCanvas.value || series.length === 0) return;
+
+    const labels = series.map((p: any) => {
+        const d = new Date(p.Ts);
+        return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    });
+    krakenChart = new Chart(krakenCanvas.value, {
+        type: 'line',
+        data: { labels, datasets: [{ data: series.map((p: any) => num(p.Equity)), borderColor: '#62ce47', backgroundColor: 'rgba(98,206,71,0.15)', fill: true, pointRadius: 0, borderWidth: 1.6, tension: 0.15 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: darkScales('USD') },
+    });
+}
+
+function destroyOverviewCharts() {
+    pnlByDeployChart?.destroy(); pnlByDeployChart = null;
+    allocChart?.destroy(); allocChart = null;
+    krakenChart?.destroy(); krakenChart = null;
+}
+
+const backtestChartHasData = computed(() => backtests.value.some(b => b.Status === 'Succeeded' && b.TotalPnLPercent != null));
+function buildBacktestChart() {
+    if (!backtestPerfCanvas.value) return;
+    backtestPerfChart?.destroy();
+    const rows = backtests.value.filter(b => b.Status === 'Succeeded' && b.TotalPnLPercent != null).slice(0, 15).reverse();
+    if (!rows.length) return;
+    backtestPerfChart = new Chart(backtestPerfCanvas.value, {
+        type: 'bar',
+        data: {
+            labels: rows.map(b => `${b.StrategyClass.replace(/Strategy$/, '')} ${b.Coin}`),
+            datasets: [{
+                data: rows.map(b => num(b.TotalPnLPercent)),
+                backgroundColor: rows.map(b => num(b.TotalPnLPercent) >= 0 ? 'rgba(98,206,71,.75)' : 'rgba(239,68,68,.75)'),
+                borderWidth: 0,
+            }],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, title: { display: true, text: 'Recent backtest PnL %', color: '#8a958a', font: { size: 11 } } },
+            scales: darkScales('PnL %'),
+        },
+    });
+}
+function destroyBacktestChart() { backtestPerfChart?.destroy(); backtestPerfChart = null; }
 
 function buildHistChart() {
     histChart?.destroy(); histChart = null;
@@ -1453,7 +1593,9 @@ onMounted(async () => {
     await refreshAll();
     pollTimer = setInterval(pollLight, 8000);
 });
-onBeforeUnmount(() => { if (pollTimer) clearInterval(pollTimer); if (dpTickTimer) clearInterval(dpTickTimer); destroyCharts(); destroyDeploymentChart(); });
+watch(deployments, () => { nextTick(() => { buildOverviewCharts(); loadKrakenValueChart(); }); });
+watch(backtests, () => { nextTick(() => buildBacktestChart()); });
+onBeforeUnmount(() => { if (pollTimer) clearInterval(pollTimer); if (dpTickTimer) clearInterval(dpTickTimer); destroyCharts(); destroyDeploymentChart(); destroyOverviewCharts(); destroyBacktestChart(); });
 </script>
 
 <style scoped>
@@ -1622,6 +1764,14 @@ td.actions { display: flex; gap: 4px; flex-wrap: wrap; }
 .curve-wrap { margin: 12px 0; }
 .curve-label { color: #8a958a; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 5px; }
 .curve { width: 100%; height: 70px; border: 1px solid rgba(98,206,71,.16); border-radius: 6px; background: linear-gradient(180deg, rgba(98,206,71,.07), rgba(98,206,71,.01)); }
+.ot-overview { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+@media (max-width: 900px) { .ot-overview { grid-template-columns: 1fr; } }
+.ov-card { border: 1px solid rgba(98,206,71,.16); border-radius: 8px; background: linear-gradient(180deg, rgba(98,206,71,.05), rgba(0,0,0,.12)); padding: 12px 14px; }
+.ov-title { color: #8a958a; font: 700 11px ui-monospace, Consolas, monospace; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+.ov-canvas { position: relative; width: 100%; height: 180px; }
+.ov-canvas.sm { height: 150px; }
+.ov-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 18px; color: #83937f; font-size: 11px; }
+.bt-overview { margin-bottom: 12px; }
 .dp-legend { float: right; display: inline-flex; gap: 12px; font-weight: 700; }
 .dp-chart { position: relative; width: 100%; height: 280px; border: 1px solid rgba(98,206,71,.16); border-radius: 6px; background: linear-gradient(180deg, rgba(98,206,71,.04), rgba(0,0,0,.06)); }
 .dp-chart-empty { color: #83937f; font-size: 11px; padding: 6px 2px; }

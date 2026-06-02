@@ -81,6 +81,61 @@
                     </div>
                 </aside>
             </div>
+            <div class="timeline-rail">
+                <div class="timeline-head">
+                    <span class="panel-code">TIMELINE</span>
+                    <select v-model="timelineMode" class="timeline-mode" aria-label="Timeline filter mode">
+                        <option value="overlap">Active during window</option>
+                        <option value="first">First appeared in window</option>
+                        <option value="last">Last seen in window</option>
+                    </select>
+                    <button class="timeline-play" :class="{ playing: timelinePlaying }" @click="toggleTimelinePlay" :title="timelinePlaying ? 'Pause' : 'Play the before handle minute by minute'">
+                        <span v-if="timelinePlaying">&#10073;&#10073; Pause</span>
+                        <span v-else>&#9654; Play</span>
+                    </button>
+                    <label class="timeline-speed" title="Playback speed (minutes advanced per second)">
+                        <span>Speed</span>
+                        <select v-model.number="timelineSpeed" aria-label="Playback speed">
+                            <option :value="1">1 min/s</option>
+                            <option :value="5">5 min/s</option>
+                            <option :value="15">15 min/s</option>
+                            <option :value="60">1 hr/s</option>
+                            <option :value="240">4 hr/s</option>
+                        </select>
+                    </label>
+                    <span class="timeline-count">{{ filteredMapPoints.length }} in window</span>
+                    <button class="timeline-reset" @click="resetTimeline">Reset</button>
+                </div>
+                <div class="timeline-track">
+                    <input
+                        type="range"
+                        class="timeline-range start"
+                        :min="timelineDomain.min"
+                        :max="timelineDomain.max"
+                        :step="3600"
+                        :value="timelineStart ?? timelineDomain.min"
+                        @input="onTimelineStartSlide" />
+                    <input
+                        type="range"
+                        class="timeline-range end"
+                        :min="timelineDomain.min"
+                        :max="timelineDomain.max"
+                        :step="3600"
+                        :value="timelineEnd ?? timelineDomain.max"
+                        @input="onTimelineEndSlide" />
+                </div>
+                <div class="timeline-fields">
+                    <label class="timeline-field">
+                        <span>From</span>
+                        <input type="datetime-local" step="3600" v-model="timelineStartInput" />
+                    </label>
+                    <span class="timeline-sep">&rarr;</span>
+                    <label class="timeline-field">
+                        <span>To</span>
+                        <input type="datetime-local" step="3600" v-model="timelineEndInput" />
+                    </label>
+                </div>
+            </div>
         </section>
 
         <section class="od-metrics">
@@ -459,6 +514,8 @@ const COUNTRY_ALIASES = Object.freeze({
     'NETHERLANDS': 'NL', 'CZECHIA': 'CZ', 'TAIWAN': 'TW', 'HONG KONG': 'HK'
 });
 
+const HOUR = 3600;
+
 export default {
     name: 'omnidefence',
     layout: 'navbar',
@@ -477,6 +534,13 @@ export default {
             selectedIp: null, selectedIpNote: '', selectedIpRecent: [], selectedIpEvents: [], lastScan: null,
             mapFilter: 'all',
             hideApproximateMapPoints: false,
+            timelineMode: 'overlap',        // 'overlap' | 'first' | 'last'
+            timelineStart: null,            // Unix seconds, hour-snapped
+            timelineEnd: null,              // Unix seconds, hour-snapped (the "before" handle)
+            timelineUserSet: false,         // true once the user moves a handle/input
+            timelinePlaying: false,         // play state for the "before" handle
+            timelineSpeed: 5,               // minutes advanced per real second
+            timelinePlayTimer: null,        // interval id while playing
             leafletReady: false,
             leafletZoom: 2,
             boxMode: false,
@@ -518,11 +582,66 @@ export default {
                 };
             }).filter(Boolean);
         },
+        timelineDomain() {
+            const now = Math.floor(Date.now() / 1000);
+            let min = Infinity, max = -Infinity;
+            for (const ip of this.mapSourceIps) {
+                const first = Number(ip.firstSeen || 0);
+                const last = Number(ip.lastSeen || 0);
+                if (first > 0 && first < min) min = first;
+                if (last > 0 && last > max) max = last;
+            }
+            if (!Number.isFinite(min) || !Number.isFinite(max)) {
+                return { min: now - 86400, max: now };
+            }
+            return {
+                min: Math.floor(min / HOUR) * HOUR,
+                max: Math.ceil(Math.max(max, now) / HOUR) * HOUR,
+            };
+        },
         filteredMapPoints() {
             let points = this.hideApproximateMapPoints ? this.mapPoints.filter(point => !point.coordinatesApproximate) : this.mapPoints;
-            if (this.mapFilter === 'attackers') return points.filter(point => !point.hasProfile);
-            if (this.mapFilter === 'profiled') return points.filter(point => point.hasProfile);
-            return points;
+            if (this.mapFilter === 'attackers') points = points.filter(point => !point.hasProfile);
+            else if (this.mapFilter === 'profiled') points = points.filter(point => point.hasProfile);
+            const domain = this.timelineDomain;
+            const start = this.timelineStart ?? domain.min;
+            const end = this.timelineEnd ?? domain.max;
+            const mode = this.timelineMode;
+            return points.filter(point => {
+                const first = Number(point.firstSeen || 0);
+                const last = Number(point.lastSeen || 0);
+                if (mode === 'first') return first >= start && first <= end;
+                if (mode === 'last') return last >= start && last <= end;
+                // overlap: active during the window
+                return last >= start && first <= end;
+            });
+        },
+        timelineStartInput: {
+            get() { return this.unixToLocalInput(this.timelineStart ?? this.timelineDomain.min); },
+            set(value) {
+                const sec = this.localInputToUnix(value);
+                if (sec === null) return;
+                const domain = this.timelineDomain;
+                let next = Math.min(Math.max(sec, domain.min), domain.max);
+                const end = this.timelineEnd ?? domain.max;
+                if (next > end) next = end;
+                this.timelineStart = next;
+                this.timelineUserSet = true;
+            }
+        },
+        timelineEndInput: {
+            get() { return this.unixToLocalInput(this.timelineEnd ?? this.timelineDomain.max); },
+            set(value) {
+                const sec = this.localInputToUnix(value);
+                if (sec === null) return;
+                this.stopTimelinePlay();
+                const domain = this.timelineDomain;
+                let next = Math.min(Math.max(sec, domain.min), domain.max);
+                const start = this.timelineStart ?? domain.min;
+                if (next < start) next = start;
+                this.timelineEnd = next;
+                this.timelineUserSet = true;
+            }
         },
         mapAttackersCount() { return this.filteredMapPoints.filter(point => !point.hasProfile).length; },
         mapProfiledCount() { return this.filteredMapPoints.filter(point => point.hasProfile).length; },
@@ -572,6 +691,7 @@ export default {
     },
     beforeUnmount() {
         if (this.refreshTimer) clearInterval(this.refreshTimer);
+        this.stopTimelinePlay();
         this.destroyThreatMap();
     },
     watch: {
@@ -584,7 +704,11 @@ export default {
         },
         mapFilter() { this.syncThreatMapPoints(); },
         hideApproximateMapPoints() { this.syncThreatMapPoints(); },
-        mapIps() { this.syncThreatMapPoints(); },
+        timelineMode() { this.syncThreatMapPoints(); },
+        timelineStart() { this.syncThreatMapPoints(); },
+        timelineEnd() { this.syncThreatMapPoints(); },
+        timelineSpeed() { if (this.timelinePlaying) this.scheduleTimelineTick(); },
+        mapIps() { this.initTimelineWindow(); this.syncThreatMapPoints(); },
         ips() { this.syncThreatMapPoints(); },
         blockedRegions() { this.syncThreatMapRegions(); },
         selectedIp() { this.syncThreatMapPoints(); },
@@ -596,6 +720,87 @@ export default {
             if (!value) return '-';
             const date = new Date(Number(value) * 1000);
             return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
+        },
+        unixToLocalInput(sec) {
+            const n = Number(sec);
+            if (!Number.isFinite(n) || n <= 0) return '';
+            const d = new Date(n * 1000);
+            if (Number.isNaN(d.getTime())) return '';
+            const pad = v => String(v).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        },
+        localInputToUnix(str) {
+            if (!str) return null;
+            const d = new Date(str); // datetime-local parses as local time
+            if (Number.isNaN(d.getTime())) return null;
+            return Math.floor(d.getTime() / 1000 / HOUR) * HOUR;
+        },
+        fmtTimelineLabel(sec) { return this.fmtTime(sec); },
+        onTimelineStartSlide(event) {
+            const domain = this.timelineDomain;
+            let start = Number(event?.target?.value);
+            if (!Number.isFinite(start)) start = domain.min;
+            const end = this.timelineEnd ?? domain.max;
+            this.timelineStart = Math.min(start, end); // start cannot pass end
+            this.timelineUserSet = true;
+        },
+        onTimelineEndSlide(event) {
+            this.stopTimelinePlay(); // dragging the "before" handle takes over from playback
+            const domain = this.timelineDomain;
+            let end = Number(event?.target?.value);
+            if (!Number.isFinite(end)) end = domain.max;
+            const start = this.timelineStart ?? domain.min;
+            this.timelineEnd = Math.max(end, start); // end cannot pass start
+            this.timelineUserSet = true;
+        },
+        resetTimeline() {
+            this.stopTimelinePlay();
+            this.timelineStart = this.timelineDomain.min;
+            this.timelineEnd = this.timelineDomain.max;
+            this.timelineUserSet = false;
+        },
+        toggleTimelinePlay() {
+            if (this.timelinePlaying) this.stopTimelinePlay();
+            else this.startTimelinePlay();
+        },
+        startTimelinePlay() {
+            const domain = this.timelineDomain;
+            const start = this.timelineStart ?? domain.min;
+            // restart from the window start if the "before" handle is already at the end
+            if ((this.timelineEnd ?? domain.max) >= domain.max) this.timelineEnd = start;
+            this.timelineUserSet = true;
+            this.timelinePlaying = true;
+            this.scheduleTimelineTick();
+        },
+        scheduleTimelineTick() {
+            if (this.timelinePlayTimer) clearInterval(this.timelinePlayTimer);
+            const speed = Math.max(1, Number(this.timelineSpeed) || 1); // minutes per second
+            this.timelinePlayTimer = setInterval(this.timelinePlayTick, Math.round(1000 / speed));
+        },
+        timelinePlayTick() {
+            const domain = this.timelineDomain;
+            const next = (this.timelineEnd ?? domain.min) + 60; // advance one minute
+            if (next >= domain.max) {
+                this.timelineEnd = domain.max;
+                this.stopTimelinePlay();
+                return;
+            }
+            this.timelineEnd = next;
+        },
+        stopTimelinePlay() {
+            this.timelinePlaying = false;
+            if (this.timelinePlayTimer) { clearInterval(this.timelinePlayTimer); this.timelinePlayTimer = null; }
+        },
+        initTimelineWindow(force = false) {
+            if (this.timelineUserSet && !force) {
+                // keep the user's selection but clamp into the new domain
+                const domain = this.timelineDomain;
+                if (this.timelineStart !== null) this.timelineStart = Math.min(Math.max(this.timelineStart, domain.min), domain.max);
+                if (this.timelineEnd !== null) this.timelineEnd = Math.min(Math.max(this.timelineEnd, domain.min), domain.max);
+                return;
+            }
+            this.timelineStart = this.timelineDomain.min;
+            this.timelineEnd = this.timelineDomain.max;
         },
         toNumberOrNull(value) {
             if (value === null || value === undefined || value === '') return null;
@@ -1342,6 +1547,33 @@ export default {
 .map-toggle.active { color: #ecfffa; background: rgba(95,211,255,.14); box-shadow: inset 0 0 0 1px rgba(95,211,255,.22); }
 .map-toggle input { width: 13px; height: 13px; margin: 0; accent-color: #5fd3ff; cursor: pointer; }
 .map-layout { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 10px; padding: 12px; }
+.timeline-rail { padding: 12px 14px 14px; border-top: 1px solid rgba(82,255,185,.14); background: linear-gradient(90deg, rgba(9,18,20,.6), rgba(6,9,12,.4)); }
+.timeline-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.timeline-mode { min-height: 30px; padding: 5px 10px; border: 1px solid rgba(116,255,198,.22); border-radius: 5px; background: #11181a; color: #ecfffa; font: 700 11px ui-monospace, Consolas, monospace; letter-spacing: .4px; cursor: pointer; }
+.timeline-mode:focus { outline: none; border-color: rgba(95,211,255,.5); }
+.timeline-play { min-height: 30px; padding: 6px 12px; border: 1px solid rgba(82,255,185,.32); border-radius: 5px; background: rgba(82,255,185,.12); color: #ecfffa; font: 800 11px ui-monospace, Consolas, monospace; letter-spacing: .5px; text-transform: uppercase; cursor: pointer; }
+.timeline-play:hover { background: rgba(82,255,185,.2); }
+.timeline-play.playing { border-color: rgba(95,211,255,.4); background: rgba(95,211,255,.16); box-shadow: 0 0 8px rgba(95,211,255,.25); }
+.timeline-speed { display: inline-flex; align-items: center; gap: 6px; font: 700 10px ui-monospace, Consolas, monospace; color: #9fb8b1; text-transform: uppercase; letter-spacing: .6px; }
+.timeline-speed select { min-height: 30px; padding: 5px 8px; border: 1px solid rgba(116,255,198,.22); border-radius: 5px; background: #11181a; color: #ecfffa; font: 700 11px ui-monospace, Consolas, monospace; cursor: pointer; }
+.timeline-speed select:focus { outline: none; border-color: rgba(95,211,255,.5); }
+.timeline-count { font: 700 11px ui-monospace, Consolas, monospace; color: #5fd3ff; letter-spacing: .5px; text-transform: uppercase; }
+.timeline-reset { min-height: 30px; margin-left: auto; padding: 6px 12px; border: 1px solid rgba(116,255,198,.16); border-radius: 4px; background: rgba(255,255,255,.035); color: #9fb8b1; font-size: 11px; font-weight: 800; text-transform: uppercase; cursor: pointer; }
+.timeline-reset:hover { color: #ecfffa; background: rgba(82,255,185,.16); }
+.timeline-track { position: relative; height: 28px; }
+.timeline-track::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 4px; transform: translateY(-50%); border-radius: 3px; background: rgba(95,211,255,.15); }
+.timeline-range { position: absolute; top: 0; left: 0; width: 100%; height: 28px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; pointer-events: none; }
+.timeline-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 50%; border: 2px solid #04080a; background: #52ffb9; box-shadow: 0 0 6px rgba(82,255,185,.5); cursor: pointer; pointer-events: auto; }
+.timeline-range.end::-webkit-slider-thumb { background: #5fd3ff; box-shadow: 0 0 6px rgba(95,211,255,.5); }
+.timeline-range::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #04080a; background: #52ffb9; box-shadow: 0 0 6px rgba(82,255,185,.5); cursor: pointer; pointer-events: auto; }
+.timeline-range.end::-moz-range-thumb { background: #5fd3ff; box-shadow: 0 0 6px rgba(95,211,255,.5); }
+.timeline-range::-webkit-slider-runnable-track { background: transparent; }
+.timeline-range::-moz-range-track { background: transparent; }
+.timeline-fields { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.timeline-field { display: inline-flex; align-items: center; gap: 6px; font: 700 10px ui-monospace, Consolas, monospace; color: #9fb8b1; text-transform: uppercase; letter-spacing: .6px; }
+.timeline-field input { min-height: 30px; padding: 5px 9px; border: 1px solid rgba(116,255,198,.22); border-radius: 5px; background: #11181a; color: #ecfffa; font: 600 12px ui-monospace, Consolas, monospace; color-scheme: dark; }
+.timeline-field input:focus { outline: none; border-color: rgba(95,211,255,.5); }
+.timeline-sep { color: #5fd3ff; font-weight: 800; }
 .world-map-stage { position: relative; height: clamp(500px, 56vh, 760px); min-height: 500px; overflow: hidden; border: 1px solid rgba(82,255,185,.24); border-radius: 5px; background: radial-gradient(circle at 50% 20%, rgba(35,144,118,.2), transparent 45%), linear-gradient(180deg, #031512, #05090b); cursor: grab; }
 .world-map-stage.box-mode { cursor: crosshair; }
 .world-map-stage.loading { box-shadow: inset 0 0 28px rgba(95,211,255,.08); }

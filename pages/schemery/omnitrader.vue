@@ -277,12 +277,16 @@
                     <!-- Schema-driven form: works for any strategy (single-symbol or multi-asset universe).
                          Universe strategies render their own params (regime symbol, universe cap, etc.). -->
                     <div class="form-grid">
+                        <div class="param-group-label">Window</div>
                         <label class="field">
                             <span>Interval</span>
                             <select v-model="backtestForm.interval">
                                 <option v-for="i in intervals" :key="i.value" :value="i.value">{{ i.label }}</option>
                             </select>
                         </label>
+                        <label class="field"><span>Start Date</span><input v-model="backtestForm.fromUtc" type="date" /></label>
+                        <label class="field"><span>End Date</span><input v-model="backtestForm.toUtc" type="date" /></label>
+
                         <template v-for="(plist, group) in backtestParamGroups" :key="group">
                             <div class="param-group-label">{{ group }}</div>
                             <label v-for="p in plist" :key="p.Name" class="field" :title="p.Help || ''">
@@ -296,7 +300,8 @@
                                 <input v-else v-model="backtestParams[p.Name]" />
                             </label>
                         </template>
-                        <label class="field"><span>Candles</span><input v-model.number="backtestForm.candleCount" type="number" min="1" step="1" /></label>
+
+                        <div class="param-group-label">Execution</div>
                         <label class="field"><span>Initial Quote</span><input v-model.number="backtestForm.initialQuote" type="number" min="0" step="0.01" /></label>
                         <label class="field"><span>Initial Base</span><input v-model.number="backtestForm.initialBase" type="number" min="0" step="0.00000001" /></label>
                         <label class="field"><span>Fee Fraction</span><input v-model.number="backtestForm.feeFraction" type="number" min="0" step="0.0001" /></label>
@@ -733,8 +738,10 @@ const deployForm = reactive({
     initialQuote: 10000, initialBase: 0, feeFraction: 0.001, slippageFraction: 0.0005, leverage: 1,
     maxPositionQuoteUsd: 100, maxDailyLossUsd: 50, maxOrdersPerHour: 30, allowedSymbols: '',
 });
+function isoDate(daysAgo: number): string { const d = new Date(); d.setUTCDate(d.getUTCDate() - daysAgo); return d.toISOString().slice(0, 10); }
 const backtestForm = reactive({
     strategyClass: '', coin: 'BTC', currency: 'USD', interval: 'OneHour', candleCount: 500,
+    fromUtc: isoDate(90), toUtc: isoDate(0),
     initialQuote: 10000, initialBase: 0, feeFraction: 0.001, slippageFraction: 0.0005, leverage: 1,
     runValidation: false, valInSample: 180, valOos: 60, valWarmup: 30,
 });
@@ -1081,6 +1088,8 @@ async function createBacktest() {
             Currency: backtestForm.currency,
             Interval: backtestForm.interval,
             CandleCount: backtestForm.candleCount,
+            FromUtc: new Date(backtestForm.fromUtc + 'T00:00:00Z').toISOString(),
+            ToUtc: new Date(backtestForm.toUtc + 'T23:59:59Z').toISOString(),
             InitialQuoteBalance: backtestForm.initialQuote,
             InitialBaseBalance: backtestForm.initialBase,
             FeeFraction: backtestForm.feeFraction,
@@ -1259,6 +1268,34 @@ function setTradeMarkers(series: any, candleTimes: number[]) {
     series.setMarkers(markers);
 }
 
+// For each trade, draw its take-profit (green) and stop-loss (red) as dashed horizontal segments
+// spanning the bars the position was open (entry → exit). One short line series per level per trade.
+function drawTradeBrackets(chart: any, lc: any, candleTimes: number[]) {
+    const trades = btResult.value?.Trades;
+    if (!Array.isArray(trades) || !candleTimes.length || trades.length > 400) return;
+    const snap = (ms: number): number => {
+        const t = Math.floor(ms / 1000);
+        let best = candleTimes[0], bestDiff = Math.abs(candleTimes[0] - t);
+        for (const ct of candleTimes) { const d = Math.abs(ct - t); if (d < bestDiff) { bestDiff = d; best = ct; } }
+        return best;
+    };
+    const dashed = lc.LineStyle ? lc.LineStyle.Dashed : 2;
+    const opts = (color: string) => ({ color, lineWidth: 1, lineStyle: dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+    for (const tr of trades) {
+        const e = snap(new Date(tr.EntryTime).getTime());
+        const x = snap(new Date(tr.ExitTime).getTime());
+        if (x <= e) continue; // need a real span (collapsed 1-bar trades are skipped)
+        if (tr.TakeProfit != null) {
+            const s = chart.addLineSeries(opts('rgba(98,206,71,0.55)'));
+            s.setData([{ time: e, value: num(tr.TakeProfit) }, { time: x, value: num(tr.TakeProfit) }]);
+        }
+        if (tr.StopLoss != null) {
+            const s = chart.addLineSeries(opts('rgba(239,68,68,0.55)'));
+            s.setData([{ time: e, value: num(tr.StopLoss) }, { time: x, value: num(tr.StopLoss) }]);
+        }
+    }
+}
+
 // TradingView-style candlestick chart (lightweight-charts) with built-in drag-pan + wheel-zoom.
 // Dynamically imported so it never runs during SSR.
 async function buildPriceChart() {
@@ -1292,6 +1329,7 @@ async function buildPriceChart() {
             wickUpColor: '#62ce47', wickDownColor: '#ef4444',
         });
         series.setData(data as any);
+        drawTradeBrackets(chart, lc, data.map(d => d.time));
         setTradeMarkers(series, data.map(d => d.time));
     } else {
         const data = dedupeByTime(btEquitySeries.value.map(p => ({

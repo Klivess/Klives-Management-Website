@@ -9,10 +9,6 @@
 
       <div v-if="message.content" class="msg-content" v-html="renderMarkdown(message.content)"></div>
 
-      <div v-if="message.scripts && message.scripts.length" class="msg-scripts">
-        <ScriptResultCard v-for="(script, si) in message.scripts" :key="si" :script="script" />
-      </div>
-
       <div v-if="message.pending && !message.content" class="msg-typing">
         <span></span><span></span><span></span>
       </div>
@@ -23,7 +19,6 @@
 <script setup>
 import { computed } from 'vue';
 import { renderMarkdown } from '~/scripts/agentMarkdown';
-import ScriptResultCard from './ScriptResultCard.vue';
 
 const props = defineProps({
   // { role: 'User' | 'KliveAgent', content, scripts: [], pending?, timestamp }
@@ -146,10 +141,6 @@ const timeLabel = computed(() => {
 }
 .msg-content :deep(a) {
   color: $teritary;
-}
-
-.msg-scripts {
-  margin-top: 6px;
 }
 
 /* Typing indicator (live "thinking" before the first prose arrives) */

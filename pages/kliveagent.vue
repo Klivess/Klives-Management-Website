@@ -64,6 +64,20 @@
         </div>
       </div>
 
+      <!-- Script panel: scripts from the current/active agent turn -->
+      <aside class="script-panel">
+        <div class="script-panel-head">
+          <span class="script-panel-title">Scripts</span>
+          <span v-if="currentTurnScripts.length" class="script-panel-count">{{ currentTurnScripts.length }}</span>
+        </div>
+        <div class="script-panel-body">
+          <div v-if="currentTurnScripts.length === 0" class="script-panel-empty">
+            Scripts the agent runs this turn appear here.
+          </div>
+          <ScriptResultCard v-for="(script, si) in currentTurnScripts" :key="si" :script="script" />
+        </div>
+      </aside>
+
       <!-- Context rail: live tasks + quick conversation access -->
       <aside class="chat-rail">
         <div class="rail-block">
@@ -71,6 +85,13 @@
             <span class="rail-title">Session</span>
           </div>
           <button class="rail-newchat" type="button" @click="newChat">＋ New chat</button>
+          <button
+            class="rail-export"
+            type="button"
+            @click="downloadConversationCsv"
+            :disabled="messages.length === 0"
+            title="Download the full conversation (messages, scripts and outputs) as CSV"
+          >⤓ Export CSV</button>
         </div>
 
         <div class="rail-block">
@@ -126,13 +147,13 @@
           </div>
           <div class="dash-controls">
             <div class="seg seg-sm">
-              <button v-for="r in ['day','week','month']" :key="r" class="seg-btn" :class="{ 'seg-active': chartRange === r }" type="button" @click="chartRange = r">{{ r }}</button>
+              <button v-for="r in RANGES" :key="r.id" class="seg-btn" :class="{ 'seg-active': chartRange === r.id }" type="button" @click="chartRange = r.id">{{ r.label }}</button>
             </div>
             <button @click="loadAnalytics" class="ghost-btn" type="button">⟳ Refresh</button>
           </div>
         </div>
 
-        <!-- KPI grid — reflects the selected day/week/month period -->
+        <!-- KPI grid — every figure is aggregated over exactly the selected time range -->
         <div v-if="periodSummary" class="kpi-grid">
           <AgentStatCard :value="periodSummary.messages" label="Messages" />
           <AgentStatCard :value="fmtTokens(periodSummary.totalTokens)" label="Total Tokens" />
@@ -211,7 +232,7 @@
 
         <!-- Donuts -->
         <div class="charts-row">
-          <AgentChartCard title="Script Outcomes (Lifetime)" variant="donut">
+          <AgentChartCard :title="`Script Outcomes · ${activeRange.label}`" variant="donut">
             <div class="donut-wrap">
               <svg viewBox="0 0 120 120" class="donut-svg">
                 <circle cx="60" cy="60" r="46" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="16"/>
@@ -221,17 +242,17 @@
                   :stroke-dasharray="`${scriptFailDash} ${288.5 - scriptFailDash}`" :stroke-dashoffset="72 - scriptSuccessDash" stroke-linecap="round"/>
               </svg>
               <div class="donut-center">
-                <div class="donut-pct">{{ analytics.lifetime.scriptSuccessRatePct?.toFixed(0) }}%</div>
+                <div class="donut-pct">{{ periodSummary.scriptSuccessRatePct?.toFixed(0) }}%</div>
                 <div class="donut-label">success</div>
               </div>
             </div>
             <template #legend>
-              <span class="legend-dot" style="background:#4d9e39"></span>{{ analytics.lifetime.scripts - analytics.lifetime.scriptFailures }} passed
-              <span class="legend-dot" style="background:#e0584b;margin-left:12px"></span>{{ analytics.lifetime.scriptFailures }} failed
+              <span class="legend-dot" style="background:#4d9e39"></span>{{ periodSummary.scripts - periodSummary.scriptFailures }} passed
+              <span class="legend-dot" style="background:#e0584b;margin-left:12px"></span>{{ periodSummary.scriptFailures }} failed
             </template>
           </AgentChartCard>
 
-          <AgentChartCard title="Token Split (Lifetime)" variant="donut">
+          <AgentChartCard :title="`Token Split · ${activeRange.label}`" variant="donut">
             <div class="donut-wrap">
               <svg viewBox="0 0 120 120" class="donut-svg">
                 <circle cx="60" cy="60" r="46" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="16"/>
@@ -241,13 +262,13 @@
                   :stroke-dasharray="`${completionTokenDash} ${288.5 - completionTokenDash}`" :stroke-dashoffset="72 - promptTokenDash" stroke-linecap="round"/>
               </svg>
               <div class="donut-center">
-                <div class="donut-pct" style="font-size:13px">{{ fmtTokens(analytics.lifetime.totalTokens) }}</div>
+                <div class="donut-pct" style="font-size:13px">{{ fmtTokens(periodSummary.totalTokens) }}</div>
                 <div class="donut-label">total</div>
               </div>
             </div>
             <template #legend>
-              <span class="legend-dot" style="background:#4d9e39"></span>{{ fmtTokens(analytics.lifetime.promptTokens) }} prompt
-              <span class="legend-dot" style="background:#3b82f6;margin-left:12px"></span>{{ fmtTokens(analytics.lifetime.completionTokens) }} output
+              <span class="legend-dot" style="background:#4d9e39"></span>{{ fmtTokens(periodSummary.promptTokens) }} prompt
+              <span class="legend-dot" style="background:#3b82f6;margin-left:12px"></span>{{ fmtTokens(periodSummary.completionTokens) }} output
             </template>
           </AgentChartCard>
 
@@ -342,6 +363,7 @@ import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import { renderMarkdown } from '~/scripts/agentMarkdown';
 import AgentMessage from '~/components/KliveAgent/AgentMessage.vue';
+import ScriptResultCard from '~/components/KliveAgent/ScriptResultCard.vue';
 import AgentStatCard from '~/components/KliveAgent/AgentStatCard.vue';
 import AgentChartCard from '~/components/KliveAgent/AgentChartCard.vue';
 import 'highlight.js/styles/github-dark.css';
@@ -398,6 +420,19 @@ const reindexStatus = ref('');
 
 const recentConversations = computed(() => conversationList.value.slice(0, 6));
 
+// Scripts from the latest agent turn that actually ran scripts. Walking back from
+// the end (rather than reading strictly the last message) keeps the panel populated
+// with the most recent scripts instead of flickering to empty the moment the user
+// sends a new message or when the final turn ran no scripts. Updates live during
+// streaming because the poll mutates messages.value[i].scripts in place.
+const currentTurnScripts = computed(() => {
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    const m = messages.value[i];
+    if (m.role === 'KliveAgent' && m.scripts && m.scripts.length) return m.scripts;
+  }
+  return [];
+});
+
 const isSendDisabled = computed(() => loading.value || !inputMessage.value.trim());
 
 const sendButtonTitle = computed(() => {
@@ -430,6 +465,62 @@ function newChat() {
   resetInputHeight();
 }
 
+// RFC 4180 field escaping: quote any field containing a comma, quote or newline,
+// and double embedded quotes. Newlines are preserved inside quoted fields so
+// multi-line message content and script code/output stay intact (lossless).
+function csvEscape(value) {
+  const s = value == null ? '' : String(value);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+// Export the entire current conversation to CSV with one row per message and one
+// row per executed script (associated back to its message), capturing every field
+// we hold so the transcript can be reviewed/improved with no detail lost.
+function downloadConversationCsv() {
+  if (!messages.value.length) return;
+
+  const headers = [
+    'messageIndex', 'role', 'timestamp', 'rowType', 'scriptIndex',
+    'content', 'scriptCode', 'scriptOutput', 'scriptSuccess',
+    'scriptErrorMessage', 'scriptExecutionTimeMs', 'pending',
+  ];
+  const rows = [headers];
+
+  messages.value.forEach((m, mi) => {
+    // The message itself.
+    rows.push([
+      mi, m.role ?? '', m.timestamp ?? '', 'message', '',
+      m.content ?? '', '', '', '', '', '', m.pending ? 'true' : '',
+    ]);
+    // Each script the agent ran on this turn, with full code + output.
+    const scripts = Array.isArray(m.scripts) ? m.scripts : [];
+    scripts.forEach((s, si) => {
+      rows.push([
+        mi, m.role ?? '', m.timestamp ?? '', 'script', si,
+        '', s.code ?? '', s.output ?? '',
+        s.success == null ? '' : String(s.success),
+        s.errorMessage ?? '',
+        s.executionTimeMs == null ? '' : String(s.executionTimeMs),
+        '',
+      ]);
+    });
+  });
+
+  // Prepend a BOM so Excel reads the UTF-8 content (and emoji/glyphs) correctly.
+  const csv = '﻿' + rows.map((r) => r.map(csvEscape).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const idPart = conversationId.value ? `_${String(conversationId.value).replace(/[^A-Za-z0-9_-]/g, '_')}` : '';
+  a.href = url;
+  a.download = `kliveagent_conversation${idPart}_${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 async function readAgentApiResponse(res) {
   const contentType = res.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
@@ -452,7 +543,7 @@ async function sendMessage() {
   inputMessage.value = '';
   resetInputHeight();
   loading.value = true;
-  scrollToBottom();
+  scrollToBottom(true);
 
   try {
     const body = JSON.stringify({ message: msg, conversationId: conversationId.value });
@@ -479,7 +570,7 @@ async function sendMessage() {
           pending: true,
           timestamp: new Date().toISOString(),
         });
-        scrollToBottom();
+        scrollToBottom(true);
         // Mutate through the array index so updates are reactive (streaming + final).
         await pollPendingResponse(messages.value.length - 1);
       } else {
@@ -573,7 +664,21 @@ async function pollPendingResponse(messageIndex) {
   scrollToBottom();
 }
 
-function scrollToBottom() {
+// True when the viewport is parked at (or within a line or two of) the bottom.
+// Checked synchronously *before* the pending DOM growth, so it reflects where the
+// user was sitting prior to this update.
+function isNearBottom() {
+  const el = chatMessages.value;
+  if (!el) return true;
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+}
+
+// Auto-scroll respects the user's scroll position: while the agent streams we only
+// follow along if they were already at the bottom, so scrolling up to read earlier
+// output no longer snaps them back down. `force` overrides this for explicit user
+// actions (sending a message, opening a conversation).
+function scrollToBottom(force = false) {
+  if (!force && !isNearBottom()) return;
   nextTick(() => {
     if (chatMessages.value) {
       chatMessages.value.scrollTop = chatMessages.value.scrollHeight;
@@ -767,7 +872,7 @@ async function loadConversation(convId) {
       timestamp: m.timestamp,
     }));
     view.value = 'chat';
-    scrollToBottom();
+    scrollToBottom(true);
   } catch {}
 }
 
@@ -776,51 +881,92 @@ const chartW = 560;
 const chartH = 130;
 const chartPad = 18;
 const barW = 10;
-const chartRange = ref('day');
+// Stock-graph-style time ranges. Each maps to a bucket granularity (the backend stores
+// day/week/month buckets) and how many of the most-recent buckets to include. 'auto'
+// granularity picks the coarsest bucket that has enough history to be worth plotting.
+const RANGES = [
+  { id: '7D',  label: '7D',  gran: 'day',   count: 7 },
+  { id: '30D', label: '30D', gran: 'day',   count: 30 },
+  { id: '90D', label: '90D', gran: 'day',   count: 90 },
+  { id: '6M',  label: '6M',  gran: 'week',  count: 26 },
+  { id: '1Y',  label: '1Y',  gran: 'month', count: 12 },
+  { id: 'ALL', label: 'All', gran: 'auto',  count: Infinity },
+];
+const chartRange = ref('30D');
 
+const activeRange = computed(() => RANGES.find((r) => r.id === chartRange.value) ?? RANGES[1]);
+
+// Resolve 'auto' to the coarsest granularity that actually has history.
+const chartGran = computed(() => {
+  const r = activeRange.value;
+  if (r.gran !== 'auto') return r.gran;
+  const a = analytics.value;
+  if ((a?.monthlyHistory?.length ?? 0) > 2) return 'month';
+  if ((a?.weeklyHistory?.length ?? 0) > 2) return 'week';
+  return 'day';
+});
+
+// The buckets actually plotted: the selected granularity's history, trimmed to the window.
 const chartDays = computed(() => {
   const a = analytics.value;
   if (!a) return [];
-  if (chartRange.value === 'week') return a.weeklyHistory ?? [];
-  if (chartRange.value === 'month') return a.monthlyHistory ?? [];
-  return a.dailyHistory ?? [];
+  const all = chartGran.value === 'month' ? (a.monthlyHistory ?? [])
+            : chartGran.value === 'week' ? (a.weeklyHistory ?? [])
+            : (a.dailyHistory ?? []);
+  const count = activeRange.value.count;
+  return Number.isFinite(count) && all.length > count ? all.slice(all.length - count) : all;
 });
 
 const rangeLabel = computed(() =>
-  chartRange.value === 'week' ? 'Week' : chartRange.value === 'month' ? 'Month' : 'Day'
+  chartGran.value === 'week' ? 'Week' : chartGran.value === 'month' ? 'Month' : 'Day'
 );
 
-// The KPI cards reflect the *latest* bucket of the selected granularity (current
-// day / week / month) — not lifetime — so the Day/Week/Month toggle actually
-// changes the headline numbers. Averages/rates are recomputed from the bucket's
-// raw counts since the backend only stores per-message averages at the lifetime level.
+// Every headline figure is AGGREGATED over exactly the buckets on screen, so the KPI
+// cards, donuts and charts all describe the same window. Raw counts are summed; averages
+// and rates are recomputed from those sums (avgLatency*messages reconstructs total latency).
 const periodSummary = computed(() => {
+  // Always returns a valid (possibly all-zero) object so the donuts — which aren't wrapped in
+  // a v-if — never dereference null when the selected range has no activity.
   const buckets = chartDays.value;
-  if (!buckets.length) return analytics.value?.lifetime ?? null;
-  const b = buckets[buckets.length - 1];
-  const messages = b.messages || 0;
+  const sum = (sel) => buckets.reduce((acc, b) => acc + (sel(b) || 0), 0);
+  const messages = sum((b) => b.messages);
+  const promptTokens = sum((b) => b.promptTokens);
+  const completionTokens = sum((b) => b.completionTokens);
+  const iterations = sum((b) => b.iterations);
+  const scripts = sum((b) => b.scripts);
+  const scriptFailures = sum((b) => b.scriptFailures);
+  const totalLatency = buckets.reduce((acc, b) => acc + (b.avgLatencyMs || 0) * (b.messages || 0), 0);
   return {
-    label: b.key || b.label || '',
     messages,
-    totalTokens: b.totalTokens,
-    promptTokens: b.promptTokens,
-    completionTokens: b.completionTokens,
-    avgPromptTokensPerMessage: messages ? b.promptTokens / messages : 0,
-    avgCompletionTokensPerMessage: messages ? b.completionTokens / messages : 0,
-    avgIterationsPerMessage: messages ? b.iterations / messages : 0,
-    scriptSuccessRatePct: b.scripts ? ((b.scripts - b.scriptFailures) / b.scripts) * 100 : 100,
-    avgLatencyMs: b.avgLatencyMs,
-    estimatedCostUsd: b.estimatedCostUsd,
-    memorySaves: b.memorySaves,
-    discordMessages: b.discordMessages,
-    apiMessages: b.apiMessages,
+    totalTokens: sum((b) => b.totalTokens),
+    promptTokens,
+    completionTokens,
+    iterations,
+    scripts,
+    scriptFailures,
+    avgPromptTokensPerMessage: messages ? promptTokens / messages : 0,
+    avgCompletionTokensPerMessage: messages ? completionTokens / messages : 0,
+    avgIterationsPerMessage: messages ? iterations / messages : 0,
+    scriptSuccessRatePct: scripts ? ((scripts - scriptFailures) / scripts) * 100 : 100,
+    avgLatencyMs: messages ? totalLatency / messages : 0,
+    maxLatencyMs: Math.max(0, ...buckets.map((b) => b.maxLatencyMs || 0)),
+    estimatedCostUsd: sum((b) => b.estimatedCostUsd),
+    memorySaves: sum((b) => b.memorySaves),
+    memoryRecalls: sum((b) => b.memoryRecalls),
+    discordMessages: sum((b) => b.discordMessages),
+    apiMessages: sum((b) => b.apiMessages),
   };
 });
 
 const periodLabel = computed(() => {
-  const lbl = periodSummary.value?.label;
-  const noun = chartRange.value === 'week' ? 'week' : chartRange.value === 'month' ? 'month' : 'day';
-  return lbl ? `latest ${noun} · ${lbl}` : `latest ${noun}`;
+  const buckets = chartDays.value;
+  if (!buckets.length) return 'no activity in range';
+  const first = buckets[0]?.label || buckets[0]?.key;
+  const last = buckets[buckets.length - 1]?.label || buckets[buckets.length - 1]?.key;
+  const noun = chartGran.value === 'week' ? 'week' : chartGran.value === 'month' ? 'month' : 'day';
+  const span = `${buckets.length} ${noun}${buckets.length === 1 ? '' : 's'}`;
+  if (first && last && first !== last) return `${span} · ${first} – ${last}`;
+  return last ? `${span} · ${last}` : span;
 });
 
 const chartDaysLabeled = computed(() => {
@@ -902,25 +1048,26 @@ function fmtCost(usd) {
   return '$' + n.toFixed(n >= 1 ? 2 : 4);
 }
 
-// Donut helpers — circumference of r=46 circle ≈ 288.5
+// Donut helpers — circumference of r=46 circle ≈ 288.5. Driven by the windowed
+// periodSummary so the donuts describe the SAME range as the rest of the dashboard.
 const scriptSuccessDash = computed(() => {
-  const a = analytics.value?.lifetime;
-  if (!a || a.scripts === 0) return 0;
+  const a = periodSummary.value;
+  if (!a || !a.scripts) return 0;
   return ((a.scripts - a.scriptFailures) / a.scripts) * 288.5;
 });
 const scriptFailDash = computed(() => {
-  const a = analytics.value?.lifetime;
-  if (!a || a.scripts === 0) return 0;
+  const a = periodSummary.value;
+  if (!a || !a.scripts) return 0;
   return (a.scriptFailures / a.scripts) * 288.5;
 });
 const promptTokenDash = computed(() => {
-  const a = analytics.value?.lifetime;
-  if (!a || a.totalTokens === 0) return 0;
+  const a = periodSummary.value;
+  if (!a || !a.totalTokens) return 0;
   return (a.promptTokens / a.totalTokens) * 288.5;
 });
 const completionTokenDash = computed(() => {
-  const a = analytics.value?.lifetime;
-  if (!a || a.totalTokens === 0) return 0;
+  const a = periodSummary.value;
+  if (!a || !a.totalTokens) return 0;
   return (a.completionTokens / a.totalTokens) * 288.5;
 });
 
@@ -984,8 +1131,6 @@ onUnmounted(() => {
 
 <style scoped lang="scss">
 .ka {
-  max-width: 1400px;
-  margin: 0 auto;
   padding: 20px 24px;
   font-family: 'Segoe UI', sans-serif;
   color: #dcdcdc;
@@ -1193,6 +1338,58 @@ onUnmounted(() => {
   gap: 16px;
 }
 
+/* ── Script panel ── */
+.script-panel {
+  width: 360px;
+  flex: 0 0 360px;
+  display: flex;
+  flex-direction: column;
+  background: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.script-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.script-panel-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #8a8a8a;
+}
+
+.script-panel-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: $teritary;
+  background: rgba($secondary, 0.16);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.script-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.script-panel-empty {
+  color: #5a5a5a;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 4px 2px;
+}
+
 .chat-empty {
   margin: auto;
   text-align: center;
@@ -1366,6 +1563,28 @@ onUnmounted(() => {
 }
 .rail-newchat:hover {
   background: rgba($secondary, 0.2);
+}
+
+.rail-export {
+  width: 100%;
+  margin-top: 8px;
+  padding: 9px;
+  background: #1c1c1c;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: #9a9a9a;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+.rail-export:hover:not(:disabled) {
+  border-color: rgba($secondary, 0.45);
+  color: $teritary;
+}
+.rail-export:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .rail-empty {
@@ -1655,10 +1874,12 @@ onUnmounted(() => {
 
 /* ── Scrollbars ── */
 .chat-messages::-webkit-scrollbar,
+.script-panel-body::-webkit-scrollbar,
 .chat-rail::-webkit-scrollbar {
   width: 6px;
 }
 .chat-messages::-webkit-scrollbar-thumb,
+.script-panel-body::-webkit-scrollbar-thumb,
 .chat-rail::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.12);
   border-radius: 3px;
@@ -1672,6 +1893,11 @@ onUnmounted(() => {
   }
   .chat-panel {
     height: 60vh;
+  }
+  .script-panel {
+    width: 100%;
+    flex: none;
+    height: 40vh;
   }
   .chat-rail {
     width: 100%;

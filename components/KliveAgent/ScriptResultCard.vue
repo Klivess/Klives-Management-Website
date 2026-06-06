@@ -27,9 +27,9 @@ const props = defineProps({
   script: { type: Object, required: true },
 });
 
-// Collapsed by default to keep the thread skimmable; failed scripts open so the
-// error is visible without a click.
-const expanded = ref(props.script?.success === false);
+// Always collapsed by default to keep the thread skimmable — including failed
+// scripts; the header glyph already flags failures, click to inspect.
+const expanded = ref(false);
 </script>
 
 <style scoped lang="scss">

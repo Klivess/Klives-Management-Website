@@ -43,6 +43,7 @@ export default defineNuxtConfig({
     '~/assets/scss/button.scss',
     '~/assets/scss/inputbox.scss',
     '~/assets/scss/navbar.scss',
-    '~/assets/scss/klivetech.scss'],
+    '~/assets/scss/klivetech.scss',
+    '~/assets/scss/omniscience.scss'],
   modules: []
 })

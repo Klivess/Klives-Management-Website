@@ -74,6 +74,7 @@ const NAV_GROUPS = [
       { to: '/klivecloud', label: 'KliveCloud', icon: '☁' },
       { to: '/klivetech', label: 'KliveTech', icon: '⚙' },
       { to: '/klivechat', label: 'KliveChat', icon: '✉' },
+      { to: '/klivemail', label: 'KliveMail', icon: '@', klivesOnly: true },
       { to: '/kliveagent', label: 'KliveAgent', icon: '◈' },
       { to: '/klivetools', label: 'KliveTools', icon: '⚒' },
       { to: '/stratum', label: 'Stratum', icon: '▲' },

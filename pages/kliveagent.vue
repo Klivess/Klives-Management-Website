@@ -39,7 +39,7 @@
             <p class="chat-empty-sub">Ask KliveAgent to inspect services, run scripts, or recall what it knows.</p>
           </div>
 
-          <AgentMessage v-for="(msg, i) in messages" :key="i" :message="msg" />
+          <AgentMessage v-for="(msg, i) in messages" :key="i" :message="msg" @stop="stopActiveRun" />
 
           <div v-if="loading && !pendingRequestId" class="chat-thinking">
             <span class="chat-thinking-glyph">◈</span>
@@ -404,6 +404,118 @@ const chatMessages = ref(null);
 const chatInput = ref(null);
 let pendingPollHandle = null;
 
+// ── Persistent active run (survives navigation / reload) ──
+// The bot runs server-side independently of this page. We stash the active conversation + pending
+// request id (+ the prompt) in localStorage so that, on return, we can re-attach to the live run and
+// keep showing what the bot is doing — even mid-script.
+const ACTIVE_RUN_KEY = 'kliveagent.activeRun';
+
+function persistActiveRun(userMessage) {
+  try {
+    localStorage.setItem(ACTIVE_RUN_KEY, JSON.stringify({
+      conversationId: conversationId.value,
+      pendingRequestId: pendingRequestId.value,
+      userMessage,
+    }));
+  } catch {}
+}
+
+function clearActiveRun() {
+  try { localStorage.removeItem(ACTIVE_RUN_KEY); } catch {}
+}
+
+// Apply the live transparency fields from a pending-poll payload onto a message object.
+function applyPendingFields(msg, data) {
+  if (data.response != null) msg.content = data.response;
+  if (Array.isArray(data.scriptsExecuted)) msg.scripts = data.scriptsExecuted;
+  msg.phase = data.phase;
+  msg.iteration = data.iteration;
+  msg.promptTokens = data.promptTokens;
+  msg.completionTokens = data.completionTokens;
+  msg.statusNote = data.statusNote;
+  if (Array.isArray(data.activity)) msg.activity = data.activity;
+}
+
+// Stop the live run (manual Stop button). Cancels server-side; the poll loop then observes a
+// non-Running status and renders the truthful partial answer.
+async function stopActiveRun() {
+  const id = pendingRequestId.value;
+  if (!id) return;
+  try {
+    await RequestPOSTFromKliveAPI('/kliveagent/chat/cancel', JSON.stringify({ requestId: id }), true, true);
+  } catch {}
+}
+
+// On (re)load, re-attach to a run that was started before navigating away. The bot keeps working
+// server-side, so we restore the conversation, rebuild the in-flight bubble, and resume polling.
+async function resumeActiveRunIfAny() {
+  let saved;
+  try {
+    const raw = localStorage.getItem(ACTIVE_RUN_KEY);
+    if (!raw) return;
+    saved = JSON.parse(raw);
+  } catch {
+    clearActiveRun();
+    return;
+  }
+  if (!saved || !saved.pendingRequestId) {
+    clearActiveRun();
+    return;
+  }
+
+  conversationId.value = saved.conversationId || null;
+  view.value = 'chat';
+
+  // Load the durable history first (completed turns). The in-progress turn isn't persisted yet.
+  if (conversationId.value) {
+    try { await loadConversation(conversationId.value); } catch {}
+  }
+
+  let data;
+  try {
+    const res = await RequestGETFromKliveAPI(
+      `/kliveagent/chat/pending?requestId=${encodeURIComponent(saved.pendingRequestId)}&_t=${Date.now()}`
+    );
+    if (!res.ok) {
+      // Evicted/unknown (e.g. completed long ago) — the loaded history already has the result.
+      clearActiveRun();
+      return;
+    }
+    data = await res.json();
+  } catch {
+    clearActiveRun();
+    return;
+  }
+
+  if (data.status === 'Running') {
+    // Re-create the in-flight pair (not yet in persisted history) and resume the live view.
+    const userMessage = data.userMessage || saved.userMessage || '';
+    if (userMessage) {
+      messages.value.push({ role: 'User', content: userMessage, timestamp: new Date().toISOString() });
+    }
+    const agentMsg = {
+      role: 'KliveAgent',
+      content: data.response || '',
+      scripts: [],
+      activity: [],
+      pending: true,
+      phase: 'thinking',
+      timestamp: new Date().toISOString(),
+    };
+    applyPendingFields(agentMsg, data);
+    agentMsg.pending = true;
+    messages.value.push(agentMsg);
+
+    pendingRequestId.value = saved.pendingRequestId;
+    loading.value = true;
+    scrollToBottom(true);
+    await pollPendingResponse(messages.value.length - 1);
+  } else {
+    // Already finished while away — the persisted history (loaded above) holds the final turn.
+    clearActiveRun();
+  }
+}
+
 // ── Side data ──
 const tasks = ref([]);
 const memories = ref([]);
@@ -462,6 +574,7 @@ function newChat() {
   messages.value = [];
   conversationId.value = null;
   inputMessage.value = '';
+  clearActiveRun();
   resetInputHeight();
 }
 
@@ -563,11 +676,15 @@ async function sendMessage() {
       conversationId.value = data.conversationId;
       if (data.isPending && data.pendingRequestId) {
         pendingRequestId.value = data.pendingRequestId;
+        // Stash the active run so we can re-attach after navigating away and back.
+        persistActiveRun(msg);
         messages.value.push({
           role: 'KliveAgent',
           content: data.response,
           scripts: [],
+          activity: [],
           pending: true,
+          phase: 'thinking',
           timestamp: new Date().toISOString(),
         });
         scrollToBottom(true);
@@ -627,23 +744,25 @@ async function pollPendingResponse(messageIndex) {
       }
 
       if (data.status === 'Running') {
-        // Live "talking while working": the server streams the agent's prose into
-        // data.response and the code it runs into data.scriptsExecuted between iterations.
-        if (data.response != null) msg().content = data.response;
-        if (Array.isArray(data.scriptsExecuted)) msg().scripts = data.scriptsExecuted;
+        // Live "talking while working": the server streams the agent's prose (token-by-token), the
+        // code it runs, and rich transparency fields (phase, step, token counts, activity log).
+        applyPendingFields(msg(), data);
         scrollToBottom();
         await waitForPendingPoll(600);
         continue;
       }
 
       const finalResponse = data.finalResponse;
+      // Carry over the last transparency snapshot, then finalize.
+      applyPendingFields(msg(), data);
       msg().pending = false;
+      msg().phase = 'final';
       msg().timestamp = new Date().toISOString();
 
       if (finalResponse) {
         conversationId.value = finalResponse.conversationId || data.conversationId || conversationId.value;
         msg().content = finalResponse.response || msg().content;
-        msg().scripts = finalResponse.scriptsExecuted || [];
+        msg().scripts = finalResponse.scriptsExecuted || msg().scripts || [];
       } else {
         msg().content = data.errorMessage || 'KliveAgent did not return a final response.';
       }
@@ -657,6 +776,7 @@ async function pollPendingResponse(messageIndex) {
 
   pendingRequestId.value = null;
   loading.value = false;
+  clearActiveRun();
   if (pendingPollHandle) {
     clearTimeout(pendingPollHandle);
     pendingPollHandle = null;
@@ -1118,6 +1238,8 @@ onMounted(() => {
   // Chat is the default view — load just what the chat rail needs up front.
   loadTasks();
   loadConversations();
+  // Re-attach to any run that was in progress before the page was left/reloaded.
+  resumeActiveRunIfAny();
 });
 
 onUnmounted(() => {

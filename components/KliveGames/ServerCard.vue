@@ -49,6 +49,7 @@ export default {
       }
     },
     flavorIcon() {
+      if (this.server.GameType === 'Terraria') return this.server.Flavor === 'TModLoader' ? '🔧' : '🌳';
       switch (this.server.Flavor) {
         case 'Paper': return '📄';
         case 'Fabric': return '🧵';

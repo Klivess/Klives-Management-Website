@@ -1,10 +1,10 @@
 <template>
   <div class="pp">
     <div class="pp-add">
-      <input v-model="manualName" class="inp" placeholder="Player name…" @keyup.enter="act(manualName, 'whitelist-add')" />
-      <button class="btn" @click="act(manualName, 'whitelist-add')">Whitelist</button>
-      <button class="btn" @click="act(manualName, 'op')">Op</button>
-      <button class="btn" @click="act(manualName, 'ban')">Ban</button>
+      <input v-model="manualName" class="inp" placeholder="Player name…" @keyup.enter="firstAddAction && act(manualName, firstAddAction)" />
+      <button v-if="has('whitelist-add')" class="btn" @click="act(manualName, 'whitelist-add')">Whitelist</button>
+      <button v-if="has('op')" class="btn" @click="act(manualName, 'op')">Op</button>
+      <button v-if="has('ban')" class="btn" @click="act(manualName, 'ban')">Ban</button>
     </div>
 
     <div v-if="!players.length" class="empty">No players online.</div>
@@ -12,10 +12,10 @@
       <div v-for="p in players" :key="p" class="pp-row">
         <span class="pname"><span class="av">{{ p.charAt(0).toUpperCase() }}</span>{{ p }}</span>
         <div class="pacts">
-          <button class="mini" @click="act(p, 'op')">Op</button>
-          <button class="mini" @click="act(p, 'deop')">De-op</button>
-          <button class="mini" @click="act(p, 'kick')">Kick</button>
-          <button class="mini ban" @click="act(p, 'ban')">Ban</button>
+          <button v-if="has('op')" class="mini" @click="act(p, 'op')">Op</button>
+          <button v-if="has('deop')" class="mini" @click="act(p, 'deop')">De-op</button>
+          <button v-if="has('kick')" class="mini" @click="act(p, 'kick')">Kick</button>
+          <button v-if="has('ban')" class="mini ban" @click="act(p, 'ban')">Ban</button>
         </div>
       </div>
     </div>
@@ -24,14 +24,29 @@
 </template>
 
 <script>
-import { RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 
 export default {
   name: 'KliveGamesPlayersPanel',
   props: { id: { type: String, required: true }, players: { type: Array, default: () => [] } },
   emits: ['changed'],
-  data() { return { manualName: '', note: '' }; },
+  data() {
+    return { manualName: '', note: '', supportedActions: ['op', 'deop', 'kick', 'ban', 'whitelist-add'] };
+  },
+  computed: {
+    firstAddAction() {
+      return ['whitelist-add', 'op', 'ban'].find(a => this.has(a)) || null;
+    },
+  },
+  async mounted() {
+    try {
+      const res = await RequestGETFromKliveAPI(`/klivegames/players/list?id=${this.id}`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.supportedActions)) this.supportedActions = data.supportedActions;
+    } catch (e) { /* ignore */ }
+  },
   methods: {
+    has(a) { return this.supportedActions.includes(a); },
     async act(player, action) {
       const name = (player || '').trim();
       if (!name) return;

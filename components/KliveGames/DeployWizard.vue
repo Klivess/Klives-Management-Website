@@ -38,25 +38,40 @@
 
         <!-- Name -->
         <label class="fld-label">Server Name</label>
-        <input v-model="name" class="kg-input" placeholder="My Survival World" />
+        <input v-model="name" class="kg-input" placeholder="My Server" />
 
-        <!-- RAM -->
-        <label class="fld-label">Memory: {{ (ramMb / 1024).toFixed(1) }} GB</label>
-        <input type="range" min="1024" max="16384" step="512" v-model.number="ramMb" class="kg-range" />
+        <!-- Game-specific deploy options (e.g. Terraria world settings) -->
+        <div v-if="deployOptions.length" class="opt-grid">
+          <div v-for="f in deployOptions" :key="f.Key" class="opt-field">
+            <label class="fld-label">{{ f.Label }}</label>
+            <input v-if="f.Type === 'Text'" v-model="deployValues[f.Key]" class="kg-input" :placeholder="f.Key === 'worldName' ? (name || 'World') : ''" />
+            <input v-else-if="f.Type === 'Number'" type="number" v-model="deployValues[f.Key]" class="kg-input" />
+            <select v-else-if="f.Type === 'Dropdown'" v-model="deployValues[f.Key]" class="kg-select">
+              <option v-for="o in f.Options" :key="o" :value="o">{{ o }}</option>
+            </select>
+            <p v-if="f.Description" class="hint">{{ f.Description }}</p>
+          </div>
+        </div>
+
+        <!-- Memory (memory-based games only) -->
+        <template v-if="usesMemory">
+          <label class="fld-label">Memory: {{ (ramMb / 1024).toFixed(1) }} GB</label>
+          <input type="range" min="1024" max="16384" step="512" v-model.number="ramMb" class="kg-range" />
+        </template>
 
         <div class="row2">
           <div>
             <label class="fld-label">Port (blank = auto)</label>
-            <input v-model="port" class="kg-input" placeholder="25565" />
+            <input v-model="port" class="kg-input" :placeholder="String(defaultPort)" />
           </div>
           <div class="toggles">
             <label class="toggle"><input type="checkbox" v-model="makePublic" /> Make public (port-forward)</label>
             <label class="toggle"><input type="checkbox" v-model="startAfter" /> Start after deploy</label>
-            <label class="toggle" v-if="selectedFlavor !== 'Vanilla'"><input type="checkbox" v-model="useAikar" /> Aikar GC flags</label>
+            <label class="toggle" v-if="usesMemory && selectedFlavor !== 'Vanilla'"><input type="checkbox" v-model="useAikar" /> Aikar GC flags</label>
           </div>
         </div>
 
-        <label class="eula"><input type="checkbox" v-model="eula" /> I accept the
+        <label class="eula" v-if="requiresEula"><input type="checkbox" v-model="eula" /> I accept the
           <a href="https://aka.ms/MinecraftEULA" target="_blank">Minecraft EULA</a>.</label>
 
         <p v-if="error" class="err">{{ error }}</p>
@@ -93,16 +108,24 @@ export default {
       startAfter: true,
       useAikar: true,
       eula: false,
+      deployValues: {},
       deploying: false,
       error: '',
     };
   },
   computed: {
-    flavors() {
-      const g = this.games.find(x => x.gameType === this.selectedGame);
-      return g ? g.flavors : ['Vanilla', 'Paper', 'Fabric', 'Forge'];
-    },
+    selectedGameObj() { return this.games.find(g => g.gameType === this.selectedGame) || {}; },
+    flavors() { return this.selectedGameObj.flavors || ['Vanilla', 'Paper', 'Fabric', 'Forge']; },
+    requiresEula() { return !!this.selectedGameObj.requiresEula; },
+    usesMemory() { return this.selectedGameObj.usesMemoryLimit !== false; },
+    deployOptions() { return this.selectedGameObj.deployOptions || []; },
+    defaultPort() { return this.selectedGameObj.defaultPort || 25565; },
     flavorHint() {
+      if (this.selectedGame === 'Terraria') {
+        return this.selectedFlavor === 'TModLoader'
+          ? 'Modded Terraria via tModLoader. Upload .tmod files to the Mods/ folder after deploy.'
+          : 'The official Terraria dedicated server. No mods.';
+      }
       switch (this.selectedFlavor) {
         case 'Vanilla': return 'The official Mojang server. No plugins or mods.';
         case 'Paper': return 'High-performance fork with Bukkit/Spigot plugin support. Recommended.';
@@ -112,7 +135,7 @@ export default {
       }
     },
     canDeploy() {
-      return this.name.trim() && this.selectedVersion && this.eula && !this.loadingVersions;
+      return this.name.trim() && this.selectedVersion && (!this.requiresEula || this.eula) && !this.loadingVersions;
     },
   },
   async mounted() {
@@ -121,11 +144,23 @@ export default {
       const data = await res.json();
       if (data.success) this.games = data.games || [];
     } catch (e) { /* ignore */ }
+    this.initDeployValues();
     await this.loadVersions();
   },
   methods: {
-    selectGame(g) { if (!g.implemented) return; this.selectedGame = g.gameType; this.loadVersions(); },
+    selectGame(g) {
+      if (!g.implemented) return;
+      this.selectedGame = g.gameType;
+      this.selectedFlavor = (g.flavors && g.flavors[0]) || 'Vanilla';
+      this.initDeployValues();
+      this.loadVersions();
+    },
     selectFlavor(f) { this.selectedFlavor = f; this.loadVersions(); },
+    initDeployValues() {
+      const vals = {};
+      for (const f of this.deployOptions) vals[f.Key] = f.Value ?? '';
+      this.deployValues = vals;
+    },
     async loadVersions() {
       this.loadingVersions = true;
       this.versions = [];
@@ -155,7 +190,8 @@ export default {
           public: this.makePublic,
           autoStart: false,
           startAfterCreate: this.startAfter,
-          eulaAccepted: this.eula,
+          eulaAccepted: this.requiresEula ? this.eula : true,
+          options: { ...this.deployValues },
         };
         const res = await RequestPOSTFromKliveAPI('/klivegames/servers/create', JSON.stringify(body), true, true);
         const data = await res.json();
@@ -185,6 +221,8 @@ export default {
 .hint { color: #8c8c8c; font-size: 12px; margin: 8px 0 0; }
 .kg-select, .kg-input { width: 100%; background: #0f0f0f; border: 1px solid #2c2c2c; color: #fff; border-radius: 8px; padding: 11px; font-size: 14px; box-sizing: border-box; }
 .kg-range { width: 100%; accent-color: #4d9e39; }
+.opt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; }
+.opt-field { min-width: 0; }
 .row2 { display: grid; grid-template-columns: 1fr 1.2fr; gap: 18px; align-items: start; }
 .toggles { display: flex; flex-direction: column; gap: 8px; margin-top: 26px; }
 .toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #cfcfcf; cursor: pointer; }

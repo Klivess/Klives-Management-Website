@@ -5,15 +5,17 @@
       <div class="cfg-section">
         <h3 class="sec-title">Runtime</h3>
         <div class="grid">
-          <div class="field">
-            <label>Memory: {{ (ram / 1024).toFixed(1) }} GB</label>
-            <input type="range" min="1024" max="16384" step="512" v-model.number="ram" class="range" />
-          </div>
-          <div class="field">
-            <label>Extra JVM Args</label>
-            <input v-model="jvmArgs" class="inp" placeholder="(optional)" />
-          </div>
-          <div class="field toggle"><label><input type="checkbox" v-model="useAikarFlags" /> Aikar GC flags</label></div>
+          <template v-if="usesMemoryLimit">
+            <div class="field">
+              <label>Memory: {{ (ram / 1024).toFixed(1) }} GB</label>
+              <input type="range" min="1024" max="16384" step="512" v-model.number="ram" class="range" />
+            </div>
+            <div class="field">
+              <label>Extra JVM Args</label>
+              <input v-model="jvmArgs" class="inp" placeholder="(optional)" />
+            </div>
+            <div class="field toggle"><label><input type="checkbox" v-model="useAikarFlags" /> Aikar GC flags</label></div>
+          </template>
           <div class="field toggle"><label><input type="checkbox" v-model="autoRestart" /> Auto-restart on crash</label></div>
           <div class="field toggle"><label><input type="checkbox" v-model="autoStart" /> Start on boot</label></div>
         </div>
@@ -53,7 +55,7 @@ export default {
   data() {
     return {
       loading: true, saving: false, saved: false, error: '',
-      schema: [], values: {},
+      schema: [], values: {}, usesMemoryLimit: true,
       ram: 2048, jvmArgs: '', useAikarFlags: true, autoRestart: true, autoStart: false,
     };
   },
@@ -72,6 +74,7 @@ export default {
           const v = {};
           for (const f of this.schema) v[f.Key] = f.Value ?? '';
           this.values = v;
+          this.usesMemoryLimit = data.usesMemoryLimit !== false;
           this.ram = data.ram; this.jvmArgs = data.jvmArgs || '';
           this.useAikarFlags = data.useAikarFlags; this.autoRestart = data.autoRestart; this.autoStart = data.autoStart;
         } else { this.error = data.error; }

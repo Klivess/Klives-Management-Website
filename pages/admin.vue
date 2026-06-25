@@ -345,7 +345,7 @@
         </KMInfoGrid>
 
         <!-- Management -->
-        <KMInfoGrid columns="2" rows="1" rowHeight="720">
+        <KMInfoGrid columns="2" rows="1" rowHeight="auto">
             <KMInfoBox caption="Bot Utilities">
                 <div class="utility-panel">
                     <p class="utility-intro">Open the main operator tools, inspect runtime activity, and push configuration or deployment changes from one control surface.</p>
@@ -355,21 +355,28 @@
                             <span class="utility-label">Diagnostics</span>
                             <h3>Bot Logs</h3>
                             <p>Inspect runtime output, failures, and service chatter without leaving Admin.</p>
-                            <KMButton message="OPEN BOT LOGS" style="height: 72px; width: 100%; margin-top: 18px;" />
+                            <KMButton message="OPEN BOT LOGS" style="height: 50px; width: 100%; margin-top: 12px;" />
                         </NuxtLink>
 
                         <NuxtLink to="/klivelink" class="utility-card">
                             <span class="utility-label">Remote Control</span>
                             <h3>KliveLink</h3>
                             <p>Jump into remote administration tools and connected machine capabilities.</p>
-                            <KMButton message="OPEN KLIVELINK" style="height: 72px; width: 100%; margin-top: 18px;" />
+                            <KMButton message="OPEN KLIVELINK" style="height: 50px; width: 100%; margin-top: 12px;" />
                         </NuxtLink>
 
                         <NuxtLink to="/administration/omnisettings" class="utility-card">
                             <span class="utility-label">Configuration</span>
                             <h3>OmniSettings</h3>
                             <p>Audit service configuration, secrets, and provider routing from the settings dashboard.</p>
-                            <KMButton message="OPEN OMNISETTINGS" style="height: 72px; width: 100%; margin-top: 18px;" />
+                            <KMButton message="OPEN OMNISETTINGS" style="height: 50px; width: 100%; margin-top: 12px;" />
+                        </NuxtLink>
+
+                        <NuxtLink to="/administration/remotedesktop" class="utility-card">
+                            <span class="utility-label">Remote Control</span>
+                            <h3>Remote Desktop</h3>
+                            <p>Live video and full mouse and keyboard control of the machine. Drive it from anywhere.</p>
+                            <KMButton message="OPEN REMOTE DESKTOP" style="height: 50px; width: 100%; margin-top: 12px;" />
                         </NuxtLink>
 
                         <div class="utility-card utility-card-danger update-bot-area">
@@ -379,7 +386,7 @@
                             <KMButton
                                 :message="botUpdating ? 'UPDATING...' : 'RUN UPDATE'"
                                 :textColor="botUpdating ? '#969696' : '#ef4444'"
-                                style="height: 72px; width: 100%; margin-top: 18px;"
+                                style="height: 50px; width: 100%; margin-top: 12px;"
                                 :onclick="updateBot"
                             />
                             <div v-if="botUpdating" class="update-status">
@@ -2360,8 +2367,8 @@ export default {
 .utility-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-auto-rows: minmax(220px, 1fr);
-    gap: 14px;
+    grid-auto-rows: min-content;
+    gap: 12px;
     min-height: 0;
 }
 
@@ -2369,11 +2376,10 @@ export default {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    gap: 14px;
+    gap: 8px;
     min-height: 0;
-    min-height: 220px;
-    padding: 18px;
-    border-radius: 18px;
+    padding: 14px;
+    border-radius: 16px;
     border: 1px solid rgba(77, 158, 57, 0.14);
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.015));
     text-decoration: none;

@@ -63,14 +63,28 @@
           </div>
         </div>
 
+        <!-- Setup loading bar: shown until KliveAgent finishes warming up (100% = ready to talk). -->
+        <div v-if="!agentReady" class="ka-setup" :class="{ 'ka-setup-failed': agentState === 'failed' }">
+          <div class="ka-setup-top">
+            <span class="ka-setup-label">
+              {{ agentState === 'failed' ? '⚠ KliveAgent failed to start' : '◈ KliveAgent is starting up…' }}
+            </span>
+            <span class="ka-setup-pct">{{ agentProgress }}%</span>
+          </div>
+          <div class="ka-setup-track">
+            <div class="ka-setup-fill" :style="{ width: agentProgress + '%' }"></div>
+          </div>
+          <div class="ka-setup-msg">{{ agentStatusMessage }}</div>
+        </div>
+
         <div class="chat-input-row">
           <textarea
             ref="chatInput"
             v-model="inputMessage"
             class="chat-input"
             rows="1"
-            placeholder="Ask KliveAgent anything…  (Enter to send, Shift+Enter for newline)"
-            :disabled="loading"
+            :placeholder="agentReady ? 'Ask KliveAgent anything…  (Enter to send, Shift+Enter for newline)' : 'KliveAgent is still setting up…'"
+            :disabled="loading || !agentReady"
             @input="autoGrowInput"
             @keydown.enter.exact.prevent="sendMessage"
           ></textarea>
@@ -444,6 +458,15 @@ function setView(v) {
 // ── Chat state ──
 const messages = ref([]);
 const inputMessage = ref('');
+
+// ── KliveAgent setup readiness (loading bar) ──
+// The backend gates chat until it finishes warming up; talking too early returned "Something went wrong."
+// We poll /kliveagent/status (ungated) and show a progress bar until ready (100%), gating the composer.
+const agentReady = ref(false);
+const agentProgress = ref(0);
+const agentState = ref('starting');           // 'starting' | 'ready' | 'failed'
+const agentStatusMessage = ref('Connecting to KliveAgent…');
+let agentStatusHandle = null;
 const loading = ref(false);
 const pendingRequestId = ref(null);
 const conversationId = ref(null);
@@ -633,9 +656,14 @@ const currentTurnScripts = computed(() => {
   return [];
 });
 
-const isSendDisabled = computed(() => loading.value || !inputMessage.value.trim());
+const isSendDisabled = computed(() => loading.value || !agentReady.value || !inputMessage.value.trim());
 
 const sendButtonTitle = computed(() => {
+  if (!agentReady.value) {
+    return agentState.value === 'failed'
+      ? 'KliveAgent failed to start — check the bot logs.'
+      : `KliveAgent is starting up… (${agentProgress.value}%)`;
+  }
   if (loading.value) {
     return pendingRequestId.value
       ? 'KliveAgent is finishing the current request.'
@@ -746,6 +774,7 @@ async function readAgentApiResponse(res) {
 async function sendMessage() {
   const msg = inputMessage.value.trim();
   if (!msg || loading.value) return;
+  if (!agentReady.value) return; // composer is disabled until warmup finishes; guard anyway
 
   messages.value.push({ role: 'User', content: msg, timestamp: new Date().toISOString() });
   inputMessage.value = '';
@@ -797,7 +826,7 @@ async function sendMessage() {
     } else {
       messages.value.push({
         role: 'KliveAgent',
-        content: data.response || data.errorMessage || 'Something went wrong.',
+        content: data.response || data.error || data.errorMessage || 'Something went wrong.',
         timestamp: new Date().toISOString(),
       });
     }
@@ -1330,8 +1359,34 @@ async function loadShortcuts() {
   } catch {}
 }
 
+// Poll the agent's setup status until it's ready, driving the loading bar.
+async function pollAgentStatus() {
+  try {
+    const res = await RequestGETFromKliveAPI(`/kliveagent/status?_t=${Date.now()}`, false, false);
+    if (res.ok) {
+      const data = await res.json();
+      agentState.value = data.state || 'starting';
+      if (typeof data.progress === 'number') agentProgress.value = data.progress;
+      if (data.message) agentStatusMessage.value = data.message;
+      agentReady.value = !!data.ready;
+    } else {
+      // Backend reachable but not ready (or 202/503 during warmup) — keep the bar up and retry.
+      agentStatusMessage.value = 'Waiting for KliveAgent to come online…';
+    }
+  } catch {
+    agentStatusMessage.value = 'Waiting for KliveAgent to come online…';
+  }
+  if (agentReady.value) {
+    agentStatusHandle = null;
+  } else {
+    // Failed state still polls (slowly) so a restart is picked up automatically.
+    agentStatusHandle = setTimeout(pollAgentStatus, agentState.value === 'failed' ? 4000 : 1000);
+  }
+}
+
 onMounted(() => {
   // Chat is the default view — load just what the chat rail needs up front.
+  pollAgentStatus();
   loadTasks();
   loadConversations();
   // Re-attach to any run that was in progress before the page was left/reloaded.
@@ -1343,6 +1398,10 @@ onUnmounted(() => {
   if (pendingPollHandle) {
     clearTimeout(pendingPollHandle);
     pendingPollHandle = null;
+  }
+  if (agentStatusHandle) {
+    clearTimeout(agentStatusHandle);
+    agentStatusHandle = null;
   }
 });
 </script>
@@ -1669,6 +1728,54 @@ onUnmounted(() => {
 @keyframes ka-blink {
   0%, 80%, 100% { opacity: 0.25; }
   40% { opacity: 1; }
+}
+
+/* Setup loading bar (shown until KliveAgent is ready to talk) */
+.ka-setup {
+  padding: 12px 16px;
+  background: $mainDarker;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.ka-setup-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 7px;
+}
+.ka-setup-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #cfcfcf;
+}
+.ka-setup-pct {
+  font-size: 12px;
+  font-weight: 800;
+  color: $secondary;
+  font-variant-numeric: tabular-nums;
+}
+.ka-setup-track {
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.ka-setup-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba($secondary, 0.8), $secondary);
+  transition: width 0.5s ease;
+  box-shadow: 0 0 10px rgba($secondary, 0.5);
+}
+.ka-setup-msg {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #8a8a8a;
+}
+.ka-setup-failed .ka-setup-pct { color: #ff7a7a; }
+.ka-setup-failed .ka-setup-fill {
+  background: #ff5a5a;
+  box-shadow: 0 0 10px rgba(255, 80, 80, 0.5);
 }
 
 .chat-input-row {

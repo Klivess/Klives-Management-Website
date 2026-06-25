@@ -29,8 +29,8 @@
       <div v-if="statusNote && displaySrc" class="ls-status">{{ statusNote }}</div>
 
       <!-- Human-in-the-loop gate: the run blocks here until you answer. -->
-      <div v-if="approval" class="ls-approval">
-        <div class="approval-head">⚠ Approval needed</div>
+      <div v-if="approval" class="ls-approval" :class="{ 'ls-approval-takeover': isIntervention }">
+        <div class="approval-head">{{ isIntervention ? '🖐 Take over needed' : '⚠ Approval needed' }}</div>
         <div class="approval-msg">{{ approval.message }}</div>
         <img
           v-if="approval.frameBase64"
@@ -38,7 +38,12 @@
           :src="'data:image/jpeg;base64,' + approval.frameBase64"
           alt="What the agent is about to do"
         />
-        <div class="approval-actions">
+        <!-- Intervention (captcha/login/2FA): launch the scoped remote desktop to solve it. -->
+        <div v-if="isIntervention" class="approval-actions">
+          <a class="approval-takeover" :href="approval.solveUrl" target="_blank" rel="noopener">🖥 Open Remote Desktop →</a>
+        </div>
+        <!-- Irreversible-action approval: approve / deny. -->
+        <div v-else class="approval-actions">
           <button class="approval-approve" type="button" @click="$emit('approve', { approvalId: approval.approvalId, approved: true })">✓ Approve</button>
           <button class="approval-deny" type="button" @click="$emit('approve', { approvalId: approval.approvalId, approved: false })">✕ Deny</button>
         </div>
@@ -48,8 +53,8 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue';
-import { KliveAPIUrl } from '~/scripts/APIInterface';
+import { computed, onMounted } from 'vue';
+import { useScreenStream } from '~/composables/useScreenStream';
 
 const props = defineProps({
   frame: { type: String, default: null },
@@ -63,14 +68,10 @@ defineEmits(['approve', 'close']);
 
 const PHASE_LABELS = { thinking: 'Thinking', running: 'Running', observing: 'Observing', final: 'Done' };
 const phaseLabel = computed(() => PHASE_LABELS[props.phase] || props.phase);
+const isIntervention = computed(() => props.approval && props.approval.kind === 'intervention' && props.approval.solveUrl);
 
-// ── Live video stream over a KliveAPI WebSocket (continuous frames, not per-action screenshots) ──
-const streamSrc = ref(null);   // object URL of the latest JPEG frame
-const connected = ref(false);
-let ws = null;
-let reconnectTimer = null;
-let lastObjectUrl = null;
-let stopped = false;
+// ── Live video stream over a KliveAPI WebSocket (shared composable; continuous frames) ──
+const { streamSrc, connected, connect } = useScreenStream();
 
 // The display falls back to the last annotated poll frame until the live stream is connected.
 const displaySrc = computed(() => streamSrc.value || (props.frame ? 'data:image/jpeg;base64,' + props.frame : null));
@@ -81,41 +82,9 @@ function getPassword() {
   return m ? decodeURIComponent(m[1]) : '';
 }
 
-function connect() {
-  if (stopped || typeof window === 'undefined') return;
+onMounted(() => {
   const pw = getPassword();
-  if (!pw) return; // not logged in → just show the fallback frames
-  const wsBase = KliveAPIUrl.replace('https', 'wss').replace('http', 'ws');
-  try {
-    ws = new WebSocket(`${wsBase}/kliveagent/screen/stream?authorization=${encodeURIComponent(pw)}`);
-    ws.binaryType = 'blob';
-    ws.onopen = () => { connected.value = true; };
-    ws.onmessage = (ev) => {
-      const blob = ev.data instanceof Blob ? ev.data : new Blob([ev.data], { type: 'image/jpeg' });
-      const url = URL.createObjectURL(blob);
-      const prev = lastObjectUrl;
-      lastObjectUrl = url;
-      streamSrc.value = url;
-      if (prev) URL.revokeObjectURL(prev); // free the previous frame so memory stays bounded
-    };
-    ws.onclose = () => { connected.value = false; if (!stopped) scheduleReconnect(); };
-    ws.onerror = () => { try { ws && ws.close(); } catch {} };
-  } catch {
-    scheduleReconnect();
-  }
-}
-
-function scheduleReconnect() {
-  if (stopped || reconnectTimer) return;
-  reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, 1500);
-}
-
-onMounted(connect);
-onUnmounted(() => {
-  stopped = true;
-  if (reconnectTimer) clearTimeout(reconnectTimer);
-  try { ws && ws.close(); } catch {}
-  if (lastObjectUrl) URL.revokeObjectURL(lastObjectUrl);
+  if (pw) connect(`authorization=${encodeURIComponent(pw)}`); // not logged in → just show fallback frames
 });
 </script>
 
@@ -296,4 +265,23 @@ onUnmounted(() => {
   border-color: rgba(255, 80, 80, 0.35);
 }
 .approval-deny:hover { background: rgba(255, 80, 80, 0.22); }
+
+/* Intervention (captcha/login/2FA takeover) variant */
+.ls-approval-takeover {
+  background: rgba(0, 18, 14, 0.96);
+  border-color: rgba(46, 207, 134, 0.5);
+}
+.ls-approval-takeover .approval-head { color: #2ecf86; }
+.approval-takeover {
+  flex: 1;
+  text-align: center;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 800;
+  color: #04130b;
+  background: #2ecf86;
+  border-radius: 8px;
+  padding: 11px 0;
+}
+.approval-takeover:hover { background: #38e095; }
 </style>

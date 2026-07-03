@@ -167,7 +167,7 @@ definePageMeta({ layout: 'navbar' });
 </script>
 
 <script>
-import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, RequestBatchFromKliveAPI } from '~/scripts/APIInterface';
 import Swal from 'sweetalert2';
 
 export default {
@@ -225,15 +225,15 @@ export default {
             if (!r.ok) return null;
             try { return await r.json(); } catch { return null; }
         },
-        async refreshAll() {
-            this.isBusy = true; this.busyLabel = 'Loading…';
-            const [overview, dedu, sched, radar, targets] = await Promise.all([
-                this.getJson('/omniscience/stats/overview'),
-                this.getJson('/omniscience/deduction/status'),
-                this.getJson('/omniscience/schedule/status'),
-                this.getJson('/omniscience/radar/alerts'),
-                this.getJson('/omniscience/targets/suggestions'),
-            ]);
+        // Extracts a /batch item's parsed body (already JSON), or null on failure.
+        batchJson(item) { return item && item.ok ? item.body : null; },
+        // Built once so the batch path string and the standalone loadPeople path match.
+        peopleQuery() {
+            const params = new URLSearchParams({ limit: '60' });
+            if (this.search.trim()) params.set('search', this.search.trim());
+            return '/omniscience/persons?' + params.toString();
+        },
+        applyOverview(overview, dedu, sched, radar, targets) {
             this.overview = overview;
             this.dedu = dedu;
             this.scheduleStatus = sched;
@@ -241,9 +241,49 @@ export default {
             this.radarAlerts = radar?.alerts || [];
             this.radarAliases = radar?.aliases_watched || [];
             this.targetSuggestions = targets?.suggestions || [];
-            await this.loadPeople();
-            await this.loadSources();
-            this.loadBriefing();
+        },
+        async refreshAll() {
+            this.isBusy = true; this.busyLabel = 'Loading…';
+            const peoplePath = this.peopleQuery();
+            // One /batch round-trip for what used to be 8 separate requests.
+            const results = await RequestBatchFromKliveAPI([
+                '/omniscience/stats/overview',
+                '/omniscience/deduction/status',
+                '/omniscience/schedule/status',
+                '/omniscience/radar/alerts',
+                '/omniscience/targets/suggestions',
+                peoplePath,
+                '/omniscience/sources',
+                '/omniscience/briefing/preview',
+            ]);
+
+            if (results.size === 0) {
+                // Batch unavailable — fall back to the original independent fetches.
+                const [overview, dedu, sched, radar, targets] = await Promise.all([
+                    this.getJson('/omniscience/stats/overview'),
+                    this.getJson('/omniscience/deduction/status'),
+                    this.getJson('/omniscience/schedule/status'),
+                    this.getJson('/omniscience/radar/alerts'),
+                    this.getJson('/omniscience/targets/suggestions'),
+                ]);
+                this.applyOverview(overview, dedu, sched, radar, targets);
+                await this.loadPeople();
+                await this.loadSources();
+                this.loadBriefing();
+            } else {
+                const j = (p) => this.batchJson(results.get(p));
+                this.applyOverview(
+                    j('/omniscience/stats/overview'),
+                    j('/omniscience/deduction/status'),
+                    j('/omniscience/schedule/status'),
+                    j('/omniscience/radar/alerts'),
+                    j('/omniscience/targets/suggestions'),
+                );
+                this.people = j(peoplePath) || [];
+                this.sources = j('/omniscience/sources') || [];
+                this.briefing = j('/omniscience/briefing/preview')?.markdown || '';
+            }
+
             this.lastUpdated = Date.now();
             this.isBusy = false; this.busyLabel = '';
         },
@@ -254,9 +294,7 @@ export default {
             this.briefingLoading = false;
         },
         async loadPeople() {
-            const params = new URLSearchParams({ limit: '60' });
-            if (this.search.trim()) params.set('search', this.search.trim());
-            this.people = (await this.getJson('/omniscience/persons?' + params.toString())) || [];
+            this.people = (await this.getJson(this.peopleQuery())) || [];
         },
         async loadSources() {
             this.sources = (await this.getJson('/omniscience/sources')) || [];

@@ -2,12 +2,14 @@
 import { useCookie } from '#imports';
 import Swal from 'sweetalert2';
 
-export { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, VerifyLogin, StartAuthSessionWatch, StopAuthSessionWatch, KMPermissions };
+export { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, RequestBatchFromKliveAPI, VerifyLogin, StartAuthSessionWatch, StopAuthSessionWatch, KMPermissions };
+export type { KliveBatchItem };
 
 const KliveAPIUrl = "https://klive.dev";
 let authSessionSocket: WebSocket | null = null;
 let authSessionReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let authSessionInvalidated = false;
+let handlingAuthFailure = false;
 
 enum DeniedRequestReason {
     NoProfile = 0,
@@ -26,6 +28,25 @@ enum KMPermissions {
     Klives = 5
 }
 
+// When the server rejects our credentials outright (stale/invalid/disabled),
+// clear the bad cookie and go to the login page immediately. Returns true when
+// the failure was handled (callers should skip alerts/redirect logic to avoid
+// a stampede when many parallel requests fail at once).
+function HandleAuthFailure(res: Response): boolean {
+    if (!process.client || handlingAuthFailure) return handlingAuthFailure;
+    const code = res.headers.get('RequestDeniedCode');
+    // 0 = NoProfile, 1 = InvalidPassword, 4 = ProfileDisabled.
+    // 2 (TooLowClearance) means the login is valid — never clear the cookie for it.
+    if (code === '0' || code === '1' || code === '4') {
+        handlingAuthFailure = true;
+        SetLocalPassword(null);
+        StopAuthSessionWatch();
+        window.location.replace('/');
+        return true;
+    }
+    return false;
+}
+
 async function RequestGETFromKliveAPI(query: string, redirectToDashboardIfUnauthorized = true, alertUserIfUnauthorized = true) {
     let res: Response;
     try {
@@ -42,6 +63,9 @@ async function RequestGETFromKliveAPI(query: string, redirectToDashboardIfUnauth
     if (res.status === 401 || res.status === 403) {
         // Unauthorized access, handle accordingly
         console.log("Unauthorized access to API");
+        if (HandleAuthFailure(res)) {
+            return res;
+        }
         if(alertUserIfUnauthorized==true && process.client){
             Swal.fire({
                 icon: 'error',
@@ -82,6 +106,9 @@ async function RequestPOSTFromKliveAPI(query: string, content: BodyInit | null =
         console.log("Unauthorized access to API");
         console.log(response.headers.get('RequestDeniedCode'));
 
+        if (HandleAuthFailure(response)) {
+            return response;
+        }
         if (response.headers.get('RequestDeniedCode') == "2") {
             if (process.client) {
                 Swal.fire({
@@ -103,6 +130,40 @@ async function RequestPOSTFromKliveAPI(query: string, content: BodyInit | null =
     }
 
     return response;
+}
+
+interface KliveBatchItem {
+    path: string;
+    status: number;
+    ok: boolean;
+    contentType: string;
+    body: any;
+}
+
+// Fetches many GET routes in one request. Returns a Map keyed by the exact path
+// string that was requested, so callers can look up each result by path. On a
+// transport failure the Map is empty and callers treat missing keys as a
+// per-zone error. Built on RequestPOSTFromKliveAPI so the auth-failure handling
+// (stale-cookie logout) applies here too.
+async function RequestBatchFromKliveAPI(paths: string[]): Promise<Map<string, KliveBatchItem>> {
+    const map = new Map<string, KliveBatchItem>();
+    if (!paths || paths.length === 0) return map;
+
+    const body = JSON.stringify(paths.map(p => ({ path: p })));
+    const response = await RequestPOSTFromKliveAPI('/batch', body, false, true);
+    if (!response.ok) return map;
+
+    try {
+        const items = await response.json();
+        if (Array.isArray(items)) {
+            for (const item of items as KliveBatchItem[]) {
+                if (item && typeof item.path === 'string') map.set(item.path, item);
+            }
+        }
+    } catch (error) {
+        console.warn('Klive API batch parse failed:', error);
+    }
+    return map;
 }
 
 function GetLocalPassword() {

@@ -315,7 +315,7 @@ import KMButton from '~/components/KMButton.vue';
 import CS2MetricCard from '~/components/CS2MetricCard.vue';
 import GradientProgress from '~/components/GradientProgress.vue';
 import QuickActionCard from '~/components/QuickActionCard.vue';
-import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, RequestBatchFromKliveAPI } from '~/scripts/APIInterface';
 import Swal from 'sweetalert2';
 
 export default {
@@ -431,25 +431,73 @@ export default {
         }
     },
     methods: {
+        // Wraps a /batch item as the subset of the fetch Response interface the
+        // loaders use (.ok / .status / .json() / .text()). Server sends already-parsed
+        // JSON bodies, so .json() just returns item.body.
+        batchResponse(item) {
+            return {
+                ok: !!(item && item.ok),
+                status: item ? item.status : 504,
+                json: async () => (item ? item.body : null),
+                text: async () => {
+                    if (!item) return '';
+                    return typeof item.body === 'string' ? item.body : JSON.stringify(item.body);
+                },
+            };
+        },
+
         async loadDashboardData() {
             this.loading = true;
             this.error = null;
             this.completedLoads = 0;
-            
+
             try {
                 // Load general bot statistics (minimal required data)
                 this.loadGeneralStats();
-                
-                // Start all data zone loading immediately and asynchronously
-                // Don't wait for any of them - let each zone update independently
-                this.loadCS2Stats();
-                this.loadMemescraperStats(); 
-                this.loadOmniTraderStats();
-                this.loadOmniGramStats();
-                this.loadOmniTumblrStats();
-                this.loadFrontpageStats();
-                this.loadRecentActivity(); // Only for logs now
-                
+
+                // One /batch round-trip instead of ~8 parallel fetches (each of which
+                // paid its own connection/preflight cost). Each zone still updates
+                // independently from its slice of the combined result.
+                const paths = [
+                    '/GeneralBotStatistics/GetFrontpageStats',
+                    '/api/logs?type=1&limit=5',
+                    '/cs2arbitragebot/getscanalytics',
+                    '/memescraper/memeScraperAnalytics',
+                    '/api/omnitrader/status',
+                    '/api/omnitrader/deployments',
+                    '/api/omnitrader/backtests',
+                    '/omnigram/dashboard-stats',
+                    '/omnitumblr/dashboard-stats',
+                    '/api/logs',
+                ];
+                const results = await RequestBatchFromKliveAPI(paths);
+
+                if (results.size === 0) {
+                    // Batch unavailable (e.g. server not yet updated) — fall back to the
+                    // original independent fetches so the dashboard still populates.
+                    this.loadCS2Stats();
+                    this.loadMemescraperStats();
+                    this.loadOmniTraderStats();
+                    this.loadOmniGramStats();
+                    this.loadOmniTumblrStats();
+                    this.loadFrontpageStats();
+                    this.loadRecentActivity();
+                    return;
+                }
+
+                const r = (p) => this.batchResponse(results.get(p));
+                this.loadFrontpageStats(r('/GeneralBotStatistics/GetFrontpageStats'), r('/api/logs?type=1&limit=5'));
+                this.loadCS2Stats(r('/cs2arbitragebot/getscanalytics'));
+                this.loadMemescraperStats(r('/memescraper/memeScraperAnalytics'));
+                this.loadOmniTraderStats({
+                    status: r('/api/omnitrader/status'),
+                    deployments: r('/api/omnitrader/deployments'),
+                    backtests: r('/api/omnitrader/backtests'),
+                });
+                this.loadOmniGramStats(r('/omnigram/dashboard-stats'));
+                this.loadOmniTumblrStats(r('/omnitumblr/dashboard-stats'));
+                this.loadRecentActivity(r('/api/logs'));
+
             } catch (err) {
                 console.error('Dashboard data loading error:', err);
                 this.error = err;
@@ -509,11 +557,11 @@ export default {
             };
         },
 
-        async loadFrontpageStats() {
+        async loadFrontpageStats(prefetched, prefetchedErrors) {
             this.loadingStates.frontpage = true;
             this.errorStates.frontpage = false;
             try {
-                const response = await RequestGETFromKliveAPI('/GeneralBotStatistics/GetFrontpageStats', false, false);
+                const response = prefetched || await RequestGETFromKliveAPI('/GeneralBotStatistics/GetFrontpageStats', false, false);
                 if (response.ok) {
                     const data = await response.json();
                     this.frontpageStats = {
@@ -531,8 +579,8 @@ export default {
                         lastOmnipotentUpdateHumanized: data.lastOmnipotentUpdateHumanized || 'N/A',
                         Services: data.Services || []
                     };
-                    // Load recent errors from the logs API
-                    this.loadRecentErrors();
+                    // Load recent errors from the logs API (reuse batch slice if given)
+                    this.loadRecentErrors(prefetchedErrors);
                 } else {
                     this.errorStates.frontpage = true;
                 }
@@ -549,9 +597,9 @@ export default {
             this.loadFrontpageStats();
         },
 
-        async loadRecentErrors() {
+        async loadRecentErrors(prefetched) {
             try {
-                const response = await RequestGETFromKliveAPI('/api/logs?type=1&limit=5', false, false);
+                const response = prefetched || await RequestGETFromKliveAPI('/api/logs?type=1&limit=5', false, false);
                 if (response.ok) {
                     const logs = await response.json();
                     const errorLogs = (Array.isArray(logs) ? logs : [])
@@ -569,12 +617,12 @@ export default {
         },
 
         
-        async loadCS2Stats() {
+        async loadCS2Stats(prefetched) {
             this.loadingStates.cs2 = true;
             this.errorStates.cs2 = false;
-            
+
             try {
-                const response = await RequestGETFromKliveAPI('/cs2arbitragebot/getscanalytics', false, false);
+                const response = prefetched || await RequestGETFromKliveAPI('/cs2arbitragebot/getscanalytics', false, false);
                 if (response.ok) {
                     const data = await response.json();
                     this.cs2Stats = {
@@ -606,12 +654,12 @@ export default {
             }
         },
         
-        async loadMemescraperStats() {
+        async loadMemescraperStats(prefetched) {
             this.loadingStates.memescraper = true;
             this.errorStates.memescraper = false;
-            
+
             try {
-                const response = await RequestGETFromKliveAPI('/memescraper/memeScraperAnalytics', false, false);
+                const response = prefetched || await RequestGETFromKliveAPI('/memescraper/memeScraperAnalytics', false, false);
                 if (response.ok) {
                     const analytics = await response.json();
                     
@@ -726,16 +774,18 @@ export default {
             }
         },
 
-        async loadOmniTraderStats() {
+        async loadOmniTraderStats(prefetched) {
             this.loadingStates.omnitrader = true;
             this.errorStates.omnitrader = false;
 
             try {
-                const [statusRes, deploymentsRes, backtestsRes] = await Promise.all([
-                    RequestGETFromKliveAPI('/api/omnitrader/status', false, false),
-                    RequestGETFromKliveAPI('/api/omnitrader/deployments', false, false),
-                    RequestGETFromKliveAPI('/api/omnitrader/backtests', false, false),
-                ]);
+                const [statusRes, deploymentsRes, backtestsRes] = prefetched
+                    ? [prefetched.status, prefetched.deployments, prefetched.backtests]
+                    : await Promise.all([
+                        RequestGETFromKliveAPI('/api/omnitrader/status', false, false),
+                        RequestGETFromKliveAPI('/api/omnitrader/deployments', false, false),
+                        RequestGETFromKliveAPI('/api/omnitrader/backtests', false, false),
+                    ]);
 
                 if (statusRes.status === 401 || deploymentsRes.status === 401) {
                     this.omniTraderStats = { paperCount: 0, liveCount: 0, liveArmed: 0, paperPnL: 0, backtestCount: 0, krakenOn: false, hasAccess: false };
@@ -775,12 +825,12 @@ export default {
             }
         },
 
-        async loadOmniGramStats() {
+        async loadOmniGramStats(prefetched) {
             this.loadingStates.omnigram = true;
             this.errorStates.omnigram = false;
 
             try {
-                const response = await RequestGETFromKliveAPI('/omnigram/dashboard-stats', false, false);
+                const response = prefetched || await RequestGETFromKliveAPI('/omnigram/dashboard-stats', false, false);
 
                 if (response.status === 401) {
                     this.omniGramStats = {
@@ -817,12 +867,12 @@ export default {
             }
         },
 
-        async loadOmniTumblrStats() {
+        async loadOmniTumblrStats(prefetched) {
             this.loadingStates.omnitumblr = true;
             this.errorStates.omnitumblr = false;
 
             try {
-                const response = await RequestGETFromKliveAPI('/omnitumblr/dashboard-stats', false, false);
+                const response = prefetched || await RequestGETFromKliveAPI('/omnitumblr/dashboard-stats', false, false);
 
                 if (response.status === 401) {
                     this.omniTumblrStats = {
@@ -901,12 +951,12 @@ export default {
             }
         },
         
-        async loadRecentActivity() {
+        async loadRecentActivity(prefetched) {
             this.loadingStates.logs = true;
             this.errorStates.logs = false;
-            
+
             try {
-                const response = await RequestGETFromKliveAPI('/api/logs', false, false);
+                const response = prefetched || await RequestGETFromKliveAPI('/api/logs', false, false);
                 if (response.ok) {
                     const logs = await response.json();
                     // Get the 5 most recent activities

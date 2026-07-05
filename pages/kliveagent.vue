@@ -21,6 +21,22 @@
             @click="setView(v.id)"
           >{{ v.label }}</button>
         </div>
+        <button
+          v-if="view === 'chat'"
+          class="ka-panels-toggle"
+          :class="{ 'is-open': liveOpen }"
+          type="button"
+          @click="toggleLive"
+          title="Toggle the live view of the agent controlling the computer"
+        >▦ Live</button>
+        <button
+          v-if="view === 'chat'"
+          class="ka-panels-toggle"
+          :class="{ 'is-open': panelsOpen }"
+          type="button"
+          @click="panelsOpen = !panelsOpen"
+          title="Toggle Scripts / Session / Tasks panels"
+        >⚏ Panels</button>
         <button class="ka-reindex" type="button" @click="reindexCodebase" :disabled="reindexing" :title="reindexStatus">
           <span v-if="reindexing">Reindexing…</span>
           <span v-else-if="reindexDone">✓ Reindexed</span>
@@ -39,12 +55,26 @@
             <p class="chat-empty-sub">Ask KliveAgent to inspect services, run scripts, or recall what it knows.</p>
           </div>
 
-          <AgentMessage v-for="(msg, i) in messages" :key="i" :message="msg" />
+          <AgentMessage v-for="(msg, i) in messages" :key="i" :message="msg" @stop="stopActiveRun" />
 
           <div v-if="loading && !pendingRequestId" class="chat-thinking">
             <span class="chat-thinking-glyph">◈</span>
             <span class="msg-typing"><span></span><span></span><span></span></span>
           </div>
+        </div>
+
+        <!-- Setup loading bar: shown until KliveAgent finishes warming up (100% = ready to talk). -->
+        <div v-if="!agentReady" class="ka-setup" :class="{ 'ka-setup-failed': agentState === 'failed' }">
+          <div class="ka-setup-top">
+            <span class="ka-setup-label">
+              {{ agentState === 'failed' ? '⚠ KliveAgent failed to start' : '◈ KliveAgent is starting up…' }}
+            </span>
+            <span class="ka-setup-pct">{{ agentProgress }}%</span>
+          </div>
+          <div class="ka-setup-track">
+            <div class="ka-setup-fill" :style="{ width: agentProgress + '%' }"></div>
+          </div>
+          <div class="ka-setup-msg">{{ agentStatusMessage }}</div>
         </div>
 
         <div class="chat-input-row">
@@ -53,8 +83,8 @@
             v-model="inputMessage"
             class="chat-input"
             rows="1"
-            placeholder="Ask KliveAgent anything…  (Enter to send, Shift+Enter for newline)"
-            :disabled="loading"
+            :placeholder="agentReady ? 'Ask KliveAgent anything…  (Enter to send, Shift+Enter for newline)' : 'KliveAgent is still setting up…'"
+            :disabled="loading || !agentReady"
             @input="autoGrowInput"
             @keydown.enter.exact.prevent="sendMessage"
           ></textarea>
@@ -64,72 +94,102 @@
         </div>
       </div>
 
-      <!-- Script panel: scripts from the current/active agent turn -->
-      <aside class="script-panel">
-        <div class="script-panel-head">
-          <span class="script-panel-title">Scripts</span>
-          <span v-if="currentTurnScripts.length" class="script-panel-count">{{ currentTurnScripts.length }}</span>
-        </div>
-        <div class="script-panel-body">
-          <div v-if="currentTurnScripts.length === 0" class="script-panel-empty">
-            Scripts the agent runs this turn appear here.
-          </div>
-          <ScriptResultCard v-for="(script, si) in currentTurnScripts" :key="si" :script="script" />
-        </div>
-      </aside>
+      <!-- Dedicated live video stream of what the agent is doing on the host machine. Slides out with
+           motion when the agent starts driving the computer, and can be toggled/dismissed manually. -->
+      <transition name="ka-liveslide">
+        <LiveScreen
+          v-if="liveOpen"
+          :frame="liveFrame"
+          :phase="livePhase"
+          :status-note="liveStatusNote"
+          :iteration="liveIteration"
+          :approval="liveApproval"
+          @approve="submitApproval"
+          @close="dismissLive"
+        />
+      </transition>
 
-      <!-- Context rail: live tasks + quick conversation access -->
-      <aside class="chat-rail">
-        <div class="rail-block">
-          <div class="rail-head">
-            <span class="rail-title">Session</span>
-          </div>
-          <button class="rail-newchat" type="button" @click="newChat">＋ New chat</button>
-          <button
-            class="rail-export"
-            type="button"
-            @click="downloadConversationCsv"
-            :disabled="messages.length === 0"
-            title="Download the full conversation (messages, scripts and outputs) as CSV"
-          >⤓ Export CSV</button>
-        </div>
-
-        <div class="rail-block">
-          <div class="rail-head">
-            <span class="rail-title">Live Tasks</span>
-            <button class="rail-refresh" type="button" @click="loadTasks" title="Refresh tasks">⟳</button>
-          </div>
-          <div v-if="tasks.length === 0" class="rail-empty">No background tasks.</div>
-          <div v-for="task in tasks" :key="task.taskId" class="task-card">
-            <div class="task-header">
-              <span class="task-status" :class="getTaskStatusClass(task)">{{ getTaskStatusLabel(task) }}</span>
-              <button v-if="canCancelTask(task)" @click="cancelTask(task.taskId)" class="cancel-btn" type="button">Cancel</button>
+      <!-- Toggleable overlay: scripts + session/tasks/recent (hidden by default in commander view). -->
+      <transition name="ka-drawer">
+        <div v-if="panelsOpen" class="ka-drawer-wrap">
+          <div class="ka-drawer-backdrop" @click="panelsOpen = false"></div>
+          <aside class="ka-drawer">
+            <div class="ka-drawer-head">
+              <span class="ka-drawer-title">Panels</span>
+              <button class="ka-drawer-close" type="button" @click="panelsOpen = false" title="Close">✕</button>
             </div>
-            <div class="task-desc">{{ task.description || 'Background task' }}</div>
-            <div class="task-time">{{ formatTime(task.createdAt) }}</div>
-            <pre v-if="task.result" class="task-result">{{ task.result }}</pre>
-            <pre v-if="task.errorMessage" class="task-error">{{ task.errorMessage }}</pre>
-          </div>
-        </div>
 
-        <div class="rail-block">
-          <div class="rail-head">
-            <span class="rail-title">Recent</span>
-            <button class="rail-refresh" type="button" @click="loadConversations" title="Refresh conversations">⟳</button>
-          </div>
-          <div v-if="conversationList.length === 0" class="rail-empty">No conversations yet.</div>
-          <button
-            v-for="conv in recentConversations"
-            :key="conv.conversationId"
-            class="rail-conv"
-            type="button"
-            @click="loadConversation(conv.conversationId)"
-          >
-            <span class="rail-conv-preview">{{ conv.lastMessage || 'Empty conversation' }}</span>
-            <span class="rail-conv-meta">{{ conv.sourceChannel }} · {{ formatTime(conv.lastUpdated) }}</span>
-          </button>
+            <div class="ka-drawer-body">
+              <!-- Script panel: scripts from the current/active agent turn -->
+              <aside class="script-panel">
+                <div class="script-panel-head">
+                  <span class="script-panel-title">Scripts</span>
+                  <span v-if="currentTurnScripts.length" class="script-panel-count">{{ currentTurnScripts.length }}</span>
+                </div>
+                <div class="script-panel-body">
+                  <div v-if="currentTurnScripts.length === 0" class="script-panel-empty">
+                    Scripts the agent runs this turn appear here.
+                  </div>
+                  <ScriptResultCard v-for="(script, si) in currentTurnScripts" :key="si" :script="script" />
+                </div>
+              </aside>
+
+              <!-- Context rail: live tasks + quick conversation access -->
+              <aside class="chat-rail">
+                <div class="rail-block">
+                  <div class="rail-head">
+                    <span class="rail-title">Session</span>
+                  </div>
+                  <button class="rail-newchat" type="button" @click="newChat">＋ New chat</button>
+                  <button
+                    class="rail-export"
+                    type="button"
+                    @click="downloadConversationCsv"
+                    :disabled="messages.length === 0"
+                    title="Download the full conversation (messages, scripts and outputs) as CSV"
+                  >⤓ Export CSV</button>
+                </div>
+
+                <div class="rail-block">
+                  <div class="rail-head">
+                    <span class="rail-title">Live Tasks</span>
+                    <button class="rail-refresh" type="button" @click="loadTasks" title="Refresh tasks">⟳</button>
+                  </div>
+                  <div v-if="tasks.length === 0" class="rail-empty">No background tasks.</div>
+                  <div v-for="task in tasks" :key="task.taskId" class="task-card">
+                    <div class="task-header">
+                      <span class="task-status" :class="getTaskStatusClass(task)">{{ getTaskStatusLabel(task) }}</span>
+                      <button v-if="canCancelTask(task)" @click="cancelTask(task.taskId)" class="cancel-btn" type="button">Cancel</button>
+                    </div>
+                    <div class="task-desc">{{ task.description || 'Background task' }}</div>
+                    <div class="task-time">{{ formatTime(task.createdAt) }}</div>
+                    <pre v-if="task.result" class="task-result">{{ task.result }}</pre>
+                    <pre v-if="task.errorMessage" class="task-error">{{ task.errorMessage }}</pre>
+                  </div>
+                </div>
+
+                <div class="rail-block">
+                  <div class="rail-head">
+                    <span class="rail-title">Recent</span>
+                    <button class="rail-refresh" type="button" @click="loadConversations" title="Refresh conversations">⟳</button>
+                  </div>
+                  <div v-if="conversationList.length === 0" class="rail-empty">No conversations yet.</div>
+                  <button
+                    v-for="conv in recentConversations"
+                    :key="conv.conversationId"
+                    class="rail-conv"
+                    type="button"
+                    @click="loadConversation(conv.conversationId)"
+                  >
+                    <span class="rail-conv-preview">{{ conv.lastMessage || 'Empty conversation' }}</span>
+                    <span class="rail-conv-meta">{{ conv.sourceChannel }} · {{ formatTime(conv.lastUpdated) }}</span>
+                  </button>
+                </div>
+              </aside>
+            </div>
+          </aside>
         </div>
-      </aside>
+      </transition>
     </section>
 
     <!-- ════════════════ ANALYTICS VIEW ════════════════ -->
@@ -363,6 +423,7 @@ import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import { renderMarkdown } from '~/scripts/agentMarkdown';
 import AgentMessage from '~/components/KliveAgent/AgentMessage.vue';
+import LiveScreen from '~/components/KliveAgent/LiveScreen.vue';
 import ScriptResultCard from '~/components/KliveAgent/ScriptResultCard.vue';
 import AgentStatCard from '~/components/KliveAgent/AgentStatCard.vue';
 import AgentChartCard from '~/components/KliveAgent/AgentChartCard.vue';
@@ -397,12 +458,174 @@ function setView(v) {
 // ── Chat state ──
 const messages = ref([]);
 const inputMessage = ref('');
+
+// ── KliveAgent setup readiness (loading bar) ──
+// The backend gates chat until it finishes warming up; talking too early returned "Something went wrong."
+// We poll /kliveagent/status (ungated) and show a progress bar until ready (100%), gating the composer.
+const agentReady = ref(false);
+const agentProgress = ref(0);
+const agentState = ref('starting');           // 'starting' | 'ready' | 'failed'
+const agentStatusMessage = ref('Connecting to KliveAgent…');
+let agentStatusHandle = null;
 const loading = ref(false);
 const pendingRequestId = ref(null);
 const conversationId = ref(null);
 const chatMessages = ref(null);
 const chatInput = ref(null);
 let pendingPollHandle = null;
+
+// ── Commander view: live screen feed + toggleable side panels ──
+const panelsOpen = ref(false);
+const liveOpen = ref(false);        // is the live-view panel slid out?
+const liveDismissed = ref(false);   // user closed it this run → don't auto-reopen on every frame
+const liveFrame = ref(null);        // base64 JPEG of the latest annotated computer-use frame
+const liveApproval = ref(null);     // pending approval card (or null)
+const livePhase = ref('');
+const liveStatusNote = ref('');
+const liveIteration = ref(0);
+
+// Slide the live view away (user pressed ✕). Stays closed until the next message starts a run.
+function dismissLive() {
+  liveOpen.value = false;
+  liveDismissed.value = true;
+}
+function toggleLive() {
+  liveOpen.value = !liveOpen.value;
+  liveDismissed.value = !liveOpen.value;
+}
+
+// ── Persistent active run (survives navigation / reload) ──
+// The bot runs server-side independently of this page. We stash the active conversation + pending
+// request id (+ the prompt) in localStorage so that, on return, we can re-attach to the live run and
+// keep showing what the bot is doing — even mid-script.
+const ACTIVE_RUN_KEY = 'kliveagent.activeRun';
+
+function persistActiveRun(userMessage) {
+  try {
+    localStorage.setItem(ACTIVE_RUN_KEY, JSON.stringify({
+      conversationId: conversationId.value,
+      pendingRequestId: pendingRequestId.value,
+      userMessage,
+    }));
+  } catch {}
+}
+
+function clearActiveRun() {
+  try { localStorage.removeItem(ACTIVE_RUN_KEY); } catch {}
+}
+
+// Apply the live transparency fields from a pending-poll payload onto a message object.
+function applyPendingFields(msg, data) {
+  if (data.response != null) msg.content = data.response;
+  if (Array.isArray(data.scriptsExecuted)) msg.scripts = data.scriptsExecuted;
+  msg.phase = data.phase;
+  msg.iteration = data.iteration;
+  msg.promptTokens = data.promptTokens;
+  msg.completionTokens = data.completionTokens;
+  msg.statusNote = data.statusNote;
+  if (Array.isArray(data.activity)) msg.activity = data.activity;
+  // Computer-use: drive the dedicated LiveScreen panel (video stream + approval gate), not the bubble.
+  // A new frame slides the live view out automatically (unless the user dismissed it this run); a pending
+  // approval always forces it open since it needs a decision.
+  if (data.latestFrame) {
+    liveFrame.value = data.latestFrame;
+    if (!liveDismissed.value) liveOpen.value = true;
+  }
+  liveApproval.value = data.pendingApproval && data.pendingApproval.status === 'pending' ? data.pendingApproval : null;
+  if (liveApproval.value) { liveOpen.value = true; liveDismissed.value = false; }
+  livePhase.value = data.phase || '';
+  liveStatusNote.value = data.statusNote || '';
+  liveIteration.value = data.iteration || 0;
+}
+
+// Approve/deny a pending computer-use action (the inline card buttons). Resolves it server-side; the
+// poll loop then clears the card and the blocked action proceeds or aborts.
+async function submitApproval({ approvalId, approved }) {
+  if (!approvalId) return;
+  try {
+    await RequestPOSTFromKliveAPI('/kliveagent/chat/approve', JSON.stringify({ approvalId, approved }), true, true);
+  } catch {}
+}
+
+// Stop the live run (manual Stop button). Cancels server-side; the poll loop then observes a
+// non-Running status and renders the truthful partial answer.
+async function stopActiveRun() {
+  const id = pendingRequestId.value;
+  if (!id) return;
+  try {
+    await RequestPOSTFromKliveAPI('/kliveagent/chat/cancel', JSON.stringify({ requestId: id }), true, true);
+  } catch {}
+}
+
+// On (re)load, re-attach to a run that was started before navigating away. The bot keeps working
+// server-side, so we restore the conversation, rebuild the in-flight bubble, and resume polling.
+async function resumeActiveRunIfAny() {
+  let saved;
+  try {
+    const raw = localStorage.getItem(ACTIVE_RUN_KEY);
+    if (!raw) return;
+    saved = JSON.parse(raw);
+  } catch {
+    clearActiveRun();
+    return;
+  }
+  if (!saved || !saved.pendingRequestId) {
+    clearActiveRun();
+    return;
+  }
+
+  conversationId.value = saved.conversationId || null;
+  view.value = 'chat';
+
+  // Load the durable history first (completed turns). The in-progress turn isn't persisted yet.
+  if (conversationId.value) {
+    try { await loadConversation(conversationId.value); } catch {}
+  }
+
+  let data;
+  try {
+    const res = await RequestGETFromKliveAPI(
+      `/kliveagent/chat/pending?requestId=${encodeURIComponent(saved.pendingRequestId)}&_t=${Date.now()}`
+    );
+    if (!res.ok) {
+      // Evicted/unknown (e.g. completed long ago) — the loaded history already has the result.
+      clearActiveRun();
+      return;
+    }
+    data = await res.json();
+  } catch {
+    clearActiveRun();
+    return;
+  }
+
+  if (data.status === 'Running') {
+    // Re-create the in-flight pair (not yet in persisted history) and resume the live view.
+    const userMessage = data.userMessage || saved.userMessage || '';
+    if (userMessage) {
+      messages.value.push({ role: 'User', content: userMessage, timestamp: new Date().toISOString() });
+    }
+    const agentMsg = {
+      role: 'KliveAgent',
+      content: data.response || '',
+      scripts: [],
+      activity: [],
+      pending: true,
+      phase: 'thinking',
+      timestamp: new Date().toISOString(),
+    };
+    applyPendingFields(agentMsg, data);
+    agentMsg.pending = true;
+    messages.value.push(agentMsg);
+
+    pendingRequestId.value = saved.pendingRequestId;
+    loading.value = true;
+    scrollToBottom(true);
+    await pollPendingResponse(messages.value.length - 1);
+  } else {
+    // Already finished while away — the persisted history (loaded above) holds the final turn.
+    clearActiveRun();
+  }
+}
 
 // ── Side data ──
 const tasks = ref([]);
@@ -433,9 +656,14 @@ const currentTurnScripts = computed(() => {
   return [];
 });
 
-const isSendDisabled = computed(() => loading.value || !inputMessage.value.trim());
+const isSendDisabled = computed(() => loading.value || !agentReady.value || !inputMessage.value.trim());
 
 const sendButtonTitle = computed(() => {
+  if (!agentReady.value) {
+    return agentState.value === 'failed'
+      ? 'KliveAgent failed to start — check the bot logs.'
+      : `KliveAgent is starting up… (${agentProgress.value}%)`;
+  }
   if (loading.value) {
     return pendingRequestId.value
       ? 'KliveAgent is finishing the current request.'
@@ -462,6 +690,14 @@ function newChat() {
   messages.value = [];
   conversationId.value = null;
   inputMessage.value = '';
+  liveApproval.value = null;
+  liveStatusNote.value = '';
+  livePhase.value = '';
+  liveIteration.value = 0;
+  liveOpen.value = false;
+  liveDismissed.value = false;
+  // liveFrame is kept as the last seen view until a new run produces one.
+  clearActiveRun();
   resetInputHeight();
 }
 
@@ -538,11 +774,13 @@ async function readAgentApiResponse(res) {
 async function sendMessage() {
   const msg = inputMessage.value.trim();
   if (!msg || loading.value) return;
+  if (!agentReady.value) return; // composer is disabled until warmup finishes; guard anyway
 
   messages.value.push({ role: 'User', content: msg, timestamp: new Date().toISOString() });
   inputMessage.value = '';
   resetInputHeight();
   loading.value = true;
+  liveDismissed.value = false; // allow the live view to auto-open if this run drives the computer
   scrollToBottom(true);
 
   try {
@@ -563,11 +801,15 @@ async function sendMessage() {
       conversationId.value = data.conversationId;
       if (data.isPending && data.pendingRequestId) {
         pendingRequestId.value = data.pendingRequestId;
+        // Stash the active run so we can re-attach after navigating away and back.
+        persistActiveRun(msg);
         messages.value.push({
           role: 'KliveAgent',
           content: data.response,
           scripts: [],
+          activity: [],
           pending: true,
+          phase: 'thinking',
           timestamp: new Date().toISOString(),
         });
         scrollToBottom(true);
@@ -584,7 +826,7 @@ async function sendMessage() {
     } else {
       messages.value.push({
         role: 'KliveAgent',
-        content: data.response || data.errorMessage || 'Something went wrong.',
+        content: data.response || data.error || data.errorMessage || 'Something went wrong.',
         timestamp: new Date().toISOString(),
       });
     }
@@ -627,23 +869,25 @@ async function pollPendingResponse(messageIndex) {
       }
 
       if (data.status === 'Running') {
-        // Live "talking while working": the server streams the agent's prose into
-        // data.response and the code it runs into data.scriptsExecuted between iterations.
-        if (data.response != null) msg().content = data.response;
-        if (Array.isArray(data.scriptsExecuted)) msg().scripts = data.scriptsExecuted;
+        // Live "talking while working": the server streams the agent's prose (token-by-token), the
+        // code it runs, and rich transparency fields (phase, step, token counts, activity log).
+        applyPendingFields(msg(), data);
         scrollToBottom();
         await waitForPendingPoll(600);
         continue;
       }
 
       const finalResponse = data.finalResponse;
+      // Carry over the last transparency snapshot, then finalize.
+      applyPendingFields(msg(), data);
       msg().pending = false;
+      msg().phase = 'final';
       msg().timestamp = new Date().toISOString();
 
       if (finalResponse) {
         conversationId.value = finalResponse.conversationId || data.conversationId || conversationId.value;
         msg().content = finalResponse.response || msg().content;
-        msg().scripts = finalResponse.scriptsExecuted || [];
+        msg().scripts = finalResponse.scriptsExecuted || msg().scripts || [];
       } else {
         msg().content = data.errorMessage || 'KliveAgent did not return a final response.';
       }
@@ -657,6 +901,7 @@ async function pollPendingResponse(messageIndex) {
 
   pendingRequestId.value = null;
   loading.value = false;
+  clearActiveRun();
   if (pendingPollHandle) {
     clearTimeout(pendingPollHandle);
     pendingPollHandle = null;
@@ -1114,10 +1359,38 @@ async function loadShortcuts() {
   } catch {}
 }
 
+// Poll the agent's setup status until it's ready, driving the loading bar.
+async function pollAgentStatus() {
+  try {
+    const res = await RequestGETFromKliveAPI(`/kliveagent/status?_t=${Date.now()}`, false, false);
+    if (res.ok) {
+      const data = await res.json();
+      agentState.value = data.state || 'starting';
+      if (typeof data.progress === 'number') agentProgress.value = data.progress;
+      if (data.message) agentStatusMessage.value = data.message;
+      agentReady.value = !!data.ready;
+    } else {
+      // Backend reachable but not ready (or 202/503 during warmup) — keep the bar up and retry.
+      agentStatusMessage.value = 'Waiting for KliveAgent to come online…';
+    }
+  } catch {
+    agentStatusMessage.value = 'Waiting for KliveAgent to come online…';
+  }
+  if (agentReady.value) {
+    agentStatusHandle = null;
+  } else {
+    // Failed state still polls (slowly) so a restart is picked up automatically.
+    agentStatusHandle = setTimeout(pollAgentStatus, agentState.value === 'failed' ? 4000 : 1000);
+  }
+}
+
 onMounted(() => {
   // Chat is the default view — load just what the chat rail needs up front.
+  pollAgentStatus();
   loadTasks();
   loadConversations();
+  // Re-attach to any run that was in progress before the page was left/reloaded.
+  resumeActiveRunIfAny();
 });
 
 onUnmounted(() => {
@@ -1125,6 +1398,10 @@ onUnmounted(() => {
   if (pendingPollHandle) {
     clearTimeout(pendingPollHandle);
     pendingPollHandle = null;
+  }
+  if (agentStatusHandle) {
+    clearTimeout(agentStatusHandle);
+    agentStatusHandle = null;
   }
 });
 </script>
@@ -1451,6 +1728,54 @@ onUnmounted(() => {
 @keyframes ka-blink {
   0%, 80%, 100% { opacity: 0.25; }
   40% { opacity: 1; }
+}
+
+/* Setup loading bar (shown until KliveAgent is ready to talk) */
+.ka-setup {
+  padding: 12px 16px;
+  background: $mainDarker;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.ka-setup-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 7px;
+}
+.ka-setup-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #cfcfcf;
+}
+.ka-setup-pct {
+  font-size: 12px;
+  font-weight: 800;
+  color: $secondary;
+  font-variant-numeric: tabular-nums;
+}
+.ka-setup-track {
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.ka-setup-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba($secondary, 0.8), $secondary);
+  transition: width 0.5s ease;
+  box-shadow: 0 0 10px rgba($secondary, 0.5);
+}
+.ka-setup-msg {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #8a8a8a;
+}
+.ka-setup-failed .ka-setup-pct { color: #ff7a7a; }
+.ka-setup-failed .ka-setup-fill {
+  background: #ff5a5a;
+  box-shadow: 0 0 10px rgba(255, 80, 80, 0.5);
 }
 
 .chat-input-row {
@@ -1885,22 +2210,131 @@ onUnmounted(() => {
   border-radius: 3px;
 }
 
+/* ── Header: panels toggle ── */
+.ka-panels-toggle {
+  font-size: 12px;
+  font-weight: 600;
+  color: #bdbdbd;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+.ka-panels-toggle:hover { background: rgba(255, 255, 255, 0.09); }
+.ka-panels-toggle.is-open {
+  color: $teritary;
+  background: rgba($secondary, 0.16);
+  border-color: rgba($secondary, 0.4);
+}
+
+/* ── Commander view: chat + live screen side by side ── */
+.view-chat .chat-panel { flex: 1 1 0; }
+
+/* Live view slide-out motion (the panel is added/removed via v-if; the chat panel reflows to fill). */
+.ka-liveslide-enter-active,
+.ka-liveslide-leave-active {
+  transition: transform 0.34s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.26s ease;
+  will-change: transform, opacity;
+}
+.ka-liveslide-enter-from,
+.ka-liveslide-leave-to {
+  transform: translateX(6%);
+  opacity: 0;
+}
+
+/* ── Toggleable overlay drawer (Scripts / Session / Tasks / Recent) ── */
+.ka-drawer-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+}
+.ka-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(1px);
+}
+.ka-drawer {
+  position: relative;
+  width: min(720px, 92vw);
+  height: 100%;
+  background: #161616;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+}
+.ka-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex: 0 0 auto;
+}
+.ka-drawer-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #9a9a9a;
+}
+.ka-drawer-close {
+  font-size: 14px;
+  color: #9a9a9a;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.ka-drawer-close:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.ka-drawer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+/* Panels fill the drawer width instead of their fixed sidebar widths. */
+.ka-drawer-body .script-panel {
+  width: auto;
+  flex: 0 0 auto;
+  max-height: 55vh;
+}
+.ka-drawer-body .chat-rail {
+  width: auto;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+/* Drawer slide/fade transition */
+.ka-drawer-enter-active,
+.ka-drawer-leave-active { transition: opacity 0.2s ease; }
+.ka-drawer-enter-active .ka-drawer,
+.ka-drawer-leave-active .ka-drawer { transition: transform 0.25s ease; }
+.ka-drawer-enter-from,
+.ka-drawer-leave-to { opacity: 0; }
+.ka-drawer-enter-from .ka-drawer,
+.ka-drawer-leave-to .ka-drawer { transform: translateX(100%); }
+
 /* ── Responsive ── */
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .view-chat {
     flex-direction: column;
     height: auto;
   }
-  .chat-panel {
-    height: 60vh;
-  }
-  .script-panel {
-    width: 100%;
+  .view-chat .chat-panel {
+    height: 55vh;
     flex: none;
-    height: 40vh;
   }
-  .chat-rail {
-    width: 100%;
+  .live-screen {
+    height: 42vh;
     flex: none;
   }
 }

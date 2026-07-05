@@ -19,92 +19,118 @@
       </div>
 
       <div class="workbench">
-        <aside class="sidebar">
-          <section class="panel">
-            <h3>Revisions</h3>
-            <ul class="rev-list">
-              <li
-                v-for="rev in revisionsDesc"
-                :key="rev.RevisionID"
-                :class="{ active: rev.RevisionID === selectedRevisionID }"
-                @click="selectRevision(rev.RevisionID)"
-              >
-                <span class="rev-index">#{{ rev.Index }}</span>
-                <span class="rev-title">{{ rev.Title || '(no title)' }}</span>
-                <span class="rev-time">{{ formatTime(rev.CreatedAt) }}</span>
-              </li>
-            </ul>
-          </section>
+        <!-- The viewport IS the page — everything else floats above it. -->
+        <StratumViewport :model-url="viewerUrl" :model-type="viewerType" :highlight-subtask="highlightedSubtask" />
 
-          <section class="panel">
-            <h3>Artifacts</h3>
-            <div v-if="!selectedRevision" class="muted">Select a revision.</div>
-            <ArtifactTreePanel
-              v-else
-              :artifacts="selectedRevision.Artifacts"
-              :active-artifact-i-d="selectedArtifactID"
-              @select="selectArtifact"
-            />
-          </section>
+        <!-- Left overlay: project (revisions / artifacts / attachments) -->
+        <button v-if="!showProjectPanel" class="overlay-toggle toggle-left" @click="showProjectPanel = true">☰ Project</button>
+        <aside v-else class="overlay overlay-left">
+          <div class="overlay-head">
+            <span>Project</span>
+            <button class="overlay-close" title="Collapse" @click="showProjectPanel = false">✕</button>
+          </div>
+          <div class="overlay-scroll">
+            <section class="panel">
+              <h3>Revisions</h3>
+              <ul class="rev-list">
+                <li
+                  v-for="rev in revisionsDesc"
+                  :key="rev.RevisionID"
+                  :class="{ active: rev.RevisionID === selectedRevisionID }"
+                  @click="selectRevision(rev.RevisionID)"
+                >
+                  <span class="rev-index">#{{ rev.Index }}</span>
+                  <span class="rev-title">{{ rev.Title || '(no title)' }}</span>
+                  <span class="rev-time">{{ formatTime(rev.CreatedAt) }}</span>
+                </li>
+              </ul>
+            </section>
 
-          <section class="panel">
-            <h3>Attachments</h3>
-            <div class="upload-row">
-              <input ref="attachmentInput" type="file" multiple @change="onAttachmentPicked" />
-            </div>
-            <ul v-if="project.attachments?.length" class="attachment-list">
-              <li v-for="att in project.attachments" :key="att.AttachmentID">
-                <span class="art-name">{{ att.FileName }}</span>
-                <span class="art-size">{{ formatBytes(att.SizeBytes) }}</span>
-                <button class="link-btn" @click="deleteAttachment(att.AttachmentID)">remove</button>
-              </li>
-            </ul>
-            <div v-else class="muted">No reference attachments yet.</div>
-          </section>
+            <section class="panel">
+              <h3>Artifacts</h3>
+              <div v-if="!selectedRevision" class="muted">Select a revision.</div>
+              <ArtifactTreePanel
+                v-else
+                :artifacts="selectedRevision.Artifacts"
+                :active-artifact-i-d="selectedArtifactID"
+                @select="onUserSelectArtifact"
+              />
+            </section>
+
+            <section class="panel">
+              <h3>Attachments</h3>
+              <div class="upload-row">
+                <input ref="attachmentInput" type="file" multiple @change="onAttachmentPicked" />
+              </div>
+              <ul v-if="project.attachments?.length" class="attachment-list">
+                <li v-for="att in project.attachments" :key="att.AttachmentID">
+                  <span class="art-name">{{ att.FileName }}</span>
+                  <span class="art-size">{{ formatBytes(att.SizeBytes) }}</span>
+                  <button class="link-btn" @click="deleteAttachment(att.AttachmentID)">remove</button>
+                </li>
+              </ul>
+              <div v-else class="muted">No reference attachments yet.</div>
+            </section>
+          </div>
         </aside>
 
-        <div class="main-area">
-          <StratumViewport :model-url="viewerUrl" :model-type="viewerType" :highlight-subtask="highlightedSubtask" />
-          <div v-if="selectedArtifact" class="viewer-meta">
-            <strong>{{ selectedArtifact.FileName }}</strong>
-            <span>{{ selectedArtifact.ContentType }}</span>
-            <span>{{ formatBytes(selectedArtifact.SizeBytes) }}</span>
-            <button v-if="!showingAssembly" class="link-btn" @click="() => loadAssemblyIntoViewer()">← back to assembly</button>
-          </div>
-          <WiringDiagram v-if="wiringGraph" :graph="wiringGraph" />
-          <section v-if="firmwareSource" class="firmware-panel">
-            <h4>Firmware source — {{ firmwareSource.fileName }}</h4>
-            <pre class="firmware-code"><code>{{ firmwareSource.code }}</code></pre>
-          </section>
-          <section v-if="bom" class="bom-panel">
-            <h4>Bill of materials</h4>
-            <p v-if="bom.Notes" class="muted">{{ bom.Notes }}</p>
-            <table class="bom-table">
-              <thead><tr><th>Module</th><th>Role</th><th>Qty</th><th>Top distributor candidate</th></tr></thead>
-              <tbody>
-                <tr v-for="line in bom.Lines" :key="line.ModuleId">
-                  <td>{{ line.ModuleId }}</td>
-                  <td>{{ line.Role }}</td>
-                  <td>{{ line.Quantity }}</td>
-                  <td>
-                    <template v-if="line.DistributorCandidates && line.DistributorCandidates.length">
-                      <a :href="line.DistributorCandidates[0].ProductDetailUrl" target="_blank" rel="noopener">
-                        {{ line.DistributorCandidates[0].Manufacturer }} {{ line.DistributorCandidates[0].ManufacturerPartNumber }}
-                      </a>
-                      <span class="muted"> — {{ line.DistributorCandidates[0].PriceQty1 }} @ {{ line.DistributorCandidates[0].Distributor }}</span>
-                    </template>
-                    <span v-else class="muted">no distributor data</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </section>
-          <MechanicalEngineerChat
+        <!-- Right overlay: the Engineer conversation -->
+        <button v-if="!showChatPanel" class="overlay-toggle toggle-right" @click="showChatPanel = true">💬 Engineer</button>
+        <div v-else class="overlay overlay-right">
+          <button class="overlay-close floating" title="Collapse" @click="showChatPanel = false">✕</button>
+          <ConversationPanel
             :project-id="projectId"
-            @reference="onChatReference"
-            @amendment-spawned="onAmendmentSpawned"
+            @select-artifact="onConversationArtifact"
+            @project-changed="loadProject"
           />
-          <AgentRunPanel :project-id="projectId" @project-changed="loadProject" @gate-preview="onGatePreview" />
+        </div>
+
+        <!-- Bottom overlay: inspector for the current selection -->
+        <div
+          v-if="hasInspectorContent"
+          class="overlay overlay-bottom"
+          :class="{ 'with-left': showProjectPanel, 'with-chat': showChatPanel, expanded: inspectorExpanded }"
+        >
+          <div class="viewer-meta">
+            <strong>{{ selectedArtifact?.FileName }}</strong>
+            <span v-if="selectedArtifact">{{ selectedArtifact.ContentType }}</span>
+            <span v-if="selectedArtifact">{{ formatBytes(selectedArtifact.SizeBytes) }}</span>
+            <button v-if="!showingAssembly" class="link-btn" @click="() => loadAssemblyIntoViewer()">← back to assembly</button>
+            <span class="meta-spacer" />
+            <button v-if="hasInspectorDetail" class="overlay-close" :title="inspectorExpanded ? 'Collapse details' : 'Expand details'" @click="inspectorExpanded = !inspectorExpanded">
+              {{ inspectorExpanded ? '▾' : '▴' }}
+            </button>
+          </div>
+          <div v-if="inspectorExpanded && hasInspectorDetail" class="inspector-detail">
+            <WiringDiagram v-if="wiringGraph" :graph="wiringGraph" />
+            <section v-if="firmwareSource" class="firmware-panel">
+              <h4>Firmware source — {{ firmwareSource.fileName }}</h4>
+              <pre class="firmware-code"><code>{{ firmwareSource.code }}</code></pre>
+            </section>
+            <section v-if="bom" class="bom-panel">
+              <h4>Bill of materials</h4>
+              <p v-if="bom.Notes" class="muted">{{ bom.Notes }}</p>
+              <table class="bom-table">
+                <thead><tr><th>Module</th><th>Role</th><th>Qty</th><th>Top distributor candidate</th></tr></thead>
+                <tbody>
+                  <tr v-for="line in bom.Lines" :key="line.ModuleId">
+                    <td>{{ line.ModuleId }}</td>
+                    <td>{{ line.Role }}</td>
+                    <td>{{ line.Quantity }}</td>
+                    <td>
+                      <template v-if="line.DistributorCandidates && line.DistributorCandidates.length">
+                        <a :href="line.DistributorCandidates[0].ProductDetailUrl" target="_blank" rel="noopener">
+                          {{ line.DistributorCandidates[0].Manufacturer }} {{ line.DistributorCandidates[0].ManufacturerPartNumber }}
+                        </a>
+                        <span class="muted"> — {{ line.DistributorCandidates[0].PriceQty1 }} @ {{ line.DistributorCandidates[0].Distributor }}</span>
+                      </template>
+                      <span v-else class="muted">no distributor data</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </section>
+          </div>
         </div>
       </div>
     </template>
@@ -117,10 +143,9 @@ import { useRoute, useRouter } from 'vue-router';
 import Swal from 'sweetalert2';
 import { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import StratumViewport from '~/components/Stratum/StratumViewport.vue';
-import AgentRunPanel from '~/components/Stratum/AgentRunPanel.vue';
 import WiringDiagram from '~/components/Stratum/WiringDiagram.vue';
 import ArtifactTreePanel from '~/components/Stratum/ArtifactTreePanel.vue';
-import MechanicalEngineerChat from '~/components/Stratum/MechanicalEngineerChat.vue';
+import ConversationPanel from '~/components/Stratum/ConversationPanel.vue';
 
 definePageMeta({ layout: 'navbar' });
 
@@ -179,6 +204,14 @@ const attachmentInput = ref<HTMLInputElement | null>(null);
 const downloading = ref<'printables' | 'current' | 'all' | null>(null);
 const highlightedSubtask = ref<string | null>(null);
 const showingAssembly = ref(false);
+// When true, the viewport live-follows the engineer's freshest output (latest assembly
+// snapshot, or the newest part mesh before one is composed). Turned off the moment the
+// user explicitly pins an artifact; re-enabled by "← back to assembly".
+const autoFollow = ref(true);
+// Overlay visibility — the viewport owns the page; these float above it.
+const showProjectPanel = ref(true);
+const showChatPanel = ref(true);
+const inspectorExpanded = ref(false);
 // ArtifactID of the assembly GLB currently auto-loaded in the viewport — used to
 // resync after a refresh without flicker.
 const activeAssemblyArtifactID = ref<string | null>(null);
@@ -231,7 +264,7 @@ function normaliseProject(raw: any): ProjectDetail | null {
 async function loadProject() {
   // Only show the full-page loading banner on the first load. Subsequent refreshes
   // (e.g. when an agent opens a new gate) must NOT unmount the workbench, otherwise
-  // the AgentRunPanel loses its selected run and the user perceives it as a reload.
+  // the ConversationPanel loses its timeline cursor and the user perceives it as a reload.
   const isInitial = project.value === null;
   if (isInitial) loading.value = true;
   loadError.value = '';
@@ -245,24 +278,16 @@ async function loadProject() {
     const data = normaliseProject(await res.json());
     project.value = data;
     if (isInitial && data && data.revisions.length) {
-      const latest = data.revisions[data.revisions.length - 1];
-      selectedRevisionID.value = latest.RevisionID;
-      // Auto-load the latest assembly GLB if one exists; otherwise fall back to any viewable artifact.
-      const assembly = pickLatestAssemblyGlb(data);
-      if (assembly) {
-        await loadAssemblyIntoViewer(assembly);
-      } else {
-        const viewable = latest.Artifacts.find(isViewable);
-        if (viewable) selectArtifact(viewable);
-      }
-    } else if (data) {
-      // Subsequent refresh (e.g., after a gate closes): if a fresher assembly snapshot has
-      // arrived since we last loaded one, swap to it (only when the user is still viewing
-      // the assembly; never clobber an explicit selection).
-      const assembly = pickLatestAssemblyGlb(data);
-      if (showingAssembly.value && assembly && assembly.ArtifactID !== activeAssemblyArtifactID.value) {
-        await loadAssemblyIntoViewer(assembly);
-      }
+      selectedRevisionID.value = data.revisions[data.revisions.length - 1].RevisionID;
+      // Auto-load the freshest viewable output (assembly preferred, else newest part mesh).
+      const latest = pickLatestViewable(data);
+      if (latest) await followViewable(latest);
+    } else if (data && autoFollow.value) {
+      // Live refresh (driven by the conversation's artifact-added events): keep the viewport
+      // on the engineer's newest output so the model updates as parts/assemblies are produced,
+      // without clobbering an explicit user selection (autoFollow is off once the user pins one).
+      const latest = pickLatestViewable(data);
+      if (latest && latest.ArtifactID !== selectedArtifactID.value) await followViewable(latest);
     }
   } catch (err: any) {
     loadError.value = err?.message ?? String(err);
@@ -287,6 +312,31 @@ function pickLatestAssemblyGlb(data: ProjectDetail): ArtifactDto | null {
     }
   }
   return best;
+}
+
+// The artifact the viewport should show when following the engineer: the freshest assembly
+// snapshot if one exists, otherwise the newest individual part mesh (so the user watches parts
+// appear before they're composed).
+function pickLatestViewable(data: ProjectDetail): ArtifactDto | null {
+  const assembly = pickLatestAssemblyGlb(data);
+  if (assembly) return assembly;
+  let best: ArtifactDto | null = null;
+  for (const rev of data.revisions) {
+    for (const a of rev.Artifacts) {
+      if (!isViewable(a)) continue;
+      if (a.SupersededByArtifactID) continue;
+      if (!best || a.CreatedAt > best.CreatedAt) best = a;
+    }
+  }
+  return best;
+}
+
+// Load a viewable artifact into the viewport for the auto-follow path (does NOT disable
+// following). Assembly snapshots go through the assembly loader so highlighting/electronics
+// toggles work; anything else loads as a single mesh.
+async function followViewable(art: ArtifactDto) {
+  if (art.Role === 'assembly-snapshot' && art.Kind === 'MeshGlb') await loadAssemblyIntoViewer(art);
+  else await selectArtifact(art);
 }
 
 async function loadAssemblyIntoViewer(art?: ArtifactDto) {
@@ -318,6 +368,14 @@ async function loadAssemblyIntoViewer(art?: ArtifactDto) {
   showingAssembly.value = true;
   activeAssemblyArtifactID.value = assembly.ArtifactID;
   highlightedSubtask.value = null;
+  // Viewing the assembly means "follow the latest" — this also powers the ← back-to-assembly button.
+  autoFollow.value = true;
+}
+
+// User explicitly picked an artifact from the tree: stop live-following so their selection sticks.
+function onUserSelectArtifact(art: ArtifactDto) {
+  autoFollow.value = false;
+  selectArtifact(art);
 }
 
 async function downloadBundle(scope: 'printables' | 'current' | 'all') {
@@ -347,8 +405,10 @@ async function downloadBundle(scope: 'printables' | 'current' | 'all') {
   }
 }
 
-async function onChatReference(artifactID: string) {
-  // Find the referenced artifact. If it's a current part, highlight it inside the assembly.
+async function onConversationArtifact(artifactID: string) {
+  // The conversation referenced an artifact (gate chip / render). If it's a current part,
+  // highlight it inside the assembly; otherwise load it into the viewer / inspector.
+  if (!project.value) await loadProject();
   if (!project.value) return;
   for (const rev of project.value.revisions) {
     const art = rev.Artifacts.find(a => a.ArtifactID === artifactID);
@@ -357,15 +417,12 @@ async function onChatReference(artifactID: string) {
       highlightedSubtask.value = art.SubtaskTitle;
       return;
     }
-    // Otherwise load the artifact directly into the viewer / inspector.
+    // Clicking a conversation reference pins that artifact (stops live-following).
+    autoFollow.value = false;
+    selectedRevisionID.value = rev.RevisionID;
     await selectArtifact(art);
     return;
   }
-}
-
-function onAmendmentSpawned(_runID: string) {
-  // Refresh project state so the artifact tree and assembly snapshot pick up the new run's outputs.
-  loadProject();
 }
 
 function isWiring(art: ArtifactDto): boolean { return art.Kind === 'WiringDiagram'; }
@@ -379,6 +436,12 @@ function isFirmwareDoc(art: ArtifactDto): boolean {
 const wiringGraph = ref<any | null>(null);
 const bom = ref<any | null>(null);
 const firmwareSource = ref<{ fileName: string; code: string } | null>(null);
+
+const hasInspectorDetail = computed(() => !!(wiringGraph.value || firmwareSource.value || bom.value));
+const hasInspectorContent = computed(() => !!selectedArtifact.value || hasInspectorDetail.value);
+
+// Auto-expand the inspector when rich detail (wiring / firmware / BOM) arrives.
+watch(hasInspectorDetail, has => { if (has) inspectorExpanded.value = true; });
 
 function selectRevision(id: string) {
   selectedRevisionID.value = id;
@@ -444,37 +507,6 @@ async function selectArtifact(art: ArtifactDto) {
   activeBlobUrl = URL.createObjectURL(blob);
   viewerUrl.value = activeBlobUrl;
   viewerType.value = art.Kind === 'MeshGlb' ? 'glb' : 'stl';
-}
-
-async function onGatePreview(payload: { runID: string; gateID: string; artifactIDs: string[] }) {
-  // A new gate just opened with proposed artifacts — refresh project, switch to the
-  // revision that contains them, then auto-select the most relevant one (wiring > 3D > BOM).
-  await loadProject();
-  if (!project.value) return;
-  const ids = new Set(payload.artifactIDs);
-  for (let i = project.value.revisions.length - 1; i >= 0; i--) {
-    const rev = project.value.revisions[i];
-    const wiring = rev.Artifacts.find(a => ids.has(a.ArtifactID) && isWiring(a));
-    const viewable = rev.Artifacts.find(a => ids.has(a.ArtifactID) && isViewable(a));
-    const bomArt = rev.Artifacts.find(a => ids.has(a.ArtifactID) && isBom(a));
-    const firmware = rev.Artifacts.find(a => ids.has(a.ArtifactID) && isFirmwareDoc(a));
-    const pick = viewable || wiring || firmware || bomArt;
-    if (pick) {
-      selectedRevisionID.value = rev.RevisionID;
-      await selectArtifact(pick);
-      // For electronics gates, also pre-load the wiring + BOM regardless of which one is
-      // "viewer-selected", so the panels render below the 3D viewport.
-      if (wiring && pick.ArtifactID !== wiring.ArtifactID) {
-        const r = await RequestGETFromKliveAPI(`/stratum/artifacts/download?projectID=${encodeURIComponent(projectId)}&artifactID=${encodeURIComponent(wiring.ArtifactID)}`, false, false);
-        if (r.ok) { try { wiringGraph.value = await r.json(); } catch { /* ignore */ } }
-      }
-      if (bomArt && pick.ArtifactID !== bomArt.ArtifactID) {
-        const r = await RequestGETFromKliveAPI(`/stratum/artifacts/download?projectID=${encodeURIComponent(projectId)}&artifactID=${encodeURIComponent(bomArt.ArtifactID)}`, false, false);
-        if (r.ok) { try { bom.value = await r.json(); } catch { /* ignore */ } }
-      }
-      return;
-    }
-  }
 }
 
 async function renameProject() {
@@ -559,10 +591,10 @@ watch(() => route.params.projectId, () => loadProject());
 </script>
 
 <style scoped>
-.stratum-project-page { padding: 24px; color: #e6e6e6; height: calc(100vh - 0px); display: flex; flex-direction: column; }
-.page-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; }
-.page-title { margin: 0; font-size: 24px; }
-.page-subtitle { margin: 4px 0 0; color: #888; font-size: 13px; }
+.stratum-project-page { padding: 12px 16px; color: #e6e6e6; height: 100vh; display: flex; flex-direction: column; box-sizing: border-box; }
+.page-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 10px; flex: 0 0 auto; }
+.page-title { margin: 0; font-size: 20px; }
+.page-subtitle { margin: 2px 0 0; color: #888; font-size: 12px; }
 .back-link { color: #4d9e39; text-decoration: none; font-size: 13px; }
 .back-link:hover { text-decoration: underline; }
 .header-actions { display: flex; gap: 8px; }
@@ -580,15 +612,64 @@ watch(() => route.params.projectId, () => loadProject());
 }
 .error-banner { color: #ff8484; background: #2a1818; }
 
-.workbench {
-  display: grid; grid-template-columns: 320px 1fr; gap: 16px; flex: 1; min-height: 0;
+/* ── The viewport owns the workbench; panels float above it ── */
+.workbench { position: relative; flex: 1; min-height: 0; border-radius: 10px; overflow: hidden; }
+.workbench :deep(.stratum-viewport-root) {
+  position: absolute; inset: 0; height: 100%; min-height: 0; border-radius: 10px;
 }
-.sidebar { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
-.panel {
-  background: #1f1f23; border-radius: 8px; padding: 14px;
-  border: 1px solid #2a2a2e;
+/* The viewport's own toolbar + status pills default to the corners — the corners now belong
+   to the floating panels, so park them in the free top-centre strip instead. */
+.workbench :deep(.viewport-toolbar) { top: 12px; left: 50%; right: auto; transform: translateX(-50%); }
+.workbench :deep(.viewport-status),
+.workbench :deep(.viewport-empty) { top: 52px; left: 50%; transform: translateX(-50%); white-space: nowrap; }
+
+.overlay {
+  position: absolute; z-index: 5;
+  background: rgba(26, 26, 30, 0.88); backdrop-filter: blur(8px);
+  border: 1px solid #2f2f34; border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  display: flex; flex-direction: column; min-height: 0;
 }
-.panel h3 { margin: 0 0 10px; font-size: 14px; color: #aaa; text-transform: uppercase; letter-spacing: 0.05em; }
+.overlay-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px; border-bottom: 1px solid #2a2a2e; flex: 0 0 auto;
+  font-size: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 0.05em;
+}
+.overlay-close {
+  background: none; border: none; color: #888; cursor: pointer; font-size: 12px;
+  padding: 2px 6px; border-radius: 4px;
+}
+.overlay-close:hover { color: #fff; background: #2a2a2e; }
+.overlay-close.floating { position: absolute; top: 10px; right: 10px; z-index: 6; }
+.overlay-scroll { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+
+.overlay-left { top: 12px; left: 12px; bottom: 12px; width: 304px; max-width: 28vw; }
+.overlay-right { top: 12px; right: 12px; bottom: 12px; width: 460px; max-width: 42vw; }
+.overlay-right :deep(.conversation-panel) {
+  flex: 1; min-height: 0; border: none; background: transparent;
+}
+/* Keep the panel's status/cancel clear of the floating collapse button. */
+.overlay-right :deep(.conv-header) { padding-right: 30px; }
+
+.overlay-toggle {
+  position: absolute; z-index: 5;
+  background: rgba(26, 26, 30, 0.88); backdrop-filter: blur(8px);
+  border: 1px solid #2f2f34; color: #cfcfcf; border-radius: 18px;
+  padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.overlay-toggle:hover { color: #fff; border-color: #4d9e39; }
+.toggle-left { top: 12px; left: 12px; }
+.toggle-right { top: 12px; right: 12px; }
+
+/* Bottom inspector: stays clear of whichever side overlays are open. */
+.overlay-bottom { bottom: 12px; left: 12px; right: 12px; max-height: 44px; overflow: hidden; }
+.overlay-bottom.expanded { max-height: 46vh; overflow-y: auto; }
+.overlay-bottom.with-left { left: 328px; }
+.overlay-bottom.with-chat { right: 484px; }
+
+.panel { background: rgba(31, 31, 35, 0.6); border-radius: 8px; padding: 12px; border: 1px solid #2a2a2e; }
+.panel h3 { margin: 0 0 10px; font-size: 13px; color: #aaa; text-transform: uppercase; letter-spacing: 0.05em; }
 .rev-list, .artifact-list, .attachment-list { list-style: none; margin: 0; padding: 0; }
 .rev-list li, .artifact-list li, .attachment-list li {
   display: flex; gap: 8px; align-items: center; padding: 8px;
@@ -602,32 +683,27 @@ watch(() => route.params.projectId, () => loadProject());
 .art-kind { font-size: 10px; padding: 2px 6px; background: #2a2a2e; border-radius: 3px; color: #aaa; }
 .art-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .art-size { font-size: 11px; color: #666; }
-.attachment-list li { background: #161618; }
+.attachment-list li { background: rgba(22, 22, 24, 0.7); }
 .upload-row { margin-bottom: 10px; }
 .upload-row input[type=file] { font-size: 12px; color: #aaa; width: 100%; }
 .link-btn { background: none; border: none; color: #ff8484; cursor: pointer; font-size: 11px; }
 .muted { color: #666; font-size: 12px; }
 
-.main-area { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto; }
-.main-area :deep(.stratum-viewport-root) {
-  flex: 0 0 clamp(220px, 38vh, 440px);
-  height: auto;
-}
-.main-area :deep(.agent-run-panel) {
-  flex: 1 1 auto;
-}
 .viewer-meta {
-  display: flex; gap: 16px; padding: 8px 12px; background: #1f1f23;
-  border-radius: 6px; font-size: 12px; color: #aaa;
+  display: flex; gap: 16px; align-items: center; padding: 10px 12px;
+  font-size: 12px; color: #aaa; flex: 0 0 auto;
 }
+.meta-spacer { flex: 1; }
+.inspector-detail { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 10px; }
 .firmware-panel {
-  background: #1f1f23; border: 1px solid #2a2a2e; border-radius: 8px; padding: 12px;
+  background: rgba(31, 31, 35, 0.6); border: 1px solid #2a2a2e; border-radius: 8px; padding: 12px;
 }
 .firmware-panel h4 { margin: 0 0 8px; font-size: 13px; color: #aaa; text-transform: uppercase; letter-spacing: 0.05em; }
 .firmware-code {
   background: #0e0e10; color: #d8d8d8; padding: 12px; border-radius: 6px;
   font-family: 'Consolas', 'Courier New', monospace; font-size: 12px;
-  max-height: 480px; overflow: auto; margin: 0;
+  max-height: 380px; overflow: auto; margin: 0;
   white-space: pre-wrap; word-break: break-word;
 }
+.bom-panel { background: rgba(31, 31, 35, 0.6); border: 1px solid #2a2a2e; border-radius: 8px; padding: 12px; }
 </style>

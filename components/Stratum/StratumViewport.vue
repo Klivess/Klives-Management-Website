@@ -3,15 +3,16 @@
     <div class="viewport-canvas-host" ref="canvasHost"></div>
     <div v-if="status" class="viewport-status">{{ status }}</div>
     <div v-if="!status && !hasModel" class="viewport-empty">No mesh artifact yet — generate one with the agents.</div>
-    <div class="viewport-toolbar" v-if="hasModel">
+    <div class="viewport-toolbar">
       <button
-        v-if="hasElectronicsOverlay"
+        v-if="hasModel && hasElectronicsOverlay"
         class="tool-btn"
         :class="{ active: electronicsVisible }"
         @click="toggleElectronics"
         type="button"
       >{{ electronicsVisible ? 'Hide electronics' : 'Show electronics' }}</button>
-      <button class="tool-btn" @click="resetCamera" type="button">Frame</button>
+      <button class="tool-btn" :class="{ active: gridVisible }" @click="toggleGrid" type="button">{{ gridVisible ? 'Hide grid' : 'Show grid' }}</button>
+      <button v-if="hasModel" class="tool-btn" @click="resetCamera" type="button">Frame</button>
     </div>
   </div>
 </template>
@@ -54,12 +55,15 @@ const status = ref('');
 const hasModel = ref(false);
 const electronicsVisible = ref(true);
 const hasElectronicsOverlay = ref(false);
+const gridVisible = ref(true);
 
 let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene | null = null;
 let camera: THREE.PerspectiveCamera | null = null;
 let controls: OrbitControls | null = null;
 let modelGroup: THREE.Group | null = null;
+let gridHelper: THREE.GridHelper | null = null;
+let axesHelper: THREE.AxesHelper | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let animationHandle: number | null = null;
 
@@ -84,10 +88,12 @@ function initThree() {
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
 
-  const grid = new THREE.GridHelper(500, 50, 0x444444, 0x2a2a2a);
-  scene.add(grid);
-  const axes = new THREE.AxesHelper(50);
-  scene.add(axes);
+  gridHelper = new THREE.GridHelper(500, 50, 0x444444, 0x2a2a2a);
+  gridHelper.visible = gridVisible.value;
+  scene.add(gridHelper);
+  axesHelper = new THREE.AxesHelper(50);
+  axesHelper.visible = gridVisible.value;
+  scene.add(axesHelper);
 
   scene.add(new THREE.HemisphereLight(0xdfe7ef, 0x202428, 0.85));
   scene.add(new THREE.AmbientLight(0xffffff, 0.25));
@@ -272,6 +278,12 @@ function toggleElectronics() {
   applyElectronicsVisibility();
 }
 
+function toggleGrid() {
+  gridVisible.value = !gridVisible.value;
+  if (gridHelper) gridHelper.visible = gridVisible.value;
+  if (axesHelper) axesHelper.visible = gridVisible.value;
+}
+
 function resetCamera() {
   if (modelGroup) frameModel(modelGroup);
 }
@@ -349,6 +361,8 @@ onBeforeUnmount(() => {
   renderer = null;
   scene = null;
   camera = null;
+  gridHelper = null;
+  axesHelper = null;
 });
 
 watch(() => [props.modelUrl, props.modelType], () => loadModel());

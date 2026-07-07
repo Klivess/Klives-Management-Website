@@ -2,7 +2,9 @@
   <div class="settings-panel">
     <div v-if="loading" class="sp-info">Loading settings…</div>
     <template v-else>
-      <p class="sp-note">Per-project settings — this project's own configuration, independent of every other project.</p>
+      <p class="sp-note">{{ system
+        ? 'System defaults — the settings every NEW project inherits. Changing these never affects existing projects.'
+        : 'Per-project settings — this project\'s own configuration, independent of every other project.' }}</p>
 
       <section class="sp-group">
         <h4>Model routing</h4>
@@ -40,7 +42,17 @@
 import { ref, reactive, computed, onMounted } from 'vue';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 
-const props = defineProps<{ projectId: string }>();
+// `system` mode edits the system-wide defaults new projects inherit (no projectId needed);
+// otherwise it edits one project's own settings.
+const props = defineProps<{ projectId?: string; system?: boolean }>();
+
+const getUrl = () => props.system
+  ? '/projects/system/settings'
+  : `/projects/settings?projectID=${props.projectId}`;
+const updateUrl = () => props.system ? '/projects/system/settings/update' : '/projects/settings/update';
+const updateBody = (patch: Record<string, string>) => props.system
+  ? JSON.stringify(patch)
+  : JSON.stringify({ projectID: props.projectId, ...patch });
 
 const loading = ref(true);
 const saving = ref(false);
@@ -65,7 +77,7 @@ const dirty = computed(() => EDITABLE.some(k => form[k] !== original.value[k]));
 async function load() {
   loading.value = true;
   try {
-    const res = await RequestGETFromKliveAPI(`/projects/settings?projectID=${props.projectId}`, false, false);
+    const res = await RequestGETFromKliveAPI(getUrl(), false, false);
     if (res.ok) {
       const s = await res.json();
       for (const k of EDITABLE) form[k] = s[k];
@@ -83,8 +95,7 @@ async function save() {
     // Only send changed keys; booleans go as string per the backend's TrySet parser.
     const patch: Record<string, string> = {};
     for (const k of EDITABLE) if (form[k] !== original.value[k]) patch[k] = String(form[k]);
-    const res = await RequestPOSTFromKliveAPI('/projects/settings/update',
-      JSON.stringify({ projectID: props.projectId, ...patch }), false, true);
+    const res = await RequestPOSTFromKliveAPI(updateUrl(), updateBody(patch), false, true);
     if (res.ok) original.value = { ...form };
   } finally { saving.value = false; }
 }

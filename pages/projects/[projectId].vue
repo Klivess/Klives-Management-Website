@@ -6,7 +6,17 @@
       <div class="pw-header">
         <div class="pw-head-left">
           <NuxtLink to="/projects" class="back">← Projects</NuxtLink>
-          <h1 class="pw-title">{{ project.name }}</h1>
+          <div class="pw-title-row">
+            <template v-if="!renaming">
+              <h1 class="pw-title">{{ project.name }}</h1>
+              <button class="rename-btn" title="Rename project" @click="startRename">✎</button>
+            </template>
+            <template v-else>
+              <input ref="renameInput" v-model="renameValue" class="rename-input" @keyup.enter="commitRename" @keyup.esc="cancelRename" />
+              <button class="rename-save" :disabled="renameSaving" @click="commitRename">{{ renameSaving ? '…' : 'Save' }}</button>
+              <button class="rename-cancel" @click="cancelRename">Cancel</button>
+            </template>
+          </div>
           <p class="pw-goal">{{ project.goal }}</p>
         </div>
         <div class="pw-controls">
@@ -14,8 +24,10 @@
           <span class="status-pill" :class="'s-' + (project.status || '').toLowerCase()">
             <span v-if="project.status === 'Active'" class="live-dot"></span>{{ project.status }}
           </span>
-          <button v-if="project.status === 'Active'" class="ctrl" @click="pause">Pause</button>
-          <button v-else-if="project.status === 'Paused'" class="ctrl ctrl-go" @click="resume">Resume</button>
+          <button v-if="project.status === 'Active'" class="ctrl" @click="pause" title="Halt the fleet — stops the in-flight wake too">Halt</button>
+          <button v-else-if="project.status === 'Paused' || project.status === 'BudgetPaused'" class="ctrl ctrl-go" @click="resume">Resume</button>
+          <button v-if="project.status === 'Archived'" class="ctrl ctrl-go" @click="unarchive">Unshelve</button>
+          <button v-else class="ctrl" @click="archive" title="Shelve this project">Archive</button>
         </div>
       </div>
 
@@ -72,7 +84,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useRoute } from 'vue-router';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import ProjectsTimeline from '~/components/Projects/Timeline.vue';
@@ -147,6 +159,35 @@ async function resume() {
   await RequestPOSTFromKliveAPI('/projects/resume', JSON.stringify({ projectID: projectId }), false, true);
   await loadProject();
 }
+async function archive() {
+  await RequestPOSTFromKliveAPI('/projects/archive', JSON.stringify({ projectID: projectId }), false, true);
+  await loadProject();
+}
+async function unarchive() {
+  await RequestPOSTFromKliveAPI('/projects/unarchive', JSON.stringify({ projectID: projectId }), false, true);
+  await loadProject();
+}
+
+// ── rename ──
+const renaming = ref(false);
+const renameValue = ref('');
+const renameSaving = ref(false);
+const renameInput = ref<HTMLInputElement | null>(null);
+function startRename() {
+  renameValue.value = project.value?.name ?? '';
+  renaming.value = true;
+  nextTick(() => renameInput.value?.focus());
+}
+function cancelRename() { renaming.value = false; }
+async function commitRename() {
+  const name = renameValue.value.trim();
+  if (!name || name === project.value?.name) { renaming.value = false; return; }
+  renameSaving.value = true;
+  try {
+    const res = await RequestPOSTFromKliveAPI('/projects/rename', JSON.stringify({ projectID: projectId, name }), false, true);
+    if (res.ok) { project.value = await res.json(); renaming.value = false; }
+  } finally { renameSaving.value = false; }
+}
 
 function refresh() { loadProject(); loadDigest(); loadLedger(); loadAgents(); }
 onMounted(() => { refresh(); poll = setInterval(refresh, 5000); });
@@ -157,7 +198,14 @@ onBeforeUnmount(() => { if (poll) clearInterval(poll); });
 .project-workspace { padding: 24px; color: #e6e6e6; }
 .pw-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; gap: 16px; }
 .back { color: #7fb0d9; text-decoration: none; font-size: 13px; }
-.pw-title { margin: 6px 0 2px; font-size: 26px; }
+.pw-title-row { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px; }
+.pw-title { margin: 0; font-size: 26px; }
+.rename-btn { background: none; border: none; color: #666; cursor: pointer; font-size: 15px; padding: 2px 6px; border-radius: 4px; }
+.rename-btn:hover { color: #ccc; background: #26262b; }
+.rename-input { background: #14141a; color: #fff; border: 1px solid #4d9e39; border-radius: 6px; padding: 6px 10px; font-size: 22px; min-width: 320px; }
+.rename-save { background: #4d9e39; color: #fff; border: none; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+.rename-save:disabled { opacity: 0.5; }
+.rename-cancel { background: #26262b; color: #ccc; border: none; padding: 7px 12px; border-radius: 6px; cursor: pointer; }
 .pw-goal { margin: 0; color: #999; font-size: 14px; max-width: 720px; }
 .pw-controls { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
 .ctrl { background: #26262b; color: #ccc; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; }

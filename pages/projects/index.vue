@@ -5,7 +5,18 @@
         <h1 class="page-title">Projects</h1>
         <p class="page-subtitle">Autonomous 24/7 agent task force</p>
       </div>
-      <button class="primary-btn" @click="openCreateDialog">+ New project</button>
+      <div class="header-actions">
+        <button class="ghost-btn" :class="{ active: showDefaults }" @click="showDefaults = !showDefaults">⚙ Default settings</button>
+        <NuxtLink to="/projects/new" class="primary-btn">+ New project</NuxtLink>
+      </div>
+    </div>
+
+    <div v-if="showDefaults" class="defaults-card">
+      <div class="defaults-head">
+        <h2>System defaults</h2>
+        <button class="defaults-close" @click="showDefaults = false">✕</button>
+      </div>
+      <ProjectsSettingsPanel system />
     </div>
 
     <div v-if="loading" class="info-banner">Loading projects…</div>
@@ -14,9 +25,11 @@
       No projects yet. Create one with a goal and a budget to set the fleet to work.
     </div>
 
+    <template v-else>
+    <div v-if="!activeProjects.length" class="empty-banner">All projects are shelved. Unshelve one below, or create a new project.</div>
     <div v-else class="project-grid">
       <NuxtLink
-        v-for="p in projects"
+        v-for="p in activeProjects"
         :key="p.projectID"
         :to="`/projects/${p.projectID}`"
         class="project-card"
@@ -44,15 +57,36 @@
         <div class="card-time">Started {{ formatTime(p.createdAt) }}</div>
       </NuxtLink>
     </div>
+
+    <!-- Shelved (archived) projects — collapsed section, dimmed cards, quick unshelve. -->
+    <div v-if="archivedProjects.length" class="archived-section">
+      <button class="archived-toggle" @click="showArchived = !showArchived">
+        {{ showArchived ? '▾' : '▸' }} Shelved ({{ archivedProjects.length }})
+      </button>
+      <div v-if="showArchived" class="project-grid archived-grid">
+        <div v-for="p in archivedProjects" :key="p.projectID" class="project-card archived-card">
+          <div class="card-head">
+            <NuxtLink :to="`/projects/${p.projectID}`" class="card-title archived-link">{{ p.name || '(untitled)' }}</NuxtLink>
+            <span class="status-pill s-archived">Archived</span>
+          </div>
+          <div class="card-goal">{{ p.goal || 'No goal' }}</div>
+          <div class="card-meta"><span>tokens ${{ fmt(p.tokenSpendUsd) }} / ${{ fmt(p.tokenBudgetUsd) }}</span></div>
+          <button class="unshelve-btn" @click="unarchive(p.projectID)">Unshelve</button>
+        </div>
+      </div>
+    </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import Swal from 'sweetalert2';
+import { ref, computed, onMounted } from 'vue';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import ProjectsSettingsPanel from '~/components/Projects/SettingsPanel.vue';
 
 definePageMeta({ layout: 'navbar' });
+
+const showDefaults = ref(false);
 
 interface ProjectSummary {
   projectID: string;
@@ -71,6 +105,15 @@ interface ProjectSummary {
 const projects = ref<ProjectSummary[]>([]);
 const loading = ref(true);
 const loadError = ref('');
+const showArchived = ref(false);
+
+const activeProjects = computed(() => projects.value.filter(p => p.status !== 'Archived'));
+const archivedProjects = computed(() => projects.value.filter(p => p.status === 'Archived'));
+
+async function unarchive(projectID: string) {
+  await RequestPOSTFromKliveAPI('/projects/unarchive', JSON.stringify({ projectID }), false, true);
+  await loadProjects();
+}
 
 function normalise(raw: unknown): ProjectSummary[] {
   if (!Array.isArray(raw)) return [];
@@ -111,44 +154,6 @@ async function loadProjects() {
   }
 }
 
-async function openCreateDialog() {
-  const result = await Swal.fire({
-    title: 'New Project',
-    html:
-      '<input id="p-name" class="swal2-input" placeholder="Project name">' +
-      '<textarea id="p-goal" class="swal2-textarea" placeholder="The goal (e.g. run a successful dropshipping store)"></textarea>' +
-      '<input id="p-token" class="swal2-input" type="number" placeholder="Token budget (USD)">' +
-      '<input id="p-money" class="swal2-input" type="number" placeholder="Money budget (USD)">' +
-      '<input id="p-threshold" class="swal2-input" type="number" placeholder="Autonomous money / action (USD)">' +
-      '<input id="p-cap" class="swal2-input" type="number" placeholder="Agent cap (e.g. 5)">',
-    background: '#161516',
-    color: '#ffffff',
-    confirmButtonColor: '#4d9e39',
-    showCancelButton: true,
-    preConfirm: () => {
-      const val = (id: string) => (document.getElementById(id) as HTMLInputElement)?.value?.trim();
-      const name = val('p-name');
-      const goal = val('p-goal');
-      const tokenBudgetUsd = Number(val('p-token'));
-      if (!name || !goal) { Swal.showValidationMessage('Name and goal are required'); return false; }
-      if (!(tokenBudgetUsd > 0)) { Swal.showValidationMessage('Token budget must be > 0'); return false; }
-      return {
-        name, goal, tokenBudgetUsd,
-        moneyBudgetUsd: Number(val('p-money')) || 0,
-        moneyAutonomousThresholdUsd: Number(val('p-threshold')) || 0,
-        subAgentCap: Number(val('p-cap')) || 5,
-      };
-    },
-  });
-  if (!result.isConfirmed || !result.value) return;
-  const res = await RequestPOSTFromKliveAPI('/projects/create', JSON.stringify(result.value), false, true);
-  if (!res.ok) {
-    Swal.fire({ icon: 'error', title: 'Create failed', text: `HTTP ${res.status}`, background: '#161516', color: '#ffffff' });
-    return;
-  }
-  await loadProjects();
-}
-
 function statusClass(s: string) { return 's-' + (s || '').toLowerCase(); }
 function fmt(n: number) { return (Number(n) || 0).toFixed(2); }
 function frac(a: number, b: number) { return b > 0 ? Math.min(1, (Number(a) || 0) / b) : 0; }
@@ -167,8 +172,16 @@ onMounted(loadProjects);
 .page-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; }
 .page-title { margin: 0; font-size: 28px; }
 .page-subtitle { margin: 4px 0 0; color: #888; font-size: 14px; }
-.primary-btn { background: #4d9e39; color: #fff; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+.header-actions { display: flex; gap: 8px; align-items: center; }
+.primary-btn { background: #4d9e39; color: #fff; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: 600; text-decoration: none; display: inline-block; }
 .primary-btn:hover { background: #5cb947; }
+.ghost-btn { background: #26262b; color: #ccc; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; }
+.ghost-btn:hover, .ghost-btn.active { background: #333; color: #fff; }
+.defaults-card { background: #161519; border: 1px solid #2a2a2e; border-radius: 10px; padding: 18px; margin-bottom: 20px; }
+.defaults-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.defaults-head h2 { margin: 0; font-size: 16px; color: #eee; }
+.defaults-close { background: none; border: none; color: #888; font-size: 16px; cursor: pointer; }
+.defaults-close:hover { color: #fff; }
 .info-banner, .error-banner, .empty-banner { padding: 16px; border-radius: 6px; background: #1f1f23; margin-bottom: 12px; }
 .error-banner { color: #ff8484; background: #2a1818; }
 .project-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
@@ -192,4 +205,14 @@ onMounted(loadProjects);
 .s-paused, .s-budgetpaused { background: #3a331d; color: #d9c47f; }
 .s-completed { background: #1d2a3a; color: #7fb0d9; }
 .s-archived { background: #2a2a2e; color: #999; }
+.archived-section { margin-top: 28px; }
+.archived-toggle { background: none; border: none; color: #888; cursor: pointer; font-size: 14px; padding: 6px 0; font-weight: 600; }
+.archived-toggle:hover { color: #ccc; }
+.archived-grid { margin-top: 12px; }
+.archived-card { opacity: 0.7; border-style: dashed; }
+.archived-card:hover { opacity: 1; transform: none; border-color: #3a3a40; }
+.archived-link { color: inherit; text-decoration: none; }
+.archived-link:hover { color: #7fb0d9; }
+.unshelve-btn { margin-top: 10px; background: #2e5426; color: #fff; border: none; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 12px; }
+.unshelve-btn:hover { background: #3a6b30; }
 </style>

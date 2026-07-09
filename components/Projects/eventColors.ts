@@ -7,6 +7,7 @@ export const EVENT_TYPE_COLORS: Record<string, string> = {
   'wake-failed': '#d95b5b',
   'commander-message': '#7fd97f',
   'commander-thought': '#5a8a52',
+  'agent-thought': '#6b9a63',
   'agent-message': '#8fb0d9',
   'klives-message': '#7fb0d9',
   'tool-call': '#5b9bd9',

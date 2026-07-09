@@ -14,6 +14,9 @@
           <option value="file-watch">file-watch</option>
           <option value="screen-diff">screen-diff</option>
           <option value="script">script</option>
+          <option value="email">email</option>
+          <option value="discord">discord</option>
+          <option value="process-exit">process-exit</option>
         </select>
       </div>
       <div class="hp-field">
@@ -35,8 +38,10 @@
           <span class="hp-kind" :class="'k-' + h.sourceKind">{{ h.sourceKind }}</span>
           <span class="hp-dest">→ {{ h.destinationAgentID }}</span>
           <span v-if="!h.enabled" class="hp-disabled">disabled</span>
+          <span v-else class="hp-arm" :class="armClass(h.armState)" :title="h.armDetail">{{ armLabel(h.armState) }}</span>
         </div>
         <div class="hp-crit">{{ h.recognitionCriterion || '(no criterion — always delivers)' }}</div>
+        <div v-if="h.enabled && h.armState === 'Error'" class="hp-armdetail">{{ h.armDetail }}</div>
         <button class="hp-del" @click="remove(h.hookID)" title="Delete hook">✕</button>
       </li>
     </ul>
@@ -61,9 +66,28 @@ const specHint = computed(() => {
     case 'file-watch': return '{"path": "/project/inbox"}';
     case 'screen-diff': return '{"intervalSeconds": 5, "threshold": 0.05}';
     case 'script': return '{"script": "await Emit(...);", "pollSeconds": 30}';
+    case 'email': return '{"to": "orders@klive.dev", "from": "", "subjectContains": ""}';
+    case 'discord': return '{"channelId": "", "authorId": "", "contains": ""}';
+    case 'process-exit': return '{"processName": "chrome", "pollSeconds": 10}';
     default: return '{}';
   }
 });
+
+function armLabel(state: string) {
+  switch (state) {
+    case 'Armed': return '● live';
+    case 'Passive': return '○ push';
+    case 'Error': return '⚠ inert';
+    default: return '';
+  }
+}
+function armClass(state: string) {
+  return {
+    'a-armed': state === 'Armed',
+    'a-passive': state === 'Passive',
+    'a-error': state === 'Error',
+  };
+}
 
 async function load() {
   loading.value = true;
@@ -123,9 +147,17 @@ onMounted(load);
 .k-timer { background: #17303a; color: #7fb0d9; }
 .k-screen-diff { background: #3a2f17; color: #d9b872; }
 .k-script { background: #2f173a; color: #b78fd9; }
+.k-email { background: #17313a; color: #7fd9c8; }
+.k-discord { background: #23233a; color: #9aa0e0; }
+.k-process-exit { background: #3a1717; color: #d99a7f; }
 .hp-dest { font-size: 12px; color: #888; }
 .hp-disabled { font-size: 11px; color: #d95b5b; }
+.hp-arm { font-size: 11px; padding: 2px 7px; border-radius: 8px; white-space: nowrap; }
+.a-armed { background: #16301f; color: #5fca86; }
+.a-passive { background: #21262b; color: #8aa0b0; }
+.a-error { background: #3a1717; color: #e08a8a; }
 .hp-crit { font-size: 12px; color: #aaa; }
+.hp-armdetail { font-size: 11px; color: #d98c8c; margin-top: 3px; }
 .hp-del { position: absolute; top: 8px; right: 8px; background: none; border: none; color: #666; cursor: pointer; font-size: 13px; }
 .hp-del:hover { color: #d95b5b; }
 .hp-info, .hp-empty { color: #777; font-size: 13px; padding: 16px; text-align: center; }

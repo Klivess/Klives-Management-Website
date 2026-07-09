@@ -21,15 +21,14 @@
         </div>
         <div class="pw-controls">
           <span v-if="pendingGates" class="approval-badge" @click="tab = 'conversation'">{{ pendingGates }} approval{{ pendingGates === 1 ? '' : 's' }}</span>
-          <span class="status-pill" :class="'s-' + (project.status || '').toLowerCase()">
-            <span v-if="project.status === 'Active'" class="live-dot"></span>{{ project.status }}
-          </span>
-          <button v-if="project.status === 'Active'" class="ctrl" @click="pause" title="Halt the fleet — stops the in-flight wake too">Halt</button>
-          <button v-else-if="project.status === 'Paused' || project.status === 'BudgetPaused'" class="ctrl ctrl-go" @click="resume">Resume</button>
-          <button v-if="project.status === 'Archived'" class="ctrl ctrl-go" @click="unarchive">Unshelve</button>
-          <button v-else class="ctrl" @click="archive" title="Shelve this project">Archive</button>
+          <ProjectsStatusPill :status="project.status" />
+          <button v-if="project.status === 'Active'" class="ctrl" :disabled="actionBusy" @click="pause" title="Halt the fleet — stops the in-flight wake too">Halt</button>
+          <button v-else-if="project.status === 'Paused' || project.status === 'BudgetPaused'" class="ctrl ctrl-go" :disabled="actionBusy" @click="resume">Resume</button>
+          <button v-if="project.status === 'Archived'" class="ctrl ctrl-go" :disabled="actionBusy" @click="unarchive">Unshelve</button>
+          <button v-else class="ctrl" :disabled="actionBusy" @click="archive" title="Shelve this project">Archive</button>
         </div>
       </div>
+      <div v-if="actionError" class="action-error">{{ actionError }} <button class="ae-dismiss" @click="actionError = ''">✕</button></div>
 
       <div class="pw-grid">
         <div class="pw-main">
@@ -43,7 +42,8 @@
             <div v-show="tab === 'conversation'" class="panel-conversation">
               <ProjectsConversationPanel :project-id="projectId" @events="onEvents" @select="selectEvent" />
             </div>
-            <ProjectsTimeline v-if="tab === 'timeline'" :events="events" :agent-labels="agentLabels" @select="selectEvent" />
+            <ProjectsTimeline v-show="tab === 'timeline'" :events="events" :agent-labels="agentLabels" @select="selectEvent" />
+            <ProjectsLiveDesktopWall v-if="tab === 'desktops'" :project-id="projectId" />
             <ProjectsAgentsPanel v-if="tab === 'agents'" :project-id="projectId" @watch="watchDesktop" />
             <ProjectsHooksPanel v-if="tab === 'hooks'" :project-id="projectId" />
             <ProjectsSettingsPanel v-if="tab === 'settings'" :project-id="projectId" />
@@ -52,13 +52,39 @@
 
         <div class="pw-side">
           <div class="side-card">
-            <h3>Budget</h3>
+            <div class="side-card-head">
+              <h3>Budget</h3>
+              <button class="budget-edit-btn" :title="editingBudget ? 'Cancel' : 'Edit budgets'" @click="toggleBudgetEdit">{{ editingBudget ? '✕' : '✎' }}</button>
+            </div>
             <ProjectsSpendOverlay
               :token-spent="ledger.tokenSpendUsd || 0"
               :token-budget="project.tokenBudgetUsd"
               :money-spent="ledger.moneySpendUsd || 0"
               :money-budget="project.moneyBudgetUsd"
             />
+            <div v-if="editingBudget" class="budget-form">
+              <label class="bf-field">
+                <span>Token budget ($)</span>
+                <input v-model.number="budgetDraft.tokenBudgetUsd" type="number" min="0.01" step="1" class="bf-input" />
+              </label>
+              <label class="bf-field">
+                <span>Money budget ($)</span>
+                <input v-model.number="budgetDraft.moneyBudgetUsd" type="number" min="0" step="1" class="bf-input" />
+              </label>
+              <label class="bf-field">
+                <span>Autonomous spend ≤ ($)</span>
+                <input v-model.number="budgetDraft.moneyAutonomousThresholdUsd" type="number" min="0" step="0.5" class="bf-input" />
+              </label>
+              <label class="bf-field">
+                <span>Agent cap</span>
+                <input v-model.number="budgetDraft.subAgentCap" type="number" min="1" step="1" class="bf-input" />
+              </label>
+              <div v-if="budgetError" class="bf-error">{{ budgetError }}</div>
+              <div class="bf-actions">
+                <button class="bf-save" :disabled="budgetSaving" @click="saveBudgets">{{ budgetSaving ? 'Saving…' : 'Save budgets' }}</button>
+              </div>
+              <p v-if="project.status === 'BudgetPaused'" class="bf-hint">Raising the token budget above current spend resumes the project.</p>
+            </div>
           </div>
           <div class="side-card">
             <h3>Plan</h3>
@@ -67,11 +93,6 @@
             <p class="digest-text">{{ digest.orgChart || '(commander only)' }}</p>
             <h3>Open threads</h3>
             <p class="digest-text">{{ digest.openThreads || '(none)' }}</p>
-          </div>
-          <div class="side-card">
-            <h3>Live desktop</h3>
-            <ProjectsLiveDesktop :container-id="watchContainerId" />
-            <p v-if="!watchContainerId" class="side-hint">No desktop selected. Open the Agents tab and click a desktop-capable agent.</p>
           </div>
         </div>
       </div>
@@ -87,13 +108,15 @@
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useRoute } from 'vue-router';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import { useEventStream } from '~/composables/useEventStream';
 import ProjectsTimeline from '~/components/Projects/Timeline.vue';
 import ProjectsConversationPanel from '~/components/Projects/ConversationPanel.vue';
 import ProjectsSpendOverlay from '~/components/Projects/SpendOverlay.vue';
-import ProjectsLiveDesktop from '~/components/Projects/LiveDesktop.vue';
+import ProjectsLiveDesktopWall from '~/components/Projects/LiveDesktopWall.vue';
 import ProjectsAgentsPanel from '~/components/Projects/AgentsPanel.vue';
 import ProjectsHooksPanel from '~/components/Projects/HooksPanel.vue';
 import ProjectsSettingsPanel from '~/components/Projects/SettingsPanel.vue';
+import ProjectsStatusPill from '~/components/Projects/StatusPill.vue';
 import ProjectsEventDetail from '~/components/Projects/EventDetail.vue';
 
 definePageMeta({ layout: 'navbar' });
@@ -104,6 +127,7 @@ const projectId = String(route.params.projectId);
 const tabs = [
   { id: 'conversation', label: 'Conversation' },
   { id: 'timeline', label: 'Timeline' },
+  { id: 'desktops', label: 'Desktops' },
   { id: 'agents', label: 'Agents' },
   { id: 'hooks', label: 'Hooks' },
   { id: 'settings', label: 'Settings' },
@@ -116,7 +140,6 @@ const ledger = ref<any>({ tokenSpendUsd: 0, moneySpendUsd: 0 });
 const events = ref<any[]>([]);
 const agents = ref<any[]>([]);
 const loadError = ref('');
-const watchContainerId = ref('');
 const selectedEvent = ref<any>(null);
 let poll: ReturnType<typeof setInterval> | null = null;
 
@@ -132,7 +155,8 @@ const agentLabels = computed(() => {
 
 function onEvents(all: any[]) { events.value = all; }
 function selectEvent(ev: any) { selectedEvent.value = ev; }
-function watchDesktop(containerId: string) { watchContainerId.value = containerId; }
+// Clicking an agent in the Agents tab jumps to the Desktops CCTV wall (which shows every screen).
+function watchDesktop(_containerId: string) { tab.value = 'desktops'; }
 
 async function loadProject() {
   try {
@@ -151,21 +175,67 @@ async function loadAgents() {
   try { const r = await RequestGETFromKliveAPI(`/projects/agents?projectID=${projectId}`, false, false); if (r.ok) agents.value = await r.json(); } catch { /* transient */ }
 }
 
-async function pause() {
-  await RequestPOSTFromKliveAPI('/projects/pause', JSON.stringify({ projectID: projectId }), false, true);
-  await loadProject();
+// Control actions used to fire-and-forget with no error handling and no button disabling — a failed
+// POST left the user with no feedback and double-clicks were possible. Route them through a guarded
+// helper that disables the buttons and surfaces failures.
+const actionBusy = ref(false);
+const actionError = ref('');
+async function runAction(url: string) {
+  if (actionBusy.value) return;
+  actionBusy.value = true;
+  actionError.value = '';
+  try {
+    const res = await RequestPOSTFromKliveAPI(url, JSON.stringify({ projectID: projectId }), false, true);
+    if (!res.ok) { actionError.value = `That didn't work (HTTP ${res.status}). Try again.`; return; }
+    await loadProject();
+  } catch (e: any) {
+    actionError.value = e?.message ? `That didn't work: ${e.message}` : "That didn't work. Try again.";
+  } finally {
+    actionBusy.value = false;
+  }
 }
-async function resume() {
-  await RequestPOSTFromKliveAPI('/projects/resume', JSON.stringify({ projectID: projectId }), false, true);
-  await loadProject();
+async function pause() { await runAction('/projects/pause'); }
+async function resume() { await runAction('/projects/resume'); }
+async function archive() { await runAction('/projects/archive'); }
+async function unarchive() { await runAction('/projects/unarchive'); }
+
+// ── budget editing ──
+const editingBudget = ref(false);
+const budgetSaving = ref(false);
+const budgetError = ref('');
+const budgetDraft = ref({ tokenBudgetUsd: 0, moneyBudgetUsd: 0, moneyAutonomousThresholdUsd: 0, subAgentCap: 1 });
+
+function toggleBudgetEdit() {
+  budgetError.value = '';
+  if (!editingBudget.value && project.value) {
+    budgetDraft.value = {
+      tokenBudgetUsd: Number(project.value.tokenBudgetUsd) || 0,
+      moneyBudgetUsd: Number(project.value.moneyBudgetUsd) || 0,
+      moneyAutonomousThresholdUsd: Number(project.value.moneyAutonomousThresholdUsd) || 0,
+      subAgentCap: Number(project.value.subAgentCap) || 1,
+    };
+  }
+  editingBudget.value = !editingBudget.value;
 }
-async function archive() {
-  await RequestPOSTFromKliveAPI('/projects/archive', JSON.stringify({ projectID: projectId }), false, true);
-  await loadProject();
-}
-async function unarchive() {
-  await RequestPOSTFromKliveAPI('/projects/unarchive', JSON.stringify({ projectID: projectId }), false, true);
-  await loadProject();
+
+async function saveBudgets() {
+  const d = budgetDraft.value;
+  if (!(d.tokenBudgetUsd > 0)) { budgetError.value = 'Token budget must be greater than 0.'; return; }
+  if (d.moneyBudgetUsd < 0 || d.moneyAutonomousThresholdUsd < 0) { budgetError.value = 'Money values cannot be negative.'; return; }
+  if (!(d.subAgentCap >= 1)) { budgetError.value = 'Agent cap must be at least 1.'; return; }
+  budgetSaving.value = true;
+  budgetError.value = '';
+  try {
+    const res = await RequestPOSTFromKliveAPI('/projects/budget/update',
+      JSON.stringify({ projectID: projectId, ...d }), false, true);
+    if (!res.ok) { budgetError.value = `Save failed (HTTP ${res.status}).`; return; }
+    project.value = await res.json();
+    editingBudget.value = false;
+  } catch (e: any) {
+    budgetError.value = e?.message ? `Save failed: ${e.message}` : 'Save failed.';
+  } finally {
+    budgetSaving.value = false;
+  }
 }
 
 // ── rename ──
@@ -186,16 +256,37 @@ async function commitRename() {
   try {
     const res = await RequestPOSTFromKliveAPI('/projects/rename', JSON.stringify({ projectID: projectId, name }), false, true);
     if (res.ok) { project.value = await res.json(); renaming.value = false; }
+    else actionError.value = `Rename failed (HTTP ${res.status}).`;
+  } catch (e: any) {
+    actionError.value = e?.message ? `Rename failed: ${e.message}` : 'Rename failed.';
   } finally { renameSaving.value = false; }
 }
 
 function refresh() { loadProject(); loadDigest(); loadLedger(); loadAgents(); }
-onMounted(() => { refresh(); poll = setInterval(refresh, 5000); });
-onBeforeUnmount(() => { if (poll) clearInterval(poll); });
+
+// Live push (Phase 3): refresh the side-rail data on any project event (debounced) instead of a
+// tight 5s poll. ConversationPanel streams its own events; this keeps status/budget/agents fresh.
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleRefresh() { if (refreshTimer) return; refreshTimer = setTimeout(() => { refreshTimer = null; refresh(); }, 1000); }
+const wsStream = useEventStream({ projectId, onEvent: () => scheduleRefresh() });
+
+onMounted(() => {
+  refresh();
+  wsStream.connect();
+  poll = setInterval(refresh, 30000); // safety net only
+});
+onBeforeUnmount(() => {
+  if (poll) clearInterval(poll);
+  if (refreshTimer) clearTimeout(refreshTimer);
+  wsStream.disconnect();
+});
 </script>
 
 <style scoped>
 .project-workspace { padding: 24px; color: #e6e6e6; }
+.action-error { background: #3a1717; border: 1px solid #5a2424; color: #e08a8a; padding: 8px 12px; border-radius: 8px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
+.ae-dismiss { background: none; border: none; color: #e08a8a; cursor: pointer; }
+.ctrl:disabled { opacity: 0.5; cursor: default; }
 .pw-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; gap: 16px; }
 .back { color: #7fb0d9; text-decoration: none; font-size: 13px; }
 .pw-title-row { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px; }
@@ -217,12 +308,24 @@ onBeforeUnmount(() => { if (poll) clearInterval(poll); });
 .pw-tabs button { position: relative; background: none; border: none; color: #999; padding: 10px 14px; cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .pw-tabs button.active { color: #fff; border-bottom-color: #4d9e39; }
 .tab-dot { position: absolute; top: 6px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: #d9b872; }
-.panel-conversation { height: 560px; background: #161519; border-radius: 8px; overflow: hidden; }
+.panel-conversation { height: clamp(420px, calc(100vh - 250px), 760px); background: #161519; border-radius: 8px; overflow: hidden; }
 .pw-side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 16px; }
 .side-card { background: #161519; border-radius: 8px; padding: 14px; }
+.side-card-head { display: flex; justify-content: space-between; align-items: center; }
+.budget-edit-btn { background: none; border: none; color: #666; cursor: pointer; font-size: 13px; padding: 2px 6px; border-radius: 4px; }
+.budget-edit-btn:hover { color: #ccc; background: #26262b; }
+.budget-form { margin-top: 12px; border-top: 1px solid #2a2a2e; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.bf-field { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: #aaa; }
+.bf-input { width: 110px; background: #1a1a1e; color: #eee; border: 1px solid #333; border-radius: 6px; padding: 5px 8px; font-size: 13px; text-align: right; }
+.bf-error { font-size: 12px; color: #e08a8a; }
+.bf-actions { display: flex; justify-content: flex-end; }
+.bf-save { background: #4d9e39; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; }
+.bf-save:disabled { opacity: 0.5; }
+.bf-hint { font-size: 11px; color: #d9c47f; margin: 4px 0 0; }
 .side-card h3 { margin: 0 0 8px; font-size: 13px; color: #bbb; }
 .side-card h3:not(:first-child) { margin-top: 14px; }
-.digest-text { font-size: 12px; color: #aaa; white-space: pre-wrap; margin: 0; line-height: 1.5; }
+.digest-text { font-size: 12px; color: #aaa; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; margin: 0; line-height: 1.5; }
+.side-card { min-width: 0; overflow: hidden; }
 .side-hint { font-size: 11px; color: #666; margin: 8px 0 0; }
 .info-banner, .error-banner { padding: 16px; border-radius: 6px; background: #1f1f23; }
 .error-banner { color: #ff8484; background: #2a1818; }

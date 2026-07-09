@@ -19,6 +19,8 @@
       <ProjectsSettingsPanel system />
     </div>
 
+    <ProjectsAttentionStrip v-if="!loading && projects.length" :projects="projects" />
+
     <div v-if="loading" class="info-banner">Loading projects…</div>
     <div v-else-if="loadError" class="error-banner">{{ loadError }}</div>
     <div v-else-if="!projects.length" class="empty-banner">
@@ -36,9 +38,7 @@
       >
         <div class="card-head">
           <div class="card-title">{{ p.name || '(untitled)' }}</div>
-          <span class="status-pill" :class="statusClass(p.status)">
-            <span v-if="p.status === 'Active'" class="live-dot"></span>{{ p.status }}
-          </span>
+          <ProjectsStatusPill :status="p.status" />
         </div>
         <div class="card-goal">{{ p.goal || 'No goal' }}</div>
 
@@ -80,9 +80,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import { useEventStream } from '~/composables/useEventStream';
 import ProjectsSettingsPanel from '~/components/Projects/SettingsPanel.vue';
+import ProjectsAttentionStrip from '~/components/Projects/AttentionStrip.vue';
+import ProjectsStatusPill from '~/components/Projects/StatusPill.vue';
 
 definePageMeta({ layout: 'navbar' });
 
@@ -135,24 +138,32 @@ function normalise(raw: unknown): ProjectSummary[] {
     .filter(p => p.projectID);
 }
 
-async function loadProjects() {
-  loading.value = true;
+async function loadProjects(silent = false) {
+  if (!silent) loading.value = true;
   loadError.value = '';
   try {
     const res = await RequestGETFromKliveAPI('/projects/list', false, false);
     if (!res.ok) {
-      loadError.value = `Failed to load projects (HTTP ${res.status}).`;
-      projects.value = [];
+      if (!silent) { loadError.value = `Failed to load projects (HTTP ${res.status}).`; projects.value = []; }
       return;
     }
     projects.value = normalise(await res.json());
   } catch (err: any) {
-    loadError.value = err?.message ?? String(err);
-    projects.value = [];
+    if (!silent) { loadError.value = err?.message ?? String(err); projects.value = []; }
   } finally {
-    loading.value = false;
+    if (!silent) loading.value = false;
   }
 }
+
+// Live fleet updates (Phase 3): the firehose signals on ANY project's event; debounce a silent
+// reload so the dashboard is never frozen. A slow poll is the safety net if the socket drops.
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleRefresh() {
+  if (refreshTimer) return;
+  refreshTimer = setTimeout(() => { refreshTimer = null; loadProjects(true); }, 1200);
+}
+const fleetStream = useEventStream({ onFleet: () => scheduleRefresh() });
+let safetyPoll: ReturnType<typeof setInterval> | null = null;
 
 function statusClass(s: string) { return 's-' + (s || '').toLowerCase(); }
 function fmt(n: number) { return (Number(n) || 0).toFixed(2); }
@@ -164,7 +175,16 @@ function formatTime(iso: string): string {
   return isNaN(d.getTime()) ? '?' : d.toLocaleString();
 }
 
-onMounted(loadProjects);
+onMounted(() => {
+  loadProjects();
+  fleetStream.connect();
+  safetyPoll = setInterval(() => loadProjects(true), 30000);
+});
+onBeforeUnmount(() => {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  if (safetyPoll) clearInterval(safetyPoll);
+  fleetStream.disconnect();
+});
 </script>
 
 <style scoped>

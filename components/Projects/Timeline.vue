@@ -299,11 +299,20 @@ function fmtTs(ts: number) {
     : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 function trunc(s: string) { return s && s.length > 120 ? s.slice(0, 120) + '…' : (s || ''); }
-function measure() { if (wrap.value) width.value = wrap.value.clientWidth; }
+function measure() { if (wrap.value && wrap.value.clientWidth > 0) width.value = wrap.value.clientWidth; }
+
+// The workspace keeps this tab mounted with v-show (so pan/zoom survives tab switches), which means
+// it first measures while hidden (clientWidth 0). A ResizeObserver re-measures the moment it becomes
+// visible — without it the SVG stays 0-wide and the timeline renders blank.
+let ro: ResizeObserver | null = null;
 
 onMounted(() => {
   measure();
   window.addEventListener('resize', measure);
+  if (typeof ResizeObserver !== 'undefined' && wrap.value) {
+    ro = new ResizeObserver(() => measure());
+    ro.observe(wrap.value);
+  }
   tick = setInterval(() => {
     now.value = Date.now();
     if (following.value) viewEnd.value = now.value;
@@ -311,6 +320,7 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   window.removeEventListener('resize', measure);
+  if (ro) { ro.disconnect(); ro = null; }
   if (tick) clearInterval(tick);
 });
 </script>

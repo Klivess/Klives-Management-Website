@@ -2,7 +2,7 @@
   <div class="spend-overlay">
     <div class="meter">
       <div class="meter-label">
-        <span>Tokens</span>
+        <span>Token cost</span>
         <span>${{ fmt(tokenSpent) }} / ${{ fmt(tokenBudget) }}</span>
       </div>
       <div class="bar"><div class="fill tokens" :style="{ width: pct(tokenSpent, tokenBudget) }" :class="{ danger: frac(tokenSpent, tokenBudget) >= 0.8 }"></div></div>

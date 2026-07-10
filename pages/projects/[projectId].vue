@@ -45,6 +45,7 @@
             <ProjectsTimeline v-show="tab === 'timeline'" :events="events" :agent-labels="agentLabels" @select="selectEvent" />
             <ProjectsLiveDesktopWall v-if="tab === 'desktops'" :project-id="projectId" />
             <ProjectsAgentsPanel v-if="tab === 'agents'" :project-id="projectId" @watch="watchDesktop" />
+            <ProjectsObservablesPanel v-if="tab === 'observables'" :project-id="projectId" :observables="observables" @changed="loadObservables" />
             <ProjectsHooksPanel v-if="tab === 'hooks'" :project-id="projectId" />
             <ProjectsSettingsPanel v-if="tab === 'settings'" :project-id="projectId" />
           </div>
@@ -86,6 +87,21 @@
               <p v-if="project.status === 'BudgetPaused'" class="bf-hint">Raising the token budget above current spend resumes the project.</p>
             </div>
           </div>
+          <div v-if="observables.length" class="side-card">
+            <div class="side-card-head">
+              <h3>Observables</h3>
+              <button class="obs-all-btn" @click="tab = 'observables'">all →</button>
+            </div>
+            <ul class="obs-mini-list">
+              <li v-for="o in topObservables" :key="o.observableID" class="obs-mini-row">
+                <span class="obs-mini-name" :title="o.name">{{ o.name }}</span>
+                <ProjectsObservableSparkline
+                  v-if="o.type === 'Numeric' && o.history && o.history.length > 1"
+                  :samples="o.history" :width="52" :height="16" />
+                <span class="obs-mini-value">{{ o.displayValue }}</span>
+              </li>
+            </ul>
+          </div>
           <div class="side-card">
             <h3>Plan</h3>
             <p class="digest-text">{{ digest.currentPlan || '(no plan yet)' }}</p>
@@ -114,6 +130,8 @@ import ProjectsConversationPanel from '~/components/Projects/ConversationPanel.v
 import ProjectsSpendOverlay from '~/components/Projects/SpendOverlay.vue';
 import ProjectsLiveDesktopWall from '~/components/Projects/LiveDesktopWall.vue';
 import ProjectsAgentsPanel from '~/components/Projects/AgentsPanel.vue';
+import ProjectsObservablesPanel from '~/components/Projects/ObservablesPanel.vue';
+import ProjectsObservableSparkline from '~/components/Projects/ObservableSparkline.vue';
 import ProjectsHooksPanel from '~/components/Projects/HooksPanel.vue';
 import ProjectsSettingsPanel from '~/components/Projects/SettingsPanel.vue';
 import ProjectsStatusPill from '~/components/Projects/StatusPill.vue';
@@ -129,6 +147,7 @@ const tabs = [
   { id: 'timeline', label: 'Timeline' },
   { id: 'desktops', label: 'Desktops' },
   { id: 'agents', label: 'Agents' },
+  { id: 'observables', label: 'Observables' },
   { id: 'hooks', label: 'Hooks' },
   { id: 'settings', label: 'Settings' },
 ];
@@ -139,6 +158,7 @@ const digest = ref<any>({});
 const ledger = ref<any>({ tokenSpendUsd: 0, moneySpendUsd: 0 });
 const events = ref<any[]>([]);
 const agents = ref<any[]>([]);
+const observables = ref<any[]>([]);
 const loadError = ref('');
 const selectedEvent = ref<any>(null);
 let poll: ReturnType<typeof setInterval> | null = null;
@@ -174,6 +194,16 @@ async function loadLedger() {
 async function loadAgents() {
   try { const r = await RequestGETFromKliveAPI(`/projects/agents?projectID=${projectId}`, false, false); if (r.ok) agents.value = await r.json(); } catch { /* transient */ }
 }
+async function loadObservables() {
+  try { const r = await RequestGETFromKliveAPI(`/projects/observables?projectID=${projectId}&history=120`, false, false); if (r.ok) observables.value = await r.json(); } catch { /* transient */ }
+}
+
+// Top observables for the always-visible side card: most-recently-updated first (agents signal
+// relevance by touching a value), capped so the rail stays compact.
+const topObservables = computed(() =>
+  [...observables.value]
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .slice(0, 6));
 
 // Control actions used to fire-and-forget with no error handling and no button disabling — a failed
 // POST left the user with no feedback and double-clicks were possible. Route them through a guarded
@@ -262,7 +292,7 @@ async function commitRename() {
   } finally { renameSaving.value = false; }
 }
 
-function refresh() { loadProject(); loadDigest(); loadLedger(); loadAgents(); }
+function refresh() { loadProject(); loadDigest(); loadLedger(); loadAgents(); loadObservables(); }
 
 // Live push (Phase 3): refresh the side-rail data on any project event (debounced) instead of a
 // tight 5s poll. ConversationPanel streams its own events; this keeps status/budget/agents fresh.
@@ -324,6 +354,12 @@ onBeforeUnmount(() => {
 .bf-hint { font-size: 11px; color: #d9c47f; margin: 4px 0 0; }
 .side-card h3 { margin: 0 0 8px; font-size: 13px; color: #bbb; }
 .side-card h3:not(:first-child) { margin-top: 14px; }
+.obs-all-btn { background: none; border: none; color: #7fb0d9; cursor: pointer; font-size: 12px; padding: 2px 4px; }
+.obs-all-btn:hover { color: #a8ccec; }
+.obs-mini-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.obs-mini-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.obs-mini-name { color: #999; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.obs-mini-value { color: #e6e6e6; font-weight: 600; font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .digest-text { font-size: 12px; color: #aaa; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; margin: 0; line-height: 1.5; }
 .side-card { min-width: 0; overflow: hidden; }
 .side-hint { font-size: 11px; color: #666; margin: 8px 0 0; }

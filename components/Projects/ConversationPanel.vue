@@ -113,9 +113,15 @@ function whoLabel(e: any) {
 }
 function time(iso: string) { const d = new Date(iso); return isNaN(d.getTime()) ? '' : d.toLocaleTimeString(); }
 
-async function loadEvents() {
+async function loadEvents(initial = false) {
   try {
-    const res = await RequestGETFromKliveAPI(`/projects/events?projectID=${props.projectId}&since=${since.value}&max=500`, false, false);
+    // Initial backlog pulls the most-recent events (tail=true); later polls page forward from the
+    // cursor. Loading with since=0 returned the OLDEST 500 events while the cursor jumped to
+    // lastSequence — so a long-running project opened on days-old history and never showed the rest.
+    const query = initial
+      ? `tail=true&max=500`
+      : `since=${since.value}&max=500`;
+    const res = await RequestGETFromKliveAPI(`/projects/events?projectID=${props.projectId}&${query}`, false, false);
     if (!res.ok) return;
     const json = await res.json();
     const batch = Array.isArray(json.events) ? json.events : [];
@@ -154,8 +160,8 @@ async function onResolve(gateID: string, decision: string, comment: string) {
 }
 
 onMounted(async () => {
-  // Initial backlog over HTTP (sets the cursor), then live push takes over.
-  await loadEvents();
+  // Initial backlog over HTTP (most-recent events; sets the cursor), then live push takes over.
+  await loadEvents(true);
   loaded.value = true;
   loadGates();
   stream.connect();

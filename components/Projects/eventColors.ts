@@ -23,6 +23,7 @@ export const EVENT_TYPE_COLORS: Record<string, string> = {
   'artifact-added': '#59bfb0',
   'digest-rebuilt': '#555',
   'hook-changed': '#8a8a8a',
+  'observable-changed': '#d97fb8',
   'watchdog-escalation': '#d95b5b',
   'status': '#888',
 };

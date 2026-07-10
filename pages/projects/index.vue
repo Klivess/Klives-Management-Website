@@ -6,6 +6,7 @@
         <p class="page-subtitle">Autonomous 24/7 agent task force</p>
       </div>
       <div class="header-actions">
+        <NuxtLink to="/projects/accounts" class="ghost-btn">⚿ Accounts</NuxtLink>
         <button class="ghost-btn" :class="{ active: showDefaults }" @click="showDefaults = !showDefaults">⚙ Default settings</button>
         <NuxtLink to="/projects/new" class="primary-btn">+ New project</NuxtLink>
       </div>

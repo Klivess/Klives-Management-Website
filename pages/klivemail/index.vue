@@ -412,6 +412,9 @@ function humanSize(bytes) {
 
 // ── lifecycle ──
 onMounted(() => {
+    // Deep-link: /klivemail?mailbox=<address> opens that inbox (e.g. from the Accounts page).
+    const mb = useRoute().query.mailbox;
+    if (typeof mb === 'string' && mb) folder.value = { type: 'mailbox', address: mb };
     loadStats();
     loadMessages();
     pollTimer = window.setInterval(() => {

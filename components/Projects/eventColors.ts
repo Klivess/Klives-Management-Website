@@ -24,7 +24,15 @@ export const EVENT_TYPE_COLORS: Record<string, string> = {
   'digest-rebuilt': '#555',
   'hook-changed': '#8a8a8a',
   'observable-changed': '#d97fb8',
+  'account-changed': '#c9a15e',
   'watchdog-escalation': '#d95b5b',
+  'council-convened': '#c9a227',
+  'council-statement': '#a68f5e',
+  'council-verdict': '#e0b23f',
+  'grand-plan-submitted': '#7fb0d9',
+  'grand-plan-approved': '#4d9e39',
+  'grand-plan-revision-requested': '#d9c47f',
+  'grand-plan-amended': '#5b9bd9',
   'status': '#888',
 };
 

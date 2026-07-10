@@ -43,6 +43,8 @@
               <ProjectsConversationPanel :project-id="projectId" @events="onEvents" @select="selectEvent" />
             </div>
             <ProjectsTimeline v-show="tab === 'timeline'" :events="events" :agent-labels="agentLabels" @select="selectEvent" />
+            <ProjectsGrandPlanPanel v-if="tab === 'plan'" :project-id="projectId" :grand-plan="grandPlan" />
+            <ProjectsCouncilsPanel v-if="tab === 'councils'" :project-id="projectId" :councils="councils" />
             <ProjectsLiveDesktopWall v-if="tab === 'desktops'" :project-id="projectId" />
             <ProjectsAgentsPanel v-if="tab === 'agents'" :project-id="projectId" @watch="watchDesktop" />
             <ProjectsObservablesPanel v-if="tab === 'observables'" :project-id="projectId" :observables="observables" @changed="loadObservables" />
@@ -87,6 +89,20 @@
               <p v-if="project.status === 'BudgetPaused'" class="bf-hint">Raising the token budget above current spend resumes the project.</p>
             </div>
           </div>
+          <div v-if="grandPlan.current" class="side-card">
+            <div class="side-card-head">
+              <h3>Grand Plan v{{ grandPlan.current.version }}</h3>
+              <button class="obs-all-btn" @click="tab = 'plan'">view →</button>
+            </div>
+            <p class="digest-text">{{ grandPlan.current.summary }}</p>
+          </div>
+          <div v-else-if="project.status === 'Planning'" class="side-card">
+            <div class="side-card-head">
+              <h3>Grand Plan</h3>
+              <button class="obs-all-btn" @click="tab = 'plan'">view →</button>
+            </div>
+            <p class="digest-text">Drafting — awaiting your approval before work begins.</p>
+          </div>
           <div v-if="observables.length" class="side-card">
             <div class="side-card-head">
               <h3>Observables</h3>
@@ -104,7 +120,13 @@
           </div>
           <div class="side-card">
             <h3>Plan</h3>
-            <p class="digest-text">{{ digest.currentPlan || '(no plan yet)' }}</p>
+            <template v-if="digest.currentFocus || (digest.nextSteps && digest.nextSteps.length)">
+              <p v-if="digest.currentFocus" class="digest-focus"><span class="df-label">Focus</span>{{ digest.currentFocus }}</p>
+              <ol v-if="digest.nextSteps && digest.nextSteps.length" class="digest-steps">
+                <li v-for="(s, i) in digest.nextSteps" :key="i">{{ s }}</li>
+              </ol>
+            </template>
+            <p v-else class="digest-text">{{ digest.currentPlan || '(no plan yet)' }}</p>
             <h3>Org chart</h3>
             <p class="digest-text">{{ digest.orgChart || '(commander only)' }}</p>
             <h3>Open threads</h3>
@@ -132,6 +154,8 @@ import ProjectsLiveDesktopWall from '~/components/Projects/LiveDesktopWall.vue';
 import ProjectsAgentsPanel from '~/components/Projects/AgentsPanel.vue';
 import ProjectsObservablesPanel from '~/components/Projects/ObservablesPanel.vue';
 import ProjectsObservableSparkline from '~/components/Projects/ObservableSparkline.vue';
+import ProjectsCouncilsPanel from '~/components/Projects/CouncilsPanel.vue';
+import ProjectsGrandPlanPanel from '~/components/Projects/GrandPlanPanel.vue';
 import ProjectsHooksPanel from '~/components/Projects/HooksPanel.vue';
 import ProjectsSettingsPanel from '~/components/Projects/SettingsPanel.vue';
 import ProjectsStatusPill from '~/components/Projects/StatusPill.vue';
@@ -145,6 +169,8 @@ const projectId = String(route.params.projectId);
 const tabs = [
   { id: 'conversation', label: 'Conversation' },
   { id: 'timeline', label: 'Timeline' },
+  { id: 'plan', label: 'Grand Plan' },
+  { id: 'councils', label: 'Councils' },
   { id: 'desktops', label: 'Desktops' },
   { id: 'agents', label: 'Agents' },
   { id: 'observables', label: 'Observables' },
@@ -159,6 +185,8 @@ const ledger = ref<any>({ tokenSpendUsd: 0, moneySpendUsd: 0 });
 const events = ref<any[]>([]);
 const agents = ref<any[]>([]);
 const observables = ref<any[]>([]);
+const councils = ref<any[]>([]);
+const grandPlan = ref<any>({ current: null, versions: [] });
 const loadError = ref('');
 const selectedEvent = ref<any>(null);
 let poll: ReturnType<typeof setInterval> | null = null;
@@ -196,6 +224,12 @@ async function loadAgents() {
 }
 async function loadObservables() {
   try { const r = await RequestGETFromKliveAPI(`/projects/observables?projectID=${projectId}&history=120`, false, false); if (r.ok) observables.value = await r.json(); } catch { /* transient */ }
+}
+async function loadCouncils() {
+  try { const r = await RequestGETFromKliveAPI(`/projects/councils?projectID=${projectId}`, false, false); if (r.ok) councils.value = await r.json(); } catch { /* transient */ }
+}
+async function loadGrandPlan() {
+  try { const r = await RequestGETFromKliveAPI(`/projects/grandplan?projectID=${projectId}`, false, false); if (r.ok) grandPlan.value = await r.json(); } catch { /* transient */ }
 }
 
 // Top observables for the always-visible side card: most-recently-updated first (agents signal
@@ -292,7 +326,7 @@ async function commitRename() {
   } finally { renameSaving.value = false; }
 }
 
-function refresh() { loadProject(); loadDigest(); loadLedger(); loadAgents(); loadObservables(); }
+function refresh() { loadProject(); loadDigest(); loadLedger(); loadAgents(); loadObservables(); loadCouncils(); loadGrandPlan(); }
 
 // Live push (Phase 3): refresh the side-rail data on any project event (debounced) instead of a
 // tight 5s poll. ConversationPanel streams its own events; this keeps status/budget/agents fresh.
@@ -361,6 +395,10 @@ onBeforeUnmount(() => {
 .obs-mini-name { color: #999; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .obs-mini-value { color: #e6e6e6; font-weight: 600; font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .digest-text { font-size: 12px; color: #aaa; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; margin: 0; line-height: 1.5; }
+.digest-focus { font-size: 12px; color: #cfcfd6; margin: 0 0 6px; line-height: 1.45; overflow-wrap: anywhere; }
+.df-label { font-size: 9px; letter-spacing: 0.05em; text-transform: uppercase; color: #7fd97f; background: #1d3a1d; padding: 1px 6px; border-radius: 6px; margin-right: 6px; }
+.digest-steps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+.digest-steps li { font-size: 12px; color: #aaa; line-height: 1.45; overflow-wrap: anywhere; }
 .side-card { min-width: 0; overflow: hidden; }
 .side-hint { font-size: 11px; color: #666; margin: 8px 0 0; }
 .info-banner, .error-banner { padding: 16px; border-radius: 6px; background: #1f1f23; }

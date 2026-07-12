@@ -21,6 +21,7 @@
         </div>
         <div class="pw-controls">
           <span v-if="pendingGates" class="approval-badge" @click="tab = 'conversation'">{{ pendingGates }} approval{{ pendingGates === 1 ? '' : 's' }}</span>
+          <ProjectsHistoryExport :project-id="projectId" />
           <ProjectsStatusPill :status="project.status" />
           <button v-if="project.status === 'Active'" class="ctrl" :disabled="actionBusy" @click="pause" title="Halt the fleet — stops the in-flight wake too">Halt</button>
           <button v-else-if="project.status === 'Paused' || project.status === 'BudgetPaused'" class="ctrl ctrl-go" :disabled="actionBusy" @click="resume">Resume</button>
@@ -43,6 +44,7 @@
               <ProjectsConversationPanel :project-id="projectId" @events="onEvents" @select="selectEvent" />
             </div>
             <ProjectsTimeline v-show="tab === 'timeline'" :events="events" :agent-labels="agentLabels" @select="selectEvent" />
+            <ProjectsFilesPanel v-if="tab === 'files'" :project-id="projectId" :status="project.status" />
             <ProjectsGrandPlanPanel v-if="tab === 'plan'" :project-id="projectId" :grand-plan="grandPlan" />
             <ProjectsCouncilsPanel v-if="tab === 'councils'" :project-id="projectId" :councils="councils" />
             <ProjectsLiveDesktopWall v-if="tab === 'desktops'" :project-id="projectId" />
@@ -160,6 +162,8 @@ import ProjectsHooksPanel from '~/components/Projects/HooksPanel.vue';
 import ProjectsSettingsPanel from '~/components/Projects/SettingsPanel.vue';
 import ProjectsStatusPill from '~/components/Projects/StatusPill.vue';
 import ProjectsEventDetail from '~/components/Projects/EventDetail.vue';
+import ProjectsFilesPanel from '~/components/Projects/FilesPanel.vue';
+import ProjectsHistoryExport from '~/components/Projects/HistoryExport.vue';
 
 definePageMeta({ layout: 'navbar' });
 
@@ -169,6 +173,7 @@ const projectId = String(route.params.projectId);
 const tabs = [
   { id: 'conversation', label: 'Conversation' },
   { id: 'timeline', label: 'Timeline' },
+  { id: 'files', label: 'Files' },
   { id: 'plan', label: 'Grand Plan' },
   { id: 'councils', label: 'Councils' },
   { id: 'desktops', label: 'Desktops' },
@@ -368,7 +373,7 @@ onBeforeUnmount(() => {
 .approval-badge { background: #3a2f17; color: #d9b872; font-size: 12px; padding: 4px 10px; border-radius: 10px; cursor: pointer; font-weight: 600; }
 .pw-grid { display: grid; grid-template-columns: 1fr 340px; gap: 18px; align-items: start; }
 .pw-main { min-width: 0; }
-.pw-tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid #2a2a2e; }
+.pw-tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid #2a2a2e; overflow-x: auto; }
 .pw-tabs button { position: relative; background: none; border: none; color: #999; padding: 10px 14px; cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .pw-tabs button.active { color: #fff; border-bottom-color: #4d9e39; }
 .tab-dot { position: absolute; top: 6px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: #d9b872; }

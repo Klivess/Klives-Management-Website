@@ -21,6 +21,18 @@
           </label>
         </section>
 
+        <section class="np-card">
+          <h2 class="np-card-title">Initial shared files <span class="np-optional">optional</span></h2>
+          <p class="np-sublabel np-cardnote">Seed the project with briefs, research, datasets, brand kits, or whole folders. They are placed under <code>inputs/</code> before the Commander starts its first wake.</p>
+          <ProjectsFileUploader
+            ref="initialUploader"
+            purpose="initial"
+            title="Initialize the project filesystem"
+            hint="The original folder structure is preserved. Project workers can see who uploaded each file and when."
+            @state="onUploadState"
+          />
+        </section>
+
         <!-- ── Budgets & autonomy ── -->
         <section class="np-card">
           <h2 class="np-card-title">Budget &amp; autonomy</h2>
@@ -95,6 +107,7 @@
             <li :class="{ ok: form.name }">{{ form.name ? '✓' : '•' }} Named</li>
             <li :class="{ ok: form.goal }">{{ form.goal ? '✓' : '•' }} Goal set</li>
             <li :class="{ ok: (form.tokenBudgetUsd || 0) > 0 }">{{ (form.tokenBudgetUsd || 0) > 0 ? '✓' : '•' }} Token budget</li>
+            <li v-if="uploadState.selected" :class="{ ok: uploadState.ready }">{{ uploadState.ready ? '✓' : '•' }} {{ uploadState.ready ? `${uploadState.selected} file${uploadState.selected === 1 ? '' : 's'} ready` : 'Uploading files' }}</li>
           </ul>
           <div class="np-recap">
             <div class="np-recap-row"><span>Tokens</span><span>${{ (form.tokenBudgetUsd || 0).toFixed(2) }}</span></div>
@@ -106,7 +119,7 @@
           </div>
           <p v-if="error" class="np-error">{{ error }}</p>
           <button class="np-deploy" :disabled="!canDeploy || deploying" @click="deploy">
-            {{ deploying ? 'Deploying…' : 'Deploy project' }}
+            {{ deploying ? 'Deploying…' : uploadState.busy ? 'Waiting for files…' : 'Deploy project' }}
           </button>
           <button class="np-cancel" :disabled="deploying" @click="cancel">Cancel</button>
         </div>
@@ -119,6 +132,7 @@
 import { ref, reactive, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import ProjectsFileUploader from '~/components/Projects/FileUploader.vue';
 
 definePageMeta({ layout: 'navbar' });
 
@@ -157,8 +171,11 @@ const defaults = ref<Record<string, any>>({});
 const showModels = ref(false);
 const deploying = ref(false);
 const error = ref('');
+const initialUploader = ref<InstanceType<typeof ProjectsFileUploader> | null>(null);
+const uploadState = ref({ sessionID: null as string | null, selected: 0, ready: true, busy: false });
 
-const canDeploy = computed(() => !!form.name && !!form.goal && (form.tokenBudgetUsd || 0) > 0);
+const canDeploy = computed(() => !!form.name && !!form.goal && (form.tokenBudgetUsd || 0) > 0 && uploadState.value.ready && !uploadState.value.busy);
+function onUploadState(value: typeof uploadState.value) { uploadState.value = value; }
 
 // Prefill model routing + behaviour from the system defaults so the page shows the
 // inherited values Klives can override, rather than empty boxes.
@@ -204,6 +221,7 @@ async function deploy() {
     };
     const patch = changedSettings();
     if (Object.keys(patch).length) payload.settings = patch;
+    if (uploadState.value.sessionID) payload.initialUploadSessionID = uploadState.value.sessionID;
 
     const res = await RequestPOSTFromKliveAPI('/projects/create', JSON.stringify(payload), false, true);
     if (!res.ok) {
@@ -220,7 +238,10 @@ async function deploy() {
   }
 }
 
-function cancel() { router.push('/projects'); }
+async function cancel() {
+  if (uploadState.value.sessionID) await initialUploader.value?.clear();
+  router.push('/projects');
+}
 
 onMounted(loadDefaults);
 </script>
@@ -240,6 +261,7 @@ onMounted(loadDefaults);
 .np-main { display: flex; flex-direction: column; gap: 16px; }
 .np-card { background: #161519; border: 1px solid #2a2a2e; border-radius: 10px; padding: 18px 20px; }
 .np-card-title { margin: 0 0 14px; font-size: 15px; color: #eee; }
+.np-optional { color: #666; font-size: 10px; font-weight: 400; margin-left: 6px; }
 .np-card-title-row { display: flex; justify-content: space-between; align-items: center; }
 .np-cardnote { margin: -8px 0 12px; }
 .np-linkbtn { background: none; border: none; color: #7fb0d9; cursor: pointer; font-size: 13px; padding: 0; }

@@ -38,7 +38,7 @@
                 <div class="filter-group">
                     <KMSelectBox
                         v-model:selected="filterType"
-                        :options="['All Types', 'String', 'Bool', 'Int', 'Dropdown']"
+                        :options="['All Types', 'String', 'Bool', 'Int', 'Dropdown', 'List']"
                     />
                 </div>
                 
@@ -89,7 +89,7 @@
                                     </div>
                                 </div>
                                 
-                                <div class="setting-editor">
+                                <div class="setting-editor" :class="{ 'setting-editor--list': setting.Type === 4 }">
                                     <div class="editor-input-wrapper">
                                         <div v-if="setting.Type === 0" class="editor-input">
                                             <KMInputBox
@@ -116,6 +116,29 @@
                                                 v-model:selected="editingValues[`${setting.ParentServiceId}-${setting.Name}`]"
                                                 :options="getDropdownOptions(setting)"
                                             />
+                                        </div>
+                                        <div v-else-if="setting.Type === 4" class="editor-list">
+                                            <div
+                                                v-for="(entry, index) in (listValues[getSettingKey(setting)] || [])"
+                                                :key="index"
+                                                class="list-entry"
+                                            >
+                                                <KMInputBox
+                                                    v-model:value="listValues[getSettingKey(setting)][index]"
+                                                    :placeholder="`Entry ${index + 1}`"
+                                                    type="text"
+                                                />
+                                                <button
+                                                    class="list-entry-remove"
+                                                    type="button"
+                                                    title="Remove entry"
+                                                    @click="removeListEntry(setting, index)"
+                                                >✕</button>
+                                            </div>
+                                            <p v-if="(listValues[getSettingKey(setting)] || []).length === 0" class="list-empty">
+                                                No entries yet.
+                                            </p>
+                                            <button class="list-add" type="button" @click="addListEntry(setting)">+ Add entry</button>
                                         </div>
                                     </div>
                                     
@@ -165,7 +188,7 @@
                                     </div>
                                 </div>
 
-                                <div class="setting-editor">
+                                <div class="setting-editor" :class="{ 'setting-editor--list': setting.Type === 4 }">
                                     <div class="editor-input-wrapper">
                                         <div v-if="setting.Type === 0" class="editor-input">
                                             <KMInputBox
@@ -192,6 +215,29 @@
                                                 v-model:selected="editingValues[getSettingKey(setting)]"
                                                 :options="getDropdownOptions(setting)"
                                             />
+                                        </div>
+                                        <div v-else-if="setting.Type === 4" class="editor-list">
+                                            <div
+                                                v-for="(entry, index) in (listValues[getSettingKey(setting)] || [])"
+                                                :key="index"
+                                                class="list-entry"
+                                            >
+                                                <KMInputBox
+                                                    v-model:value="listValues[getSettingKey(setting)][index]"
+                                                    :placeholder="`Entry ${index + 1}`"
+                                                    type="text"
+                                                />
+                                                <button
+                                                    class="list-entry-remove"
+                                                    type="button"
+                                                    title="Remove entry"
+                                                    @click="removeListEntry(setting, index)"
+                                                >✕</button>
+                                            </div>
+                                            <p v-if="(listValues[getSettingKey(setting)] || []).length === 0" class="list-empty">
+                                                No entries yet.
+                                            </p>
+                                            <button class="list-add" type="button" @click="addListEntry(setting)">+ Add entry</button>
                                         </div>
                                     </div>
 
@@ -236,7 +282,7 @@ definePageMeta({ layout: 'navbar' });
 // Types
 interface OmniSetting {
     Name: string;
-    Type: number; // 0 = String, 1 = Bool, 2 = Int, 3 = Dropdown
+    Type: number; // 0 = String, 1 = Bool, 2 = Int, 3 = Dropdown, 4 = StringList
     Sensitive: boolean;
     ParentServiceId: string;
     ParentServiceName: string;
@@ -254,6 +300,7 @@ const filterType = ref('All Types');
 const showSensitiveValues = ref(false);
 const editingValues = ref<Record<string, string>>({});
 const boolValues = ref<Record<string, boolean>>({});
+const listValues = ref<Record<string, string[]>>({});
 const savingSettings = ref(new Set<string>());
 const deletingSettings = ref(new Set<string>());
 const collapsedGroups = ref<Record<string, boolean>>({});
@@ -327,8 +374,41 @@ const getTypeLabel = (type: number): string => {
         case 1: return 'Bool';
         case 2: return 'Int';
         case 3: return 'Dropdown';
+        case 4: return 'List';
         default: return 'Unknown';
     }
+};
+
+// Parses a StringList setting's Value (a JSON array). Tolerates legacy plain values.
+const parseList = (value: string): string[] => {
+    if (!value) return [];
+    try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) {
+            return parsed.map((entry) => String(entry));
+        }
+    } catch {
+        // Fall through: treat a legacy non-JSON value as a single entry.
+    }
+    return value ? [value] : [];
+};
+
+// Trims entries and drops empty ones, then JSON-serializes for the Set route.
+const serializeList = (entries: string[]): string =>
+    JSON.stringify((entries || []).map((entry) => entry.trim()).filter((entry) => entry.length > 0));
+
+const addListEntry = (setting: OmniSetting) => {
+    const key = getSettingKey(setting);
+    const entries = listValues.value[key] ? [...listValues.value[key]] : [];
+    entries.push('');
+    listValues.value = { ...listValues.value, [key]: entries };
+};
+
+const removeListEntry = (setting: OmniSetting, index: number) => {
+    const key = getSettingKey(setting);
+    const entries = listValues.value[key] ? [...listValues.value[key]] : [];
+    entries.splice(index, 1);
+    listValues.value = { ...listValues.value, [key]: entries };
 };
 
 const getSettingKey = (setting: OmniSetting): string => `${setting.ParentServiceId}-${setting.Name}`;
@@ -402,6 +482,9 @@ const loadSettings = async () => {
                 if (setting.Type === 1) {
                     // Bool
                     boolValues.value[key] = setting.Value === 'true' || setting.Value === 'True';
+                } else if (setting.Type === 4) {
+                    // StringList
+                    listValues.value[key] = parseList(setting.Value);
                 } else {
                     editingValues.value[key] = setting.Type === 3
                         ? normalizeDropdownValue(setting, setting.Value)
@@ -423,6 +506,8 @@ const isSettingModified = (setting: OmniSetting): boolean => {
     const key = getSettingKey(setting);
     if (setting.Type === 1) {
         return boolValues.value[key] !== (setting.Value === 'true' || setting.Value === 'True');
+    } else if (setting.Type === 4) {
+        return serializeList(listValues.value[key] || []) !== serializeList(parseList(setting.Value));
     } else {
         const currentValue = setting.Type === 3
             ? normalizeDropdownValue(setting, setting.Value)
@@ -439,6 +524,8 @@ const saveSetting = async (setting: OmniSetting) => {
         let newValue: string;
         if (setting.Type === 1) {
             newValue = boolValues.value[key] ? 'true' : 'false';
+        } else if (setting.Type === 4) {
+            newValue = serializeList(listValues.value[key] || []);
         } else {
             newValue = setting.Type === 3
                 ? normalizeDropdownValue(setting, editingValues.value[key])
@@ -461,7 +548,11 @@ const saveSetting = async (setting: OmniSetting) => {
 
         if (response.ok) {
             setting.Value = newValue;
-            
+            if (setting.Type === 4) {
+                // Reflect normalization (trimmed/dropped-empty entries) back into the editor.
+                listValues.value = { ...listValues.value, [key]: parseList(newValue) };
+            }
+
             // Show toast
             Swal.fire({
                 icon: 'success',
@@ -503,6 +594,10 @@ const removeSettingFromState = (setting: OmniSetting) => {
     const nextBoolValues = { ...boolValues.value };
     delete nextBoolValues[key];
     boolValues.value = nextBoolValues;
+
+    const nextListValues = { ...listValues.value };
+    delete nextListValues[key];
+    listValues.value = nextListValues;
 
     syncGroupCollapseState(settings.value);
 };
@@ -909,6 +1004,12 @@ onMounted(() => {
     border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
+.type-list {
+    background: rgba(56, 189, 248, 0.2);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
 .inactive-type-badge {
     background: rgba(214, 143, 38, 0.15);
     color: #e0a54b;
@@ -922,9 +1023,83 @@ onMounted(() => {
     height: 45px;
 }
 
+/* StringList settings need a taller, stacked layout: list above, actions below. */
+.setting-editor--list {
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+    gap: 15px;
+}
+
 .editor-input-wrapper {
     flex: 1;
     height: 100%;
+}
+
+.setting-editor--list .editor-input-wrapper {
+    height: auto;
+}
+
+.editor-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+}
+
+.list-entry {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.list-entry :deep(.kinput) {
+    flex: 1;
+    width: 100%;
+    height: 38px;
+}
+
+.list-entry-remove {
+    flex-shrink: 0;
+    width: 38px;
+    height: 38px;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.08);
+    color: #ef4444;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.list-entry-remove:hover {
+    background: rgba(239, 68, 68, 0.16);
+    border-color: rgba(239, 68, 68, 0.55);
+}
+
+.list-add {
+    align-self: flex-start;
+    padding: 8px 16px;
+    border: 1px dashed rgba(77, 158, 57, 0.5);
+    border-radius: 8px;
+    background: rgba(77, 158, 57, 0.08);
+    color: #62ce47;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.list-add:hover {
+    background: rgba(77, 158, 57, 0.16);
+    border-color: rgba(77, 158, 57, 0.7);
+}
+
+.list-empty {
+    margin: 0;
+    color: #969696;
+    font-style: italic;
+    font-size: 0.9rem;
 }
 
 .editor-input,
@@ -945,6 +1120,11 @@ onMounted(() => {
     gap: 10px;
     height: 100%;
     min-width: 220px;
+}
+
+.setting-editor--list .editor-actions {
+    height: 45px;
+    min-width: 0;
 }
 
 .placeholder-action {

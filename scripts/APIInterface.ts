@@ -2,7 +2,7 @@
 import { useCookie } from '#imports';
 import Swal from 'sweetalert2';
 
-export { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, RequestBatchFromKliveAPI, VerifyLogin, StartAuthSessionWatch, StopAuthSessionWatch, KMPermissions };
+export { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, RequestPUTFromKliveAPI, RequestBatchFromKliveAPI, VerifyLogin, StartAuthSessionWatch, StopAuthSessionWatch, KMPermissions };
 export type { KliveBatchItem };
 
 const KliveAPIUrl = "https://klive.dev";
@@ -129,6 +129,39 @@ async function RequestPOSTFromKliveAPI(query: string, content: BodyInit | null =
         }
     }
 
+    return response;
+}
+
+// Streaming uploads use PUT so chunks never pass through the API's buffered JSON
+// request path. Keep authentication and denial handling identical to POST.
+async function RequestPUTFromKliveAPI(query: string, content: BodyInit, redirectToDashboardIfUnauthorized = true) {
+    let response: Response;
+    try {
+        response = await fetch(KliveAPIUrl + query, {
+            method: "PUT",
+            mode: 'cors',
+            body: content,
+            headers: BuildKliveHeaders(false),
+        });
+    } catch (error) {
+        console.warn('Klive API PUT failed:', query, error);
+        return new Response('Klive API request failed or timed out', { status: 504 });
+    }
+
+    if (response.status === 401 || response.status === 403) {
+        if (HandleAuthFailure(response)) return response;
+        if (response.headers.get('RequestDeniedCode') === '2' && process.client) {
+            await Swal.fire({
+                icon: 'warning',
+                title: 'Insufficient Clearance',
+                text: 'Your profile does not have enough clearance to upload project files.',
+                confirmButtonColor: '#4d9e39',
+                background: '#161516',
+                color: '#ffffff',
+            });
+            if (redirectToDashboardIfUnauthorized) window.location.replace('/dashboard');
+        }
+    }
     return response;
 }
 

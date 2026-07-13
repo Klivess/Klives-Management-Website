@@ -91,10 +91,14 @@
           </div>
           <p class="np-sublabel np-cardnote">Prefilled from your system defaults. The tier list doubles as a price list (text &lt; image &lt; video &lt; audio).</p>
           <div v-if="showModels" class="np-models">
-            <label v-for="f in modelFields" :key="f.key" class="np-field np-modelrow">
-              <span class="np-label">{{ f.label }}</span>
-              <input v-model.trim="settings[f.key]" class="np-input mono" :placeholder="f.placeholder" />
-            </label>
+            <ModelRouteList
+              v-for="f in modelFields"
+              :key="f.key"
+              v-model="settings[f.key]"
+              :label="f.label"
+              :placeholder="f.placeholder"
+            />
+            <p v-if="!routesValid" class="np-error">Every model route entry must contain a provider/model value.</p>
           </div>
         </section>
       </div>
@@ -115,7 +119,7 @@
             <div class="np-recap-row"><span>Autonomous ≤</span><span>${{ (form.moneyAutonomousThresholdUsd || 0).toFixed(2) }}</span></div>
             <div class="np-recap-row"><span>Agent cap</span><span>{{ form.subAgentCap || 5 }}</span></div>
             <div class="np-recap-row"><span>Containers</span><span>{{ settings.containersEnabled ? 'on' : 'off' }}</span></div>
-            <div class="np-recap-row"><span>Commander</span><span class="mono ellip">{{ settings.commanderModel || '—' }}</span></div>
+            <div class="np-recap-row"><span>Commander</span><span class="mono ellip">{{ settings.commanderRoutes?.[0] || '—' }}</span></div>
           </div>
           <p v-if="error" class="np-error">{{ error }}</p>
           <button class="np-deploy" :disabled="!canDeploy || deploying" @click="deploy">
@@ -133,6 +137,7 @@ import { ref, reactive, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import ProjectsFileUploader from '~/components/Projects/FileUploader.vue';
+import ModelRouteList from '~/components/Projects/ModelRouteList.vue';
 
 definePageMeta({ layout: 'navbar' });
 
@@ -148,23 +153,24 @@ const form = reactive({
 });
 
 const modelFields = [
-  { key: 'commanderModel', label: 'Commander', placeholder: 'anthropic/claude-sonnet-4.5' },
-  { key: 'utilityModel', label: 'Utility (digests/reports)', placeholder: 'openai/gpt-4.1-mini' },
-  { key: 'tierTextModel', label: 'Tier: Text', placeholder: 'openai/gpt-4.1-mini' },
-  { key: 'tierTextImageModel', label: 'Tier: Text+Image', placeholder: 'openai/gpt-4.1' },
-  { key: 'tierTextImageVideoModel', label: 'Tier: +Video', placeholder: 'anthropic/claude-sonnet-4.5' },
-  { key: 'tierTextImageVideoAudioModel', label: 'Tier: +Audio', placeholder: 'google/gemini-2.5-pro' },
-  { key: 'stimulusFreeModel', label: 'Triage (free)', placeholder: 'openai/gpt-4.1-mini' },
-  { key: 'stimulusFallbackModel', label: 'Triage (fallback)', placeholder: 'openai/gpt-4.1-mini' },
+  { key: 'commanderRoutes', legacy: 'commanderModel', label: 'Commander', placeholder: 'anthropic/claude-sonnet-4.5' },
+  { key: 'utilityRoutes', legacy: 'utilityModel', label: 'Utility (digests/reports)', placeholder: 'openai/gpt-4.1-mini' },
+  { key: 'councilRoutes', legacy: 'councilModel', label: 'Council', placeholder: 'anthropic/claude-sonnet-4.5' },
+  { key: 'tierTextRoutes', legacy: 'tierTextModel', label: 'Tier: Text', placeholder: 'openai/gpt-4.1-mini' },
+  { key: 'tierTextImageRoutes', legacy: 'tierTextImageModel', label: 'Tier: Text+Image', placeholder: 'openai/gpt-4.1' },
+  { key: 'tierTextImageVideoRoutes', legacy: 'tierTextImageVideoModel', label: 'Tier: +Video', placeholder: 'anthropic/claude-sonnet-4.5' },
+  { key: 'tierTextImageVideoAudioRoutes', legacy: 'tierTextImageVideoAudioModel', label: 'Tier: +Audio', placeholder: 'google/gemini-2.5-pro' },
+  { key: 'stimulusFreeRoutes', legacy: 'stimulusFreeModel', label: 'Triage (free)', placeholder: 'openai/gpt-4.1-mini' },
+  { key: 'stimulusFallbackRoutes', legacy: 'stimulusFallbackModel', label: 'Triage (fallback)', placeholder: 'openai/gpt-4.1-mini' },
 ] as const;
 
 const settings = reactive<Record<string, any>>({
   visionEnabled: true,
   containersEnabled: false,
   desktopImage: 'omnipotent/projects-desktop:latest',
-  commanderModel: '', utilityModel: '',
-  tierTextModel: '', tierTextImageModel: '', tierTextImageVideoModel: '', tierTextImageVideoAudioModel: '',
-  stimulusFreeModel: '', stimulusFallbackModel: '',
+  commanderRoutes: [''], utilityRoutes: [''], councilRoutes: [''],
+  tierTextRoutes: [''], tierTextImageRoutes: [''], tierTextImageVideoRoutes: [''], tierTextImageVideoAudioRoutes: [''],
+  stimulusFreeRoutes: [''], stimulusFallbackRoutes: [''],
 });
 const defaults = ref<Record<string, any>>({});
 
@@ -174,7 +180,8 @@ const error = ref('');
 const initialUploader = ref<InstanceType<typeof ProjectsFileUploader> | null>(null);
 const uploadState = ref({ sessionID: null as string | null, selected: 0, ready: true, busy: false });
 
-const canDeploy = computed(() => !!form.name && !!form.goal && (form.tokenBudgetUsd || 0) > 0 && uploadState.value.ready && !uploadState.value.busy);
+const routesValid = computed(() => modelFields.every(f => Array.isArray(settings[f.key]) && settings[f.key].length > 0 && settings[f.key].every((r: string) => !!r.trim())));
+const canDeploy = computed(() => !!form.name && !!form.goal && (form.tokenBudgetUsd || 0) > 0 && uploadState.value.ready && !uploadState.value.busy && routesValid.value);
 function onUploadState(value: typeof uploadState.value) { uploadState.value = value; }
 
 // Prefill model routing + behaviour from the system defaults so the page shows the
@@ -185,7 +192,7 @@ async function loadDefaults() {
     if (!res.ok) return;
     const d = await res.json();
     defaults.value = d;
-    for (const f of modelFields) settings[f.key] = d[f.key] ?? '';
+    for (const f of modelFields) settings[f.key] = cleanRoutes(d[f.key] ?? [d[f.legacy] ?? f.placeholder]);
     settings.visionEnabled = d.visionEnabled ?? true;
     settings.containersEnabled = d.containersEnabled ?? false;
     settings.desktopImage = d.desktopImage ?? 'omnipotent/projects-desktop:latest';
@@ -194,13 +201,22 @@ async function loadDefaults() {
 
 // Only send settings that differ from the inherited defaults — an unchanged project
 // simply inherits, keeping the create payload minimal and future-proof.
-function changedSettings(): Record<string, string> {
-  const patch: Record<string, string> = {};
+function cleanRoutes(value: any): string[] {
+  const seen = new Set<string>();
+  return (Array.isArray(value) ? value : [value]).map(v => String(v ?? '').trim()).filter(v => {
+    const key = v.toLowerCase();
+    return !!v && !seen.has(key) && !!seen.add(key);
+  });
+}
+
+function changedSettings(): Record<string, any> {
+  const patch: Record<string, any> = {};
   const keys = [...modelFields.map(f => f.key), 'visionEnabled', 'containersEnabled', 'desktopImage'];
   for (const k of keys) {
     const cur = settings[k];
-    if (defaults.value[k] === undefined || String(cur) !== String(defaults.value[k])) {
-      if (cur !== '' && cur !== undefined && cur !== null) patch[k] = String(cur);
+    if (defaults.value[k] === undefined || JSON.stringify(cur) !== JSON.stringify(defaults.value[k])) {
+      if (k.endsWith('Routes')) patch[k] = cleanRoutes(cur);
+      else if (cur !== '' && cur !== undefined && cur !== null) patch[k] = cur;
     }
   }
   return patch;

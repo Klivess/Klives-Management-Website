@@ -38,6 +38,8 @@ const items = computed<AttentionItem[]>(() => {
       out.push({ projectId: p.projectID, name, kind: 'approval', label: `${p.pendingApprovals} approval${p.pendingApprovals === 1 ? '' : 's'} pending` });
     if (p.status === 'BudgetPaused')
       out.push({ projectId: p.projectID, name, kind: 'budget', label: 'Budget exhausted — paused' });
+    if (p.status === 'Blocked')
+      out.push({ projectId: p.projectID, name, kind: 'blocked', label: p.blocker ? `Blocked — ${p.blocker}` : 'Blocked — action required' });
   }
   return out;
 });
@@ -56,6 +58,7 @@ const items = computed<AttentionItem[]>(() => {
 .as-label { font-size: 12px; }
 .k-approval .as-label { color: #e8c877; }
 .k-budget .as-label { color: #e08a8a; }
+.k-blocked .as-label { color: #e8a877; }
 
 @media (prefers-color-scheme: light) {
   .attention-strip { background: #fdf6e3; border-color: #e6d3a3; }
@@ -65,5 +68,6 @@ const items = computed<AttentionItem[]>(() => {
   .as-name { color: #2a2a2a; }
   .k-approval .as-label { color: #9a7b1e; }
   .k-budget .as-label { color: #c0392b; }
+  .k-blocked .as-label { color: #b5551b; }
 }
 </style>

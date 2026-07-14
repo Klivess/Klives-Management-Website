@@ -141,6 +141,7 @@ interface ProjectSummary {
   moneySpendUsd: number;
   pendingApprovals: number;
   halted: boolean;
+  blocker: string;
 }
 
 const projects = ref<ProjectSummary[]>([]);
@@ -249,6 +250,7 @@ function normalise(raw: unknown): ProjectSummary[] {
       moneySpendUsd: Number(p.moneySpendUsd ?? 0),
       pendingApprovals: Number(p.pendingApprovals ?? 0),
       halted: Boolean(p.halted ?? false),
+      blocker: String(p.blocker ?? ''),
     }))
     .filter(p => p.projectID);
 }

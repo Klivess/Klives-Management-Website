@@ -25,11 +25,22 @@
           <ProjectsStatusPill :status="project.status" />
           <button v-if="project.status === 'Active'" class="ctrl" :disabled="actionBusy" @click="pause" title="Halt the fleet — stops the in-flight wake too">Halt</button>
           <button v-else-if="project.status === 'Paused' || project.status === 'BudgetPaused'" class="ctrl ctrl-go" :disabled="actionBusy" @click="resume">Resume</button>
+          <button v-else-if="project.status === 'Blocked'" class="ctrl ctrl-go" :disabled="actionBusy" @click="unblock" title="Clear the block and resume — do this once you've remediated the cause">Unblock</button>
           <button v-if="project.status === 'Archived'" class="ctrl ctrl-go" :disabled="actionBusy" @click="unarchive">Unshelve</button>
           <button v-else class="ctrl" :disabled="actionBusy" @click="archive" title="Shelve this project">Archive</button>
         </div>
       </div>
       <div v-if="actionError" class="action-error">{{ actionError }} <button class="ae-dismiss" @click="actionError = ''">✕</button></div>
+
+      <div v-if="project.status === 'Blocked'" class="blocked-banner">
+        <span class="bb-icon">⛔</span>
+        <div class="bb-body">
+          <div class="bb-title">Blocked — action required</div>
+          <div v-if="project.blockedReason" class="bb-reason">{{ project.blockedReason }}</div>
+          <div class="bb-hint">Remediate the cause, then Unblock to clear it and set the fleet back to work.</div>
+        </div>
+        <button class="ctrl ctrl-go bb-btn" :disabled="actionBusy" @click="unblock">Unblock</button>
+      </div>
 
       <div class="pw-grid">
         <div class="pw-main">
@@ -265,6 +276,9 @@ async function runAction(url: string) {
 }
 async function pause() { await runAction('/projects/pause'); }
 async function resume() { await runAction('/projects/resume'); }
+// Unblock is the resume path: /projects/resume clears BlockedAt/BlockedReason, logs a
+// ProjectUnblocked event, and re-wakes the Commander to continue after remediation.
+async function unblock() { await runAction('/projects/resume'); }
 async function archive() { await runAction('/projects/archive'); }
 async function unarchive() { await runAction('/projects/unarchive'); }
 
@@ -355,6 +369,13 @@ onBeforeUnmount(() => {
 .project-workspace { padding: 24px; color: #e6e6e6; }
 .action-error { background: #3a1717; border: 1px solid #5a2424; color: #e08a8a; padding: 8px 12px; border-radius: 8px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
 .ae-dismiss { background: none; border: none; color: #e08a8a; cursor: pointer; }
+.blocked-banner { display: flex; align-items: center; gap: 12px; background: #3a1f17; border: 1px solid #6a3a22; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
+.bb-icon { font-size: 18px; flex-shrink: 0; }
+.bb-body { flex: 1; min-width: 0; }
+.bb-title { font-weight: 600; color: #e8a877; font-size: 14px; }
+.bb-reason { color: #e6c6b4; font-size: 13px; margin-top: 3px; overflow-wrap: anywhere; }
+.bb-hint { color: #b08870; font-size: 12px; margin-top: 4px; }
+.bb-btn { flex-shrink: 0; }
 .ctrl:disabled { opacity: 0.5; cursor: default; }
 .pw-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; gap: 16px; }
 .back { color: #7fb0d9; text-decoration: none; font-size: 13px; }

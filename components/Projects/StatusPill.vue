@@ -19,6 +19,7 @@ defineProps<{ status: string }>();
 .s-completed { background: #1d2a3a; color: #7fb0d9; }
 .s-archived { background: #2a2a2e; color: #999; }
 .s-planning { background: #241d3a; color: #a68fd9; }
+.s-blocked { background: #3a2117; color: #e8a877; }
 
 @media (prefers-color-scheme: light) {
   .s-active { background: #e3f5e3; color: #2e7d32; }
@@ -26,5 +27,6 @@ defineProps<{ status: string }>();
   .s-completed { background: #e2edf7; color: #1e5b96; }
   .s-archived { background: #ececec; color: #666; }
   .s-planning { background: #ebe3f7; color: #5b3e96; }
+  .s-blocked { background: #fbe6da; color: #b5551b; }
 }
 </style>

@@ -6,9 +6,42 @@
         <p class="page-subtitle">Autonomous 24/7 agent task force</p>
       </div>
       <div class="header-actions">
+        <button v-if="!loading && projects.length" class="ghost-btn" @click="openBroadcast">📣 Broadcast</button>
+        <button
+          v-if="!loading && projects.length"
+          class="ghost-btn"
+          :class="{ danger: !anyHalted, active: anyHalted }"
+          :disabled="fleetBusy"
+          @click="anyHalted ? unhaltAll() : haltAll()"
+        >
+          {{ anyHalted ? `▶ Unhalt all (${haltedCount})` : '⏸ Halt all' }}
+        </button>
         <NuxtLink to="/projects/accounts" class="ghost-btn">⚿ Accounts</NuxtLink>
         <button class="ghost-btn" :class="{ active: showDefaults }" @click="showDefaults = !showDefaults">⚙ Default settings</button>
         <NuxtLink to="/projects/new" class="primary-btn">+ New project</NuxtLink>
+      </div>
+    </div>
+
+    <div v-if="fleetMsg" class="info-banner fleet-msg">{{ fleetMsg }}</div>
+
+    <!-- Broadcast composer: one message → every live project's Commander. -->
+    <div v-if="showBroadcast" class="broadcast-card">
+      <div class="broadcast-head">
+        <h2>Broadcast to every project</h2>
+        <button class="defaults-close" @click="showBroadcast = false">✕</button>
+      </div>
+      <p class="broadcast-hint">Delivered to every live project (shelved and completed projects are skipped). Working Commanders receive it immediately; halted/paused ones see it on their next wake.</p>
+      <textarea
+        v-model="broadcastText"
+        class="broadcast-input"
+        rows="3"
+        placeholder="Message to send to every project…"
+        :disabled="fleetBusy"
+        @keydown.ctrl.enter="sendBroadcast"
+      ></textarea>
+      <div class="broadcast-actions">
+        <button class="ghost-btn" @click="showBroadcast = false" :disabled="fleetBusy">Cancel</button>
+        <button class="primary-btn" :disabled="fleetBusy || !broadcastText.trim()" @click="sendBroadcast">Send to all</button>
       </div>
     </div>
 
@@ -39,7 +72,10 @@
       >
         <div class="card-head">
           <div class="card-title">{{ p.name || '(untitled)' }}</div>
-          <ProjectsStatusPill :status="p.status" />
+          <div class="card-pills">
+            <span v-if="p.halted" class="halt-chip" title="Halted by fleet halt-all — unhalt to restore its previous state">⏸ halted</span>
+            <ProjectsStatusPill :status="p.status" />
+          </div>
         </div>
         <div class="card-goal">{{ p.goal || 'No goal' }}</div>
 
@@ -104,6 +140,7 @@ interface ProjectSummary {
   tokenSpendUsd: number;
   moneySpendUsd: number;
   pendingApprovals: number;
+  halted: boolean;
 }
 
 const projects = ref<ProjectSummary[]>([]);
@@ -111,8 +148,84 @@ const loading = ref(true);
 const loadError = ref('');
 const showArchived = ref(false);
 
+const showBroadcast = ref(false);
+const broadcastText = ref('');
+const fleetBusy = ref(false);
+const fleetMsg = ref('');
+
 const activeProjects = computed(() => projects.value.filter(p => p.status !== 'Archived'));
 const archivedProjects = computed(() => projects.value.filter(p => p.status === 'Archived'));
+const haltedCount = computed(() => projects.value.filter(p => p.halted).length);
+const anyHalted = computed(() => haltedCount.value > 0);
+
+function flashFleet(msg: string) {
+  fleetMsg.value = msg;
+  setTimeout(() => { if (fleetMsg.value === msg) fleetMsg.value = ''; }, 5000);
+}
+
+function openBroadcast() {
+  showBroadcast.value = true;
+  broadcastText.value = '';
+}
+
+async function sendBroadcast() {
+  const text = broadcastText.value.trim();
+  if (!text || fleetBusy.value) return;
+  fleetBusy.value = true;
+  try {
+    const res = await RequestPOSTFromKliveAPI('/projects/broadcast', JSON.stringify({ text }), false, true);
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      flashFleet(`Broadcast delivered to ${data?.delivered ?? '?'} project(s).`);
+      showBroadcast.value = false;
+      broadcastText.value = '';
+    } else {
+      flashFleet(`Broadcast failed (HTTP ${res.status}).`);
+    }
+  } catch (err: any) {
+    flashFleet(`Broadcast failed: ${err?.message ?? String(err)}`);
+  } finally {
+    fleetBusy.value = false;
+  }
+}
+
+async function haltAll() {
+  if (fleetBusy.value) return;
+  fleetBusy.value = true;
+  try {
+    const res = await RequestPOSTFromKliveAPI('/projects/halt-all', '', false, true);
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      flashFleet(`Halted ${data?.halted ?? '?'} project(s). Unhalt to restore each to its previous state.`);
+    } else {
+      flashFleet(`Halt-all failed (HTTP ${res.status}).`);
+    }
+    await loadProjects(true);
+  } catch (err: any) {
+    flashFleet(`Halt-all failed: ${err?.message ?? String(err)}`);
+  } finally {
+    fleetBusy.value = false;
+  }
+}
+
+async function unhaltAll() {
+  if (fleetBusy.value) return;
+  fleetBusy.value = true;
+  try {
+    const res = await RequestPOSTFromKliveAPI('/projects/unhalt-all', '', false, true);
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      flashFleet(`Restored ${data?.restored ?? '?'} project(s) to their pre-halt state.`);
+    } else {
+      flashFleet(`Unhalt-all failed (HTTP ${res.status}).`);
+    }
+    await loadProjects(true);
+  } catch (err: any) {
+    flashFleet(`Unhalt-all failed: ${err?.message ?? String(err)}`);
+  } finally {
+    fleetBusy.value = false;
+  }
+}
 
 async function unarchive(projectID: string) {
   await RequestPOSTFromKliveAPI('/projects/unarchive', JSON.stringify({ projectID }), false, true);
@@ -135,6 +248,7 @@ function normalise(raw: unknown): ProjectSummary[] {
       tokenSpendUsd: Number(p.tokenSpendUsd ?? 0),
       moneySpendUsd: Number(p.moneySpendUsd ?? 0),
       pendingApprovals: Number(p.pendingApprovals ?? 0),
+      halted: Boolean(p.halted ?? false),
     }))
     .filter(p => p.projectID);
 }
@@ -198,6 +312,19 @@ onBeforeUnmount(() => {
 .primary-btn:hover { background: #5cb947; }
 .ghost-btn { background: #26262b; color: #ccc; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; }
 .ghost-btn:hover, .ghost-btn.active { background: #333; color: #fff; }
+.ghost-btn:disabled { opacity: 0.5; cursor: default; }
+.ghost-btn.danger { color: #e0a060; }
+.ghost-btn.danger:hover:not(:disabled) { background: #3a2a18; color: #f2b878; }
+.fleet-msg { color: #9ecb8e; background: #1c261a; border: 1px solid #2f3f28; }
+.broadcast-card { background: #161519; border: 1px solid #2a2a2e; border-radius: 10px; padding: 18px; margin-bottom: 20px; }
+.broadcast-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.broadcast-head h2 { margin: 0; font-size: 16px; color: #eee; }
+.broadcast-hint { margin: 0 0 12px; color: #888; font-size: 12px; }
+.broadcast-input { width: 100%; box-sizing: border-box; background: #0f0f12; color: #e6e6e6; border: 1px solid #2a2a2e; border-radius: 6px; padding: 10px; font-size: 14px; resize: vertical; font-family: inherit; }
+.broadcast-input:focus { outline: none; border-color: #4d9e39; }
+.broadcast-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.card-pills { display: flex; align-items: center; gap: 6px; }
+.halt-chip { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #3a2a18; color: #e0a060; white-space: nowrap; }
 .defaults-card { background: #161519; border: 1px solid #2a2a2e; border-radius: 10px; padding: 18px; margin-bottom: 20px; }
 .defaults-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .defaults-head h2 { margin: 0; font-size: 16px; color: #eee; }

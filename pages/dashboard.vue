@@ -458,6 +458,10 @@ export default {
                 // One /batch round-trip instead of ~8 parallel fetches (each of which
                 // paid its own connection/preflight cost). Each zone still updates
                 // independently from its slice of the combined result.
+                // The activity feed only shows a handful of entries, so ask for a small
+                // newest-first page plus the cheap aggregate summary — never the full
+                // process-lifetime log dump (which grows unbounded with server uptime
+                // and was making this 10s poll multi-MB).
                 const paths = [
                     '/GeneralBotStatistics/GetFrontpageStats',
                     '/api/logs?type=1&limit=5',
@@ -468,7 +472,8 @@ export default {
                     '/api/omnitrader/backtests',
                     '/omnigram/dashboard-stats',
                     '/omnitumblr/dashboard-stats',
-                    '/api/logs',
+                    '/api/logs?limit=25&sort=desc',
+                    '/api/logs/summary?hours=24',
                 ];
                 const results = await RequestBatchFromKliveAPI(paths);
 
@@ -496,7 +501,7 @@ export default {
                 });
                 this.loadOmniGramStats(r('/omnigram/dashboard-stats'));
                 this.loadOmniTumblrStats(r('/omnitumblr/dashboard-stats'));
-                this.loadRecentActivity(r('/api/logs'));
+                this.loadRecentActivity(r('/api/logs?limit=25&sort=desc'), r('/api/logs/summary?hours=24'));
 
             } catch (err) {
                 console.error('Dashboard data loading error:', err);
@@ -951,12 +956,12 @@ export default {
             }
         },
         
-        async loadRecentActivity(prefetched) {
+        async loadRecentActivity(prefetched, prefetchedSummary) {
             this.loadingStates.logs = true;
             this.errorStates.logs = false;
 
             try {
-                const response = prefetched || await RequestGETFromKliveAPI('/api/logs', false, false);
+                const response = prefetched || await RequestGETFromKliveAPI('/api/logs?limit=25&sort=desc', false, false);
                 if (response.ok) {
                     const logs = await response.json();
                     // Get the 5 most recent activities
@@ -965,10 +970,26 @@ export default {
                         time: log.timestamp || new Date(),
                         description: log.message || `${log.serviceName}: ${log.logType}`
                     }));
-                    
-                    // Calculate log analytics
-                    this.systemStats.totalLogs = logs.length;
-                    this.systemStats.totalErrors = logs.filter(log => log.type === 1).length;
+
+                    // Log analytics come from the aggregate summary route (the log list
+                    // itself is just a small recent page now, so counting it would lie).
+                    let totalLogs = logs.length;
+                    let totalErrors = logs.filter(log => log.type === 1).length;
+                    try {
+                        const summaryResponse = prefetchedSummary
+                            || await RequestGETFromKliveAPI('/api/logs/summary?hours=24', false, false);
+                        if (summaryResponse && summaryResponse.ok) {
+                            const summary = await summaryResponse.json();
+                            if (summary && typeof summary.TotalLogs === 'number') {
+                                totalLogs = summary.TotalLogs;
+                                totalErrors = summary.ErrorCount ?? totalErrors;
+                            }
+                        }
+                    } catch (summaryError) {
+                        console.log('Log summary unavailable, using recent-page counts:', summaryError);
+                    }
+                    this.systemStats.totalLogs = totalLogs;
+                    this.systemStats.totalErrors = totalErrors;
                     this.systemStats.logsAccessible = true;
                 } else if (response.status === 401) {
                     // User doesn't have permission to view logs

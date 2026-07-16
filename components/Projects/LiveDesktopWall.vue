@@ -22,7 +22,8 @@
       />
     </div>
 
-    <!-- Maximised overlay: a higher-fps stream of one desktop. -->
+    <!-- Maximised overlay: a higher-fps stream with full remote control (take over the desktop
+         to clear human-only obstacles like captchas; the agent is nudged automatically after). -->
     <div v-if="maxTile" class="dw-overlay" @click.self="maxTile = null">
       <div class="dw-modal">
         <div class="dw-modal-head">
@@ -30,7 +31,7 @@
           <button class="dw-close" title="Close (Esc)" @click="maxTile = null">✕</button>
         </div>
         <div class="dw-modal-body">
-          <ProjectsLiveDesktop :container-id="maxTile.containerId" :label="maxTile.label" :fps="12" />
+          <ProjectsContainerRemoteDesktop :container-id="maxTile.containerId" :label="maxTile.label" :fps="12" />
         </div>
       </div>
     </div>
@@ -41,6 +42,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 import ProjectsLiveDesktop from '~/components/Projects/LiveDesktop.vue';
+import ProjectsContainerRemoteDesktop from '~/components/Projects/ContainerRemoteDesktop.vue';
 
 const props = defineProps<{ projectId: string }>();
 
@@ -62,7 +64,9 @@ const tiles = computed(() => {
 });
 
 function maximize(t: { containerId: string; label: string }) { maxTile.value = t; }
-function onKey(e: KeyboardEvent) { if (e.key === 'Escape') maxTile.value = null; }
+// While the remote desktop is controlling, it consumes Escape (preventDefault) to forward it to
+// the container — only an unhandled Escape closes the modal.
+function onKey(e: KeyboardEvent) { if (e.key === 'Escape' && !e.defaultPrevented) maxTile.value = null; }
 
 async function load() {
   try {

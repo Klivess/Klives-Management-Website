@@ -74,8 +74,10 @@ const props = withDefaults(defineProps<{
   label?: string;
   fps?: number;
   quality?: number;
+  /* Full-resolution frames by default: precise clicking wants unscaled pixels. */
+  maxWidth?: number;
   startControl?: boolean;
-}>(), { fps: 12, quality: 60, startControl: false });
+}>(), { fps: 12, quality: 60, maxWidth: 1920, startControl: false });
 
 const root = ref<HTMLElement | null>(null);
 const stage = ref<HTMLElement | null>(null);
@@ -100,7 +102,7 @@ let stopped = false;
 
 function openStream() {
   if (stopped || !props.containerId || typeof window === 'undefined') return;
-  const url = `${wsBase()}/projects/containers/screen/stream?containerID=${encodeURIComponent(props.containerId)}&fps=${props.fps}&quality=${props.quality}&authorization=${encodeURIComponent(getPassword())}`;
+  const url = `${wsBase()}/projects/containers/screen/stream?containerID=${encodeURIComponent(props.containerId)}&fps=${props.fps}&quality=${props.quality}&maxWidth=${props.maxWidth}&authorization=${encodeURIComponent(getPassword())}`;
   try {
     streamWs = new WebSocket(url);
     streamWs.binaryType = 'blob';

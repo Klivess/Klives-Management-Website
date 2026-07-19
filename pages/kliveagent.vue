@@ -36,7 +36,7 @@
           type="button"
           @click="panelsOpen = !panelsOpen"
           title="Toggle Scripts / Session / Tasks panels"
-        >⚏ Panels</button>
+        >⚏ Panels <span v-if="unreadNotificationCount" class="ka-notification-badge">{{ unreadNotificationCount }}</span></button>
         <button class="ka-reindex" type="button" @click="reindexCodebase" :disabled="reindexing" :title="reindexStatus">
           <span v-if="reindexing">Reindexing…</span>
           <span v-else-if="reindexDone">✓ Reindexed</span>
@@ -55,7 +55,12 @@
             <p class="chat-empty-sub">Ask KliveAgent to inspect services, run scripts, or recall what it knows.</p>
           </div>
 
-          <AgentMessage v-for="(msg, i) in messages" :key="i" :message="msg" @stop="stopActiveRun" />
+          <AgentMessage
+            v-for="(msg, i) in messages"
+            :key="messageKey(msg, i)"
+            :message="msg"
+            @stop="stopRun(msg.requestId)"
+          />
 
           <div v-if="loading && !pendingRequestId" class="chat-thinking">
             <span class="chat-thinking-glyph">◈</span>
@@ -83,15 +88,16 @@
             v-model="inputMessage"
             class="chat-input"
             rows="1"
-            :placeholder="agentReady ? 'Ask KliveAgent anything…  (Enter to send, Shift+Enter for newline)' : 'KliveAgent is still setting up…'"
-            :disabled="loading || !agentReady"
+            :placeholder="agentReady ? (loading ? 'Steer the active run…  (Enter to send)' : 'Ask KliveAgent anything…  (Enter to send, Shift+Enter for newline)') : 'KliveAgent is still setting up…'"
+            :disabled="!agentReady"
             @input="autoGrowInput"
             @keydown.enter.exact.prevent="sendMessage"
           ></textarea>
           <button @click="sendMessage" type="button" class="chat-send-btn" :disabled="isSendDisabled" :title="sendButtonTitle">
-            Send
+            {{ loading ? 'Steer' : 'Send' }}
           </button>
         </div>
+        <div v-if="pollConnectionLost" class="chat-reconnect">Connection interrupted — retrying without stopping KliveAgent.</div>
       </div>
 
       <!-- Dedicated live video stream of what the agent is doing on the host machine. Slides out with
@@ -170,6 +176,66 @@
 
                 <div class="rail-block">
                   <div class="rail-head">
+                    <span class="rail-title">Long-term Jobs</span>
+                    <div class="rail-head-actions">
+                      <button class="rail-refresh" type="button" @click="showNewJob = !showNewJob" title="Create a parallel job">＋</button>
+                      <button class="rail-refresh" type="button" @click="loadJobs" title="Refresh jobs">⟳</button>
+                    </div>
+                  </div>
+                  <form v-if="showNewJob" class="job-create" @submit.prevent="createJob">
+                    <input v-model="newJob.name" class="job-input" placeholder="Job name (optional)" />
+                    <textarea v-model="newJob.goal" class="job-input" rows="3" placeholder="What should KliveAgent accomplish in the background?" required></textarea>
+                    <label class="job-budget">Token budget (USD)<input v-model.number="newJob.tokenBudgetUsd" class="job-budget-input" type="number" min="0.1" step="0.5" /></label>
+                    <button class="rail-newchat" type="submit" :disabled="creatingJob || !newJob.goal.trim()">{{ creatingJob ? 'Starting…' : 'Start in parallel' }}</button>
+                  </form>
+                  <div v-if="jobError" class="job-error">{{ jobError }}</div>
+                  <div v-if="jobs.length === 0" class="rail-empty">No long-term jobs.</div>
+                  <div v-for="job in jobs" :key="job.jobId" class="job-card">
+                    <div class="task-header">
+                      <span class="task-status" :class="getJobStatusClass(job.status)">{{ job.status }}</span>
+                      <div class="job-actions">
+                        <button v-if="canStopJob(job)" class="cancel-btn" type="button" @click="stopJob(job.jobId)">Stop</button>
+                        <button v-if="canResumeJob(job)" class="job-resume" type="button" @click="resumeJob(job.jobId)">Resume</button>
+                      </div>
+                    </div>
+                    <div class="job-name">{{ job.name || 'Long-term job' }}</div>
+                    <div class="task-desc">{{ job.goal }}</div>
+                    <div v-if="job.attentionRequired" class="job-error">{{ job.attentionMessage }}</div>
+                    <div class="task-time">Updated {{ formatTime(job.lastUpdated) }}</div>
+                    <NuxtLink class="job-project-link" :to="'/projects/' + job.projectId">Open Project →</NuxtLink>
+                    <pre v-if="job.result" class="task-result">{{ job.result }}</pre>
+                    <div v-if="job.artifactPaths?.length" class="job-artifacts">
+                      <span v-for="path in job.artifactPaths" :key="path" class="job-artifact">{{ path }}</span>
+                    </div>
+                    <form v-if="canSteerJob(job)" class="job-steer" @submit.prevent="steerJob(job)">
+                      <input v-model="jobSteerDrafts[job.jobId]" class="job-input" placeholder="Add guidance…" />
+                      <button class="job-steer-btn" type="submit" :disabled="!jobSteerDrafts[job.jobId]?.trim()">Steer</button>
+                    </form>
+                  </div>
+                </div>
+
+                <div class="rail-block">
+                  <div class="rail-head">
+                    <span class="rail-title">Results <span v-if="unreadNotificationCount" class="rail-count">{{ unreadNotificationCount }}</span></span>
+                    <button class="rail-refresh" type="button" @click="loadNotifications" title="Refresh results">⟳</button>
+                  </div>
+                  <div v-if="notifications.length === 0" class="rail-empty">No completed work yet.</div>
+                  <button
+                    v-for="note in recentNotifications"
+                    :key="note.notificationId"
+                    class="notification-card"
+                    :class="{ 'is-unread': !note.readAt }"
+                    type="button"
+                    @click="openNotification(note)"
+                  >
+                    <span class="notification-title">{{ note.title }}</span>
+                    <span class="notification-body">{{ note.body }}</span>
+                    <span class="task-time">{{ formatTime(note.createdAt) }}</span>
+                  </button>
+                </div>
+
+                <div class="rail-block">
+                  <div class="rail-head">
                     <span class="rail-title">Recent</span>
                     <button class="rail-refresh" type="button" @click="loadConversations" title="Refresh conversations">⟳</button>
                   </div>
@@ -181,7 +247,10 @@
                     type="button"
                     @click="loadConversation(conv.conversationId)"
                   >
-                    <span class="rail-conv-preview">{{ conv.lastMessage || 'Empty conversation' }}</span>
+                    <span class="rail-conv-preview">
+                      <span v-if="conv.activeRun" class="rail-conv-working">● Working</span>
+                      {{ conv.lastMessage || 'Empty conversation' }}
+                    </span>
                     <span class="rail-conv-meta">{{ conv.sourceChannel }} · {{ formatTime(conv.lastUpdated) }}</span>
                   </button>
                 </div>
@@ -468,11 +537,16 @@ const agentState = ref('starting');           // 'starting' | 'ready' | 'failed'
 const agentStatusMessage = ref('Connecting to KliveAgent…');
 let agentStatusHandle = null;
 const loading = ref(false);
+const sending = ref(false);
 const pendingRequestId = ref(null);
 const conversationId = ref(null);
 const chatMessages = ref(null);
 const chatInput = ref(null);
-let pendingPollHandle = null;
+const pollConnectionLost = ref(false);
+let componentActive = false;
+let pollGeneration = 0;
+let conversationLoadGeneration = 0;
+let sideDataHandle = null;
 
 // ── Commander view: live screen feed + toggleable side panels ──
 const panelsOpen = ref(false);
@@ -494,28 +568,70 @@ function toggleLive() {
   liveDismissed.value = !liveOpen.value;
 }
 
-// ── Persistent active run (survives navigation / reload) ──
-// The bot runs server-side independently of this page. We stash the active conversation + pending
-// request id (+ the prompt) in localStorage so that, on return, we can re-attach to the live run and
-// keep showing what the bot is doing — even mid-script.
-const ACTIVE_RUN_KEY = 'kliveagent.activeRun';
+// ── Durable chat attachment ──
+// The server owns run state. Local storage only remembers which conversation the user was viewing;
+// it is never used to decide whether work exists or should be cancelled.
+const LAST_CONVERSATION_KEY = 'kliveagent.lastConversation';
+const LEGACY_ACTIVE_RUN_KEY = 'kliveagent.activeRun';
 
-function persistActiveRun(userMessage) {
+function newClientId(prefix) {
+  const random = globalThis.crypto?.randomUUID?.().replaceAll('-', '')
+    || Math.random().toString(36).slice(2) + Date.now().toString(36);
+  return `${prefix}_${random}`;
+}
+
+function messageKey(message, index) {
+  return message.messageId || message.requestId || message.clientMessageId || `${message.role}-${message.timestamp}-${index}`;
+}
+
+function rememberConversation(id) {
   try {
-    localStorage.setItem(ACTIVE_RUN_KEY, JSON.stringify({
-      conversationId: conversationId.value,
-      pendingRequestId: pendingRequestId.value,
-      userMessage,
-    }));
+    if (id) localStorage.setItem(LAST_CONVERSATION_KEY, id);
+    else localStorage.removeItem(LAST_CONVERSATION_KEY);
   } catch {}
 }
 
-function clearActiveRun() {
-  try { localStorage.removeItem(ACTIVE_RUN_KEY); } catch {}
+function detachLocalRun() {
+  // Invalidating the generation stops only this component's poll loop. The backend run continues.
+  pollGeneration += 1;
+  pendingRequestId.value = null;
+  loading.value = false;
+  pollConnectionLost.value = false;
+  liveApproval.value = null;
+}
+
+function findRunMessage(requestId) {
+  return messages.value.find((message) => message.role === 'KliveAgent' && message.requestId === requestId);
+}
+
+function ensureRunMessage(run) {
+  if (!run?.requestId) return null;
+  let message = findRunMessage(run.requestId);
+  if (!message) {
+    message = {
+      messageId: `run_${run.requestId}`,
+      requestId: run.requestId,
+      clientMessageId: run.clientMessageId || null,
+      role: 'KliveAgent',
+      content: run.response || '',
+      scripts: [],
+      activity: [],
+      pending: run.status === 'Running',
+      phase: run.phase || 'thinking',
+      timestamp: run.createdAt || new Date().toISOString(),
+      sequence: 0,
+    };
+    messages.value.push(message);
+  }
+  return message;
 }
 
 // Apply the live transparency fields from a pending-poll payload onto a message object.
 function applyPendingFields(msg, data) {
+  if (!msg || !data) return;
+  msg.requestId = data.requestId || msg.requestId;
+  msg.clientMessageId = data.clientMessageId || msg.clientMessageId;
+  msg.sequence = Math.max(Number(msg.sequence) || 0, Number(data.sequence) || 0);
   if (data.response != null) msg.content = data.response;
   if (Array.isArray(data.scriptsExecuted)) msg.scripts = data.scriptsExecuted;
   msg.phase = data.phase;
@@ -549,86 +665,94 @@ async function submitApproval({ approvalId, approved }) {
 
 // Stop the live run (manual Stop button). Cancels server-side; the poll loop then observes a
 // non-Running status and renders the truthful partial answer.
-async function stopActiveRun() {
-  const id = pendingRequestId.value;
+async function stopRun(requestId = pendingRequestId.value) {
+  const id = requestId || pendingRequestId.value;
   if (!id) return;
+  const message = findRunMessage(id);
+  if (message) message.statusNote = 'Stopping safely…';
   try {
     await RequestPOSTFromKliveAPI('/kliveagent/chat/cancel', JSON.stringify({ requestId: id }), true, true);
   } catch {}
 }
 
-// On (re)load, re-attach to a run that was started before navigating away. The bot keeps working
-// server-side, so we restore the conversation, rebuild the in-flight bubble, and resume polling.
-async function resumeActiveRunIfAny() {
-  let saved;
+async function fetchRuns(targetConversationId = null, includeCompleted = false) {
+  const params = new URLSearchParams();
+  if (targetConversationId) params.set('conversationId', targetConversationId);
+  params.set('includeCompleted', String(includeCompleted));
+  params.set('_t', String(Date.now()));
+  const response = await RequestGETFromKliveAPI(`/kliveagent/chat/runs?${params.toString()}`);
+  const { data, rawText } = await readAgentApiResponse(response);
+  if (!response.ok) throw new Error(data?.error || rawText || `Run reconciliation failed with HTTP ${response.status}`);
+  return Array.isArray(data) ? data : [];
+}
+
+function attachRun(run) {
+  if (!run?.requestId || run.status !== 'Running') return;
+  const message = ensureRunMessage(run);
+  applyPendingFields(message, run);
+  message.pending = true;
+  pendingRequestId.value = run.requestId;
+  loading.value = true;
+  pollConnectionLost.value = false;
+  const generation = ++pollGeneration;
+  void pollPendingResponse(run.requestId, generation);
+}
+
+async function reconcileActiveRun(targetConversationId = conversationId.value) {
+  const reconciliationLoadGeneration = conversationLoadGeneration;
+  const selectedConversationId = conversationId.value;
+  const runs = await fetchRuns(targetConversationId, false);
+  if (!componentActive
+    || reconciliationLoadGeneration !== conversationLoadGeneration
+    || selectedConversationId !== conversationId.value) return null;
+  const running = runs
+    .filter((run) => run?.status === 'Running')
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+  const run = running[0];
+  if (!run) return null;
+
+  if (!targetConversationId || conversationId.value !== run.conversationId) {
+    await loadConversation(run.conversationId);
+  } else if (pendingRequestId.value !== run.requestId) {
+    attachRun(run);
+  }
+  return run;
+}
+
+// Restore the last viewed conversation, then ask the server for active runs. If browser storage was
+// cleared, the global run list still discovers work and opens its conversation.
+async function restoreDurableSession() {
+  let preferredConversation = null;
   try {
-    const raw = localStorage.getItem(ACTIVE_RUN_KEY);
-    if (!raw) return;
-    saved = JSON.parse(raw);
-  } catch {
-    clearActiveRun();
-    return;
-  }
-  if (!saved || !saved.pendingRequestId) {
-    clearActiveRun();
-    return;
-  }
-
-  conversationId.value = saved.conversationId || null;
-  view.value = 'chat';
-
-  // Load the durable history first (completed turns). The in-progress turn isn't persisted yet.
-  if (conversationId.value) {
-    try { await loadConversation(conversationId.value); } catch {}
-  }
-
-  let data;
-  try {
-    const res = await RequestGETFromKliveAPI(
-      `/kliveagent/chat/pending?requestId=${encodeURIComponent(saved.pendingRequestId)}&_t=${Date.now()}`
-    );
-    if (!res.ok) {
-      // Evicted/unknown (e.g. completed long ago) — the loaded history already has the result.
-      clearActiveRun();
-      return;
+    preferredConversation = localStorage.getItem(LAST_CONVERSATION_KEY);
+    if (!preferredConversation) {
+      const legacy = JSON.parse(localStorage.getItem(LEGACY_ACTIVE_RUN_KEY) || 'null');
+      preferredConversation = legacy?.conversationId || null;
     }
-    data = await res.json();
-  } catch {
-    clearActiveRun();
-    return;
+    localStorage.removeItem(LEGACY_ACTIVE_RUN_KEY);
+  } catch {}
+
+  if (preferredConversation) {
+    const expectedLoadGeneration = conversationLoadGeneration + 1;
+    try { await loadConversation(preferredConversation); } catch {}
+    if (conversationLoadGeneration !== expectedLoadGeneration) return;
   }
-
-  if (data.status === 'Running') {
-    // Re-create the in-flight pair (not yet in persisted history) and resume the live view.
-    const userMessage = data.userMessage || saved.userMessage || '';
-    if (userMessage) {
-      messages.value.push({ role: 'User', content: userMessage, timestamp: new Date().toISOString() });
-    }
-    const agentMsg = {
-      role: 'KliveAgent',
-      content: data.response || '',
-      scripts: [],
-      activity: [],
-      pending: true,
-      phase: 'thinking',
-      timestamp: new Date().toISOString(),
-    };
-    applyPendingFields(agentMsg, data);
-    agentMsg.pending = true;
-    messages.value.push(agentMsg);
-
-    pendingRequestId.value = saved.pendingRequestId;
-    loading.value = true;
-    scrollToBottom(true);
-    await pollPendingResponse(messages.value.length - 1);
-  } else {
-    // Already finished while away — the persisted history (loaded above) holds the final turn.
-    clearActiveRun();
+  if (!pendingRequestId.value) {
+    try { await reconcileActiveRun(conversationId.value || null); } catch {}
   }
 }
 
 // ── Side data ──
 const tasks = ref([]);
+const jobs = ref([]);
+const notifications = ref([]);
+const showNewJob = ref(false);
+const creatingJob = ref(false);
+const newJob = ref({ name: '', goal: '', tokenBudgetUsd: 10, clientJobId: null });
+const jobSteerDrafts = ref({});
+const jobError = ref('');
+let notificationsInitialized = false;
+const knownNotificationIds = new Set();
 const memories = ref([]);
 const memorySearch = ref('');
 const conversationList = ref([]);
@@ -642,6 +766,8 @@ const reindexDone = ref(false);
 const reindexStatus = ref('');
 
 const recentConversations = computed(() => conversationList.value.slice(0, 6));
+const recentNotifications = computed(() => notifications.value.slice(0, 8));
+const unreadNotificationCount = computed(() => notifications.value.filter((note) => !note.readAt).length);
 
 // Scripts from the latest agent turn that actually ran scripts. Walking back from
 // the end (rather than reading strictly the last message) keeps the panel populated
@@ -656,7 +782,7 @@ const currentTurnScripts = computed(() => {
   return [];
 });
 
-const isSendDisabled = computed(() => loading.value || !agentReady.value || !inputMessage.value.trim());
+const isSendDisabled = computed(() => sending.value || !agentReady.value || !inputMessage.value.trim());
 
 const sendButtonTitle = computed(() => {
   if (!agentReady.value) {
@@ -664,12 +790,9 @@ const sendButtonTitle = computed(() => {
       ? 'KliveAgent failed to start — check the bot logs.'
       : `KliveAgent is starting up… (${agentProgress.value}%)`;
   }
-  if (loading.value) {
-    return pendingRequestId.value
-      ? 'KliveAgent is finishing the current request.'
-      : 'KliveAgent is processing your message.';
-  }
-  return inputMessage.value.trim() ? 'Send message' : 'Type a message to enable Send.';
+  if (sending.value) return 'Delivering your message…';
+  if (loading.value) return 'Send guidance to the active run.';
+  return inputMessage.value.trim() ? 'Start a durable run' : 'Type a message to enable Send.';
 });
 
 function autoGrowInput() {
@@ -686,7 +809,8 @@ function resetInputHeight() {
 }
 
 function newChat() {
-  if (loading.value) return;
+  conversationLoadGeneration += 1;
+  detachLocalRun();
   messages.value = [];
   conversationId.value = null;
   inputMessage.value = '';
@@ -697,7 +821,7 @@ function newChat() {
   liveOpen.value = false;
   liveDismissed.value = false;
   // liveFrame is kept as the last seen view until a new run produces one.
-  clearActiveRun();
+  rememberConversation(null);
   resetInputHeight();
 }
 
@@ -773,138 +897,200 @@ async function readAgentApiResponse(res) {
 
 async function sendMessage() {
   const msg = inputMessage.value.trim();
-  if (!msg || loading.value) return;
-  if (!agentReady.value) return; // composer is disabled until warmup finishes; guard anyway
+  if (!msg || sending.value || !agentReady.value) return;
 
-  messages.value.push({ role: 'User', content: msg, timestamp: new Date().toISOString() });
+  // Sending is an explicit choice of the currently displayed conversation; invalidate any older
+  // conversation-load request that is still in flight.
+  conversationLoadGeneration += 1;
+  const targetConversationId = conversationId.value || newClientId('conv');
+  const clientMessageId = newClientId('msg');
+  const activeRequestId = pendingRequestId.value;
+  conversationId.value = targetConversationId;
+  rememberConversation(targetConversationId);
+
+  const optimisticMessage = {
+    messageId: `client_${clientMessageId}`,
+    clientMessageId,
+    requestId: activeRequestId || null,
+    role: 'User',
+    content: msg,
+    timestamp: new Date().toISOString(),
+    deliveryStatus: 'sending',
+  };
+  messages.value.push(optimisticMessage);
   inputMessage.value = '';
   resetInputHeight();
-  loading.value = true;
+  sending.value = true;
   liveDismissed.value = false; // allow the live view to auto-open if this run drives the computer
   scrollToBottom(true);
+  const isStillSelected = () => conversationId.value === targetConversationId;
 
   try {
-    const body = JSON.stringify({ message: msg, conversationId: conversationId.value });
-    const res = await RequestPOSTFromKliveAPI('/kliveagent/chat', body, true, true);
-    const { data, rawText } = await readAgentApiResponse(res);
+    let path = activeRequestId ? '/kliveagent/chat/steer' : '/kliveagent/chat';
+    let payload = activeRequestId
+      ? { requestId: activeRequestId, message: msg, senderName: 'Website', clientMessageId }
+      : { message: msg, conversationId: targetConversationId, senderName: 'Website', clientMessageId };
+    let { response: res, data, rawText } = await postAgentJsonWithRetry(path, payload);
+
+    // The run may seal in the instant between typing and POST. In that case the message becomes a
+    // fresh turn with the same idempotency key, so steering guidance is never discarded.
+    if (activeRequestId && res.status === 409) {
+      path = '/kliveagent/chat';
+      payload = { message: msg, conversationId: targetConversationId, senderName: 'Website', clientMessageId };
+      ({ response: res, data, rawText } = await postAgentJsonWithRetry(path, payload));
+    }
 
     if (!res.ok) {
       throw new Error(
-        data?.response || data?.error || data?.errorMessage || rawText || `KliveAgent API request failed with HTTP ${res.status}`
+        data?.response || data?.reason || data?.error || data?.errorMessage || rawText || `KliveAgent API request failed with HTTP ${res.status}`
       );
     }
     if (!data) {
       throw new Error(rawText || 'KliveAgent API returned an empty response.');
     }
 
-    if (data.success !== false) {
-      conversationId.value = data.conversationId;
-      if (data.isPending && data.pendingRequestId) {
-        pendingRequestId.value = data.pendingRequestId;
-        // Stash the active run so we can re-attach after navigating away and back.
-        persistActiveRun(msg);
-        messages.value.push({
-          role: 'KliveAgent',
-          content: data.response,
-          scripts: [],
-          activity: [],
-          pending: true,
-          phase: 'thinking',
-          timestamp: new Date().toISOString(),
-        });
-        scrollToBottom(true);
-        // Mutate through the array index so updates are reactive (streaming + final).
-        await pollPendingResponse(messages.value.length - 1);
-      } else {
-        messages.value.push({
-          role: 'KliveAgent',
-          content: data.response,
-          scripts: data.scriptsExecuted || [],
-          timestamp: new Date().toISOString(),
+    optimisticMessage.deliveryStatus = 'accepted';
+    optimisticMessage.messageId = data.acceptedMessageId || data.messageId || optimisticMessage.messageId;
+    optimisticMessage.requestId = data.pendingRequestId || data.requestId || activeRequestId || null;
+    const acceptedConversationId = data.conversationId || targetConversationId;
+    if (isStillSelected()) {
+      conversationId.value = acceptedConversationId;
+      rememberConversation(acceptedConversationId);
+    }
+
+    const runRequestId = data.pendingRequestId || data.requestId || activeRequestId;
+    const isSteeringReceipt = data.accepted === true && !!data.requestId;
+    if (runRequestId && (data.isPending || data.wasSteering || isSteeringReceipt)) {
+      if (isStillSelected() && pendingRequestId.value !== runRequestId) {
+        attachRun({
+          ...data,
+          requestId: runRequestId,
+          conversationId: conversationId.value,
+          clientMessageId,
+          userMessage: msg,
+          response: data.response || '',
+          status: 'Running',
+          createdAt: new Date().toISOString(),
         });
       }
-    } else {
+    } else if (isStillSelected() && data.success !== false && data.response) {
       messages.value.push({
+        messageId: newClientId('agent'),
         role: 'KliveAgent',
-        content: data.response || data.error || data.errorMessage || 'Something went wrong.',
+        content: data.response,
+        scripts: data.scriptsExecuted || [],
+        timestamp: new Date().toISOString(),
+      });
+    } else if (data.success === false || data.accepted === false) {
+      throw new Error(data.response || data.reason || data.errorMessage || 'KliveAgent rejected the message.');
+    }
+  } catch (err) {
+    // A timeout is ambiguous: the server may already have durably accepted the message. Reconcile
+    // by client ID before showing failure, which makes automatic retries safe and duplicate-free.
+    let recovered = false;
+    try {
+      const runs = await fetchRuns(targetConversationId, true);
+      const run = runs.find((candidate) => candidate.clientMessageId === clientMessageId
+        || candidate.steeringMessages?.some((steer) => steer.clientMessageId === clientMessageId));
+      if (run) {
+        recovered = true;
+        optimisticMessage.deliveryStatus = 'accepted';
+        optimisticMessage.requestId = run.requestId;
+        if (isStillSelected() && run.status === 'Running') attachRun(run);
+        else if (isStillSelected()) await loadConversation(targetConversationId);
+      }
+    } catch {}
+
+    if (!recovered && isStillSelected()) {
+      optimisticMessage.deliveryStatus = 'failed';
+      messages.value.push({
+        messageId: newClientId('error'),
+        role: 'KliveAgent',
+        content: 'I could not confirm delivery of that message. Your conversation is safe; please retry it.\n\n' + err.message,
         timestamp: new Date().toISOString(),
       });
     }
-  } catch (err) {
-    messages.value.push({
-      role: 'KliveAgent',
-      content: 'Failed to reach KliveAgent API: ' + err.message,
-      timestamp: new Date().toISOString(),
-    });
   }
 
-  pendingRequestId.value = null;
-  loading.value = false;
+  sending.value = false;
   scrollToBottom();
 }
 
-function waitForPendingPoll(ms) {
-  return new Promise((resolve) => {
-    pendingPollHandle = setTimeout(resolve, ms);
-  });
+async function postAgentJsonWithRetry(path, payload) {
+  let lastResult;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await RequestPOSTFromKliveAPI(path, JSON.stringify(payload), true, true);
+    const parsed = await readAgentApiResponse(response);
+    lastResult = { response, ...parsed };
+    if (response.status !== 504 || attempt === 1) return lastResult;
+    await waitForPendingPoll(700);
+  }
+  return lastResult;
 }
 
-async function pollPendingResponse(messageIndex) {
-  // Mutate the message via its array index (messages.value[messageIndex].*) rather
-  // than a captured object reference — direct mutation of a pushed plain object does
-  // not trigger Vue reactivity, so streaming/final updates would not render.
-  const msg = () => messages.value[messageIndex];
+function waitForPendingPoll(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-  while (pendingRequestId.value) {
+async function pollPendingResponse(requestId, generation) {
+  let failures = 0;
+  const attachedConversationId = conversationId.value;
+  const isStillAttached = () => componentActive
+    && generation === pollGeneration
+    && pendingRequestId.value === requestId
+    && conversationId.value === attachedConversationId;
+  while (componentActive && generation === pollGeneration && pendingRequestId.value === requestId) {
     try {
-      // Cache-buster (`_t`): the poll URL is otherwise identical every tick, so the
-      // browser can serve a cached "Running" response forever and the request never
-      // resolves in the UI (the answer only shows after a manual refresh). A unique
-      // param per poll forces a fresh network read each time.
-      const res = await RequestGETFromKliveAPI(`/kliveagent/chat/pending?requestId=${encodeURIComponent(pendingRequestId.value)}&_t=${Date.now()}`);
-      const data = await res.json();
+      const res = await RequestGETFromKliveAPI(`/kliveagent/chat/pending?requestId=${encodeURIComponent(requestId)}&_t=${Date.now()}`);
+      const { data, rawText } = await readAgentApiResponse(res);
+      if (!isStillAttached()) return;
 
       if (!res.ok) {
-        throw new Error(data?.error || `Pending request failed with HTTP ${res.status}`);
+        throw new Error(data?.error || rawText || `Pending request failed with HTTP ${res.status}`);
       }
+      if (!data) throw new Error('KliveAgent returned an empty run snapshot.');
+
+      failures = 0;
+      pollConnectionLost.value = false;
+      const message = ensureRunMessage({ ...data, requestId });
+      if ((Number(data.sequence) || 0) >= (Number(message.sequence) || 0)) applyPendingFields(message, data);
 
       if (data.status === 'Running') {
-        // Live "talking while working": the server streams the agent's prose (token-by-token), the
-        // code it runs, and rich transparency fields (phase, step, token counts, activity log).
-        applyPendingFields(msg(), data);
+        message.pending = true;
         scrollToBottom();
         await waitForPendingPoll(600);
         continue;
       }
 
       const finalResponse = data.finalResponse;
-      // Carry over the last transparency snapshot, then finalize.
-      applyPendingFields(msg(), data);
-      msg().pending = false;
-      msg().phase = 'final';
-      msg().timestamp = new Date().toISOString();
+      message.pending = false;
+      message.phase = 'final';
+      message.timestamp = data.completedAt || new Date().toISOString();
 
       if (finalResponse) {
         conversationId.value = finalResponse.conversationId || data.conversationId || conversationId.value;
-        msg().content = finalResponse.response || msg().content;
-        msg().scripts = finalResponse.scriptsExecuted || msg().scripts || [];
-      } else {
-        msg().content = data.errorMessage || 'KliveAgent did not return a final response.';
+        message.content = finalResponse.response || message.content;
+        message.scripts = finalResponse.scriptsExecuted || message.scripts || [];
+      } else if (!message.content || data.status !== 'Completed') {
+        message.content = data.errorMessage || `This run ended with status: ${data.status}.`;
       }
+      rememberConversation(conversationId.value);
+      pendingRequestId.value = null;
+      loading.value = false;
+      pollConnectionLost.value = false;
+      void loadConversations();
+      void loadNotifications();
       break;
     } catch (err) {
-      msg().pending = false;
-      msg().content = 'Failed to retrieve KliveAgent response: ' + err.message;
-      break;
+      // A transport failure detaches nothing and cancels nothing. Keep the truthful live bubble and
+      // retry with bounded backoff until navigation changes the generation or the server recovers.
+      if (!isStillAttached()) return;
+      failures += 1;
+      pollConnectionLost.value = true;
+      const message = findRunMessage(requestId);
+      if (message) message.statusNote = `Connection lost; reconnecting (attempt ${failures})…`;
+      await waitForPendingPoll(Math.min(10_000, 750 * (2 ** Math.min(failures, 4))));
     }
-  }
-
-  pendingRequestId.value = null;
-  loading.value = false;
-  clearActiveRun();
-  if (pendingPollHandle) {
-    clearTimeout(pendingPollHandle);
-    pendingPollHandle = null;
   }
   scrollToBottom();
 }
@@ -1064,6 +1250,150 @@ async function cancelTask(taskId) {
   } catch {}
 }
 
+// ── Durable long-term jobs + result notifications ──
+function canStopJob(job) {
+  return ['Active', 'Planning'].includes(job?.status);
+}
+
+function canResumeJob(job) {
+  return ['Paused', 'Blocked', 'BudgetPaused'].includes(job?.status);
+}
+
+function canSteerJob(job) {
+  return ['Active', 'Planning'].includes(job?.status);
+}
+
+function getJobStatusClass(status) {
+  if (status === 'Completed') return 'status-completed';
+  if (status === 'Active' || status === 'Planning') return 'status-running';
+  if (status === 'Blocked' || status === 'BudgetPaused') return 'status-failed';
+  return 'status-cancelled';
+}
+
+async function loadJobs() {
+  try {
+    const response = await RequestGETFromKliveAPI('/kliveagent/jobs');
+    const { data } = await readAgentApiResponse(response);
+    if (response.ok && Array.isArray(data)) jobs.value = data;
+  } catch {}
+}
+
+async function createJob() {
+  const goal = newJob.value.goal.trim();
+  if (!goal || creatingJob.value) return;
+  creatingJob.value = true;
+  jobError.value = '';
+  const clientJobId = newJob.value.clientJobId || newClientId('job');
+  newJob.value.clientJobId = clientJobId;
+  try {
+    if ('Notification' in window && Notification.permission === 'default') {
+      void Notification.requestPermission();
+    }
+    const response = await RequestPOSTFromKliveAPI('/kliveagent/jobs/create', JSON.stringify({
+      clientJobId,
+      name: newJob.value.name.trim() || null,
+      goal,
+      conversationId: conversationId.value,
+      tokenBudgetUsd: Math.max(0.1, Number(newJob.value.tokenBudgetUsd) || 10),
+      subAgentCap: 3,
+    }), true, true);
+    const { data, rawText } = await readAgentApiResponse(response);
+    if (!response.ok) throw new Error(data?.error || data?.errorMessage || rawText || `HTTP ${response.status}`);
+    newJob.value = { name: '', goal: '', tokenBudgetUsd: 10, clientJobId: null };
+    showNewJob.value = false;
+    await loadJobs();
+  } catch (error) {
+    // A lost POST response is ambiguous. Reconcile by the stable creation ID before showing an
+    // error; the backend idempotency key guarantees a retry cannot fund duplicate work.
+    await loadJobs();
+    if (jobs.value.some((job) => job.clientJobId === clientJobId)) {
+      newJob.value = { name: '', goal: '', tokenBudgetUsd: 10, clientJobId: null };
+      showNewJob.value = false;
+    } else {
+      jobError.value = 'Could not start job: ' + error.message;
+    }
+  } finally {
+    creatingJob.value = false;
+  }
+}
+
+async function steerJob(job) {
+  const message = jobSteerDrafts.value[job.jobId]?.trim();
+  if (!message) return;
+  jobError.value = '';
+  try {
+    const response = await RequestPOSTFromKliveAPI('/kliveagent/jobs/steer', JSON.stringify({
+      jobId: job.jobId,
+      message,
+      senderName: 'Website',
+    }), true, true);
+    const { data, rawText } = await readAgentApiResponse(response);
+    if (!response.ok) throw new Error(data?.reason || data?.error || rawText || `HTTP ${response.status}`);
+    jobSteerDrafts.value[job.jobId] = '';
+    await loadJobs();
+  } catch (error) {
+    jobError.value = `Could not steer job: ${error.message}`;
+  }
+}
+
+async function stopJob(jobId) {
+  jobError.value = '';
+  try {
+    const response = await RequestPOSTFromKliveAPI('/kliveagent/jobs/stop', JSON.stringify({ jobId }), true, true);
+    const { data, rawText } = await readAgentApiResponse(response);
+    if (!response.ok) throw new Error(data?.error || rawText || `HTTP ${response.status}`);
+    await loadJobs();
+  } catch (error) {
+    jobError.value = `Could not stop job: ${error.message}`;
+  }
+}
+
+async function resumeJob(jobId) {
+  jobError.value = '';
+  try {
+    const response = await RequestPOSTFromKliveAPI('/kliveagent/jobs/resume', JSON.stringify({ jobId }), true, true);
+    const { data, rawText } = await readAgentApiResponse(response);
+    if (!response.ok) throw new Error(data?.error || rawText || `HTTP ${response.status}`);
+    await loadJobs();
+  } catch (error) {
+    jobError.value = `Could not resume job: ${error.message}`;
+  }
+}
+
+async function loadNotifications() {
+  try {
+    const response = await RequestGETFromKliveAPI('/kliveagent/notifications');
+    const { data } = await readAgentApiResponse(response);
+    if (!response.ok || !Array.isArray(data)) return;
+
+    if (notificationsInitialized && 'Notification' in window && Notification.permission === 'granted') {
+      for (const note of data) {
+        if (!note.readAt && !knownNotificationIds.has(note.notificationId) && document.hidden) {
+          new Notification(note.title || 'KliveAgent finished work', { body: note.body || '' });
+        }
+      }
+    }
+    data.forEach((note) => knownNotificationIds.add(note.notificationId));
+    notificationsInitialized = true;
+    notifications.value = data;
+  } catch {}
+}
+
+async function openNotification(note) {
+  if (!note.readAt) {
+    note.readAt = new Date().toISOString();
+    try {
+      await RequestPOSTFromKliveAPI('/kliveagent/notifications/read', JSON.stringify({ notificationId: note.notificationId }), true, true);
+    } catch {}
+  }
+  panelsOpen.value = true;
+  if (note.kind === 'job-attention' && note.projectId) {
+    await navigateTo('/projects/' + note.projectId);
+  } else if (note.conversationId) {
+    await loadConversation(note.conversationId);
+  }
+}
+
 // ── Memories ──
 async function searchMemories() {
   try {
@@ -1100,25 +1430,38 @@ async function deleteMemory(id) {
 async function loadConversations() {
   try {
     const res = await RequestGETFromKliveAPI('/kliveagent/conversations');
-    conversationList.value = await res.json();
+    const data = await res.json();
+    if (res.ok && Array.isArray(data)) conversationList.value = data;
   } catch {}
 }
 
 async function loadConversation(convId) {
-  try {
-    const res = await RequestGETFromKliveAPI(`/kliveagent/conversations/get?id=${convId}`);
-    const data = await res.json();
-    conversationId.value = convId;
-    messages.value = data.messages.map((m) => ({
+  const loadGeneration = ++conversationLoadGeneration;
+  detachLocalRun();
+  const res = await RequestGETFromKliveAPI(`/kliveagent/conversations/get?id=${encodeURIComponent(convId)}&_t=${Date.now()}`);
+  const { data, rawText } = await readAgentApiResponse(res);
+  if (loadGeneration !== conversationLoadGeneration || !componentActive) return;
+  if (!res.ok || !data) throw new Error(data?.error || rawText || `Conversation failed with HTTP ${res.status}`);
+
+  conversationId.value = data.conversationId || convId;
+  rememberConversation(conversationId.value);
+  messages.value = (Array.isArray(data.messages) ? data.messages : []).map((m) => ({
+      messageId: m.messageId,
+      requestId: m.requestId,
       role: m.role === 'User' ? 'User' : 'KliveAgent',
       content: m.content,
       // Replay the scripts+outputs the agent ran on this turn (persisted server-side).
       scripts: m.scriptResults || (m.scriptResult ? [m.scriptResult] : []),
       timestamp: m.timestamp,
+      deliveryStatus: m.deliveryStatus,
     }));
-    view.value = 'chat';
-    scrollToBottom(true);
-  } catch {}
+  view.value = 'chat';
+
+  const running = (Array.isArray(data.recentRuns) ? data.recentRuns : [])
+    .filter((run) => run?.status === 'Running')
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))[0];
+  if (running) attachRun(running);
+  scrollToBottom(true);
 }
 
 // ── Analytics charts ──
@@ -1376,28 +1719,37 @@ async function pollAgentStatus() {
   } catch {
     agentStatusMessage.value = 'Waiting for KliveAgent to come online…';
   }
-  if (agentReady.value) {
-    agentStatusHandle = null;
-  } else {
-    // Failed state still polls (slowly) so a restart is picked up automatically.
-    agentStatusHandle = setTimeout(pollAgentStatus, agentState.value === 'failed' ? 4000 : 1000);
+  if (!componentActive) return;
+  // Keep a lightweight heartbeat even after readiness so a live service restart immediately
+  // disables new sends, while durable history/jobs remain usable and active runs reconcile.
+  const delay = agentReady.value ? 10_000 : agentState.value === 'failed' ? 4_000 : 1_000;
+  agentStatusHandle = setTimeout(pollAgentStatus, delay);
+}
+
+async function refreshDurableSideData() {
+  await Promise.allSettled([loadTasks(), loadConversations(), loadJobs(), loadNotifications()]);
+  if (componentActive && conversationId.value && !pendingRequestId.value) {
+    try { await reconcileActiveRun(conversationId.value); } catch {}
   }
 }
 
 onMounted(() => {
+  componentActive = true;
   // Chat is the default view — load just what the chat rail needs up front.
   pollAgentStatus();
-  loadTasks();
-  loadConversations();
-  // Re-attach to any run that was in progress before the page was left/reloaded.
-  resumeActiveRunIfAny();
+  void refreshDurableSideData();
+  // Re-attach from server state. This also discovers active work when browser storage was cleared.
+  void restoreDurableSession();
+  sideDataHandle = setInterval(refreshDurableSideData, 10_000);
 });
 
 onUnmounted(() => {
-  pendingRequestId.value = null;
-  if (pendingPollHandle) {
-    clearTimeout(pendingPollHandle);
-    pendingPollHandle = null;
+  componentActive = false;
+  // This only invalidates the page's poll generation; no server cancellation or durable state clear.
+  detachLocalRun();
+  if (sideDataHandle) {
+    clearInterval(sideDataHandle);
+    sideDataHandle = null;
   }
   if (agentStatusHandle) {
     clearTimeout(agentStatusHandle);
@@ -1828,6 +2180,14 @@ onUnmounted(() => {
   cursor: not-allowed;
 }
 
+.chat-reconnect {
+  padding: 6px 14px 8px;
+  background: $mainDarker;
+  color: #f0b44d;
+  font-size: 11px;
+  text-align: right;
+}
+
 /* ── Context rail ── */
 .chat-rail {
   width: 300px;
@@ -1851,6 +2211,28 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 10px;
+}
+
+.rail-head-actions,
+.job-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ka-notification-badge,
+.rail-count {
+  display: inline-flex;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #e0584b;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
 }
 
 .rail-title {
@@ -2001,6 +2383,143 @@ onUnmounted(() => {
   font-family: 'Cascadia Code', monospace;
 }
 .task-error { color: #e0584b; }
+
+/* ── Durable jobs + completion results ── */
+.job-create,
+.job-steer {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 10px;
+}
+.rail-conv-working {
+  margin-right: 4px;
+  color: $secondary;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.job-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 9px;
+  background: #121212;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 7px;
+  color: #d0d0d0;
+  font: inherit;
+  font-size: 11px;
+  resize: vertical;
+  outline: none;
+}
+.job-input:focus { border-color: rgba($secondary, 0.5); }
+
+.job-budget {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #777;
+  font-size: 10px;
+}
+.job-budget-input {
+  width: 70px;
+  padding: 5px 7px;
+  color: #ccc;
+  background: #121212;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 6px;
+}
+
+.job-card {
+  background: #202020;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+.job-name {
+  margin-bottom: 4px;
+  color: #ddd;
+  font-size: 12px;
+  font-weight: 700;
+}
+.job-resume,
+.job-steer-btn {
+  padding: 3px 8px;
+  border: 1px solid rgba($secondary, 0.3);
+  border-radius: 5px;
+  background: rgba($secondary, 0.12);
+  color: $teritary;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.job-steer {
+  flex-direction: row;
+  margin: 8px 0 0;
+}
+.job-steer .job-input { flex: 1; min-width: 0; }
+.job-steer-btn:disabled,
+.rail-newchat:disabled { opacity: 0.45; cursor: not-allowed; }
+.job-artifacts {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 7px;
+}
+.job-artifact {
+  overflow: hidden;
+  color: #7daedb;
+  font: 10px 'Cascadia Code', monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.job-error {
+  margin: 6px 0 9px;
+  padding: 7px;
+  border-radius: 6px;
+  background: rgba(224, 88, 75, 0.1);
+  color: #e9786c;
+  font-size: 10px;
+}
+.job-project-link {
+  display: inline-block;
+  margin-top: 5px;
+  color: #7daedb;
+  font-size: 10px;
+  text-decoration: none;
+}
+.job-project-link:hover { color: #a9cff1; text-decoration: underline; }
+
+.notification-card {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 6px;
+  padding: 9px 10px;
+  text-align: left;
+  background: #202020;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.notification-card.is-unread {
+  border-color: rgba($secondary, 0.4);
+  background: rgba($secondary, 0.08);
+}
+.notification-title { color: #ddd; font-size: 11px; font-weight: 700; }
+.notification-body {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #888;
+  font-size: 10px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
 
 /* ════════ ANALYTICS VIEW ════════ */
 .dash-header {

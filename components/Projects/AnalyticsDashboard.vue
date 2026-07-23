@@ -86,10 +86,7 @@
       <div v-if="!hasRangeActivity" class="state-card empty-state" role="status">
         <div>
           <strong>No activity in this view yet</strong>
-          <p>
-            There is not enough recorded activity to draw charts for {{ analytics.range.label || activeRangeLabel }}.
-            Try a longer range or return after the project has completed a wake.
-          </p>
+          <p>{{ emptyStateMessage }}</p>
         </div>
       </div>
 
@@ -244,6 +241,54 @@
         </section>
       </template>
 
+        <section
+          v-if="hasPauseAccounting"
+          class="chart-grid availability-grid"
+          aria-label="Operating and paused time"
+        >
+          <article class="chart-card chart-card-wide">
+            <div class="card-heading">
+              <div>
+                <h3>Operating time by period</h3>
+                <p>
+                  {{ isAllProjects
+                    ? 'Active, paused, and inactive project-time in each selected bucket'
+                    : 'When this project was operating, paused, or otherwise inactive' }}
+                </p>
+              </div>
+              <span class="card-total">{{ formatPct(summary.rangeAvailabilityPct) }} available</span>
+            </div>
+            <div class="chart-frame chart-frame-tall">
+              <canvas
+                ref="availabilityTimelineCanvas"
+                role="img"
+                :aria-label="`Operating, paused, and inactive time for ${analytics.range.label || activeRangeLabel}`"
+              >
+                Operating and paused time by period chart.
+              </canvas>
+            </div>
+          </article>
+
+          <article class="chart-card">
+            <div class="card-heading">
+              <div>
+                <h3>Range availability</h3>
+                <p>{{ pauseSummaryDetail }}</p>
+              </div>
+            </div>
+            <div v-if="summary.rangeTrackedDurationMs > 0" class="chart-frame">
+              <canvas
+                ref="availabilityMixCanvas"
+                role="img"
+                aria-label="Range operating, paused, and inactive time breakdown"
+              >
+                Range availability breakdown chart.
+              </canvas>
+            </div>
+            <div v-else class="chart-empty">No lifecycle time was tracked in this range.</div>
+          </article>
+        </section>
+
         <template v-if="isAllProjects">
           <section class="scope-section" aria-labelledby="fleet-breakdown-heading">
             <div class="section-heading">
@@ -337,7 +382,12 @@
                       <span class="project-date">Started {{ formatDate(projectRow.createdAt) }}</span>
                     </td>
                     <td><span class="status-chip" :class="statusClass(projectRow.status)">{{ projectRow.status || 'Unknown' }}</span></td>
-                    <td class="numeric">{{ formatMoney(projectRow.rangeSpendUsd) }}</td>
+                    <td class="numeric">
+                      {{ formatMoney(projectRow.rangeSpendUsd) }}
+                      <span v-if="projectRowsHavePauseAccounting" class="cell-sub">
+                        {{ formatMoney(projectRow.averageDailySpendUsd) }} / active day
+                      </span>
+                    </td>
                     <td class="numeric">
                       {{ formatMoney(projectRow.tokenSpendUsd) }}
                       <span class="cell-sub">{{ formatPct(projectRow.budgetUsedPct) }} used</span>
@@ -349,7 +399,14 @@
                     <td class="numeric">{{ formatCount(projectRow.rangeTokens) }}</td>
                     <td class="numeric">{{ formatCount(projectRow.wakes) }}</td>
                     <td class="numeric">{{ formatPct(projectRow.successRate) }}</td>
-                    <td class="numeric">{{ formatCount(projectRow.activeAgents) }}</td>
+                    <td v-if="projectRowsHavePauseAccounting" class="numeric">
+                      {{ formatPct(projectRow.rangeAvailabilityPct) }}
+                      <span class="cell-sub">{{ formatLongDuration(projectRow.rangePausedDurationMs) }} paused</span>
+                    </td>
+                    <td class="numeric">
+                      {{ formatCount(projectRow.activeAgents) }}
+                      <span class="cell-sub">{{ formatCount(projectRow.rosterAgents) }} assigned</span>
+                    </td>
                     <td class="numeric">{{ formatDateTime(projectRow.lastActivityAt) }}</td>
                   </tr>
                 </tbody>
@@ -421,6 +478,7 @@ type ProjectSortKey =
   | 'rangeTokens'
   | 'wakes'
   | 'successRate'
+  | 'rangeAvailabilityPct'
   | 'activeAgents'
   | 'lastActivityAt';
 
@@ -455,8 +513,17 @@ interface AnalyticsSummary {
   councils: number;
   councilSpendUsd: number;
   activeAgents: number;
+  rosterAgents?: number;
   projectCount?: number;
   activeProjects?: number;
+  pausedProjects?: number;
+  rangeTrackedDurationMs?: number;
+  rangeActiveDurationMs?: number;
+  rangePausedDurationMs?: number;
+  rangeInactiveDurationMs?: number;
+  rangeAvailabilityPct?: number;
+  pauseCount?: number;
+  currentPauseStartedAt?: string | null;
 }
 
 interface AnalyticsSeriesPoint {
@@ -473,6 +540,10 @@ interface AnalyticsSeriesPoint {
   failedWakes: number;
   toolCalls: number;
   productiveActions: number;
+  activeDurationMs?: number;
+  pausedDurationMs?: number;
+  inactiveDurationMs?: number;
+  availabilityPct?: number;
 }
 
 interface AnalyticsOutcome {
@@ -532,7 +603,18 @@ interface AnalyticsProject {
   wakes: number;
   successRate: number;
   activeAgents: number;
+  rosterAgents?: number;
   lastActivityAt: string;
+  rangeTrackedDurationMs?: number;
+  rangeActiveDurationMs?: number;
+  rangePausedDurationMs?: number;
+  rangeInactiveDurationMs?: number;
+  rangeAvailabilityPct?: number;
+  pauseCount?: number;
+  currentPauseStartedAt?: string | null;
+  averageDailySpendUsd?: number;
+  estimatedDaysRemaining?: number | null;
+  estimatedExhaustionAt?: string | null;
 }
 
 interface AnalyticsStatus {
@@ -547,6 +629,10 @@ interface AnalyticsBudgetForecast {
   remainingUsd: number;
   usedPct: number;
   averageDailySpendUsd: number;
+  calendarAverageDailySpendUsd?: number;
+  currentActiveDailySpendUsd?: number;
+  currentlyPaused?: boolean;
+  currentlyActive?: boolean;
   estimatedDaysRemaining?: number | null;
   estimatedExhaustionAt?: string | null;
 }
@@ -602,6 +688,8 @@ let requestGeneration = 0;
 const spendCanvas = ref<HTMLCanvasElement | null>(null);
 const tokenMixCanvas = ref<HTMLCanvasElement | null>(null);
 const activityCanvas = ref<HTMLCanvasElement | null>(null);
+const availabilityTimelineCanvas = ref<HTMLCanvasElement | null>(null);
+const availabilityMixCanvas = ref<HTMLCanvasElement | null>(null);
 const outcomesCanvas = ref<HTMLCanvasElement | null>(null);
 const modelsCanvas = ref<HTMLCanvasElement | null>(null);
 const eventTypesCanvas = ref<HTMLCanvasElement | null>(null);
@@ -644,6 +732,51 @@ const summary = computed<AnalyticsSummary>(() => analytics.value?.summary ?? EMP
 const activeRangeLabel = computed(() =>
   rangeOptions.find(option => option.key === selectedRange.value)?.label ?? 'Selected range');
 
+const hasPauseAccounting = computed(() => {
+  const value = analytics.value?.summary;
+  if (!value) return false;
+  return [
+    'rangeTrackedDurationMs',
+    'rangeActiveDurationMs',
+    'rangePausedDurationMs',
+    'rangeInactiveDurationMs',
+    'rangeAvailabilityPct',
+  ].some(key => Object.prototype.hasOwnProperty.call(value, key));
+});
+
+const pauseSummaryDetail = computed(() => {
+  const value = summary.value;
+  const pauses = numeric(value.pauseCount);
+  return [
+    `${formatLongDuration(value.rangeActiveDurationMs)} operating`,
+    `${formatLongDuration(value.rangePausedDurationMs)} paused`,
+    numeric(value.rangeInactiveDurationMs) > 0
+      ? `${formatLongDuration(value.rangeInactiveDurationMs)} inactive`
+      : '',
+    `${formatCount(pauses)} ${pauses === 1 ? 'pause' : 'pauses'}`,
+    value.currentPauseStartedAt
+      ? isAllProjects.value
+        ? `earliest current pause ${formatDateTime(value.currentPauseStartedAt)}`
+        : `paused since ${formatDateTime(value.currentPauseStartedAt)}`
+      : '',
+  ].filter(Boolean).join(' · ');
+});
+
+const emptyStateMessage = computed(() => {
+  const rangeLabel = analytics.value?.range.label || activeRangeLabel.value;
+  if (hasPauseAccounting.value && numeric(summary.value.rangePausedDurationMs) > 0) {
+    const entirelyPaused = numeric(summary.value.rangeActiveDurationMs) <= 0
+      && numeric(summary.value.rangeInactiveDurationMs) <= 0;
+    if (isAllProjects.value) {
+      return `There is no recorded execution activity for ${rangeLabel}. The fleet availability view below includes ${formatLongDuration(summary.value.rangePausedDurationMs)} of paused project-time.`;
+    }
+    return entirelyPaused
+      ? `${rangeLabel} contains no execution activity because the project was paused for the tracked range. Its paused time is shown below.`
+      : `There is no recorded execution activity for ${rangeLabel}. This view includes ${formatLongDuration(summary.value.rangePausedDurationMs)} of paused time.`;
+  }
+  return `There is not enough recorded activity to draw activity charts for ${rangeLabel}. Try a longer range or return after the project has completed a wake.`;
+});
+
 const scopeSubtitle = computed(() => {
   if (isAllProjects.value) return 'A single view of spend, throughput, reliability, and budget health across every project.';
   const name = analytics.value?.project?.name;
@@ -655,6 +788,25 @@ const scopeSubtitle = computed(() => {
 const metricCards = computed<MetricCard[]>(() => {
   const value = summary.value;
   const forecast = analytics.value?.budget;
+  const rate = isAllProjects.value
+    ? forecast?.currentActiveDailySpendUsd ?? forecast?.averageDailySpendUsd
+    : forecast?.averageDailySpendUsd;
+  const calendarRate = forecast?.calendarAverageDailySpendUsd;
+  let runwayDetail = `${formatMoney(rate)} average / active day`;
+  if (isAllProjects.value && forecast?.currentlyActive === false) {
+    runwayDetail = forecast.currentlyPaused
+      ? 'Fleet burn paused · no projects currently running'
+      : 'No projects currently running';
+  } else if (!isAllProjects.value && forecast?.currentlyPaused) {
+    runwayDetail = `Calendar forecast on hold · ${formatMoney(rate)} / active day`;
+  } else if (!isAllProjects.value && forecast?.currentlyActive === false) {
+    runwayDetail = `Calendar forecast unavailable while inactive · ${formatMoney(rate)} / active day`;
+  } else if (forecast?.estimatedExhaustionAt) {
+    runwayDetail = `At active-time pace · ${formatDate(forecast.estimatedExhaustionAt)}`;
+  } else if (hasPauseAccounting.value && numeric(calendarRate) !== numeric(rate)) {
+    runwayDetail = `${formatMoney(rate)} / active day · ${formatMoney(calendarRate)} / calendar day`;
+  }
+
   const shared: MetricCard[] = [
     {
       label: 'Token spend in range',
@@ -687,7 +839,7 @@ const metricCards = computed<MetricCard[]>(() => {
     {
       label: 'Events',
       value: formatCount(value.events),
-      detail: `${formatCount(value.activeDays)} active days`,
+      detail: `${formatCount(value.activeDays)} event days`,
     },
     {
       label: 'Tool calls',
@@ -696,14 +848,23 @@ const metricCards = computed<MetricCard[]>(() => {
       tone: 'purple',
     },
     {
-      label: 'Estimated token runway',
+      label: 'Estimated active runway',
       value: formatRunway(forecast?.estimatedDaysRemaining),
-      detail: forecast?.estimatedExhaustionAt
-        ? `At current pace · ${formatDate(forecast.estimatedExhaustionAt)}`
-        : `${formatMoney(forecast?.averageDailySpendUsd)} average / day`,
+      detail: runwayDetail,
       tone: 'amber',
     },
   ];
+
+  if (hasPauseAccounting.value) {
+    shared.splice(6, 0, {
+      label: isAllProjects.value ? 'Fleet availability' : 'Range availability',
+      value: formatPct(value.rangeAvailabilityPct),
+      detail: `${formatLongDuration(value.rangePausedDurationMs)} paused · ${formatCount(value.pauseCount)} pauses`,
+      tone: numeric(value.rangeAvailabilityPct) < 100 || numeric(value.rangeInactiveDurationMs) > 0
+        ? 'amber'
+        : 'green',
+    });
+  }
 
   if (isAllProjects.value) {
     return [
@@ -722,13 +883,13 @@ const metricCards = computed<MetricCard[]>(() => {
       {
         label: 'Projects',
         value: formatCount(value.projectCount),
-        detail: `${formatCount(value.activeProjects)} active`,
+        detail: `${formatCount(value.activeProjects)} running · ${formatCount(value.pausedProjects)} paused`,
         tone: 'green',
       },
       {
-        label: 'Active agents',
+        label: 'Running agents',
         value: formatCount(value.activeAgents),
-        detail: 'Across all projects',
+        detail: `${formatCount(value.rosterAgents)} assigned across the fleet`,
       },
       {
         label: 'Artifacts',
@@ -757,9 +918,9 @@ const metricCards = computed<MetricCard[]>(() => {
       detail: `${formatMoney(value.lifetimeSpendUsd)} spent`,
     },
     {
-      label: 'Active agents',
+      label: 'Running agents',
       value: formatCount(value.activeAgents),
-      detail: `${analytics.value?.agents.length ?? 0} attributed agents`,
+      detail: `${formatCount(value.rosterAgents)} assigned · ${analytics.value?.agents.length ?? 0} attributed`,
       tone: 'green',
     },
     {
@@ -880,18 +1041,31 @@ const sortedAgents = computed(() =>
 
 const projectSortKey = ref<ProjectSortKey>('rangeSpendUsd');
 const projectSortDirection = ref<SortDirection>('desc');
-const projectColumns: Array<{ key: ProjectSortKey; label: string; numeric?: boolean }> = [
-  { key: 'name', label: 'Project' },
-  { key: 'status', label: 'Status' },
-  { key: 'rangeSpendUsd', label: 'Range spend', numeric: true },
-  { key: 'tokenSpendUsd', label: 'Lifetime spend', numeric: true },
-  { key: 'moneySpendUsd', label: 'Money spend', numeric: true },
-  { key: 'rangeTokens', label: 'Range tokens', numeric: true },
-  { key: 'wakes', label: 'Wakes', numeric: true },
-  { key: 'successRate', label: 'Success', numeric: true },
-  { key: 'activeAgents', label: 'Agents', numeric: true },
-  { key: 'lastActivityAt', label: 'Last activity', numeric: true },
-];
+const projectRowsHavePauseAccounting = computed(() =>
+  (analytics.value?.projects ?? []).some(row =>
+    Object.prototype.hasOwnProperty.call(row, 'rangeAvailabilityPct')));
+const projectColumns = computed<Array<{ key: ProjectSortKey; label: string; numeric?: boolean }>>(() => {
+  const columns: Array<{ key: ProjectSortKey; label: string; numeric?: boolean }> = [
+    { key: 'name', label: 'Project' },
+    { key: 'status', label: 'Status' },
+    { key: 'rangeSpendUsd', label: 'Range spend', numeric: true },
+    { key: 'tokenSpendUsd', label: 'Lifetime spend', numeric: true },
+    { key: 'moneySpendUsd', label: 'Money spend', numeric: true },
+    { key: 'rangeTokens', label: 'Range tokens', numeric: true },
+    { key: 'wakes', label: 'Wakes', numeric: true },
+    { key: 'successRate', label: 'Success', numeric: true },
+    { key: 'activeAgents', label: 'Running agents', numeric: true },
+    { key: 'lastActivityAt', label: 'Last activity', numeric: true },
+  ];
+  if (projectRowsHavePauseAccounting.value) {
+    columns.splice(columns.length - 2, 0, {
+      key: 'rangeAvailabilityPct',
+      label: 'Availability',
+      numeric: true,
+    });
+  }
+  return columns;
+});
 
 const sortedProjects = computed(() => {
   const rows = [...(analytics.value?.projects ?? [])];
@@ -1201,6 +1375,125 @@ function renderCharts() {
     },
   });
 
+  if (hasPauseAccounting.value) {
+    addChart(availabilityTimelineCanvas.value, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            type: 'bar',
+            label: 'Operating',
+            data: series.map(point => numeric(point.activeDurationMs)),
+            backgroundColor: 'rgba(77,158,57,0.72)',
+            borderColor: '#62ce47',
+            borderWidth: 1,
+            borderRadius: 2,
+            stack: 'lifecycle',
+            yAxisID: 'y',
+          },
+          {
+            type: 'bar',
+            label: 'Paused',
+            data: series.map(point => numeric(point.pausedDurationMs)),
+            backgroundColor: 'rgba(217,184,114,0.76)',
+            borderColor: '#d9b872',
+            borderWidth: 1,
+            borderRadius: 2,
+            stack: 'lifecycle',
+            yAxisID: 'y',
+          },
+          {
+            type: 'bar',
+            label: 'Inactive',
+            data: series.map(point => numeric(point.inactiveDurationMs)),
+            backgroundColor: 'rgba(85,85,95,0.68)',
+            borderColor: '#74747d',
+            borderWidth: 1,
+            borderRadius: 2,
+            stack: 'lifecycle',
+            yAxisID: 'y',
+          },
+          {
+            type: 'line',
+            label: 'Availability',
+            data: series.map(point => numeric(point.availabilityPct)),
+            borderColor: '#7fb0d9',
+            backgroundColor: '#7fb0d9',
+            pointRadius: series.length > 45 ? 0 : 2,
+            pointHoverRadius: 4,
+            borderWidth: 2,
+            tension: 0.24,
+            fill: false,
+            yAxisID: 'y1',
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { color: legendColor, usePointStyle: true, boxWidth: 8 } },
+          tooltip: {
+            callbacks: {
+              label: (context: any) => context.dataset.yAxisID === 'y1'
+                ? ` Availability: ${formatPct(context.parsed.y)}`
+                : ` ${context.dataset.label}: ${formatLongDuration(context.parsed.y)}`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            stacked: true,
+            grid: { display: false },
+            ticks: { color: tickColor, maxTicksLimit: 9 },
+          },
+          y: {
+            stacked: true,
+            beginAtZero: true,
+            grid: { color: gridColor },
+            ticks: { color: tickColor, callback: (value: any) => formatDurationAxis(value) },
+            title: {
+              display: true,
+              text: isAllProjects.value ? 'Project-time' : 'Tracked time',
+              color: tickColor,
+            },
+          },
+          y1: {
+            beginAtZero: true,
+            max: 100,
+            position: 'right',
+            grid: { drawOnChartArea: false },
+            ticks: { color: tickColor, callback: (value: any) => `${numeric(value)}%` },
+            title: { display: true, text: 'Availability', color: tickColor },
+          },
+        },
+      },
+    });
+
+    if (numeric(summary.value.rangeTrackedDurationMs) > 0) {
+      addChart(availabilityMixCanvas.value, {
+        type: 'doughnut',
+        data: {
+          labels: ['Operating', 'Paused', 'Inactive'],
+          datasets: [{
+            data: [
+              numeric(summary.value.rangeActiveDurationMs),
+              numeric(summary.value.rangePausedDurationMs),
+              numeric(summary.value.rangeInactiveDurationMs),
+            ],
+            backgroundColor: ['#4d9e39', '#d9b872', '#55555f'],
+            borderColor: '#1a1a1e',
+            borderWidth: 3,
+            hoverOffset: 5,
+          }],
+        },
+        options: doughnutOptions(legendColor, (value: number) => formatLongDuration(value)),
+      });
+    }
+  }
+
   if (analytics.value.outcomes.length) {
     addChart(outcomesCanvas.value, {
       type: 'doughnut',
@@ -1470,6 +1763,29 @@ function formatDuration(value: unknown) {
   if (milliseconds < 1000) return `${Math.round(milliseconds)} ms average`;
   if (milliseconds < 60_000) return `${(milliseconds / 1000).toFixed(milliseconds < 10_000 ? 1 : 0)} s average`;
   return `${(milliseconds / 60_000).toFixed(1)} min average`;
+}
+
+function formatLongDuration(value: unknown) {
+  const milliseconds = Math.max(0, numeric(value));
+  if (milliseconds <= 0) return '0 hours';
+  const minutes = milliseconds / 60_000;
+  if (minutes < 1) return '<1 minute';
+  if (minutes < 60) return `${minutes.toFixed(minutes < 10 ? 1 : 0)} min`;
+  const hours = minutes / 60;
+  if (hours < 24) return `${hours.toFixed(hours < 10 ? 1 : 0)} hr`;
+  const days = hours / 24;
+  if (days < 60) return `${days.toFixed(days < 10 ? 1 : 0)} days`;
+  if (days < 730) return `${(days / 30.44).toFixed(1)} months`;
+  return `${(days / 365.25).toFixed(1)} years`;
+}
+
+function formatDurationAxis(value: unknown) {
+  const milliseconds = Math.max(0, numeric(value));
+  const hours = milliseconds / 3_600_000;
+  if (hours < 24) return `${hours.toFixed(hours < 10 ? 1 : 0)}h`;
+  const days = hours / 24;
+  if (days < 60) return `${days.toFixed(days < 10 ? 1 : 0)}d`;
+  return `${(days / 30.44).toFixed(1)}mo`;
 }
 
 function formatRunway(value: unknown) {

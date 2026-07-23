@@ -47,13 +47,18 @@ function HandleAuthFailure(res: Response): boolean {
     return false;
 }
 
-async function RequestGETFromKliveAPI(query: string, redirectToDashboardIfUnauthorized = true, alertUserIfUnauthorized = true) {
+async function RequestGETFromKliveAPI(
+    query: string,
+    redirectToDashboardIfUnauthorized = true,
+    alertUserIfUnauthorized = true,
+    extraHeaders: Record<string, string> = {},
+) {
     let res: Response;
     try {
         res = await fetch(`${KliveAPIUrl}${query}`, {
             method: 'GET',
             mode: 'cors',
-            headers: BuildKliveHeaders(),
+            headers: { ...BuildKliveHeaders(), ...extraHeaders },
         });
     } catch (error) {
         console.warn('Klive API GET failed:', query, error);

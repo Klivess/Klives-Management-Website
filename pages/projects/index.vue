@@ -16,6 +16,7 @@
         >
           {{ anyHalted ? `▶ Unhalt all (${haltedCount})` : '⏸ Halt all' }}
         </button>
+        <NuxtLink to="/projects/analytics" class="ghost-btn">Analytics</NuxtLink>
         <NuxtLink to="/projects/accounts" class="ghost-btn">⚿ Accounts</NuxtLink>
         <button class="ghost-btn" :class="{ active: showDefaults }" @click="showDefaults = !showDefaults">⚙ Default settings</button>
         <NuxtLink to="/projects/new" class="primary-btn">+ New project</NuxtLink>

@@ -42,7 +42,7 @@
         <button class="ctrl ctrl-go bb-btn" :disabled="actionBusy" @click="unblock">Unblock</button>
       </div>
 
-      <div class="pw-grid">
+      <div class="pw-grid" :class="{ 'pw-grid-wide': tab === 'analytics' }">
         <div class="pw-main">
           <div class="pw-tabs">
             <button v-for="t in tabs" :key="t.id" :class="{ active: tab === t.id }" @click="tab = t.id">
@@ -55,6 +55,7 @@
               <ProjectsConversationPanel :project-id="projectId" @events="onEvents" @select="selectEvent" />
             </div>
             <ProjectsTimeline v-show="tab === 'timeline'" :events="events" :agent-labels="agentLabels" @select="selectEvent" />
+            <ProjectsAnalyticsDashboard v-if="tab === 'analytics'" :project-id="projectId" />
             <ProjectsFilesPanel v-if="tab === 'files'" :project-id="projectId" :status="project.status" />
             <ProjectsGrandPlanPanel v-if="tab === 'plan'" :project-id="projectId" :grand-plan="grandPlan" />
             <ProjectsCouncilsPanel v-if="tab === 'councils'" :project-id="projectId" :councils="councils" />
@@ -66,7 +67,7 @@
           </div>
         </div>
 
-        <div class="pw-side">
+        <div v-if="tab !== 'analytics'" class="pw-side">
           <div class="side-card">
             <div class="side-card-head">
               <h3>Budget</h3>
@@ -162,6 +163,7 @@ import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIIn
 import { useEventStream } from '~/composables/useEventStream';
 import ProjectsTimeline from '~/components/Projects/Timeline.vue';
 import ProjectsConversationPanel from '~/components/Projects/ConversationPanel.vue';
+import ProjectsAnalyticsDashboard from '~/components/Projects/AnalyticsDashboard.vue';
 import ProjectsSpendOverlay from '~/components/Projects/SpendOverlay.vue';
 import ProjectsLiveDesktopWall from '~/components/Projects/LiveDesktopWall.vue';
 import ProjectsAgentsPanel from '~/components/Projects/AgentsPanel.vue';
@@ -184,6 +186,7 @@ const projectId = String(route.params.projectId);
 const tabs = [
   { id: 'conversation', label: 'Conversation' },
   { id: 'timeline', label: 'Timeline' },
+  { id: 'analytics', label: 'Analytics' },
   { id: 'files', label: 'Files' },
   { id: 'plan', label: 'Grand Plan' },
   { id: 'councils', label: 'Councils' },
@@ -393,6 +396,7 @@ onBeforeUnmount(() => {
 .ctrl-go { background: #2e5426; color: #fff; }
 .approval-badge { background: #3a2f17; color: #d9b872; font-size: 12px; padding: 4px 10px; border-radius: 10px; cursor: pointer; font-weight: 600; }
 .pw-grid { display: grid; grid-template-columns: 1fr 340px; gap: 18px; align-items: start; }
+.pw-grid.pw-grid-wide { grid-template-columns: minmax(0, 1fr); }
 .pw-main { min-width: 0; }
 .pw-tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid #2a2a2e; overflow-x: auto; }
 .pw-tabs button { position: relative; background: none; border: none; color: #999; padding: 10px 14px; cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent; margin-bottom: -1px; }

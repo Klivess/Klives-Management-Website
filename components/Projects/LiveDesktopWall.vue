@@ -10,7 +10,7 @@
       No live desktops. Desktops appear here once a video-tier agent starts one (text-only projects have none).
     </div>
 
-    <div v-else class="dw-grid">
+    <div v-else class="dw-grid" :style="gridStyle">
       <ProjectsLiveDesktop
         v-for="t in tiles"
         :key="t.containerId"
@@ -63,6 +63,21 @@ const tiles = computed(() => {
   });
 });
 
+// Fewer desktops → bigger tiles: column count grows with the square root of the
+// tile count (1→1 col, 2→2, 3-4→2, 5-9→3, 10-16→4…) so tiles always fill the row,
+// instead of a fixed-width auto-fill grid that leaves a lone desktop at ~300px.
+const gridStyle = computed(() => {
+  const n = tiles.value.length;
+  const cols = Math.max(1, Math.ceil(Math.sqrt(n)));
+  const style: Record<string, string> = { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` };
+  if (n === 1) {
+    // Keep a lone desktop watchable, not a wall-sized poster on wide monitors.
+    style.maxWidth = 'min(1100px, 100%)';
+    style.margin = '0 auto';
+  }
+  return style;
+});
+
 function maximize(t: { containerId: string; label: string }) { maxTile.value = t; }
 // While the remote desktop is controlling, it consumes Escape (preventDefault) to forward it to
 // the container — only an unhandled Escape closes the modal.
@@ -97,8 +112,10 @@ onBeforeUnmount(() => {
 .dw-note { font-size: 12px; color: #888; margin: 0; }
 .dw-count { font-size: 11px; color: #7fd97f; white-space: nowrap; }
 .dw-info, .dw-empty { color: #777; font-size: 13px; padding: 24px; text-align: center; }
-.dw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.dw-grid { display: grid; gap: 12px; } /* columns come from gridStyle (scales with desktop count) */
 .dw-grid :deep(.ld-frame) { aspect-ratio: 16 / 10; min-height: 0; }
+/* Narrow screens: always stack, overriding the inline column count. */
+@media (max-width: 760px) { .dw-grid { grid-template-columns: 1fr !important; max-width: none !important; } }
 
 .dw-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 24px; }
 .dw-modal { background: #0e0e11; border-radius: 10px; overflow: hidden; width: min(1400px, 96vw); max-height: 94vh; display: flex; flex-direction: column; box-shadow: 0 12px 48px rgba(0,0,0,0.6); }
@@ -107,6 +124,8 @@ onBeforeUnmount(() => {
 .dw-close { background: #26262b; color: #ccc; border: none; width: 30px; height: 30px; border-radius: 6px; cursor: pointer; font-size: 15px; }
 .dw-close:hover { background: #3a3a44; color: #fff; }
 .dw-modal-body { flex: 1; min-height: 0; display: flex; }
-.dw-modal-body :deep(.live-desktop) { flex: 1; border-radius: 0; }
-.dw-modal-body :deep(.ld-frame) { min-height: 60vh; }
+/* The modal embeds ContainerRemoteDesktop (.crd) — give its stage a real height,
+   otherwise the content-driven modal collapses it to 0 until fullscreen. */
+.dw-modal-body :deep(.crd) { flex: 1; min-height: 0; border: none; border-radius: 0; }
+.dw-modal-body :deep(.crd-stage) { min-height: 60vh; }
 </style>

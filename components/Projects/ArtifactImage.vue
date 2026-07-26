@@ -9,8 +9,9 @@
       </div>
     </div>
     <div v-else-if="error" class="art-error">Could not load artifact.</div>
-    <a v-else-if="src" :href="src" target="_blank" class="art-link">
-      <img :src="src" :alt="description" class="art-img" />
+    <a v-else-if="src" :href="src" target="_blank" class="art-link" :title="description || 'Open full size'">
+      <img :src="src" :alt="description" class="art-img" :class="{ 'art-thumb': thumb }" />
+      <span v-if="thumb" class="art-expand">⤢ full size</span>
     </a>
   </div>
 </template>
@@ -19,7 +20,11 @@
 import { ref, watch, onBeforeUnmount } from 'vue';
 import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 
-const props = defineProps<{ projectId: string; artifactId: string }>();
+// `thumb` caps the render height: a desktop screenshot is 1080px tall and would otherwise push a
+// whole screen of conversation out of view for one tool result. The link still opens full size.
+const props = withDefaults(
+  defineProps<{ projectId: string; artifactId: string; thumb?: boolean }>(),
+  { thumb: false });
 
 const src = ref('');
 const loading = ref(true);
@@ -59,7 +64,12 @@ onBeforeUnmount(cleanup);
 <style scoped>
 .artifact { margin-top: 8px; }
 .art-img { max-width: 100%; border-radius: 6px; border: 1px solid #2a2a2e; display: block; }
-.art-link { display: inline-block; }
+/* Screenshots are landscape and tall; cap the height and letterbox rather than scaling the width
+   down to a stamp, so the thumbnail is still readable at a glance. */
+.art-thumb { max-height: 180px; width: auto; object-fit: contain; object-position: left top; }
+.art-link { display: inline-block; position: relative; max-width: 100%; }
+.art-expand { position: absolute; right: 6px; bottom: 6px; font-size: 10px; color: #ddd; background: rgba(0, 0, 0, 0.6); border-radius: 4px; padding: 2px 6px; opacity: 0; transition: opacity 0.12s; }
+.art-link:hover .art-expand { opacity: 1; }
 .art-skeleton { padding: 24px; text-align: center; color: #666; background: #16161a; border-radius: 6px; font-size: 12px; }
 .art-error { padding: 12px; color: #ff8484; font-size: 12px; }
 .art-degraded { display: flex; gap: 10px; align-items: flex-start; padding: 12px; background: #16161a; border: 1px dashed #333; border-radius: 6px; }

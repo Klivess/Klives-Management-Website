@@ -15,12 +15,17 @@
           <code>{{ e.toolName }}</code> {{ e.text }}
         </div>
         <div v-else class="cp-text">{{ e.text }}</div>
-        <ProjectsArtifactImage
-          v-for="id in (e.artifactIDs || [])"
-          :key="id"
-          :project-id="projectId"
-          :artifact-id="id"
-        />
+        <!-- A single computer action can return several frames; row them up so a multi-frame result
+             costs one thumbnail of height, not one per frame. -->
+        <div v-if="(e.artifactIDs || []).length" class="cp-shots">
+          <ProjectsArtifactImage
+            v-for="id in e.artifactIDs"
+            :key="id"
+            :project-id="projectId"
+            :artifact-id="id"
+            thumb
+          />
+        </div>
       </div>
 
       <ApprovalCard
@@ -295,6 +300,7 @@ onBeforeUnmount(() => {
 .cp-text { font-size: 14px; color: #e6e6e6; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
 .cp-tool { font-size: 12px; color: #aaa; overflow-wrap: anywhere; word-break: break-word; }
 .cp-tool code { color: #7fd97f; }
+.cp-shots { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
 .cp-empty { color: #777; font-size: 13px; text-align: center; padding: 24px 12px; }
 
 /* Live "currently generating" indicator — deliberately lighter than a real message: dashed border

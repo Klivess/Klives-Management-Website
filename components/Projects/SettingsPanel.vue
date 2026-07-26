@@ -31,6 +31,10 @@
           <span class="sp-label">Containers enabled<span class="sp-hint">allow desktop containers (text-only project: off)</span></span>
           <input type="checkbox" v-model="form.containersEnabled" />
         </label>
+        <label class="sp-row sp-toggle">
+          <span class="sp-label">Live activity<span class="sp-hint">stream model output so the conversation shows who is generating, and what</span></span>
+          <input type="checkbox" v-model="form.liveActivityStreaming" />
+        </label>
         <label class="sp-row">
           <span class="sp-label">Desktop image</span>
           <input v-model="form.desktopImage" class="sp-input" placeholder="omnipotent/projects-desktop:latest" />
@@ -86,8 +90,10 @@ for (const f of modelFields) form[f.key] = [''];
 form.routeParameters = emptyRouteParameters();
 form.visionEnabled = true;
 form.containersEnabled = true;
+form.liveActivityStreaming = true;
 form.desktopImage = 'omnipotent/projects-desktop:latest';
-const EDITABLE = [...modelFields.map(f => f.key), 'routeParameters', 'visionEnabled', 'containersEnabled', 'desktopImage'];
+const EDITABLE = [...modelFields.map(f => f.key), 'routeParameters', 'visionEnabled', 'containersEnabled',
+  'liveActivityStreaming', 'desktopImage'];
 
 // Every route gets a (possibly empty) bag so v-model:parameters always has a target. Empty bags are
 // dropped again on save, which is exactly how the server clears a route back to model defaults.
@@ -114,7 +120,7 @@ function applySettings(s: Record<string, any>) {
   const saved = s.routeParameters ?? {};
   form.routeParameters = Object.fromEntries(
     modelFields.map(f => [f.route, { ...(saved[f.route] ?? {}) }]));
-  for (const k of ['visionEnabled', 'containersEnabled', 'desktopImage']) form[k] = s[k];
+  for (const k of ['visionEnabled', 'containersEnabled', 'liveActivityStreaming', 'desktopImage']) form[k] = s[k];
 }
 
 async function load() {

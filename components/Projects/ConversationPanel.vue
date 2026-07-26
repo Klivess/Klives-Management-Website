@@ -30,8 +30,27 @@
         @resolve="onResolve"
       />
 
-      <div v-if="loaded && !visibleEvents.length && !pendingGates.length" class="cp-empty">
+      <div v-if="loaded && !visibleEvents.length && !pendingGates.length && !liveAgents.length" class="cp-empty">
         No conversation yet. Say hello to the Commander, or wait for it to report in.
+      </div>
+
+      <!-- Who is mid-turn right now. An agent can spend minutes on one turn, and nothing is written
+           to the event log until it finishes — this is the only window into that gap. -->
+      <div
+        v-for="a in liveAgents" :key="a.agentID"
+        class="cp-live" :class="'a-' + (a.agentID === 'commander' ? 'commander' : 'agent')"
+      >
+        <div class="cp-live-head">
+          <span class="cp-live-dot" :class="'ph-' + a.phase"></span>
+          <span class="cp-who">{{ agentLabel(a) }}</span>
+          <span class="cp-live-phase">{{ phaseLabel(a) }}<span class="cp-ellipsis">…</span></span>
+          <code v-if="a.toolName" class="cp-live-tool">{{ a.toolName }}</code>
+          <span class="cp-live-spacer"></span>
+          <span v-if="a.model" class="cp-live-model">{{ shortModel(a.model) }}</span>
+          <span class="cp-live-elapsed">{{ elapsed(a) }}</span>
+        </div>
+        <div v-if="a.phase === 'writing' && a.preview" class="cp-live-preview">{{ a.preview }}</div>
+        <div v-else-if="a.detail" class="cp-live-detail">{{ toolArgs(a) }}</div>
       </div>
     </div>
 
@@ -56,7 +75,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import { useEventStream } from '~/composables/useEventStream';
 import ApprovalCard from '~/components/Projects/ApprovalCard.vue';
@@ -83,13 +102,83 @@ const since = ref(0);
 const seenSeqs = new Set<number>();
 let poll: ReturnType<typeof setInterval> | null = null;
 
+// Live "who is generating right now" indicators, keyed by agentID. These are ephemeral snapshots
+// pushed over the same socket — an agent appears when its model turn starts and is removed when the
+// server says it ended, so this map only ever holds agents actually working.
+const activity = ref<Record<string, any>>({});
+// Ticks once a second purely so the elapsed time in each indicator counts up.
+const now = ref(Date.now());
+let clock: ReturnType<typeof setInterval> | null = null;
+
 // Live server-push (Phase 3): the WebSocket streams new events after the initial backlog load, so
 // the conversation updates the instant the Commander acts. The slow poll below is only a safety net.
 const stream = useEventStream({
   projectId: props.projectId,
   sinceRef: since,
   onEvent: (e: any) => { appendEvents([e]); },
+  onActivity: (a: any) => { activity.value = { ...activity.value, [a.agentID]: a }; },
+  onActivityEnded: (agentID: string) => {
+    const next = { ...activity.value };
+    delete next[agentID];
+    activity.value = next;
+  },
 });
+
+// Commander first, then longest-running. A missed "ended" signal (socket drop mid-turn) would
+// otherwise strand an indicator forever, so anything the server hasn't refreshed in 10 minutes —
+// its own sweep interval — is dropped here too.
+const liveAgents = computed(() => Object.values(activity.value)
+  .filter((a: any) => now.value - new Date(a.updatedAt).getTime() < 10 * 60 * 1000)
+  .sort((a: any, b: any) => {
+    if (a.agentID === 'commander') return -1;
+    if (b.agentID === 'commander') return 1;
+    return new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime();
+  }));
+
+function agentLabel(a: any) {
+  if (a.agentID === 'commander') return 'Commander';
+  return a.role ? a.role.replace(/-/g, ' ') : 'Agent ' + a.agentID;
+}
+function phaseLabel(a: any) {
+  if (a.phase === 'writing') return 'is writing';
+  if (a.phase === 'tool') return 'is running';
+  return 'is thinking';
+}
+// "anthropic/claude-sonnet-4.5" → "claude-sonnet-4.5"; the provider prefix is noise here.
+function shortModel(model: string) { return model.includes('/') ? model.split('/').pop() : model; }
+// The server's audit description is "tool_name(arg=…, arg=…)" and the tool name already has its own
+// chip, so show just the arguments (already redacted server-side, same text the Timeline shows).
+function toolArgs(a: any) {
+  const detail = a.detail || '';
+  const prefix = (a.toolName || '') + '(';
+  return detail.startsWith(prefix) && detail.endsWith(')')
+    ? detail.slice(prefix.length, -1)
+    : detail;
+}
+function elapsed(a: any) {
+  const secs = Math.max(0, Math.round((now.value - new Date(a.startedAt).getTime()) / 1000));
+  return secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`;
+}
+
+// An indicator appearing/disappearing changes the list height; follow it only when the reader is
+// already at the bottom, so scrolling back through history is never yanked away. Deliberately not
+// watching the preview text — that updates several times a second.
+watch(() => liveAgents.value.length, () => {
+  const el = scrollEl.value;
+  if (!el || el.scrollHeight - el.scrollTop - el.clientHeight > 120) return;
+  nextTick(() => { if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight; });
+});
+
+async function loadActivity() {
+  try {
+    const res = await RequestGETFromKliveAPI(`/projects/activity?projectID=${props.projectId}`, false, false);
+    if (!res.ok) return;
+    const list = await res.json();
+    const next: Record<string, any> = {};
+    for (const a of Array.isArray(list) ? list : []) next[a.agentID] = a;
+    activity.value = next;
+  } catch { /* transient */ }
+}
 
 function appendEvents(batch: any[]) {
   let added = false;
@@ -177,11 +266,19 @@ onMounted(async () => {
   await loadEvents(true);
   loaded.value = true;
   loadGates();
+  // Paints anyone already mid-turn before the socket's own snapshot lands.
+  loadActivity();
   stream.connect();
+  clock = setInterval(() => { now.value = Date.now(); }, 1000);
   // Safety-net resync in case the socket drops without reconnecting (much slower than the old 3s poll).
-  poll = setInterval(() => { loadEvents(); loadGates(); }, 30000);
+  // Activity is included so a missed "ended" push can't strand an indicator until the stale cutoff.
+  poll = setInterval(() => { loadEvents(); loadGates(); loadActivity(); }, 30000);
 });
-onBeforeUnmount(() => { if (poll) clearInterval(poll); stream.disconnect(); });
+onBeforeUnmount(() => {
+  if (poll) clearInterval(poll);
+  if (clock) clearInterval(clock);
+  stream.disconnect();
+});
 </script>
 
 <style scoped>
@@ -199,6 +296,32 @@ onBeforeUnmount(() => { if (poll) clearInterval(poll); stream.disconnect(); });
 .cp-tool { font-size: 12px; color: #aaa; overflow-wrap: anywhere; word-break: break-word; }
 .cp-tool code { color: #7fd97f; }
 .cp-empty { color: #777; font-size: 13px; text-align: center; padding: 24px 12px; }
+
+/* Live "currently generating" indicator — deliberately lighter than a real message: dashed border
+   and dimmer text, so nothing here is mistaken for something the agent actually committed. */
+.cp-live { min-width: 0; padding: 7px 12px; border-radius: 8px; background: #17171b; border: 1px dashed #333; border-left: 3px solid #444; }
+.cp-live.a-commander { border-left-color: #4d9e39; }
+.cp-live.a-agent { border-left-color: #7f6bd9; }
+.cp-live-head { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #888; }
+.cp-live-head .cp-who { text-transform: capitalize; }
+.cp-live-spacer { flex: 1; }
+.cp-live-phase { color: #9a9a9a; }
+.cp-live-tool { color: #7fd97f; font-size: 11px; }
+.cp-live-model { color: #666; font-family: ui-monospace, monospace; }
+.cp-live-elapsed { color: #666; font-variant-numeric: tabular-nums; }
+/* The preview is the live TAIL of the turn (the server sends the last ~280 chars), so it must not be
+   height-clipped — clipping the overflow would hide exactly the newest text this exists to show. */
+.cp-live-preview { margin-top: 4px; font-size: 12.5px; color: #b9b9c4; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+.cp-live-detail { margin-top: 4px; font-size: 12px; color: #8a8a94; overflow-wrap: anywhere; word-break: break-word; }
+.cp-live-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; background: #7fb0d9; animation: cp-pulse 1.4s ease-in-out infinite; }
+.cp-live-dot.ph-writing { background: #4d9e39; animation-duration: 0.9s; }
+.cp-live-dot.ph-tool { background: #d98c2b; }
+.cp-ellipsis { animation: cp-fade 1.4s ease-in-out infinite; }
+@keyframes cp-pulse { 0%, 100% { opacity: 0.25; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }
+@keyframes cp-fade { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .cp-live-dot, .cp-ellipsis { animation: none; opacity: 1; }
+}
 .cp-send-error { display: flex; justify-content: space-between; align-items: center; background: #3a1717; color: #e08a8a; font-size: 12px; padding: 6px 12px; border-top: 1px solid #5a2424; }
 .cp-err-dismiss { background: none; border: none; color: #e08a8a; cursor: pointer; }
 .cp-composer { display: flex; gap: 8px; padding: 12px; border-top: 1px solid #2a2a2e; }

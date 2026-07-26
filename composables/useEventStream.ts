@@ -10,12 +10,18 @@ import { KliveAPIUrl } from '~/scripts/APIInterface';
  *   - fleet firehose: omit `projectID`; `onFleet(projectID, type)` fires on any project's event so a
  *     dashboard can refresh live.
  * Mirrors useScreenStream's auth (the `password` cookie as `authorization=`) and auto-reconnect.
+ *
+ * The per-project socket also carries live agent activity — who is generating tokens right now and
+ * what — which is ephemeral (no sequence, never replayed): `onActivity` receives a whole snapshot
+ * per agent, `onActivityEnded` clears one, and a connect delivers a snapshot of everyone mid-turn.
  */
 export function useEventStream(opts: {
   projectId?: string | null;
   sinceRef?: Ref<number>;
   onEvent?: (e: any) => void;
   onFleet?: (projectID: string, type: string) => void;
+  onActivity?: (a: any) => void;
+  onActivityEnded?: (agentID: string) => void;
 }) {
   const connected = ref(false);
   let ws: WebSocket | null = null;
@@ -49,6 +55,12 @@ export function useEventStream(opts: {
           opts.onEvent?.(msg.event);
         } else if (msg.kind === 'project-event') {
           opts.onFleet?.(msg.projectID, msg.type);
+        } else if (msg.kind === 'activity' && msg.activity) {
+          opts.onActivity?.(msg.activity);
+        } else if (msg.kind === 'activity-snapshot') {
+          for (const a of msg.activities || []) opts.onActivity?.(a);
+        } else if (msg.kind === 'activity-ended') {
+          opts.onActivityEnded?.(msg.agentID);
         }
       };
       ws.onclose = () => { connected.value = false; if (!stopped) scheduleReconnect(); };

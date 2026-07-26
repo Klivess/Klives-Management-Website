@@ -13,8 +13,11 @@
           v-for="f in modelFields"
           :key="f.key"
           v-model="form[f.key]"
+          v-model:parameters="form.routeParameters[f.route]"
           :label="f.label"
           :placeholder="f.placeholder"
+          :show-parameters="!f.parametersNote"
+          :parameters-note="f.parametersNote ?? ''"
         />
       </section>
 
@@ -58,22 +61,39 @@ const saving = ref(false);
 const original = ref<Record<string, any>>({});
 const form = reactive<Record<string, any>>({});
 
-const modelFields = [
-  { key: 'commanderRoutes', legacy: 'commanderModel', label: 'Commander', placeholder: 'anthropic/claude-sonnet-4.5' },
-  { key: 'utilityRoutes', legacy: 'utilityModel', label: 'Utility (digests/reports)', placeholder: 'openai/gpt-4.1-mini' },
-  { key: 'councilRoutes', legacy: 'councilModel', label: 'Council', placeholder: 'anthropic/claude-sonnet-4.5' },
-  { key: 'tierTextRoutes', legacy: 'tierTextModel', label: 'Tier: Text', placeholder: 'openai/gpt-4.1-mini' },
-  { key: 'tierTextImageRoutes', legacy: 'tierTextImageModel', label: 'Tier: Text+Image', placeholder: 'openai/gpt-4.1' },
-  { key: 'tierTextImageVideoRoutes', legacy: 'tierTextImageVideoModel', label: 'Tier: +Video', placeholder: 'anthropic/claude-sonnet-4.5' },
-  { key: 'tierTextImageVideoAudioRoutes', legacy: 'tierTextImageVideoAudioModel', label: 'Tier: +Audio', placeholder: 'google/gemini-2.5-pro' },
-  { key: 'stimulusFreeRoutes', legacy: 'stimulusFreeModel', label: 'Triage (free)', placeholder: 'openai/gpt-4.1-mini' },
-  { key: 'stimulusFallbackRoutes', legacy: 'stimulusFallbackModel', label: 'Triage (fallback)', placeholder: 'openai/gpt-4.1-mini' },
+// `route` is the server-side RouteParameters key for the same route the `key` list configures.
+// `parametersNote`, when present, replaces the parameter panel — the route has no parameters of
+// its own because its models ride another route's request.
+type ModelField = {
+  key: string; route: string; legacy: string; label: string; placeholder: string; parametersNote?: string;
+};
+const modelFields: ModelField[] = [
+  { key: 'commanderRoutes', route: 'commander', legacy: 'commanderModel', label: 'Commander', placeholder: 'anthropic/claude-sonnet-4.5' },
+  { key: 'utilityRoutes', route: 'utility', legacy: 'utilityModel', label: 'Utility (digests/reports)', placeholder: 'openai/gpt-4.1-mini' },
+  { key: 'councilRoutes', route: 'council', legacy: 'councilModel', label: 'Council', placeholder: 'anthropic/claude-sonnet-4.5' },
+  { key: 'tierTextRoutes', route: 'tierText', legacy: 'tierTextModel', label: 'Tier: Text', placeholder: 'openai/gpt-4.1-mini' },
+  { key: 'tierTextImageRoutes', route: 'tierTextImage', legacy: 'tierTextImageModel', label: 'Tier: Text+Image', placeholder: 'openai/gpt-4.1' },
+  { key: 'tierTextImageVideoRoutes', route: 'tierTextImageVideo', legacy: 'tierTextImageVideoModel', label: 'Tier: +Video', placeholder: 'anthropic/claude-sonnet-4.5' },
+  { key: 'tierTextImageVideoAudioRoutes', route: 'tierTextImageVideoAudio', legacy: 'tierTextImageVideoAudioModel', label: 'Tier: +Audio', placeholder: 'google/gemini-2.5-pro' },
+  { key: 'stimulusFreeRoutes', route: 'stimulusFree', legacy: 'stimulusFreeModel', label: 'Triage (free)', placeholder: 'openai/gpt-4.1-mini' },
+  {
+    key: 'stimulusFallbackRoutes', route: 'stimulusFallback', legacy: 'stimulusFallbackModel',
+    label: 'Triage (fallback)', placeholder: 'openai/gpt-4.1-mini',
+    parametersNote: 'These models are appended to the free triage route’s single request, so Triage (free) parameters govern them too.',
+  },
 ];
 for (const f of modelFields) form[f.key] = [''];
+form.routeParameters = emptyRouteParameters();
 form.visionEnabled = true;
 form.containersEnabled = true;
 form.desktopImage = 'omnipotent/projects-desktop:latest';
-const EDITABLE = [...modelFields.map(f => f.key), 'visionEnabled', 'containersEnabled', 'desktopImage'];
+const EDITABLE = [...modelFields.map(f => f.key), 'routeParameters', 'visionEnabled', 'containersEnabled', 'desktopImage'];
+
+// Every route gets a (possibly empty) bag so v-model:parameters always has a target. Empty bags are
+// dropped again on save, which is exactly how the server clears a route back to model defaults.
+function emptyRouteParameters(): Record<string, Record<string, any>> {
+  return Object.fromEntries(modelFields.map(f => [f.route, {}]));
+}
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 const same = (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b);
 function cleanRoutes(value: any, fallback = ''): string[] {
@@ -91,6 +111,9 @@ const invalidRoutes = computed(() => modelFields.some(f =>
 
 function applySettings(s: Record<string, any>) {
   for (const f of modelFields) form[f.key] = cleanRoutes(s[f.key], s[f.legacy]);
+  const saved = s.routeParameters ?? {};
+  form.routeParameters = Object.fromEntries(
+    modelFields.map(f => [f.route, { ...(saved[f.route] ?? {}) }]));
   for (const k of ['visionEnabled', 'containersEnabled', 'desktopImage']) form[k] = s[k];
 }
 
@@ -114,7 +137,12 @@ async function save() {
   try {
     const patch: Record<string, any> = {};
     for (const k of EDITABLE) if (!same(form[k], original.value[k]))
-      patch[k] = k.endsWith('Routes') ? cleanRoutes(form[k]) : form[k];
+      patch[k] = k.endsWith('Routes') ? cleanRoutes(form[k])
+        // Routes with nothing pinned are sent as absent rather than empty, which is how the server
+        // clears a route back to its models' own defaults.
+        : k === 'routeParameters' ? Object.fromEntries(Object.entries(form[k])
+            .filter(([, values]: [string, any]) => values && Object.keys(values).length > 0))
+        : form[k];
     const res = await RequestPOSTFromKliveAPI(updateUrl(), updateBody(patch), false, true);
     if (res.ok) {
       const body = await res.json();

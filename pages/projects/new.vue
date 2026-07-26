@@ -95,8 +95,11 @@
               v-for="f in modelFields"
               :key="f.key"
               v-model="settings[f.key]"
+              v-model:parameters="settings.routeParameters[f.route]"
               :label="f.label"
               :placeholder="f.placeholder"
+              :show-parameters="!('parametersNote' in f)"
+              :parameters-note="'parametersNote' in f ? f.parametersNote : ''"
             />
             <p v-if="!routesValid" class="np-error">Every model route entry must contain a provider/model value.</p>
           </div>
@@ -152,16 +155,21 @@ const form = reactive({
   subAgentCap: 5,
 });
 
+// `route` is the server-side RouteParameters key for the same route the `key` list configures.
 const modelFields = [
-  { key: 'commanderRoutes', legacy: 'commanderModel', label: 'Commander', placeholder: 'anthropic/claude-sonnet-4.5' },
-  { key: 'utilityRoutes', legacy: 'utilityModel', label: 'Utility (digests/reports)', placeholder: 'openai/gpt-4.1-mini' },
-  { key: 'councilRoutes', legacy: 'councilModel', label: 'Council', placeholder: 'anthropic/claude-sonnet-4.5' },
-  { key: 'tierTextRoutes', legacy: 'tierTextModel', label: 'Tier: Text', placeholder: 'openai/gpt-4.1-mini' },
-  { key: 'tierTextImageRoutes', legacy: 'tierTextImageModel', label: 'Tier: Text+Image', placeholder: 'openai/gpt-4.1' },
-  { key: 'tierTextImageVideoRoutes', legacy: 'tierTextImageVideoModel', label: 'Tier: +Video', placeholder: 'anthropic/claude-sonnet-4.5' },
-  { key: 'tierTextImageVideoAudioRoutes', legacy: 'tierTextImageVideoAudioModel', label: 'Tier: +Audio', placeholder: 'google/gemini-2.5-pro' },
-  { key: 'stimulusFreeRoutes', legacy: 'stimulusFreeModel', label: 'Triage (free)', placeholder: 'openai/gpt-4.1-mini' },
-  { key: 'stimulusFallbackRoutes', legacy: 'stimulusFallbackModel', label: 'Triage (fallback)', placeholder: 'openai/gpt-4.1-mini' },
+  { key: 'commanderRoutes', route: 'commander', legacy: 'commanderModel', label: 'Commander', placeholder: 'anthropic/claude-sonnet-4.5' },
+  { key: 'utilityRoutes', route: 'utility', legacy: 'utilityModel', label: 'Utility (digests/reports)', placeholder: 'openai/gpt-4.1-mini' },
+  { key: 'councilRoutes', route: 'council', legacy: 'councilModel', label: 'Council', placeholder: 'anthropic/claude-sonnet-4.5' },
+  { key: 'tierTextRoutes', route: 'tierText', legacy: 'tierTextModel', label: 'Tier: Text', placeholder: 'openai/gpt-4.1-mini' },
+  { key: 'tierTextImageRoutes', route: 'tierTextImage', legacy: 'tierTextImageModel', label: 'Tier: Text+Image', placeholder: 'openai/gpt-4.1' },
+  { key: 'tierTextImageVideoRoutes', route: 'tierTextImageVideo', legacy: 'tierTextImageVideoModel', label: 'Tier: +Video', placeholder: 'anthropic/claude-sonnet-4.5' },
+  { key: 'tierTextImageVideoAudioRoutes', route: 'tierTextImageVideoAudio', legacy: 'tierTextImageVideoAudioModel', label: 'Tier: +Audio', placeholder: 'google/gemini-2.5-pro' },
+  { key: 'stimulusFreeRoutes', route: 'stimulusFree', legacy: 'stimulusFreeModel', label: 'Triage (free)', placeholder: 'openai/gpt-4.1-mini' },
+  {
+    key: 'stimulusFallbackRoutes', route: 'stimulusFallback', legacy: 'stimulusFallbackModel',
+    label: 'Triage (fallback)', placeholder: 'openai/gpt-4.1-mini',
+    parametersNote: 'These models are appended to the free triage route’s single request, so Triage (free) parameters govern them too.',
+  },
 ] as const;
 
 const settings = reactive<Record<string, any>>({
@@ -171,6 +179,8 @@ const settings = reactive<Record<string, any>>({
   commanderRoutes: [''], utilityRoutes: [''], councilRoutes: [''],
   tierTextRoutes: [''], tierTextImageRoutes: [''], tierTextImageVideoRoutes: [''], tierTextImageVideoAudioRoutes: [''],
   stimulusFreeRoutes: [''], stimulusFallbackRoutes: [''],
+  // Per-route sampling parameters; every route gets a bag so v-model:parameters always has a target.
+  routeParameters: Object.fromEntries(modelFields.map(f => [f.route, {} as Record<string, any>])),
 });
 const defaults = ref<Record<string, any>>({});
 
@@ -193,6 +203,8 @@ async function loadDefaults() {
     const d = await res.json();
     defaults.value = d;
     for (const f of modelFields) settings[f.key] = cleanRoutes(d[f.key] ?? [d[f.legacy] ?? f.placeholder]);
+    settings.routeParameters = Object.fromEntries(
+      modelFields.map(f => [f.route, { ...((d.routeParameters ?? {})[f.route] ?? {}) }]));
     settings.visionEnabled = d.visionEnabled ?? true;
     settings.containersEnabled = d.containersEnabled ?? false;
     settings.desktopImage = d.desktopImage ?? 'omnipotent/projects-desktop:latest';
@@ -209,12 +221,21 @@ function cleanRoutes(value: any): string[] {
   });
 }
 
+// Routes with no pinned parameters are dropped rather than sent as empty objects, so the payload
+// carries only what Klives actually configured (and matches what the server stores back).
+function prunedRouteParameters(source: Record<string, any>): Record<string, any> {
+  return Object.fromEntries(Object.entries(source ?? {})
+    .filter(([, values]) => values && Object.keys(values).length > 0));
+}
+
 function changedSettings(): Record<string, any> {
   const patch: Record<string, any> = {};
-  const keys = [...modelFields.map(f => f.key), 'visionEnabled', 'containersEnabled', 'desktopImage'];
+  const keys = [...modelFields.map(f => f.key), 'routeParameters', 'visionEnabled', 'containersEnabled', 'desktopImage'];
   for (const k of keys) {
-    const cur = settings[k];
-    if (defaults.value[k] === undefined || JSON.stringify(cur) !== JSON.stringify(defaults.value[k])) {
+    const cur = k === 'routeParameters' ? prunedRouteParameters(settings[k]) : settings[k];
+    const base = k === 'routeParameters' ? prunedRouteParameters(defaults.value[k]) : defaults.value[k];
+    if (k === 'routeParameters' && Object.keys(cur).length === 0 && Object.keys(base).length === 0) continue;
+    if (base === undefined || JSON.stringify(cur) !== JSON.stringify(base)) {
       if (k.endsWith('Routes')) patch[k] = cleanRoutes(cur);
       else if (cur !== '' && cur !== undefined && cur !== null) patch[k] = cur;
     }

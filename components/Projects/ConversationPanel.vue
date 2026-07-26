@@ -37,6 +37,12 @@
 
     <div v-if="sendError" class="cp-send-error">{{ sendError }} <button class="cp-err-dismiss" @click="sendError = ''">✕</button></div>
     <div class="cp-composer">
+      <button
+        class="cp-kind"
+        :class="{ 'cp-kind-chat': kind === 'steering' }"
+        :title="kindHint"
+        @click="kind = kind === 'steering' ? 'task' : 'steering'"
+      >{{ kind === 'steering' ? 'Chat' : 'Task' }}</button>
       <input
         v-model="draft"
         class="cp-input"
@@ -62,6 +68,13 @@ const emit = defineEmits<{ (e: 'events', events: any[]): void; (e: 'select', ev:
 const events = ref<any[]>([]);
 const pendingGates = ref<any[]>([]);
 const draft = ref('');
+// Every message used to become a durable Task directive, so "continue operations" landed on the
+// Commander's books as a deliverable to acknowledge and complete. Task stays the default (a real
+// request must not be silently downgraded); Chat sends it as one-off steering instead.
+const kind = ref<'task' | 'steering'>('task');
+const kindHint = computed(() => kind.value === 'steering'
+  ? 'Chat: a one-off steer. Open until the Commander answers, then done. Click for Task.'
+  : 'Task: a durable directive that stays on the Commander books until its deliverable is verified. Click for Chat.');
 const sending = ref(false);
 const sendError = ref('');
 const loaded = ref(false);
@@ -147,7 +160,7 @@ async function send() {
   nextTick(() => { if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight; });
   draft.value = '';
   try {
-    const res = await RequestPOSTFromKliveAPI('/projects/message', JSON.stringify({ projectID: props.projectId, text }), false, true);
+    const res = await RequestPOSTFromKliveAPI('/projects/message', JSON.stringify({ projectID: props.projectId, text, kind: kind.value }), false, true);
     if (!res.ok) sendError.value = "Message didn't send. Try again.";
   } catch { sendError.value = "Message didn't send. Try again."; }
   finally { sending.value = false; }
@@ -189,7 +202,10 @@ onBeforeUnmount(() => { if (poll) clearInterval(poll); stream.disconnect(); });
 .cp-send-error { display: flex; justify-content: space-between; align-items: center; background: #3a1717; color: #e08a8a; font-size: 12px; padding: 6px 12px; border-top: 1px solid #5a2424; }
 .cp-err-dismiss { background: none; border: none; color: #e08a8a; cursor: pointer; }
 .cp-composer { display: flex; gap: 8px; padding: 12px; border-top: 1px solid #2a2a2e; }
-.cp-input { flex: 1; background: #1a1a1e; color: #eee; border: 1px solid #333; border-radius: 6px; padding: 10px; }
+.cp-input { flex: 1; min-width: 0; background: #1a1a1e; color: #eee; border: 1px solid #333; border-radius: 6px; padding: 10px; }
+.cp-kind { flex: 0 0 auto; background: #1a1a1e; color: #bbb; border: 1px solid #333; border-radius: 6px; padding: 10px 12px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.cp-kind:hover { border-color: #555; }
+.cp-kind-chat { color: #7fb0d9; border-color: #3d5a70; }
 .cp-send { background: #4d9e39; color: #fff; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: 600; }
 .cp-send:disabled { opacity: 0.5; cursor: default; }
 </style>

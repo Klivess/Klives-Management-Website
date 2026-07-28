@@ -1,61 +1,65 @@
 <template>
   <div class="conversation-panel">
-    <div class="cp-events" ref="scrollEl">
-      <div
-        v-for="e in visibleEvents" :key="e.eventID"
-        class="cp-event" :class="'a-' + e.author"
-        @click="$emit('select', e)"
-      >
-        <div class="cp-meta">
-          <span class="cp-who">{{ whoLabel(e) }}</span>
-          <span class="cp-type">{{ e.type }}</span>
-          <span class="cp-time">{{ time(e.timestamp) }}</span>
+    <div class="cp-events" ref="scrollEl" @scroll.passive="onScroll">
+      <!-- Everything lives in one measurable wrapper so a ResizeObserver can see the list grow when
+           a screenshot finishes loading, long after its event was appended. -->
+      <div class="cp-inner" ref="innerEl">
+        <div
+          v-for="e in visibleEvents" :key="e.eventID"
+          class="cp-event" :class="'a-' + e.author"
+          @click="$emit('select', e)"
+        >
+          <div class="cp-meta">
+            <span class="cp-who">{{ whoLabel(e) }}</span>
+            <span class="cp-type">{{ e.type }}</span>
+            <span class="cp-time">{{ time(e.timestamp) }}</span>
+          </div>
+          <div v-if="e.type === 'tool-call' || e.type === 'tool-result'" class="cp-tool">
+            <code>{{ e.toolName }}</code> {{ e.text }}
+          </div>
+          <div v-else class="cp-text">{{ e.text }}</div>
+          <!-- A single computer action can return several frames; row them up so a multi-frame result
+               costs one thumbnail of height, not one per frame. -->
+          <div v-if="(e.artifactIDs || []).length" class="cp-shots">
+            <ProjectsArtifactImage
+              v-for="id in e.artifactIDs"
+              :key="id"
+              :project-id="projectId"
+              :artifact-id="id"
+              thumb
+            />
+          </div>
         </div>
-        <div v-if="e.type === 'tool-call' || e.type === 'tool-result'" class="cp-tool">
-          <code>{{ e.toolName }}</code> {{ e.text }}
-        </div>
-        <div v-else class="cp-text">{{ e.text }}</div>
-        <!-- A single computer action can return several frames; row them up so a multi-frame result
-             costs one thumbnail of height, not one per frame. -->
-        <div v-if="(e.artifactIDs || []).length" class="cp-shots">
-          <ProjectsArtifactImage
-            v-for="id in e.artifactIDs"
-            :key="id"
-            :project-id="projectId"
-            :artifact-id="id"
-            thumb
-          />
-        </div>
-      </div>
 
-      <ApprovalCard
-        v-for="g in pendingGates"
-        :key="g.gateID"
-        :gate="g"
-        @resolve="onResolve"
-      />
+        <ApprovalCard
+          v-for="g in pendingGates"
+          :key="g.gateID"
+          :gate="g"
+          @resolve="onResolve"
+        />
 
-      <div v-if="loaded && !visibleEvents.length && !pendingGates.length && !liveAgents.length" class="cp-empty">
-        No conversation yet. Say hello to the Commander, or wait for it to report in.
-      </div>
-
-      <!-- Who is mid-turn right now. An agent can spend minutes on one turn, and nothing is written
-           to the event log until it finishes — this is the only window into that gap. -->
-      <div
-        v-for="a in liveAgents" :key="a.agentID"
-        class="cp-live" :class="'a-' + (a.agentID === 'commander' ? 'commander' : 'agent')"
-      >
-        <div class="cp-live-head">
-          <span class="cp-live-dot" :class="'ph-' + a.phase"></span>
-          <span class="cp-who">{{ agentLabel(a) }}</span>
-          <span class="cp-live-phase">{{ phaseLabel(a) }}<span class="cp-ellipsis">…</span></span>
-          <code v-if="a.toolName" class="cp-live-tool">{{ a.toolName }}</code>
-          <span class="cp-live-spacer"></span>
-          <span v-if="a.model" class="cp-live-model">{{ shortModel(a.model) }}</span>
-          <span class="cp-live-elapsed">{{ elapsed(a) }}</span>
+        <div v-if="loaded && !visibleEvents.length && !pendingGates.length && !liveAgents.length" class="cp-empty">
+          No conversation yet. Say hello to the Commander, or wait for it to report in.
         </div>
-        <div v-if="a.phase === 'writing' && a.preview" class="cp-live-preview">{{ a.preview }}</div>
-        <div v-else-if="a.detail" class="cp-live-detail">{{ toolArgs(a) }}</div>
+
+        <!-- Who is mid-turn right now. An agent can spend minutes on one turn, and nothing is written
+             to the event log until it finishes — this is the only window into that gap. -->
+        <div
+          v-for="a in liveAgents" :key="a.agentID"
+          class="cp-live" :class="'a-' + (a.agentID === 'commander' ? 'commander' : 'agent')"
+        >
+          <div class="cp-live-head">
+            <span class="cp-live-dot" :class="'ph-' + a.phase"></span>
+            <span class="cp-who">{{ agentLabel(a) }}</span>
+            <span class="cp-live-phase">{{ phaseLabel(a) }}<span class="cp-ellipsis">…</span></span>
+            <code v-if="a.toolName" class="cp-live-tool">{{ a.toolName }}</code>
+            <span class="cp-live-spacer"></span>
+            <span v-if="a.model" class="cp-live-model">{{ shortModel(a.model) }}</span>
+            <span class="cp-live-elapsed">{{ elapsed(a) }}</span>
+          </div>
+          <div v-if="a.phase === 'writing' && a.preview" class="cp-live-preview">{{ a.preview }}</div>
+          <div v-else-if="a.detail" class="cp-live-detail">{{ toolArgs(a) }}</div>
+        </div>
       </div>
     </div>
 
@@ -103,6 +107,7 @@ const sending = ref(false);
 const sendError = ref('');
 const loaded = ref(false);
 const scrollEl = ref<HTMLElement | null>(null);
+const innerEl = ref<HTMLElement | null>(null);
 const since = ref(0);
 const seenSeqs = new Set<number>();
 let poll: ReturnType<typeof setInterval> | null = null;
@@ -114,6 +119,7 @@ const activity = ref<Record<string, any>>({});
 // Ticks once a second purely so the elapsed time in each indicator counts up.
 const now = ref(Date.now());
 let clock: ReturnType<typeof setInterval> | null = null;
+let ro: ResizeObserver | null = null;
 
 // Live server-push (Phase 3): the WebSocket streams new events after the initial backlog load, so
 // the conversation updates the instant the Commander acts. The slow poll below is only a safety net.
@@ -165,14 +171,35 @@ function elapsed(a: any) {
   return secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`;
 }
 
-// An indicator appearing/disappearing changes the list height; follow it only when the reader is
-// already at the bottom, so scrolling back through history is never yanked away. Deliberately not
-// watching the preview text — that updates several times a second.
-watch(() => liveAgents.value.length, () => {
+// Following the bottom is a STATE, not a one-shot scroll after each append. Screenshot thumbnails
+// fetch their blob after their event has already been laid out, so a scroll issued on nextTick lands
+// against a 40px "loading…" skeleton and is left stranded mid-history once the 180px image appears.
+// `stick` stays true until the reader deliberately scrolls up, and every height change re-pins.
+const stick = ref(true);
+// Slack big enough to survive a rounding/zoom fraction, small enough that scrolling up one message
+// counts as leaving the bottom.
+const STICK_SLACK = 120;
+
+function onScroll() {
   const el = scrollEl.value;
-  if (!el || el.scrollHeight - el.scrollTop - el.clientHeight > 120) return;
-  nextTick(() => { if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight; });
-});
+  if (el) stick.value = el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_SLACK;
+}
+
+// force: for actions the reader just took (sending a message) — jump back to the bottom even if they
+// had scrolled away.
+function pinToBottom(force = false) {
+  if (force) stick.value = true;
+  if (!stick.value) return;
+  nextTick(() => {
+    const el = scrollEl.value;
+    if (el) el.scrollTop = el.scrollHeight;
+  });
+}
+
+// An indicator appearing/disappearing changes the list height; the pin above only follows it when the
+// reader is already at the bottom, so scrolling back through history is never yanked away.
+// Deliberately not watching the preview text — that updates several times a second.
+watch(() => liveAgents.value.length, () => pinToBottom());
 
 async function loadActivity() {
   try {
@@ -203,7 +230,7 @@ function appendEvents(batch: any[]) {
   }
   if (added) {
     emit('events', events.value);
-    nextTick(() => { if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight; });
+    pinToBottom();
   }
 }
 
@@ -251,7 +278,7 @@ async function send() {
   // Optimistic echo: show the message instantly; the authoritative event replaces it on arrival.
   events.value.push({ type: 'klives-message', author: 'klives', text, timestamp: new Date().toISOString(), _optimistic: true });
   emit('events', events.value);
-  nextTick(() => { if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight; });
+  pinToBottom(true);
   draft.value = '';
   try {
     const res = await RequestPOSTFromKliveAPI('/projects/message', JSON.stringify({ projectID: props.projectId, text, kind: kind.value }), false, true);
@@ -267,6 +294,16 @@ async function onResolve(gateID: string, decision: string, comment: string) {
 }
 
 onMounted(async () => {
+  // The only reliable signal that a screenshot has finished loading and grown its row. Runs after
+  // layout, so scrollTop is set directly rather than on nextTick.
+  if (innerEl.value && typeof ResizeObserver !== 'undefined') {
+    ro = new ResizeObserver(() => {
+      if (!stick.value) return;
+      const el = scrollEl.value;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(innerEl.value);
+  }
   // Initial backlog over HTTP (most-recent events; sets the cursor), then live push takes over.
   await loadEvents(true);
   loaded.value = true;
@@ -282,13 +319,15 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   if (poll) clearInterval(poll);
   if (clock) clearInterval(clock);
+  if (ro) ro.disconnect();
   stream.disconnect();
 });
 </script>
 
 <style scoped>
 .conversation-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.cp-events { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.cp-events { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.cp-inner { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 .cp-event { min-width: 0; padding: 8px 12px; border-radius: 8px; background: #1c1c20; border-left: 3px solid #444; cursor: pointer; transition: background 0.1s; }
 .cp-event:hover { background: #22222a; }
 .a-klives { border-left-color: #7fb0d9; }

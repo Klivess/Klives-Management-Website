@@ -57,7 +57,13 @@
             <ProjectsTimeline v-show="tab === 'timeline'" :events="events" :agent-labels="agentLabels" @select="selectEvent" />
             <ProjectsAnalyticsDashboard v-if="tab === 'analytics'" :project-id="projectId" />
             <ProjectsFilesPanel v-if="tab === 'files'" :project-id="projectId" :status="project.status" />
-            <ProjectsGrandPlanPanel v-if="tab === 'plan'" :project-id="projectId" :grand-plan="grandPlan" />
+            <!-- The Grand Plan is the north star; the step ledger is the linear path being walked toward
+                 it right now. They belong together rather than in separate tabs. -->
+            <template v-if="tab === 'plan'">
+              <ProjectsStepsPanel :project-id="projectId" />
+              <hr class="plan-divider" />
+              <ProjectsGrandPlanPanel :project-id="projectId" :grand-plan="grandPlan" />
+            </template>
             <ProjectsCouncilsPanel v-if="tab === 'councils'" :project-id="projectId" :councils="councils" />
             <ProjectsLiveDesktopWall v-if="tab === 'desktops'" :project-id="projectId" />
             <ProjectsAgentsPanel v-if="tab === 'agents'" :project-id="projectId" @watch="watchDesktop" />
@@ -171,6 +177,7 @@ import ProjectsObservablesPanel from '~/components/Projects/ObservablesPanel.vue
 import ProjectsObservableSparkline from '~/components/Projects/ObservableSparkline.vue';
 import ProjectsCouncilsPanel from '~/components/Projects/CouncilsPanel.vue';
 import ProjectsGrandPlanPanel from '~/components/Projects/GrandPlanPanel.vue';
+import ProjectsStepsPanel from '~/components/Projects/StepsPanel.vue';
 import ProjectsHooksPanel from '~/components/Projects/HooksPanel.vue';
 import ProjectsSettingsPanel from '~/components/Projects/SettingsPanel.vue';
 import ProjectsStatusPill from '~/components/Projects/StatusPill.vue';
@@ -403,6 +410,7 @@ onBeforeUnmount(() => {
 .pw-tabs button.active { color: #fff; border-bottom-color: #4d9e39; }
 .tab-dot { position: absolute; top: 6px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: #d9b872; }
 .panel-conversation { height: clamp(420px, calc(100vh - 250px), 760px); background: #161519; border-radius: 8px; overflow: hidden; }
+.plan-divider { border: none; border-top: 1px solid #2a2a2e; margin: 24px 0; }
 .pw-side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 16px; }
 .side-card { background: #161519; border-radius: 8px; padding: 14px; }
 .side-card-head { display: flex; justify-content: space-between; align-items: center; }

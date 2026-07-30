@@ -121,6 +121,9 @@ export default {
     deployOptions() { return this.selectedGameObj.deployOptions || []; },
     defaultPort() { return this.selectedGameObj.defaultPort || 25565; },
     flavorHint() {
+      if (this.selectedGame === 'Rust') {
+        return 'The official Facepunch dedicated server. KliveGames installs the latest stable build through SteamCMD and manages both UDP game ports.';
+      }
       if (this.selectedGame === 'Terraria') {
         return this.selectedFlavor === 'TModLoader'
           ? 'Modded Terraria via tModLoader. Upload .tmod files to the Mods/ folder after deploy.'

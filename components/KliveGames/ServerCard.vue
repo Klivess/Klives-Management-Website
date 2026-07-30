@@ -4,7 +4,7 @@
       <div class="card-icon">{{ flavorIcon }}</div>
       <div class="card-id">
         <h3 class="card-name">{{ server.Name }}</h3>
-        <span class="card-meta">{{ server.Flavor }} · {{ server.Version }}</span>
+        <span class="card-meta">{{ server.GameType }} · {{ server.Flavor }} · {{ server.Version }}</span>
       </div>
       <span class="badge" :style="{ background: statusColor + '22', color: statusColor, borderColor: statusColor + '55' }">
         <span class="dot" :style="{ background: statusColor }"></span>{{ server.Status }}
@@ -49,6 +49,7 @@ export default {
       }
     },
     flavorIcon() {
+      if (this.server.GameType === 'Rust') return '☢';
       if (this.server.GameType === 'Terraria') return this.server.Flavor === 'TModLoader' ? '🔧' : '🌳';
       switch (this.server.Flavor) {
         case 'Paper': return '📄';

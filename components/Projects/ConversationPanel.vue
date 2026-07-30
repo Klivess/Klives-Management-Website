@@ -64,13 +64,14 @@
     </div>
 
     <div v-if="sendError" class="cp-send-error">{{ sendError }} <button class="cp-err-dismiss" @click="sendError = ''">✕</button></div>
+    <div v-if="promotionNotice" class="cp-promoted">{{ promotionNotice }} <button class="cp-err-dismiss" @click="promotionNotice = ''">✕</button></div>
     <div class="cp-composer">
       <button
         class="cp-kind"
-        :class="{ 'cp-kind-chat': kind === 'steering' }"
+        :class="{ 'cp-kind-chat': kind === 'steering', 'cp-kind-rule': kind === 'rule' }"
         :title="kindHint"
-        @click="kind = kind === 'steering' ? 'task' : 'steering'"
-      >{{ kind === 'steering' ? 'Chat' : 'Task' }}</button>
+        @click="cycleKind"
+      >{{ kindLabel }}</button>
       <input
         v-model="draft"
         class="cp-input"
@@ -98,11 +99,20 @@ const pendingGates = ref<any[]>([]);
 const draft = ref('');
 // Every message used to become a durable Task directive, so "continue operations" landed on the
 // Commander's books as a deliverable to acknowledge and complete. Task stays the default (a real
-// request must not be silently downgraded); Chat sends it as one-off steering instead.
-const kind = ref<'task' | 'steering'>('task');
+// request must not be silently downgraded); Chat sends it as one-off steering instead; Rule sends it as
+// standing policy that no acknowledgement discharges. Constraint-shaped messages are detected and
+// promoted to Rule automatically, so this cycle is for when you want to be explicit.
+const kind = ref<'task' | 'steering' | 'rule'>('task');
+const kindLabel = computed(() => kind.value === 'steering' ? 'Chat' : kind.value === 'rule' ? 'Rule' : 'Task');
 const kindHint = computed(() => kind.value === 'steering'
-  ? 'Chat: a one-off steer. Open until the Commander answers, then done. Click for Task.'
-  : 'Task: a durable directive that stays on the Commander books until its deliverable is verified. Click for Chat.');
+  ? 'Chat: a one-off steer. Stays in force after the Commander answers, then ages out. Click for Rule.'
+  : kind.value === 'rule'
+    ? 'Rule: standing policy for every agent. Nothing discharges it but you. Click for Task.'
+    : 'Task: a durable directive that stays on the Commander books until its deliverable is verified. Click for Chat.');
+function cycleKind() {
+  kind.value = kind.value === 'task' ? 'steering' : kind.value === 'steering' ? 'rule' : 'task';
+}
+const promotionNotice = ref('');
 const sending = ref(false);
 const sendError = ref('');
 const loaded = ref(false);
@@ -282,7 +292,16 @@ async function send() {
   draft.value = '';
   try {
     const res = await RequestPOSTFromKliveAPI('/projects/message', JSON.stringify({ projectID: props.projectId, text, kind: kind.value }), false, true);
-    if (!res.ok) sendError.value = "Message didn't send. Try again.";
+    if (!res.ok) { sendError.value = "Message didn't send. Try again."; return; }
+    // A constraint sent as Task or Chat is saved as a standing rule instead, because neither of those
+    // survives being answered. Say so — an over-eager promotion should be visible and revocable, not silent.
+    try {
+      const receipt = (await res.json())?.receipt;
+      if (receipt?.promotedToRule) {
+        promotionNotice.value = 'Saved as a standing rule — it stays in force until you revoke it from the Memory panel.';
+        setTimeout(() => { promotionNotice.value = ''; }, 9000);
+      }
+    } catch { /* the message landed; the notice is a nicety */ }
   } catch { sendError.value = "Message didn't send. Try again."; }
   finally { sending.value = false; }
 }
@@ -374,6 +393,9 @@ onBeforeUnmount(() => {
 .cp-kind { flex: 0 0 auto; background: #1a1a1e; color: #bbb; border: 1px solid #333; border-radius: 6px; padding: 10px 12px; cursor: pointer; font-size: 12px; font-weight: 600; }
 .cp-kind:hover { border-color: #555; }
 .cp-kind-chat { color: #7fb0d9; border-color: #3d5a70; }
+.cp-kind-rule { color: #d9b872; border-color: #6b5526; }
+.cp-promoted { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #2a2413; color: #d9c48a; font-size: 12px; padding: 6px 12px; border-top: 1px solid #5a4a24; }
+.cp-promoted .cp-err-dismiss { color: #d9c48a; }
 .cp-send { background: #4d9e39; color: #fff; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: 600; }
 .cp-send:disabled { opacity: 0.5; cursor: default; }
 </style>

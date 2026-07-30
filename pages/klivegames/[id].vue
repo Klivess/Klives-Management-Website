@@ -4,7 +4,7 @@
       <button class="back" @click="$router.push('/klivegames')">‹ Servers</button>
       <div class="d-id">
         <h1>{{ server.Name }}</h1>
-        <span class="d-meta">{{ server.Flavor }} · {{ server.Version }} · port {{ server.Port }}</span>
+        <span class="d-meta">{{ server.GameType }} · {{ server.Flavor }} · {{ server.Version }} · port {{ server.Port }}</span>
       </div>
       <span class="badge" :style="{ background: statusColor + '22', color: statusColor, borderColor: statusColor + '55' }">
         <span class="dot" :style="{ background: statusColor }"></span>{{ server.Status }}
@@ -44,7 +44,7 @@
         <div class="set-row">
           <label>Public Access</label>
           <div class="set-inline">
-            <label class="toggle"><input type="checkbox" :checked="server.Public" @change="setPublic($event.target.checked)" /> Forward port {{ server.Port }} via UPnP</label>
+            <label class="toggle"><input type="checkbox" :checked="server.Public" @change="setPublic($event.target.checked)" /> Forward {{ publicPortLabel }} via UPnP</label>
           </div>
           <p v-if="netMsg" class="muted">{{ netMsg }}</p>
         </div>
@@ -77,6 +77,12 @@ export default {
   computed: {
     canStart() { return this.server && ['Stopped', 'Crashed'].includes(this.server.Status); },
     canStop() { return this.server && ['Running', 'Starting', 'Stalled', 'Stopping'].includes(this.server.Status); },
+    publicPortLabel() {
+      if (!this.server) return 'server ports';
+      return this.server.GameType === 'Rust'
+        ? `UDP ports ${this.server.Port} and ${this.server.Port + 1}`
+        : `TCP port ${this.server.Port}`;
+    },
     statusColor() {
       switch (this.server && this.server.Status) {
         case 'Running': return '#4d9e39';

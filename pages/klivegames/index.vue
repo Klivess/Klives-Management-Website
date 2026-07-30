@@ -13,7 +13,7 @@
     <div v-else-if="servers.length === 0" class="kg-empty">
       <div class="kg-empty-icon">⛏</div>
       <h3>No servers yet</h3>
-      <p>Deploy your first Minecraft server in seconds.</p>
+      <p>Deploy your first game server in seconds.</p>
       <button class="kg-btn kg-btn-primary" @click="showWizard = true">Deploy a Server</button>
     </div>
 

@@ -37,7 +37,11 @@
                            :loading="loading && !view" foot="exposure — excluded from value" />
             <OmniTraderKpi label="Unrealized" :tone="valueTone(view?.UnrealizedPnL)"
                            :value="fmtSigned(view?.UnrealizedPnL, currency)" :loading="loading && !view"
-                           :foot="`across ${view?.Lines?.length ?? 0} position(s)`" />
+                           :foot="`across ${view?.Real?.Positions ?? 0} real position(s)`" />
+            <OmniTraderKpi label="Simulated" :value="fmtMoney(view?.Simulated?.TotalValue, currency)"
+                           :loading="loading && !view" tone="info"
+                           :foot="`${view?.Simulated?.Positions ?? 0} paper position(s) — not firm value`"
+                           help="Paper and demo balances. Excluded from every real figure on this page, because they are not money." />
         </div>
 
         <OmniTraderCard title="Value by venue" question="Where is the money held, and how has that moved?"
@@ -74,7 +78,10 @@
                     <template #cell-Venue="{ row }">
                         <span class="cellstack">
                             <span class="ot-chip" :class="envClass(row.Environment)">{{ row.Environment }}</span>
-                            <span class="sub">{{ row.Venue }}</span>
+                            <span class="sub">
+                                {{ row.Venue }}
+                                <template v-if="row.Environment !== 'Live'"> · simulated</template>
+                            </span>
                         </span>
                     </template>
                     <template #cell-Exposure="{ row }">
@@ -138,7 +145,8 @@
         </div>
 
         <div class="ot-grid two" style="margin-top:16px">
-            <OmniTraderCard title="Reconciliation" :question="`Last run ${fmtAgo(reconciliation?.LastRunUtc)}`" flush
+            <OmniTraderCard title="Reconciliation"
+                            :question="`Last run ${fmtAgo(reconciliation?.LastRunUtc)} — holdings the platform did not trade are adopted, not flagged`" flush
                             :empty="!reconciliation?.OpenBreaks?.length" empty-kind="ok"
                             empty-title="Internal and broker state agree"
                             empty-text="No open differences.">

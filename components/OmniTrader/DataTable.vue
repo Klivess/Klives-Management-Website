@@ -27,7 +27,7 @@
             <span class="count">{{ countText }}</span>
         </div>
 
-        <div class="ot-tablewrap" :style="maxHeight ? { maxHeight } : undefined">
+        <div class="ot-tablewrap" :style="{ maxHeight: effectiveMaxHeight }">
             <table class="ot-table" :class="{ pinned }">
                 <thead>
                     <tr>
@@ -111,6 +111,7 @@ const props = withDefaults(defineProps<{
     selectedKey?: string | null;
     rowClass?: (row: any) => string;
     pinned?: boolean;
+    /** Overrides the default cap. Pass `none` for a table that genuinely must not scroll. */
     maxHeight?: string;
     /** Rows the server matched, when the caller already filtered. Shown alongside the total. */
     serverFiltered?: number;
@@ -149,6 +150,15 @@ function toggleColumn(key: string) {
     if (next.has(key)) next.delete(key); else next.add(key);
     hidden.value = next;
 }
+
+// No table grows without bound. A list that runs off the bottom of the page forever
+// stops being readable long before it stops rendering, and it takes the rest of the
+// page's structure with it.
+const effectiveMaxHeight = computed(() => {
+    if (props.maxHeight === 'none') return undefined;
+    if (props.maxHeight) return props.maxHeight;
+    return props.bare ? '340px' : '560px';
+});
 
 function keyOf(row: any): string {
     return props.rowKey ? props.rowKey(row) : String(row.Id ?? row.id ?? JSON.stringify(row));
@@ -234,6 +244,8 @@ watch([filtered, pageSize], () => { page.value = 0; });
 .colmenu summary::-webkit-details-marker { display: none; }
 .colmenu .menu {
     position: absolute;
+    max-height: 320px;
+    overflow-y: auto;
     top: calc(100% + 4px);
     left: 0;
     z-index: var(--ot-z-popover);

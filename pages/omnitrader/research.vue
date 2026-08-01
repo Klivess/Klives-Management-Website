@@ -31,19 +31,47 @@
 
         <div class="ot-grid sidebar">
             <div class="ot-stack">
-                <OmniTraderCard title="Backtest jobs" question="Click a job for its full result" flush
-                                :loading="loading" :empty="!jobs.length"
+                <!-- Grouped by strategy: fifty runs of the same idea is one line of enquiry, not
+                     fifty unrelated rows, and the group header answers "did this strategy ever
+                     work?" without opening any of them. -->
+                <OmniTraderCard title="Backtest jobs" question="Grouped by strategy — click a job for its full result"
+                                flush :loading="loading" :empty="!jobs.length"
                                 empty-title="No backtests yet"
                                 empty-text="Queue one from the panel on the right.">
-                    <OmniTraderDataTable :rows="jobs" :columns="jobColumns" label="jobs" selectable
-                                         :row-key="j => j.Id" :selected-key="selectedJob?.Id ?? null"
-                                         default-sort="QueuedUtc" search-placeholder="Filter jobs…"
-                                         :row-class="j => j.Status === 'Failed' ? 'attention' : ''"
-                                         @select="openJob($event)">
+                    <template #controls>
+                        <button class="ot-btn ghost sm" @click="toggleAllGroups">
+                            {{ allExpanded ? 'Collapse all' : 'Expand all' }}
+                        </button>
+                    </template>
+
+                    <div v-for="group in jobGroups" :key="group.strategy" class="jobgroup">
+                        <button class="grouphead" :aria-expanded="isOpen(group.strategy)"
+                                @click="toggleGroup(group.strategy)">
+                            <span class="caret" aria-hidden="true">{{ isOpen(group.strategy) ? '▾' : '▸' }}</span>
+                            <span class="name">{{ group.strategy }}</span>
+                            <span class="ot-chip">{{ group.jobs.length }} run{{ group.jobs.length === 1 ? '' : 's' }}</span>
+                            <span v-if="group.running" class="ot-chip info">{{ group.running }} running</span>
+                            <span v-if="group.failed" class="ot-chip bad">{{ group.failed }} failed</span>
+                            <span class="spacer"></span>
+                            <span class="stat">
+                                best <b :class="signTone(group.bestReturn)">{{ group.bestReturn === null ? '—' : fmtSignedPct(group.bestReturn) }}</b>
+                            </span>
+                            <span class="stat">
+                                Sharpe <b>{{ group.bestSharpe === null ? '—' : group.bestSharpe.toFixed(2) }}</b>
+                            </span>
+                            <span class="stat muted">{{ fmtAgo(group.lastRun) }}</span>
+                        </button>
+
+                        <OmniTraderDataTable v-if="isOpen(group.strategy)" :rows="group.jobs" :columns="jobColumns"
+                                             label="jobs" selectable bare max-height="none"
+                                             :row-key="j => j.Id" :selected-key="selectedJob?.Id ?? null"
+                                             default-sort="QueuedUtc"
+                                             :row-class="j => j.Status === 'Failed' ? 'attention' : ''"
+                                             @select="openJob($event)">
                         <template #cell-StrategyClass="{ row }">
                             <span class="cellstack">
-                                <span>{{ row.StrategyClass }}</span>
-                                <span class="sub">{{ row.Coin }}{{ row.Currency }} · {{ row.Interval }} · {{ row.CandleCount }} bars</span>
+                                <span>{{ row.Coin }}{{ row.Currency }} · {{ row.Interval }}</span>
+                                <span class="sub">{{ row.CandleCount }} bars · queued {{ fmtAgo(row.QueuedUtc) }}</span>
                             </span>
                         </template>
                         <template #cell-Status="{ row }">
@@ -67,7 +95,8 @@
                             <button v-else-if="row.Status === 'Running' || row.Status === 'Queued'"
                                     class="ot-btn sm danger" :disabled="busy" @click.stop="cancelJob(row)">Cancel</button>
                         </template>
-                    </OmniTraderDataTable>
+                        </OmniTraderDataTable>
+                    </div>
                 </OmniTraderCard>
 
                 <OmniTraderCard title="Experiments" question="Hypothesis → evidence → promotion" flush
@@ -229,7 +258,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import Swal from 'sweetalert2';
 import {
-    useOmniTrader, fmtSignedPct, fmtPct, fmtNum, fmtDay, seriesColour, SWAL_THEME,
+    useOmniTrader, fmtSignedPct, fmtPct, fmtNum, fmtDay, fmtAgo, signTone, seriesColour, SWAL_THEME,
 } from '~/composables/useOmniTrader';
 import type { TableColumn } from '~/components/OmniTrader/DataTable.vue';
 
@@ -257,7 +286,7 @@ const btForm = reactive({
 const expForm = reactive({ name: '', strategyClass: '', hypothesis: '' });
 
 const jobColumns: TableColumn[] = [
-    { key: 'StrategyClass', label: 'Strategy', width: '230px' },
+    { key: 'StrategyClass', label: 'Market', width: '200px' },
     { key: 'Status', label: 'Status', width: '150px' },
     { key: 'TotalPnLPercent', label: 'Return', num: true },
     { key: 'SharpeRatio', label: 'Sharpe', num: true },
@@ -277,6 +306,47 @@ const experimentColumns: TableColumn[] = [
 ];
 
 const runningJobs = computed(() => jobs.value.filter(j => j.Status === 'Running' || j.Status === 'Queued').length);
+
+const openGroups = ref<Set<string>>(new Set());
+const jobGroups = computed(() => {
+    const groups = new Map<string, any[]>();
+    for (const job of jobs.value) {
+        const key = job.StrategyClass ?? 'unknown';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(job);
+    }
+    return [...groups.entries()]
+        .map(([strategy, list]) => {
+            const returns = list.map(j => j.TotalPnLPercent).filter(v => v !== null && v !== undefined) as number[];
+            const sharpes = list.map(j => j.SharpeRatio).filter(v => v !== null && v !== undefined) as number[];
+            return {
+                strategy,
+                jobs: list,
+                running: list.filter(j => j.Status === 'Running' || j.Status === 'Queued').length,
+                failed: list.filter(j => j.Status === 'Failed').length,
+                bestReturn: returns.length ? Math.max(...returns) : null,
+                bestSharpe: sharpes.length ? Math.max(...sharpes) : null,
+                lastRun: list.map(j => j.QueuedUtc).sort().reverse()[0] ?? null,
+            };
+        })
+        // Whatever is running now outranks whatever performed best historically.
+        .sort((a, b) => (b.running - a.running) || (b.jobs.length - a.jobs.length));
+});
+
+const allExpanded = computed(() =>
+    jobGroups.value.length > 0 && jobGroups.value.every(g => openGroups.value.has(g.strategy)));
+
+function isOpen(strategy: string) { return openGroups.value.has(strategy); }
+
+function toggleGroup(strategy: string) {
+    const next = new Set(openGroups.value);
+    if (!next.delete(strategy)) next.add(strategy);
+    openGroups.value = next;
+}
+
+function toggleAllGroups() {
+    openGroups.value = allExpanded.value ? new Set() : new Set(jobGroups.value.map(g => g.strategy));
+}
 const completeExperiments = computed(() => experiments.value.filter(e => e.Status === 'Complete').length);
 const bestSharpe = computed(() => {
     const values = jobs.value.map(j => j.SharpeRatio).filter(s => s !== null && s !== undefined) as number[];
@@ -311,6 +381,14 @@ async function loadAll() {
         strategies.value = s;
         jobs.value = j;
         experiments.value = e;
+
+        // Open whatever is running — or the only group, if there is only one — so the page is
+        // useful on arrival without hiding everything behind a click.
+        if (!openGroups.value.size) {
+            const busyGroups = jobGroups.value.filter(g => g.running > 0).map(g => g.strategy);
+            openGroups.value = new Set(busyGroups.length ? busyGroups
+                : jobGroups.value.length === 1 ? [jobGroups.value[0].strategy] : []);
+        }
     } catch (e: any) {
         Swal.fire({ title: 'Load failed', text: e?.message, icon: 'error', ...SWAL_THEME });
     } finally { loading.value = false; }
@@ -391,3 +469,27 @@ async function attach(job: any) {
 
 onMounted(loadAll);
 </script>
+
+<style scoped>
+.jobgroup + .jobgroup { border-top: 1px solid var(--ot-line); }
+.grouphead {
+    display: flex;
+    align-items: center;
+    gap: var(--ot-space-2);
+    width: 100%;
+    padding: var(--ot-space-2) var(--ot-card-pad);
+    background: transparent;
+    border: 0;
+    color: inherit;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+}
+.grouphead:hover { background: var(--ot-surface-3); }
+.grouphead .caret { color: var(--ot-muted); width: 12px; }
+.grouphead .name { font-weight: 600; }
+.grouphead .spacer { flex: 1 1 auto; }
+.grouphead .stat { font-size: 11.5px; color: var(--ot-muted); font-family: var(--ot-mono); white-space: nowrap; }
+.grouphead .stat b { color: var(--ot-text); font-weight: 600; }
+</style>

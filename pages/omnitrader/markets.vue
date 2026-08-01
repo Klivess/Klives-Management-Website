@@ -75,13 +75,13 @@
                             empty-title="Nothing to evaluate"
                             empty-text="Add instruments to this watchlist to see market context.">
                 <template #controls>
-                    <span class="ot-chip">click a row for detail</span>
+                    <span class="ot-chip">click a row to open its chart</span>
                 </template>
                 <OmniTraderDataTable :rows="rows" :columns="columns" label="instruments" pinned selectable
-                                     :row-key="r => r.InstrumentId" :selected-key="selected?.InstrumentId ?? null"
+                                     :row-key="r => r.InstrumentId" 
                                      default-sort="MomentumScore" search-placeholder="Filter instruments…"
                                      :row-class="r => r.Stale ? 'attention' : ''"
-                                     @select="selected = $event">
+                                     @select="openInstrument($event.InstrumentId)">
                     <template #cell-DisplayName="{ row }">
                         <span class="cellstack">
                             <span>{{ row.DisplayName }}</span>
@@ -139,7 +139,7 @@
                 <OmniTraderCard title="Momentum leaders" question="Which instruments are moving hardest?">
                     <OmniTraderBarList :items="momentumBars" :format="v => v.toFixed(1)" :limit="10"
                                        empty-title="Nothing evaluated yet"
-                                       :on-select="key => selectByKey(key)" />
+                                       :on-select="openInstrument" />
                 </OmniTraderCard>
 
                 <OmniTraderCard title="Regime mix" question="Is this a trending tape or a chopping one?">
@@ -158,47 +158,6 @@
             </div>
         </div>
 
-        <!-- Instrument detail: inspect without losing the table's position or sort. -->
-        <OmniTraderDrawer :open="!!selected" :title="selected?.DisplayName ?? ''"
-                          :subtitle="selected?.InstrumentId" @close="selected = null">
-            <template v-if="selected">
-                <OmniTraderLineChart v-if="selected.Spark?.length > 1" :series="detailSeries" :height="180"
-                                     :format="v => fmtNum(v, 6)" x-label="Bar" />
-                <h4 class="ot-sectionhead" style="margin-top:16px">Market state</h4>
-                <dl class="ot-kv">
-                    <dt>Price</dt>
-                    <dd :class="{ 'ot-stale': selected.Stale }" :title="selected.DataIssue ?? ''">
-                        {{ fmtNum(selected.Price, 6) }}
-                    </dd>
-                    <dt>24h change</dt>
-                    <dd :class="selected.ChangePercent24h >= 0 ? 'pos' : 'neg'">{{ fmtSignedPct(selected.ChangePercent24h) }}</dd>
-                    <dt>Regime</dt>
-                    <dd>{{ regimeLabel(selected.Regime) }} ({{ (selected.RegimeConfidence * 100).toFixed(0) }}%)</dd>
-                    <dt>Momentum</dt><dd>{{ fmtNum(selected.MomentumScore, 2) }}</dd>
-                    <dt>Breakout</dt>
-                    <dd>{{ selected.BreakoutDirection === 0 ? 'in range'
-                        : `${selected.BreakoutDirection > 0 ? 'up' : 'down'} · quality ${(selected.BreakoutQuality * 100).toFixed(0)}` }}</dd>
-                    <dt>Alignment</dt><dd>{{ selected.AlignmentScore.toFixed(2) }}</dd>
-                    <dt>Volatility</dt><dd>{{ fmtPct(selected.AnnualizedVolatility, 1) }} annualised</dd>
-                    <dt>Liquidity</dt><dd>{{ fmtCompact(selected.AverageQuoteVolume) }} avg quote volume</dd>
-                    <dt>Spread</dt><dd>{{ fmtPct(selected.EstimatedSpreadPercent, 3) }} estimated</dd>
-                    <dt>Tradable on</dt><dd>{{ selected.TradableOn.join(', ') || 'no venue mapping' }}</dd>
-                    <dt>Data as of</dt><dd>{{ fmtTime(selected.DataAsOfUtc) }}</dd>
-                </dl>
-                <div v-if="selected.Stale" class="ot-banner warn" style="margin-top:16px">
-                    <span class="glyph" aria-hidden="true">⚠</span>
-                    <div>{{ selected.DataIssue || 'This instrument has not had a fresh mark recently.' }}</div>
-                </div>
-            </template>
-            <template #footer>
-                <button class="ot-btn ghost" @click="selected = null">Close</button>
-                <NuxtLink v-if="selected" class="ot-btn primary"
-                          :to="{ path: '/omnitrader/execution', query: { instrument: selected.InstrumentId } }">
-                    Open order ticket
-                </NuxtLink>
-            </template>
-        </OmniTraderDrawer>
-
         <!-- watchlist editor -->
         <div v-if="editing" class="ot-modal-backdrop" @click.self="editing = false">
             <div class="ot-modal" role="dialog" aria-modal="true" aria-label="Edit watchlist">
@@ -213,9 +172,9 @@
                             <input id="wl-name" class="ot-input" v-model="editName" />
                         </div>
                         <div class="ot-field">
-                            <label for="wl-search">Search instruments</label>
+                            <label for="wl-search">Search any symbol</label>
                             <input id="wl-search" class="ot-input" v-model="search"
-                                   placeholder="btc, uk100, gold…" @input="searchInstruments" />
+                                   placeholder="btc, aapl, vod.l, ^ftse…" @input="searchInstruments" />
                         </div>
                     </div>
 
@@ -232,13 +191,16 @@
                         <div>
                             <h4 class="ot-sectionhead">Available</h4>
                             <div class="picker">
-                                <button v-for="i in searchResults" :key="i.Id" class="ot-chip pick"
-                                        :disabled="editIds.includes(i.Id)" @click="addInstrument(i.Id)">
+                                <button v-for="i in searchResults" :key="i.Symbol" class="ot-chip pick"
+                                        :class="i.Tradable ? 'ok' : ''"
+                                        :title="i.Tradable ? `Tradable on ${i.TradableOn.join(', ')}` : 'Chart and analytics only — no venue mapping'"
+                                        :disabled="editIds.includes(i.InstrumentId ?? i.Symbol)"
+                                        @click="addInstrument(i.InstrumentId ?? i.Symbol)">
                                     {{ i.DisplayName }} +
                                 </button>
                                 <OmniTraderStateBlock v-if="!searchResults.length" compact kind="filtered"
                                                       title="No matches"
-                                                      detail="Refresh the instrument master on Systems if a venue directory has not been pulled." />
+                                                      detail="Search any stock, crypto pair or index — you can watch and chart it even if no venue mapping exists yet." />
                             </div>
                         </div>
                     </div>
@@ -254,15 +216,17 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import Swal from 'sweetalert2';
 import {
-    useOmniTrader, useUrlState, fmtNum, fmtPct, fmtSignedPct, fmtCompact, fmtTime,
-    regimeTone, seriesColour, SWAL_THEME, type MarketRow,
+    useOmniTrader, useUrlState, fmtNum, fmtPct, fmtSignedPct, fmtCompact,
+    regimeTone, SWAL_THEME, type MarketRow,
 } from '~/composables/useOmniTrader';
 import type { TableColumn } from '~/components/OmniTrader/DataTable.vue';
 
 definePageMeta({ layout: 'navbar' });
 
+const router = useRouter();
 const { get, post } = useOmniTrader();
 
 const INTERVALS = [
@@ -279,13 +243,12 @@ const breadth = ref<any>(null);
 const session = ref<any>(null);
 const loading = ref(false);
 const busy = ref(false);
-const selected = ref<MarketRow | null>(null);
 
 const editing = ref(false);
 const editName = ref('');
 const editIds = ref<string[]>([]);
 const search = ref('');
-const searchResults = ref<Array<{ Id: string; DisplayName: string }>>([]);
+const searchResults = ref<Array<{ Symbol: string; InstrumentId: string | null; DisplayName: string; Tradable: boolean; TradableOn: string[] }>>([]);
 
 const columns: TableColumn[] = [
     { key: 'DisplayName', label: 'Instrument', width: '190px' },
@@ -324,17 +287,6 @@ const spreadBars = computed(() => rows.value
     .filter(r => r.EstimatedSpreadPercent > 0)
     .map(r => ({ key: r.InstrumentId, label: r.DisplayName, value: r.EstimatedSpreadPercent })));
 
-const detailSeries = computed(() => {
-    const spark = selected.value?.Spark ?? [];
-    return [{
-        name: selected.value?.DisplayName ?? '',
-        colour: seriesColour(0),
-        fill: 'rgba(57, 135, 229, 0.12)',
-        // The spark carries no timestamps, so bars are indexed from the oldest shown.
-        points: spark.map((value, index) => ({ x: index, y: value })),
-    }];
-});
-
 function regimeLabel(regime: string) {
     return ({
         TrendingUp: 'Trending up', TrendingDown: 'Trending down',
@@ -342,8 +294,10 @@ function regimeLabel(regime: string) {
     } as Record<string, string>)[regime] ?? regime;
 }
 
-function selectByKey(key: string) {
-    selected.value = rows.value.find(r => r.InstrumentId === key) ?? null;
+// A watchlist row is a jumping-off point, not the whole story: open the instrument's own
+// page, where the candles, the live quote and the position all live.
+function openInstrument(instrumentId: string) {
+    void router.push({ path: '/omnitrader/instrument', query: { symbol: instrumentId, interval: filters.interval } });
 }
 
 async function loadWatchlists() {
@@ -376,7 +330,9 @@ function searchInstruments() {
     if (searchTimer) clearTimeout(searchTimer);
     // Debounced: a query per keystroke is load with nobody reading the result.
     searchTimer = setTimeout(async () => {
-        try { searchResults.value = await get('/instruments', { q: search.value }); }
+        // The unified search, not just the instrument master: anything listed can be
+        // watched and charted, whether or not the firm can deal it yet.
+        try { searchResults.value = await get('/search', { q: search.value }); }
         catch { searchResults.value = []; }
     }, 250);
 }

@@ -35,6 +35,13 @@ export interface FirmOverview {
         GrossExposure: number; NetExposure: number;
         UnrealizedPnL: number; RealizedPnLToday: number; CostsToday: number;
         Positions: number; Warnings: string[];
+        /** False when no live account is connected — every real figure is then genuinely zero. */
+        HasRealAccounts: boolean;
+    };
+    /** Paper and demo money, reported separately and never added to the figures above. */
+    Simulated: {
+        TotalValue: number; Cash: number; InventoryValue: number;
+        UnrealizedPnL: number; GrossExposure: number; Positions: number; RealizedPnLToday: number;
     };
     Health: { TradingPermitted: boolean; Summary: string; Blockers: string[] };
     Controls: {

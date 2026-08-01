@@ -37,6 +37,21 @@
             </div>
         </section>
 
+        <!-- Simulated money is reported, never mixed in. A paper balance added to a real one
+             is not a number anybody can act on. -->
+        <div v-if="!overview?.Portfolio.HasRealAccounts && overview" class="ot-banner info">
+            <span class="glyph" aria-hidden="true">ℹ</span>
+            <div>
+                <strong>No live account is configured — every figure below is £0 because nothing real is connected</strong>
+                The paper trader holds
+                {{ fmtMoney(sim?.TotalValue, currency) }} of simulated value across
+                {{ sim?.Positions ?? 0 }} position(s). It is excluded from firm value on purpose.
+            </div>
+            <div class="actions">
+                <NuxtLink class="ot-btn sm ghost" to="/omnitrader/systems">Connect a venue</NuxtLink>
+            </div>
+        </div>
+
         <!-- Owned inventory and CFD exposure are kept visually apart on purpose: one is an
              asset, the other is a notional the firm does not own. -->
         <div class="ot-kpis">
@@ -204,6 +219,22 @@
                         <dt>Peak (30d)</dt><dd>{{ fmtMoney(overview?.Trend?.PeakValue, currency, 0) }}</dd>
                     </dl>
                 </OmniTraderCard>
+
+                <OmniTraderCard title="Simulated" question="Paper and demo — excluded from every figure above">
+                    <dl class="ot-kv">
+                        <dt>Value</dt><dd>{{ fmtMoney(sim?.TotalValue, currency) }}</dd>
+                        <dt>Cash</dt><dd>{{ fmtMoney(sim?.Cash, currency) }}</dd>
+                        <dt>Unrealized</dt>
+                        <dd :class="signTone(sim?.UnrealizedPnL)">{{ fmtSigned(sim?.UnrealizedPnL, currency) }}</dd>
+                        <dt>Realized today</dt>
+                        <dd :class="signTone(sim?.RealizedPnLToday)">{{ fmtSigned(sim?.RealizedPnLToday, currency) }}</dd>
+                        <dt>Positions</dt><dd>{{ sim?.Positions ?? 0 }}</dd>
+                    </dl>
+                    <template #footer>
+                        Paper fills are simulated against live prices. They measure a strategy; they are
+                        not money, and never count toward firm value.
+                    </template>
+                </OmniTraderCard>
             </div>
         </div>
     </OmniTraderShell>
@@ -224,6 +255,7 @@ const { overview, exceptionCount, currency, environment, get, post, refreshOverv
 const busy = ref(false);
 
 const p = computed(() => overview.value?.Portfolio);
+const sim = computed(() => (overview.value as any)?.Simulated);
 const ex = computed(() => overview.value?.Exceptions ?? {
     AwaitingApproval: 0, UnknownOrders: 0, MaterialBreaks: 0, CriticalAlerts: 0, UnacknowledgedCritical: 0,
 });

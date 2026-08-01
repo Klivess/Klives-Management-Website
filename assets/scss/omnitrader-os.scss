@@ -1,0 +1,1035 @@
+/* ============================================================================
+   OmniTrader OS — design system
+   ----------------------------------------------------------------------------
+   One shared visual language across the ten operating pages, built to the
+   high-density dashboard spec: density comes from alignment, typography and
+   progressive disclosure — never from shrinking things until they stop being
+   legible.
+
+   Four rules drive most of what follows:
+
+   1. Environment is never ambiguous. Live is red, demo amber, paper blue,
+      historical grey — the same colours everywhere, including the persistent
+      header band, so an operator can never mistake which reality they are in.
+   2. Degraded state is visible, not implied. Stale, blocked, partial, unknown
+      and failed each get their own affordance rather than a missing value or
+      a zero.
+   3. Exceptions are loud; normality is quiet. Colour is reserved for status,
+      selection, thresholds and anomalies. A page where everything is coloured
+      is a page where nothing is.
+   4. Every number carries its context — unit, window, baseline, freshness.
+
+   Layout follows a 4px base with an 8px rhythm; every value below is a token.
+   ========================================================================== */
+
+:root {
+    /* ── surfaces ─────────────────────────────────────────────────────────── */
+    --ot-bg: #0b0d0a;
+    --ot-surface: #12150f;
+    --ot-surface-2: #191d16;      /* raised: menus, popovers, drawers, sticky heads */
+    --ot-surface-3: #20261d;      /* hover / selected rows */
+    --ot-overlay: rgba(4, 6, 3, 0.72);
+
+    --ot-line: rgba(146, 196, 130, 0.14);        /* structural, low contrast */
+    --ot-line-strong: rgba(146, 196, 130, 0.30); /* active / selected structure */
+
+    /* ── text ─────────────────────────────────────────────────────────────── */
+    /* Every value below clears 4.5:1 on --ot-surface; --ot-axis is non-text only. */
+    --ot-text: #e9f1e5;
+    --ot-text-2: #b3c2ad;
+    --ot-muted: #93a48d;
+    --ot-disabled: #6b7a66;
+    --ot-on-accent: #08140b;
+
+    /* ── semantic ─────────────────────────────────────────────────────────── */
+    /* Never the only carrier of meaning: each ships with an icon, sign or word. */
+    --ot-accent: #6ddc4f;
+    --ot-accent-soft: rgba(109, 220, 79, 0.13);
+    --ot-positive: #4ec98a;
+    --ot-positive-soft: rgba(78, 201, 138, 0.13);
+    --ot-negative: #ff7b7b;
+    --ot-negative-soft: rgba(255, 123, 123, 0.13);
+    --ot-warning: #f0b429;
+    --ot-warning-soft: rgba(240, 180, 41, 0.13);
+    --ot-info: #63c8ea;
+    --ot-info-soft: rgba(99, 200, 234, 0.13);
+    --ot-violet: #a89bf0;
+    --ot-violet-soft: rgba(168, 155, 240, 0.13);
+
+    /* ── environment ──────────────────────────────────────────────────────── */
+    --ot-env-live: #ff6b6b;
+    --ot-env-demo: #f0b429;
+    --ot-env-paper: #74b4ff;
+    --ot-env-historical: #97a891;
+
+    /* ── chart palette ────────────────────────────────────────────────────── */
+    /* Categorical slots are assigned in fixed order and never cycled or
+       re-assigned by rank, so a series keeps its colour when a filter changes
+       the set. Validated for the dark surface: all eight inside the lightness
+       band, above the chroma floor, ≥3:1 on --ot-surface, worst adjacent CVD
+       ΔE 8.4 and worst adjacent normal-vision ΔE 19.3. */
+    --ot-cat-1: #3987e5;
+    --ot-cat-2: #d95926;
+    --ot-cat-3: #199e70;
+    --ot-cat-4: #c98500;
+    --ot-cat-5: #d55181;
+    --ot-cat-6: #008300;
+    --ot-cat-7: #9085e9;
+    --ot-cat-8: #e66767;
+
+    /* Sequential (magnitude) — one hue, light → dark. */
+    --ot-seq-1: #cde2fb;
+    --ot-seq-2: #86b6ef;
+    --ot-seq-3: #3987e5;
+    --ot-seq-4: #256abf;
+    --ot-seq-5: #184f95;
+
+    /* Chart furniture stays quieter than the data it frames. */
+    --ot-grid: rgba(146, 196, 130, 0.10);
+    --ot-axis: #6f7d6a;
+
+    /* ── geometry ─────────────────────────────────────────────────────────── */
+    --ot-space-1: 4px;
+    --ot-space-2: 8px;
+    --ot-space-3: 12px;
+    --ot-space-4: 16px;
+    --ot-space-6: 24px;
+    --ot-space-8: 32px;
+
+    --ot-radius-sm: 6px;
+    --ot-radius: 10px;
+    --ot-radius-lg: 14px;
+
+    --ot-control-sm: 26px;
+    --ot-control: 32px;
+    --ot-control-lg: 38px;
+    --ot-row: 38px;
+    --ot-card-pad: 16px;
+    --ot-gutter: 16px;
+
+    --ot-focus: 2px;
+    --ot-focus-offset: 2px;
+
+    /* ── motion ───────────────────────────────────────────────────────────── */
+    --ot-fast: 90ms;
+    --ot-normal: 160ms;
+
+    /* ── layers ───────────────────────────────────────────────────────────── */
+    --ot-z-sticky: 20;
+    --ot-z-nav: 40;
+    --ot-z-popover: 60;
+    --ot-z-drawer: 80;
+    --ot-z-modal: 100;
+
+    --ot-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+}
+
+/* Compact density is one global switch. Row height and card padding move; type
+   size does not — legibility is not the lever. */
+.ot-os[data-density='compact'] {
+    --ot-row: 30px;
+    --ot-card-pad: 12px;
+    --ot-gutter: 12px;
+    --ot-control: 28px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root { --ot-fast: 0ms; --ot-normal: 0ms; }
+    .ot-os *, .ot-os *::before, .ot-os *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ── scope reset ──────────────────────────────────────────────────────────── */
+/* The management site sets colour and font on the universal selector, and gives
+   every `button` uppercase letter-spaced chrome. The OS is its own surface with
+   its own type ramp, so it re-establishes inheritance at its root instead of
+   fighting the cascade token by token. `.ot-drawer` and `.ot-scrim` are listed
+   because they teleport to <body>, outside the shell. */
+
+.ot-os *, .ot-os *::before, .ot-os *::after,
+.ot-drawer *, .ot-drawer *::before, .ot-drawer *::after {
+    color: inherit;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.ot-os p, .ot-drawer p { font-size: inherit; line-height: inherit; }
+
+.ot-os button, .ot-drawer button {
+    letter-spacing: normal;
+    text-transform: none;
+    line-height: inherit;
+    overflow: visible;
+    display: inline-flex;
+}
+
+.ot-os a, .ot-drawer a { text-decoration: none; }
+.ot-os h1, .ot-os h2, .ot-os h3, .ot-os h4,
+.ot-drawer h1, .ot-drawer h2, .ot-drawer h3, .ot-drawer h4 { line-height: 1.3; }
+
+/* ── shell ────────────────────────────────────────────────────────────────── */
+
+.ot-os, .ot-drawer, .ot-modal, .ot-palette .box {
+    color: var(--ot-text);
+    font-size: 14px;
+    line-height: 20px;
+    font-variant-numeric: tabular-nums;
+    font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.ot-os {
+    min-height: 100vh;
+    background: var(--ot-bg);
+}
+
+.ot-os :focus-visible {
+    outline: var(--ot-focus) solid var(--ot-accent);
+    outline-offset: var(--ot-focus-offset);
+    border-radius: var(--ot-radius-sm);
+}
+
+.ot-skiplink {
+    position: absolute;
+    left: -9999px;
+    z-index: var(--ot-z-modal);
+    padding: var(--ot-space-2) var(--ot-space-3);
+    background: var(--ot-surface-2);
+    border: 1px solid var(--ot-accent);
+    border-radius: var(--ot-radius-sm);
+}
+.ot-skiplink:focus { left: var(--ot-space-3); top: var(--ot-space-3); }
+
+/* The environment band is the loudest single signal on the page. */
+.ot-envband { height: 3px; width: 100%; background: var(--ot-env-paper); }
+.ot-envband.live { background: var(--ot-env-live); box-shadow: 0 0 12px rgba(255, 107, 107, 0.55); }
+.ot-envband.demo { background: var(--ot-env-demo); }
+.ot-envband.paper { background: var(--ot-env-paper); }
+.ot-envband.historical { background: var(--ot-env-historical); }
+
+.ot-top {
+    display: flex;
+    align-items: center;
+    gap: var(--ot-space-3);
+    height: 52px;
+    padding: 0 var(--ot-space-4);
+    border-bottom: 1px solid var(--ot-line);
+    background: rgba(11, 13, 10, 0.94);
+    position: sticky;
+    top: 0;
+    z-index: var(--ot-z-nav);
+    backdrop-filter: blur(8px);
+}
+
+.ot-brand {
+    display: flex;
+    align-items: baseline;
+    gap: var(--ot-space-2);
+    font-weight: 650;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+}
+.ot-brand b { color: var(--ot-accent); font-weight: 700; }
+.ot-brand small {
+    color: var(--ot-muted);
+    font-size: 10px;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.ot-top-spacer { flex: 1 1 auto; }
+
+/* Scope summary: what you are looking at, in words, before any number. */
+.ot-scope {
+    display: flex;
+    align-items: center;
+    gap: var(--ot-space-2);
+    font-size: 12px;
+    color: var(--ot-text-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ot-scope .sep { color: var(--ot-disabled); }
+
+.ot-envselect {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ot-space-2);
+    height: var(--ot-control);
+    padding: 0 var(--ot-space-3);
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.1px;
+    text-transform: uppercase;
+    border: 1px solid currentColor;
+    background: transparent;
+    color: var(--ot-env-paper);
+    cursor: pointer;
+    font-family: inherit;
+}
+.ot-envselect.live { color: var(--ot-env-live); background: rgba(255, 107, 107, 0.12); }
+.ot-envselect.demo { color: var(--ot-env-demo); background: rgba(240, 180, 41, 0.10); }
+.ot-envselect.paper { color: var(--ot-env-paper); background: rgba(116, 180, 255, 0.10); }
+.ot-envselect.historical { color: var(--ot-env-historical); background: rgba(151, 168, 145, 0.10); }
+.ot-envselect.all { color: var(--ot-text-2); background: rgba(255, 255, 255, 0.05); }
+
+.ot-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ot-disabled); flex: 0 0 auto; }
+.ot-dot.ok { background: var(--ot-positive); }
+.ot-dot.warn { background: var(--ot-warning); }
+.ot-dot.bad { background: var(--ot-negative); }
+
+/* Freshness sits next to scope, and says which kind of "now" this is. */
+.ot-fresh {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ot-space-2);
+    font-size: 12px;
+    color: var(--ot-text-2);
+    white-space: nowrap;
+}
+.ot-fresh.stale { color: var(--ot-warning); }
+.ot-fresh.failed { color: var(--ot-negative); }
+
+/* ── navigation ───────────────────────────────────────────────────────────── */
+/* Grouped by what the operator came to do, not by component type. */
+
+.ot-nav {
+    display: flex;
+    align-items: stretch;
+    gap: var(--ot-space-1);
+    padding: 0 var(--ot-space-3);
+    border-bottom: 1px solid var(--ot-line);
+    background: rgba(18, 21, 15, 0.8);
+    overflow-x: auto;
+    position: sticky;
+    top: 52px;
+    z-index: calc(var(--ot-z-nav) - 1);
+    scrollbar-width: none;
+}
+.ot-nav::-webkit-scrollbar { height: 0; }
+
+.ot-nav-group { display: flex; align-items: center; gap: var(--ot-space-1); }
+.ot-nav-group + .ot-nav-group { border-left: 1px solid var(--ot-line); margin-left: var(--ot-space-2); padding-left: var(--ot-space-2); }
+.ot-nav-group > .label {
+    font-size: 9.5px;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--ot-disabled);
+    font-weight: 700;
+    padding-right: var(--ot-space-1);
+}
+
+.ot-nav a {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ot-space-2);
+    padding: var(--ot-space-3) var(--ot-space-3);
+    color: var(--ot-text-2);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 550;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    transition: color var(--ot-fast), border-color var(--ot-fast);
+}
+.ot-nav a:hover { color: var(--ot-text); }
+.ot-nav a.active { color: var(--ot-accent); border-bottom-color: var(--ot-accent); }
+
+.ot-badge {
+    min-width: 18px;
+    padding: 1px 5px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
+    background: var(--ot-negative);
+    color: #2a0808;
+}
+.ot-badge.warn { background: var(--ot-warning); color: #241a04; }
+.ot-badge.quiet { background: var(--ot-surface-3); color: var(--ot-text-2); }
+
+/* ── page frame ───────────────────────────────────────────────────────────── */
+
+.ot-page { padding: var(--ot-space-4) var(--ot-space-6) 64px; max-width: 1920px; margin: 0 auto; }
+@media (max-width: 767px) { .ot-page { padding: var(--ot-space-3) var(--ot-space-4) 48px; } }
+
+.ot-pagehead {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--ot-space-4);
+    flex-wrap: wrap;
+    margin-bottom: var(--ot-space-4);
+}
+.ot-pagehead h1 { margin: 0; font-size: 24px; line-height: 32px; font-weight: 620; letter-spacing: -0.2px; }
+.ot-pagehead .question { margin: var(--ot-space-1) 0 0; color: var(--ot-text-2); font-size: 13px; max-width: 76ch; }
+.ot-pagehead .ot-actions { display: flex; gap: var(--ot-space-2); flex-wrap: wrap; align-items: center; }
+
+/* ── filter bar ───────────────────────────────────────────────────────────── */
+/* Global controls live here and nowhere else; anything that changes one card
+   lives in that card's own header. */
+
+.ot-filterbar {
+    display: flex;
+    align-items: center;
+    gap: var(--ot-space-2);
+    flex-wrap: wrap;
+    padding: var(--ot-space-2) var(--ot-space-3);
+    margin-bottom: var(--ot-space-4);
+    border: 1px solid var(--ot-line);
+    border-radius: var(--ot-radius);
+    background: var(--ot-surface);
+}
+.ot-filterbar .grow { flex: 1 1 auto; }
+.ot-filterbar .summary {
+    font-size: 12px;
+    color: var(--ot-text-2);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ot-space-2);
+}
+.ot-filterbar .summary b { color: var(--ot-text); font-weight: 600; }
+
+.ot-filterchip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ot-space-1);
+    height: var(--ot-control-sm);
+    padding: 0 var(--ot-space-2);
+    border-radius: var(--ot-radius-sm);
+    border: 1px solid var(--ot-line-strong);
+    background: var(--ot-accent-soft);
+    color: var(--ot-text);
+    font-size: 11.5px;
+    font-family: inherit;
+    cursor: pointer;
+}
+.ot-filterchip:hover { border-color: var(--ot-accent); }
+.ot-filterchip .x { color: var(--ot-muted); font-weight: 700; }
+
+/* ── banners ──────────────────────────────────────────────────────────────── */
+
+.ot-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--ot-space-3);
+    padding: var(--ot-space-3) var(--ot-space-4);
+    border-radius: var(--ot-radius);
+    border: 1px solid var(--ot-negative);
+    background: var(--ot-negative-soft);
+    margin-bottom: var(--ot-space-4);
+    font-size: 13px;
+}
+.ot-banner .glyph { font-size: 15px; line-height: 20px; flex: 0 0 auto; }
+.ot-banner.warn { border-color: var(--ot-warning); background: var(--ot-warning-soft); }
+.ot-banner.info { border-color: rgba(99, 200, 234, 0.45); background: var(--ot-info-soft); }
+.ot-banner.ok { border-color: var(--ot-line-strong); background: var(--ot-accent-soft); }
+.ot-banner strong { display: block; margin-bottom: 2px; }
+.ot-banner ul { margin: var(--ot-space-1) 0 0; padding-left: 18px; color: var(--ot-text-2); }
+.ot-banner .actions { margin-left: auto; display: flex; gap: var(--ot-space-2); align-items: center; }
+
+/* ── KPI cards ────────────────────────────────────────────────────────────── */
+
+.ot-kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(206px, 1fr));
+    gap: var(--ot-gutter);
+    margin-bottom: var(--ot-space-4);
+    align-items: stretch;
+}
+.ot-kpis.tight { grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); }
+
+.ot-kpi {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ot-space-1);
+    padding: var(--ot-card-pad);
+    border-radius: var(--ot-radius);
+    border: 1px solid var(--ot-line);
+    background: var(--ot-surface);
+    min-width: 0;
+    text-decoration: none;
+    color: inherit;
+    position: relative;
+}
+a.ot-kpi:hover, button.ot-kpi:hover { border-color: var(--ot-line-strong); background: var(--ot-surface-2); }
+a.ot-kpi::after, button.ot-kpi::after {
+    content: '›';
+    position: absolute;
+    top: var(--ot-space-3);
+    right: var(--ot-space-3);
+    color: var(--ot-muted);
+}
+.ot-kpi .k {
+    font-size: 11px;
+    letter-spacing: 0.9px;
+    text-transform: uppercase;
+    color: var(--ot-muted);
+    font-weight: 650;
+    display: flex;
+    align-items: center;
+    gap: var(--ot-space-1);
+}
+.ot-kpi .v {
+    font-size: 26px;
+    line-height: 32px;
+    font-weight: 650;
+    font-family: var(--ot-mono);
+    letter-spacing: -0.5px;
+    overflow-wrap: anywhere;
+}
+.ot-kpi .v.sm { font-size: 18px; line-height: 26px; }
+.ot-kpi .cmp { font-size: 12px; color: var(--ot-text-2); display: flex; align-items: baseline; gap: var(--ot-space-1); flex-wrap: wrap; }
+.ot-kpi .cmp .base { color: var(--ot-muted); }
+.ot-kpi .foot { font-size: 11.5px; color: var(--ot-muted); }
+.ot-kpi .spark { margin-top: var(--ot-space-1); }
+.ot-kpi.good .v { color: var(--ot-positive); }
+.ot-kpi.bad .v { color: var(--ot-negative); }
+.ot-kpi.warn .v { color: var(--ot-warning); }
+.ot-kpi.info .v { color: var(--ot-info); }
+.ot-kpi.violet .v { color: var(--ot-violet); }
+.ot-kpi.attention { border-color: var(--ot-negative); background: var(--ot-negative-soft); }
+.ot-kpi.attention-soft { border-color: rgba(240, 180, 41, 0.45); background: var(--ot-warning-soft); }
+
+/* ── cards ────────────────────────────────────────────────────────────────── */
+
+.ot-grid { display: grid; gap: var(--ot-gutter); }
+.ot-grid.two { grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); }
+.ot-grid.three { grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
+.ot-grid.sidebar { grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); }
+.ot-grid.sidebar-left { grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); }
+.ot-stack { display: flex; flex-direction: column; gap: var(--ot-gutter); min-width: 0; }
+@media (max-width: 1200px) {
+    .ot-grid.sidebar, .ot-grid.sidebar-left { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 767px) {
+    .ot-grid.two, .ot-grid.three { grid-template-columns: minmax(0, 1fr); }
+}
+
+.ot-card {
+    border: 1px solid var(--ot-line);
+    border-radius: var(--ot-radius);
+    background: var(--ot-surface);
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+.ot-card.attention { border-color: rgba(255, 123, 123, 0.45); }
+.ot-card > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ot-space-3);
+    min-height: 44px;
+    padding: var(--ot-space-2) var(--ot-card-pad);
+    border-bottom: 1px solid var(--ot-line);
+    flex-wrap: wrap;
+}
+.ot-card > header .titles { min-width: 0; }
+.ot-card > header h2 {
+    margin: 0;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+    color: var(--ot-text);
+}
+.ot-card > header .question { margin: 0; font-size: 11.5px; color: var(--ot-muted); }
+.ot-card > header .controls { display: flex; align-items: center; gap: var(--ot-space-2); flex-wrap: wrap; }
+.ot-card > .body { padding: var(--ot-card-pad); flex: 1 1 auto; min-width: 0; }
+.ot-card > .body.flush { padding: 0; }
+.ot-card > footer {
+    padding: var(--ot-space-2) var(--ot-card-pad);
+    border-top: 1px solid var(--ot-line);
+    font-size: 11.5px;
+    color: var(--ot-muted);
+}
+
+/* ── tables ───────────────────────────────────────────────────────────────── */
+
+.ot-tabletools {
+    display: flex;
+    align-items: center;
+    gap: var(--ot-space-2);
+    flex-wrap: wrap;
+    padding: var(--ot-space-2) var(--ot-card-pad);
+    border-bottom: 1px solid var(--ot-line);
+}
+.ot-tabletools .count { font-size: 11.5px; color: var(--ot-muted); margin-left: auto; white-space: nowrap; }
+
+.ot-tablewrap { overflow-x: auto; overflow-y: auto; }
+
+table.ot-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+    line-height: 18px;
+}
+table.ot-table th {
+    text-align: left;
+    padding: var(--ot-space-2) var(--ot-space-3);
+    font-size: 11px;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--ot-muted);
+    background: var(--ot-surface-2);
+    border-bottom: 1px solid var(--ot-line);
+    white-space: nowrap;
+    font-weight: 650;
+    position: sticky;
+    top: 0;
+    z-index: var(--ot-z-sticky);
+}
+table.ot-table th.sortable { cursor: pointer; user-select: none; }
+table.ot-table th.sortable:hover { color: var(--ot-text); }
+table.ot-table th .sort { margin-left: var(--ot-space-1); color: var(--ot-accent); }
+table.ot-table td {
+    padding: 0 var(--ot-space-3);
+    height: var(--ot-row);
+    border-bottom: 1px solid rgba(146, 196, 130, 0.07);
+    vertical-align: middle;
+}
+table.ot-table tbody tr:hover { background: var(--ot-surface-3); }
+table.ot-table tbody tr.selected { background: var(--ot-accent-soft); box-shadow: inset 2px 0 0 var(--ot-accent); }
+table.ot-table tbody tr.attention { background: rgba(255, 123, 123, 0.07); }
+table.ot-table tbody tr.clickable { cursor: pointer; }
+table.ot-table tbody tr:focus-visible { outline: var(--ot-focus) solid var(--ot-accent); outline-offset: -2px; }
+table.ot-table td.num, table.ot-table th.num { text-align: right; font-family: var(--ot-mono); white-space: nowrap; }
+table.ot-table .sub { display: block; font-size: 11px; color: var(--ot-muted); }
+table.ot-table .cellstack { display: flex; flex-direction: column; gap: 1px; padding: var(--ot-space-1) 0; }
+
+/* First column pinned so a wide blotter never loses which row you are reading. */
+table.ot-table.pinned th:first-child,
+table.ot-table.pinned td:first-child {
+    position: sticky;
+    left: 0;
+    background: var(--ot-surface);
+    z-index: 1;
+}
+table.ot-table.pinned th:first-child { background: var(--ot-surface-2); z-index: calc(var(--ot-z-sticky) + 1); }
+table.ot-table.pinned tbody tr:hover td:first-child { background: var(--ot-surface-3); }
+
+.pos { color: var(--ot-positive); }
+.neg { color: var(--ot-negative); }
+.mono { font-family: var(--ot-mono); }
+.muted { color: var(--ot-muted); }
+.nowrap { white-space: nowrap; }
+
+/* ── chips ────────────────────────────────────────────────────────────────── */
+
+.ot-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ot-space-1);
+    padding: 1px var(--ot-space-2);
+    border-radius: var(--ot-radius-sm);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    border: 1px solid var(--ot-line-strong);
+    color: var(--ot-text-2);
+    white-space: nowrap;
+    max-width: 100%;
+}
+.ot-chip .glyph { font-size: 10px; }
+.ot-chip.ok { color: var(--ot-positive); border-color: rgba(78, 201, 138, 0.4); background: var(--ot-positive-soft); }
+.ot-chip.warn { color: var(--ot-warning); border-color: rgba(240, 180, 41, 0.4); background: var(--ot-warning-soft); }
+.ot-chip.bad { color: var(--ot-negative); border-color: rgba(255, 123, 123, 0.45); background: var(--ot-negative-soft); }
+.ot-chip.info { color: var(--ot-info); border-color: rgba(99, 200, 234, 0.4); background: var(--ot-info-soft); }
+.ot-chip.violet { color: var(--ot-violet); border-color: rgba(168, 155, 240, 0.4); background: var(--ot-violet-soft); }
+.ot-chip.live { color: var(--ot-env-live); border-color: rgba(255, 107, 107, 0.5); background: rgba(255, 107, 107, 0.12); }
+.ot-chip.demo { color: var(--ot-env-demo); border-color: rgba(240, 180, 41, 0.45); }
+.ot-chip.paper { color: var(--ot-env-paper); border-color: rgba(116, 180, 255, 0.45); }
+.ot-chip.historical { color: var(--ot-env-historical); }
+
+/* ── buttons ──────────────────────────────────────────────────────────────── */
+
+.ot-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--ot-space-2);
+    height: var(--ot-control);
+    padding: 0 var(--ot-space-3);
+    border-radius: var(--ot-radius-sm);
+    border: 1px solid var(--ot-line-strong);
+    background: var(--ot-accent-soft);
+    color: var(--ot-text);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background var(--ot-fast), border-color var(--ot-fast);
+    white-space: nowrap;
+}
+.ot-btn:hover:not(:disabled) { background: rgba(109, 220, 79, 0.22); border-color: var(--ot-accent); }
+.ot-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.ot-btn.primary { background: var(--ot-accent); color: var(--ot-on-accent); border-color: var(--ot-accent); }
+.ot-btn.primary:hover:not(:disabled) { background: #7ee85f; }
+.ot-btn.ghost { background: transparent; }
+.ot-btn.ghost:hover:not(:disabled) { background: rgba(255, 255, 255, 0.05); }
+.ot-btn.danger { border-color: rgba(255, 123, 123, 0.5); background: var(--ot-negative-soft); color: #ffdada; }
+.ot-btn.danger:hover:not(:disabled) { background: rgba(255, 123, 123, 0.24); border-color: var(--ot-negative); }
+.ot-btn.warn { border-color: rgba(240, 180, 41, 0.5); background: var(--ot-warning-soft); color: #ffeecb; }
+.ot-btn.warn:hover:not(:disabled) { background: rgba(240, 180, 41, 0.24); }
+.ot-btn.sm { height: var(--ot-control-sm); padding: 0 var(--ot-space-2); font-size: 11.5px; }
+.ot-btn.block { width: 100%; }
+.ot-btn.active { border-color: var(--ot-accent); color: var(--ot-accent); }
+
+/* A compact toggle group — same hit area as a button, grouped visually. */
+.ot-segment {
+    display: inline-flex;
+    border: 1px solid var(--ot-line);
+    border-radius: var(--ot-radius-sm);
+    overflow: hidden;
+}
+.ot-segment button {
+    height: var(--ot-control);
+    padding: 0 var(--ot-space-3);
+    border: 0;
+    background: transparent;
+    color: var(--ot-text-2);
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.ot-segment button + button { border-left: 1px solid var(--ot-line); }
+.ot-segment button:hover { background: rgba(255, 255, 255, 0.04); color: var(--ot-text); }
+.ot-segment button[aria-pressed='true'] { background: var(--ot-accent-soft); color: var(--ot-accent); }
+.ot-segment.sm button { height: var(--ot-control-sm); font-size: 11.5px; padding: 0 var(--ot-space-2); }
+
+/* ── forms ────────────────────────────────────────────────────────────────── */
+
+.ot-field { display: flex; flex-direction: column; gap: var(--ot-space-1); min-width: 0; }
+.ot-field > label {
+    font-size: 11px;
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+    color: var(--ot-muted);
+    font-weight: 650;
+}
+.ot-field > .help { font-size: 11.5px; color: var(--ot-muted); }
+.ot-field.blocked > .help { color: var(--ot-warning); }
+.ot-field.invalid > .help { color: var(--ot-negative); }
+.ot-field.invalid .ot-input, .ot-field.invalid .ot-select { border-color: var(--ot-negative); }
+
+.ot-input, .ot-select, textarea.ot-input {
+    height: var(--ot-control);
+    padding: 0 var(--ot-space-2);
+    border-radius: var(--ot-radius-sm);
+    border: 1px solid var(--ot-line);
+    background: rgba(0, 0, 0, 0.3);
+    color: var(--ot-text);
+    font-size: 13px;
+    font-family: inherit;
+    width: 100%;
+    min-width: 0;
+}
+textarea.ot-input { height: auto; padding: var(--ot-space-2); resize: vertical; line-height: 20px; }
+.ot-input:hover:not(:disabled), .ot-select:hover:not(:disabled) { border-color: var(--ot-line-strong); }
+.ot-input:disabled, .ot-select:disabled { opacity: 0.45; cursor: not-allowed; }
+.ot-input.mono { font-family: var(--ot-mono); }
+.ot-input.auto, .ot-select.auto { width: auto; }
+
+.ot-search { position: relative; display: inline-flex; align-items: center; min-width: 180px; }
+.ot-search input { padding-left: 28px; }
+.ot-search .glyph { position: absolute; left: var(--ot-space-2); color: var(--ot-muted); font-size: 12px; pointer-events: none; }
+
+.ot-formgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: var(--ot-space-3); }
+.ot-check { display: inline-flex; align-items: center; gap: var(--ot-space-2); font-size: 13px; color: var(--ot-text-2); cursor: pointer; }
+
+/* ── meters (bullet: value, limit, thresholds) ────────────────────────────── */
+
+.ot-meter { display: flex; flex-direction: column; gap: var(--ot-space-1); }
+.ot-meter .row { display: flex; justify-content: space-between; gap: var(--ot-space-2); font-size: 12.5px; align-items: baseline; }
+.ot-meter .row .lbl { color: var(--ot-text-2); }
+.ot-meter .row .val { font-family: var(--ot-mono); font-weight: 600; }
+.ot-meter .track {
+    position: relative;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.07);
+    overflow: hidden;
+}
+.ot-meter .fill { height: 100%; border-radius: 999px; background: var(--ot-accent); transition: width var(--ot-normal); }
+.ot-meter .marker { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--ot-text-2); }
+.ot-meter .foot { font-size: 11.5px; color: var(--ot-muted); display: flex; justify-content: space-between; gap: var(--ot-space-2); }
+.ot-meter.warn .fill { background: var(--ot-warning); }
+.ot-meter.bad .fill { background: var(--ot-negative); }
+
+/* ── non-success states ───────────────────────────────────────────────────── */
+/* Empty, unknown, delayed and failed are different facts and look different. */
+
+.ot-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--ot-space-2);
+    padding: var(--ot-space-8) var(--ot-space-4);
+    text-align: center;
+    color: var(--ot-muted);
+    font-size: 13px;
+}
+.ot-state .glyph { font-size: 20px; opacity: 0.8; }
+.ot-state strong { color: var(--ot-text-2); font-size: 14px; font-weight: 600; }
+.ot-state p { margin: 0; max-width: 52ch; }
+.ot-state.error strong { color: var(--ot-negative); }
+.ot-state.compact { padding: var(--ot-space-4); }
+
+.ot-skel {
+    height: 12px;
+    border-radius: 4px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.045));
+    background-size: 200% 100%;
+    animation: ot-shimmer 1.4s infinite;
+}
+@keyframes ot-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.ot-skelrows { display: flex; flex-direction: column; gap: var(--ot-space-3); padding: var(--ot-card-pad); }
+
+/* Stale values keep their number but never pretend to be current. */
+.ot-stale {
+    text-decoration: underline dotted var(--ot-warning);
+    text-underline-offset: 3px;
+    cursor: help;
+}
+
+/* ── rule list (risk decisions, health signals, promotion gates) ───────────── */
+
+.ot-rules { display: flex; flex-direction: column; }
+.ot-rule {
+    display: grid;
+    grid-template-columns: 18px minmax(110px, 180px) 1fr auto;
+    gap: var(--ot-space-2);
+    align-items: center;
+    padding: var(--ot-space-2) var(--ot-space-3);
+    font-size: 12.5px;
+    border-radius: var(--ot-radius-sm);
+}
+.ot-rule:nth-child(odd) { background: rgba(255, 255, 255, 0.02); }
+.ot-rule .icon { font-weight: 700; text-align: center; }
+.ot-rule.pass .icon { color: var(--ot-positive); }
+.ot-rule.soft .icon { color: var(--ot-warning); }
+.ot-rule.hard .icon { color: var(--ot-negative); }
+.ot-rule .name { font-family: var(--ot-mono); font-size: 11.5px; color: var(--ot-text-2); overflow-wrap: anywhere; }
+.ot-rule .detail { color: var(--ot-text); overflow-wrap: anywhere; }
+.ot-rule .measure { font-family: var(--ot-mono); font-size: 11.5px; color: var(--ot-muted); white-space: nowrap; }
+.ot-rule.hard { background: var(--ot-negative-soft); }
+.ot-rule.soft { background: var(--ot-warning-soft); }
+@media (max-width: 720px) {
+    .ot-rule { grid-template-columns: 18px 1fr; }
+    .ot-rule .measure { grid-column: 2; }
+}
+
+/* ── drawer ───────────────────────────────────────────────────────────────── */
+/* Inspect a record without losing table position, filters or scroll. */
+
+.ot-scrim {
+    position: fixed;
+    inset: 0;
+    background: var(--ot-overlay);
+    z-index: var(--ot-z-drawer);
+    backdrop-filter: blur(2px);
+}
+.ot-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(620px, 100vw);
+    background: var(--ot-surface-2);
+    border-left: 1px solid var(--ot-line-strong);
+    box-shadow: -20px 0 60px rgba(0, 0, 0, 0.55);
+    z-index: calc(var(--ot-z-drawer) + 1);
+    display: flex;
+    flex-direction: column;
+}
+.ot-drawer > header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--ot-space-3);
+    padding: var(--ot-space-3) var(--ot-space-4);
+    border-bottom: 1px solid var(--ot-line);
+}
+.ot-drawer > header h3 { margin: 0; font-size: 16px; line-height: 22px; font-weight: 620; }
+.ot-drawer > header .sub { font-size: 12px; color: var(--ot-muted); }
+.ot-drawer > .body { padding: var(--ot-space-4); overflow-y: auto; flex: 1 1 auto; }
+.ot-drawer > footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--ot-space-2);
+    padding: var(--ot-space-3) var(--ot-space-4);
+    border-top: 1px solid var(--ot-line);
+    flex-wrap: wrap;
+}
+.drawer-enter-active, .drawer-leave-active { transition: transform var(--ot-normal) ease; }
+.drawer-enter-from, .drawer-leave-to { transform: translateX(100%); }
+.fade-enter-active, .fade-leave-active { transition: opacity var(--ot-normal); }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* ── modal (only for a decision that must block) ──────────────────────────── */
+
+.ot-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: var(--ot-overlay);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: var(--ot-z-modal);
+    padding: var(--ot-space-4);
+    backdrop-filter: blur(3px);
+}
+.ot-modal {
+    width: min(880px, 100%);
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--ot-radius-lg);
+    border: 1px solid var(--ot-line-strong);
+    background: var(--ot-surface-2);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+}
+.ot-modal > header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--ot-space-3);
+    padding: var(--ot-space-3) var(--ot-space-4);
+    border-bottom: 1px solid var(--ot-line);
+}
+.ot-modal > header h3 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: var(--ot-space-2); }
+.ot-modal > .body { padding: var(--ot-space-4); overflow-y: auto; }
+.ot-modal > footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--ot-space-2);
+    padding: var(--ot-space-3) var(--ot-space-4);
+    border-top: 1px solid var(--ot-line);
+    flex-wrap: wrap;
+}
+
+/* ── charts ───────────────────────────────────────────────────────────────── */
+
+.ot-chart { position: relative; width: 100%; }
+.ot-chart svg { display: block; width: 100%; overflow: visible; }
+.ot-chart .grid { stroke: var(--ot-grid); stroke-width: 1; }
+.ot-chart .axis { stroke: var(--ot-line); stroke-width: 1; }
+.ot-chart .tick { fill: var(--ot-axis); font-size: 10px; font-family: var(--ot-mono); }
+.ot-chart .series { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.ot-chart .baseline { stroke-dasharray: 3 3; stroke-width: 1.5; }
+.ot-chart .crosshair { stroke: var(--ot-text-2); stroke-width: 1; stroke-dasharray: 2 3; }
+.ot-chart .marker { stroke: var(--ot-surface); stroke-width: 2; }
+.ot-chart .label { fill: var(--ot-text-2); font-size: 11px; }
+
+.ot-tooltip {
+    position: absolute;
+    pointer-events: none;
+    z-index: var(--ot-z-popover);
+    min-width: 132px;
+    padding: var(--ot-space-2);
+    border-radius: var(--ot-radius-sm);
+    border: 1px solid var(--ot-line-strong);
+    background: var(--ot-surface-2);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    font-size: 12px;
+    line-height: 17px;
+}
+.ot-tooltip .t { color: var(--ot-muted); font-size: 11px; margin-bottom: 2px; }
+.ot-tooltip .r { display: flex; align-items: center; gap: var(--ot-space-2); justify-content: space-between; }
+.ot-tooltip .r .swatch { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
+.ot-tooltip .r .v { font-family: var(--ot-mono); font-weight: 600; }
+
+.ot-legend { display: flex; flex-wrap: wrap; gap: var(--ot-space-3); font-size: 11.5px; color: var(--ot-text-2); }
+.ot-legend .item { display: inline-flex; align-items: center; gap: var(--ot-space-1); }
+.ot-legend .swatch { width: 10px; height: 3px; border-radius: 2px; }
+
+/* Horizontal bars: length on a common scale, the encoding people read best. */
+.ot-bars { display: flex; flex-direction: column; gap: var(--ot-space-2); }
+.ot-bar {
+    display: grid;
+    grid-template-columns: minmax(72px, 148px) 1fr minmax(64px, auto);
+    gap: var(--ot-space-2);
+    align-items: center;
+    font-size: 12.5px;
+}
+.ot-bar .lbl { color: var(--ot-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ot-bar .track { position: relative; height: 14px; }
+.ot-bar .zero { position: absolute; top: -1px; bottom: -1px; width: 1px; background: var(--ot-line-strong); }
+.ot-bar .fill { position: absolute; top: 1px; bottom: 1px; border-radius: 3px; background: var(--ot-cat-1); }
+.ot-bar .fill.pos { background: var(--ot-positive); }
+.ot-bar .fill.neg { background: var(--ot-negative); }
+.ot-bar .val { text-align: right; font-family: var(--ot-mono); }
+
+.ot-spark { display: block; }
+
+/* ── key/value ────────────────────────────────────────────────────────────── */
+
+.ot-kv { display: grid; grid-template-columns: minmax(110px, auto) 1fr; gap: var(--ot-space-2) var(--ot-space-4); font-size: 12.5px; margin: 0; }
+.ot-kv dt { color: var(--ot-muted); }
+.ot-kv dd { margin: 0; font-family: var(--ot-mono); overflow-wrap: anywhere; }
+
+.ot-sectionhead {
+    margin: 0 0 var(--ot-space-2);
+    font-size: 11px;
+    letter-spacing: 0.9px;
+    text-transform: uppercase;
+    color: var(--ot-muted);
+    font-weight: 650;
+}
+
+.ot-timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--ot-space-2); font-size: 12.5px; }
+.ot-timeline li { padding-left: var(--ot-space-3); border-left: 2px solid var(--ot-line-strong); }
+.ot-timeline .sub { display: block; font-size: 11px; color: var(--ot-muted); }
+
+/* ── command palette ──────────────────────────────────────────────────────── */
+
+.ot-palette {
+    position: fixed;
+    inset: 0;
+    z-index: var(--ot-z-modal);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 12vh;
+    background: var(--ot-overlay);
+    backdrop-filter: blur(3px);
+}
+.ot-palette .box {
+    width: min(560px, 92vw);
+    border-radius: var(--ot-radius-lg);
+    border: 1px solid var(--ot-line-strong);
+    background: var(--ot-surface-2);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+}
+.ot-palette input {
+    width: 100%;
+    height: 46px;
+    padding: 0 var(--ot-space-4);
+    border: 0;
+    border-bottom: 1px solid var(--ot-line);
+    background: transparent;
+    color: var(--ot-text);
+    font-size: 15px;
+    font-family: inherit;
+}
+.ot-palette ul { list-style: none; margin: 0; padding: var(--ot-space-1); max-height: 46vh; overflow-y: auto; }
+.ot-palette li {
+    display: flex;
+    align-items: center;
+    gap: var(--ot-space-2);
+    padding: var(--ot-space-2) var(--ot-space-3);
+    border-radius: var(--ot-radius-sm);
+    font-size: 13px;
+    cursor: pointer;
+}
+.ot-palette li .group { margin-left: auto; font-size: 11px; color: var(--ot-muted); }
+.ot-palette li.active { background: var(--ot-accent-soft); color: var(--ot-accent); }

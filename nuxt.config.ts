@@ -44,6 +44,7 @@ export default defineNuxtConfig({
     '~/assets/scss/inputbox.scss',
     '~/assets/scss/navbar.scss',
     '~/assets/scss/klivetech.scss',
-    '~/assets/scss/omniscience.scss'],
+    '~/assets/scss/omniscience.scss',
+    '~/assets/scss/omnitrader-os.scss'],
   modules: []
 })

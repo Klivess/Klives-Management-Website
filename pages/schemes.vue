@@ -154,7 +154,7 @@
         <!-- Simulator & In Development -->
         <div class="section-label">Simulator & In Development</div>
         <div class="schemes-grid">
-            <div class="scheme-card sim" @click="$router.push('/schemery/omnitrader')">
+            <div class="scheme-card sim" @click="$router.push('/omnitrader')">
                 <div class="card-accent accent-amber"></div>
                 <div class="card-body">
                     <div class="card-top">

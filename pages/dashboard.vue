@@ -162,7 +162,7 @@
                             </div>
                         </div>
                         
-                        <div class="scheme-card omnitrader-card" @click="omniTraderStats.hasAccess ? navigateToScheme('/schemery/omnitrader') : showAccessDeniedMessage()"
+                        <div class="scheme-card omnitrader-card" @click="omniTraderStats.hasAccess ? navigateToScheme('/omnitrader') : showAccessDeniedMessage()"
                              :class="{ 'card-loading': loadingStates.omnitrader, 'card-error': errorStates.omnitrader }">
                             <div v-if="loadingStates.omnitrader" class="card-loading-overlay">
                                 <div class="loading-spinner-small"></div>

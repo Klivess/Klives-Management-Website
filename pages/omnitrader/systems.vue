@@ -28,7 +28,8 @@
                            :foot="`${healthyVenues} with a healthy order path`"
                            :tone="healthyVenues < venues.length ? 'warn' : ''" />
             <OmniTraderKpi label="Channels down" :tone="downChannels ? 'bad' : 'good'" :value="String(downChannels)"
-                           :loading="loading && !venues.length" :foot="`of ${totalChannels} reported`" />
+                           :loading="loading && !venues.length"
+                           :foot="`of ${totalChannels} reported · ${unsupportedChannels} unsupported by the venue`" />
             <OmniTraderKpi label="Stale feeds" :tone="staleFeeds ? 'warn' : ''" :value="String(staleFeeds)"
                            :loading="loading" :foot="`of ${freshness.length} tracked instruments`" />
             <OmniTraderKpi label="Open alerts" :tone="openAlerts.length ? 'bad' : 'good'"
@@ -77,13 +78,15 @@
                     </template>
                     <template #cell-Channel="{ row }"><span class="mono">{{ row.Channel }}</span></template>
                     <template #cell-Connected="{ row }">
-                        <span class="ot-chip" :class="row.Connected ? 'ok' : 'bad'">
-                            <span class="glyph" aria-hidden="true">{{ row.Connected ? '✓' : '✕' }}</span>
-                            {{ row.Connected ? 'up' : 'down' }}
+                        <span class="ot-chip" :class="channelTone(row.State)">
+                            <span class="glyph" aria-hidden="true">{{ channelGlyph(row.State) }}</span>
+                            {{ channelLabel(row.State) }}
                         </span>
                     </template>
                     <template #cell-LastOkUtc="{ row }">
-                        <span :title="fmtTime(row.LastOkUtc)">{{ fmtAgo(row.LastOkUtc) }}</span>
+                        <span v-if="row.State === 'Unsupported'" class="muted">n/a</span>
+                        <span v-else-if="row.State === 'Unknown'" class="muted">not yet used</span>
+                        <span v-else :title="fmtTime(row.LastOkUtc)">{{ fmtAgo(row.LastOkUtc) }}</span>
                     </template>
                     <template #cell-Detail="{ row }">
                         <span class="cellstack">
@@ -328,7 +331,10 @@ const channelRows = computed(() =>
 
 const healthyVenues = computed(() => venues.value.filter(v => v.OrderPathHealthy).length);
 const totalChannels = computed(() => channelRows.value.length);
-const downChannels = computed(() => channelRows.value.filter(c => !c.Connected).length);
+// A channel nobody has called is not down, and a feature the platform never built is not an
+// outage. Counting either produced a permanent red number no action could clear.
+const downChannels = computed(() => channelRows.value.filter(c => c.State === 'Down').length);
+const unsupportedChannels = computed(() => channelRows.value.filter(c => c.State === 'Unsupported').length);
 const staleFeeds = computed(() => freshness.value.filter(f => f.Stale).length);
 const openAlerts = computed(() => alerts.value.filter(a => a.Open));
 const criticalAlerts = computed(() => openAlerts.value.filter(a => a.Severity === 'Critical').length);
@@ -342,6 +348,16 @@ const shortUptime = computed(() => {
     const [, days, hours, minutes] = match;
     return days ? `${days}d ${hours}h` : `${hours}h ${minutes}m`;
 });
+
+function channelTone(state: string) {
+    return ({ Up: 'ok', Down: 'bad', Unknown: '', Unsupported: 'info' } as Record<string, string>)[state] ?? '';
+}
+function channelGlyph(state: string) {
+    return ({ Up: '✓', Down: '✕', Unknown: '○', Unsupported: '–' } as Record<string, string>)[state] ?? '○';
+}
+function channelLabel(state: string) {
+    return ({ Up: 'up', Down: 'down', Unknown: 'not yet used', Unsupported: 'not offered' } as Record<string, string>)[state] ?? state;
+}
 
 function formatAge(age: string | number) {
     if (typeof age === 'number') return `${age.toFixed(1)}m`;

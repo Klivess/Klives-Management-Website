@@ -178,7 +178,16 @@
                     </template>
                 </OmniTraderDataTable>
                 <template #footer>
-                    Resolving a break records the explanation. It never edits a ledger entry.
+                    <span v-if="lastRun">
+                        Last sweep checked {{ lastRun.Checked }} item(s) ·
+                        adopted {{ lastRun.Adopted }} holding(s) the platform had not seen ·
+                        ignored {{ lastRun.DustIgnored }} dust fragment(s) ·
+                        auto-closed {{ lastRun.AutoResolved }} break(s) whose condition had gone.
+                        A break only survives while its difference does.
+                    </span>
+                    <span v-else>
+                        Resolving a break records the explanation. It never edits a ledger entry.
+                    </span>
                 </template>
             </OmniTraderCard>
 
@@ -273,6 +282,7 @@ const selected = ref<any>(null);
 const allocationKey = ref('ExposureByVenue');
 
 const materialBreaks = computed(() => reconciliation.value?.MaterialBreaks ?? 0);
+const lastRun = computed(() => reconciliation.value?.LastRun ?? null);
 
 const positionColumns: TableColumn[] = [
     { key: 'DisplayName', label: 'Instrument', width: '200px' },

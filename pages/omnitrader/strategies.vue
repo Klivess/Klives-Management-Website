@@ -161,7 +161,11 @@
 
                     <div v-if="deployForm.mode === 'Live'" class="ot-banner warn" style="margin-bottom:12px">
                         <span class="glyph" aria-hidden="true">⚠</span>
-                        <div>Live deployments start <b>disarmed</b>. Nothing reaches Kraken until you arm it explicitly.</div>
+                        <div>
+                            Live deployments start <b>disarmed</b> and route through <b>Kraken spot only</b> —
+                            the strategy engine has no IG or Trading 212 router yet. Use the Execution ticket
+                            for those venues.
+                        </div>
                     </div>
 
                     <details v-if="paramGroups.length" style="margin-bottom:12px">

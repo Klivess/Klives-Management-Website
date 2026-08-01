@@ -443,7 +443,10 @@ const ticketForm = reactive({
 const accountOptions = computed<Array<{ Id: string; DisplayName: string; Environment: string; Authority: string }>>(
     () => ticket.value?.Accounts ?? []);
 const selectedAccount = computed(() => accountOptions.value.find(a => a.Id === ticketForm.accountId));
-const venueOptions = computed(() => instrumentVenues.value?.length ? instrumentVenues.value : ['Internal', 'Kraken', 'IG']);
+// Falls back to every venue the firm can reach, not the two it started with. The ticket
+// still refuses anything the instrument has no mapping for.
+const venueOptions = computed(() =>
+    instrumentVenues.value?.length ? instrumentVenues.value : ['Internal', 'Kraken', 'IG', 'Trading212']);
 const dealing = computed(() => ticket.value?.DealingRules);
 
 const scopeLabel = computed(() =>

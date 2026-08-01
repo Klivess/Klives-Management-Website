@@ -185,30 +185,72 @@
             </OmniTraderCard>
         </div>
 
-        <OmniTraderCard title="Service" question="What is this instance, and what is it configured for?"
-                        style="margin-top:16px">
+        <!-- Every venue this build can talk to, configured or not. An unconfigured venue has to be
+             visible as unconfigured — leaving it out is how you end up wondering whether the
+             platform even supports it. -->
+        <OmniTraderCard title="Venue connections" question="What can this firm trade, and what is set up?"
+                        flush style="margin-top:16px" :loading="loading" :empty="!connections.length"
+                        empty-title="No venues compiled in">
+            <OmniTraderDataTable :rows="connections" :columns="connectionColumns" label="venues"
+                                 :row-key="c => `${c.Venue}:${c.Environment}`"
+                                 :row-class="c => c.Registered && !c.OrderPathHealthy ? 'attention' : ''">
+                <template #cell-DisplayName="{ row }">
+                    <span class="cellstack">
+                        <span>{{ row.DisplayName }}</span>
+                        <span class="sub">{{ row.AssetClasses?.join(', ') }} · {{ row.Exposure === 'Derivative' ? 'leveraged notional' : 'owned assets' }}</span>
+                    </span>
+                </template>
+                <template #cell-Environment="{ row }">
+                    <span class="cellstack">
+                        <span class="ot-chip" :class="envClass(row.Environment)">{{ row.Environment }}</span>
+                        <span class="sub">{{ row.RealMoney ? 'real money' : 'simulated' }}</span>
+                    </span>
+                </template>
+                <template #cell-Configured="{ row }">
+                    <span class="ot-chip" :class="row.Configured ? 'ok' : row.Registered ? 'warn' : ''">
+                        <span class="glyph" aria-hidden="true">{{ row.Configured ? '✓' : row.Registered ? '!' : '○' }}</span>
+                        {{ row.Configured ? 'connected' : row.Registered ? 'credentials rejected' : 'not configured' }}
+                    </span>
+                </template>
+                <template #cell-OrderPathHealthy="{ row }">
+                    <span v-if="!row.Registered" class="muted">—</span>
+                    <span v-else class="ot-chip" :class="row.OrderPathHealthy ? 'ok' : 'bad'">
+                        {{ row.OrderPathHealthy ? 'order path up' : 'order path down' }}
+                    </span>
+                </template>
+                <template #cell-SettingKeys="{ row }">
+                    <span v-if="!row.SharedKeys?.length && !row.EnvironmentKeys?.length" class="muted">
+                        no credentials needed
+                    </span>
+                    <span v-else class="cellstack keys">
+                        <span v-for="key in row.SharedKeys" :key="key">
+                            <code class="mono">{{ key }}</code>
+                            <span v-if="row.CredentialSource === key" class="ot-chip ok">in use</span>
+                        </span>
+                        <span v-for="key in row.EnvironmentKeys" :key="key">
+                            <code class="mono">{{ key }}</code>
+                            <span v-if="row.CredentialSource === key" class="ot-chip ok">in use</span>
+                            <span v-else class="sub">optional override</span>
+                        </span>
+                        <span class="sub guidance">{{ row.Guidance }}</span>
+                    </span>
+                </template>
+            </OmniTraderDataTable>
+            <template #footer>
+                Credentials live in Omni settings and are never returned by the API. A setting marked
+                <b>optional override</b> is only needed when that environment's credential genuinely
+                differs — IG issues one API key per account, while a Trading 212 key only works in the
+                environment it was generated in.
+            </template>
+        </OmniTraderCard>
+
+        <OmniTraderCard title="Service" question="What is this instance running?" style="margin-top:16px">
             <dl class="ot-kv">
                 <dt>Database</dt><dd>{{ service?.DbPath ?? '—' }}</dd>
                 <dt>Uptime</dt><dd>{{ service?.Uptime ?? '—' }}</dd>
                 <dt>Strategies</dt><dd>{{ service?.Strategies ?? 0 }} discovered</dd>
-                <dt>Kraken</dt>
-                <dd>
-                    <span class="ot-chip" :class="service?.KrakenConfigured ? 'ok' : ''">
-                        {{ service?.KrakenConfigured ? 'configured' : 'not configured' }}
-                    </span>
-                </dd>
-                <dt>IG</dt>
-                <dd>
-                    <span class="ot-chip" :class="service?.IGConfigured ? 'ok' : ''">
-                        {{ service?.IGConfigured ? 'configured' : 'not configured' }}
-                    </span>
-                </dd>
+                <dt>Instruments</dt><dd>{{ service?.Instruments ?? 0 }} canonical records</dd>
             </dl>
-            <template #footer>
-                Credentials are read from Omni settings and never returned by the API. IG demo and live are
-                separate keys (<code>OmniTrader.IG.Demo.*</code> and <code>OmniTrader.IG.Live.*</code>) so a
-                lower-trust environment cannot reach live credentials.
-            </template>
         </OmniTraderCard>
     </OmniTraderShell>
 </template>
@@ -230,6 +272,7 @@ const venues = ref<any[]>([]);
 const freshness = ref<any[]>([]);
 const audit = ref<any[]>([]);
 const service = ref<any>(null);
+const connections = ref<any[]>([]);
 const alerts = ref<AlertRow[]>([]);
 const showAll = ref(false);
 const loading = ref(false);
@@ -255,6 +298,15 @@ const freshnessColumns: TableColumn[] = [
     { key: 'Age', label: 'Age', num: true, width: '90px', sortValue: f => (typeof f.Age === 'number' ? f.Age : 0) },
     { key: 'Source', label: 'Source', width: '150px' },
     { key: 'Stale', label: 'State', width: '150px', sortValue: f => (f.Stale ? 1 : 0) },
+];
+
+const connectionColumns: TableColumn[] = [
+    { key: 'DisplayName', label: 'Venue', width: '230px' },
+    { key: 'Environment', label: 'Environment', width: '140px' },
+    { key: 'Configured', label: 'Credentials', width: '190px' },
+    { key: 'OrderPathHealthy', label: 'Order path', width: '150px' },
+    { key: 'SettingKeys', label: 'Omni settings', sortable: false,
+      searchValue: c => `${(c.SharedKeys ?? []).join(' ')} ${(c.EnvironmentKeys ?? []).join(' ')}` },
 ];
 
 const auditColumns: TableColumn[] = [
@@ -307,6 +359,7 @@ async function loadAll() {
         freshness.value = data.DataFreshness ?? [];
         audit.value = data.Audit ?? [];
         service.value = data.Service;
+        connections.value = data.Connections ?? [];
         await loadAlerts();
     } catch (e: any) {
         Swal.fire({ title: 'Load failed', text: e?.message, icon: 'error', ...SWAL_THEME });
@@ -384,5 +437,7 @@ onMounted(loadAll);
 .signal { display: grid; grid-template-columns: 9px 1fr auto; gap: var(--ot-space-2); align-items: center; font-size: 12.5px; }
 .signal .name { color: var(--ot-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .signal .value { font-size: 11.5px; }
-code { font-family: var(--ot-mono); color: var(--ot-text-2); }
+code { font-family: var(--ot-mono); color: var(--ot-text-2); font-size: 11.5px; }
+.keys { gap: var(--ot-space-1); }
+.keys .guidance { max-width: 62ch; line-height: 1.45; margin-top: var(--ot-space-1); }
 </style>

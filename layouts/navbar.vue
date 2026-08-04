@@ -63,8 +63,20 @@ const NAV_GROUPS = [
     label: 'Intel',
     items: [
       { to: '/omniscience', label: 'Omniscience', icon: '◎' },
-      { to: '/schemes', label: 'Schemes', icon: '※' },
       { to: '/omnidefence', label: 'OmniDefence', icon: '⛨', klivesOnly: true },
+    ],
+  },
+  {
+    id: 'schemes',
+    label: 'Schemes',
+    items: [
+      { to: '/schemes', label: 'All Schemes', icon: '※' },
+      { to: '/omnitrader', label: 'OmniTrader', icon: '↗' },
+      { to: '/schemery/cs2arbitragebot', label: 'CS2 Arbitrage', icon: '◆' },
+      { to: '/schemery/memescraper', label: 'Meme Scraper', icon: '☺' },
+      { to: '/schemery/omnigram', label: 'OmniGram', icon: '◐' },
+      { to: '/schemery/omnitumblr', label: 'OmniTumblr', icon: '◑' },
+      { to: '/schemery/omnitube', label: 'OmniTube', icon: '▶' },
     ],
   },
   {

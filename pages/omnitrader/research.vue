@@ -1,13 +1,6 @@
 <template>
     <OmniTraderShell>
         <div class="ot-pagehead">
-            <div>
-                <h1>Research</h1>
-                <p class="question">
-                    Does this idea survive contact with the cost model? Backtests, and the experiment log
-                    that turns a good result into evidence a version can be promoted on.
-                </p>
-            </div>
             <div class="ot-actions">
                 <button class="ot-btn ghost" :disabled="loading" @click="loadAll">Refresh</button>
             </div>
@@ -34,7 +27,7 @@
                 <!-- Grouped by strategy: fifty runs of the same idea is one line of enquiry, not
                      fifty unrelated rows, and the group header answers "did this strategy ever
                      work?" without opening any of them. -->
-                <OmniTraderCard title="Backtest jobs" question="Grouped by strategy — click a job for its full result"
+                <OmniTraderCard title="Backtest jobs" subtitle="Grouped by strategy — click a job for its full result"
                                 flush :loading="loading" :empty="!jobs.length"
                                 empty-title="No backtests yet"
                                 empty-text="Queue one from the panel on the right.">
@@ -99,7 +92,7 @@
                     </div>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Experiments" question="Hypothesis → evidence → promotion" flush
+                <OmniTraderCard title="Experiments" subtitle="Hypothesis → evidence → promotion" flush
                                 :loading="loading" :empty="!experiments.length"
                                 empty-title="No experiments"
                                 empty-text="Record a hypothesis before you test it — that is what makes the result evidence rather than a search.">
@@ -128,7 +121,7 @@
             </div>
 
             <div class="ot-stack">
-                <OmniTraderCard title="Run a backtest" question="Same cost model as production">
+                <OmniTraderCard title="Run a backtest" subtitle="Same cost model as production">
                     <div class="ot-field" style="margin-bottom:12px">
                         <label for="bt-strategy">Strategy</label>
                         <select id="bt-strategy" class="ot-select" v-model="btForm.strategyClass">
@@ -170,7 +163,7 @@
                     </template>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="New experiment" question="Write the hypothesis down first">
+                <OmniTraderCard title="New experiment" subtitle="Write the hypothesis down first">
                     <div class="ot-field" style="margin-bottom:12px">
                         <label for="ex-name">Name</label>
                         <input id="ex-name" class="ot-input" v-model="expForm.name" placeholder="IBS on 4h, tighter stop" />

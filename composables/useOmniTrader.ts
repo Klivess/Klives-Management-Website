@@ -103,7 +103,8 @@ export interface MarketRow {
     MomentumScore: number; BreakoutDirection: number; BreakoutQuality: number;
     AlignmentScore: number; AnnualizedVolatility: number;
     AverageQuoteVolume: number; EstimatedSpreadPercent: number;
-    TradableOn: string[]; DataAsOfUtc: string | null; Stale: boolean; DataIssue: string | null;
+    TradableOn: string[]; DataAsOfUtc: string | null; Stale: boolean; MarketClosed: boolean;
+    DataIssue: string | null;
     Spark: number[];
 }
 
@@ -446,6 +447,16 @@ export function regimeTone(regime: string): string {
         default: return '';
     }
 }
+
+export function regimeLabel(regime: string): string {
+    return ({
+        TrendingUp: 'Trending up', TrendingDown: 'Trending down',
+        RangeBound: 'Range bound', Volatile: 'Volatile',
+    } as Record<string, string>)[regime] ?? regime;
+}
+
+/** The drag payload type both ends agree on, so a drag from anywhere else is ignored. */
+export const INSTRUMENT_MIME = 'application/x-omnitrader-instrument';
 
 export function verdictTone(verdict: string): string {
     return verdict === 'Approved' ? 'ok' : verdict === 'RequiresApproval' ? 'warn' : 'bad';

@@ -3,7 +3,7 @@
         <div class="ot-pagehead">
             <div>
                 <h1>{{ quote?.DisplayName ?? symbol ?? 'Instrument' }}</h1>
-                <p class="question">
+                <p class="subtitle">
                     <span class="mono">{{ quote?.Symbol ?? symbol }}</span>
                     <template v-if="quote?.Exchange"> · {{ quote.Exchange }}</template>
                     <template v-if="quote?.AssetClass"> · {{ quote.AssetClass }}</template>
@@ -67,7 +67,7 @@
         </div>
 
         <OmniTraderCard :title="`${quote?.DisplayName ?? symbol} — ${intervalLabel}`"
-                        question="Open, high, low, close and volume per bar"
+                        subtitle="Open, high, low, close and volume per bar"
                         :loading="loading && !candles.length" :empty="!candles.length && !loading"
                         empty-title="No bars for this symbol"
                         empty-text="The data feed returned nothing. Check the symbol, or try a longer timeframe.">
@@ -118,7 +118,7 @@
         </OmniTraderCard>
 
         <div class="ot-grid two" style="margin-top:16px">
-            <OmniTraderCard title="Market state" question="What the shared analytics make of it"
+            <OmniTraderCard title="Market state" subtitle="What the shared analytics make of it"
                             :loading="loadingRow" :empty="!row"
                             empty-title="Not evaluated"
                             empty-text="Regime, momentum and breakout come from the watchlist analytics. Add this instrument to a watchlist to have them computed.">
@@ -145,7 +145,7 @@
                 </div>
             </OmniTraderCard>
 
-            <OmniTraderCard title="Your position" question="Do we already hold this?"
+            <OmniTraderCard title="Your position"
                             :loading="loadingPositions" :empty="!positions.length"
                             empty-kind="ok" empty-title="No position"
                             empty-text="The firm holds none of this instrument on any venue.">

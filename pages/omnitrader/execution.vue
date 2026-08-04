@@ -1,13 +1,6 @@
 <template>
     <OmniTraderShell>
         <div class="ot-pagehead">
-            <div>
-                <h1>Execution</h1>
-                <p class="question">
-                    What did the platform tell a broker, and what came back? Every order, its lifecycle, the
-                    risk decision behind it — including the submissions whose outcome we cannot prove.
-                </p>
-            </div>
             <div class="ot-actions">
                 <button class="ot-btn ghost" :disabled="busy" @click="reconcile">Reconcile outstanding</button>
                 <button class="ot-btn" :disabled="loading" @click="load">Refresh</button>
@@ -67,7 +60,7 @@
                 <!-- The approval queue is a decision list, not a table: it is ordered by how long
                      someone has been waiting on a human. -->
                 <OmniTraderCard v-if="awaiting.length" title="Awaiting approval" attention
-                                :question="`${awaiting.length} order(s) held for a human decision`" flush>
+                                :subtitle="`${awaiting.length} order(s) held for a human decision`" flush>
                     <table class="ot-table">
                         <thead>
                             <tr>
@@ -101,7 +94,7 @@
                     </table>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Order blotter" question="Click a row for the full lifecycle and its risk decision"
+                <OmniTraderCard title="Order blotter" subtitle="Click a row for the full lifecycle and its risk decision"
                                 flush :loading="loading" :empty="!orders.length" :error="error" @retry="load"
                                 :empty-kind="activeCount ? 'filtered' : 'empty'"
                                 empty-title="No orders match"
@@ -156,7 +149,7 @@
             </div>
 
             <!-- capability-driven order ticket -->
-            <OmniTraderCard title="Order ticket" question="Venue-aware: it renders what this venue can do"
+            <OmniTraderCard title="Order ticket" subtitle="Venue-aware: it renders what this venue can do"
                             class="ticket">
                 <div class="ot-field" style="margin-bottom:12px">
                     <label for="tk-instrument">Instrument</label>
@@ -185,6 +178,52 @@
                             Authority: {{ selectedAccount.Authority }}
                         </span>
                     </div>
+                </div>
+
+                <!-- Size against what this account can actually spend. The venue's own figure, so a
+                     percentage means the same thing here as it will at the broker. -->
+                <div v-if="ticketForm.side === 'Buy'" class="sizer">
+                    <header>
+                        <span class="label">Spending power</span>
+                        <b v-if="spendingPower !== null" class="mono">
+                            {{ accountCurrency }} {{ fmtNum(spendingPower, 2) }}
+                        </b>
+                        <span v-else class="muted">{{ selectedAccount?.Issue ?? 'not reported by this venue' }}</span>
+                    </header>
+
+                    <template v-if="spendingPower !== null && spendingPower > 0">
+                        <div class="shortcuts">
+                            <button v-for="p in SPEND_STEPS" :key="p" type="button" class="ot-btn sm"
+                                    :class="spendPercent === p ? 'primary' : 'ghost'"
+                                    @click="applyPercent(p)">{{ p }}%</button>
+                        </div>
+
+                        <input class="slider" type="range" min="0" max="100" step="1"
+                               :value="spendPercent" aria-label="Percentage of spending power"
+                               @input="applyPercent(Number(($event.target as HTMLInputElement).value))" />
+
+                        <div class="amounts">
+                            <label class="ot-field">
+                                <span>Percent</span>
+                                <input class="ot-input mono" type="number" min="0" max="100" step="0.1"
+                                       :value="spendPercent"
+                                       @input="applyPercent(Number(($event.target as HTMLInputElement).value))" />
+                            </label>
+                            <label class="ot-field">
+                                <span>Amount ({{ accountCurrency }})</span>
+                                <input class="ot-input mono" type="number" min="0" step="any"
+                                       :value="spendAmount"
+                                       @input="applyAmount(Number(($event.target as HTMLInputElement).value))" />
+                            </label>
+                        </div>
+
+                        <p v-if="spendOverpower" class="warnline">
+                            That is more than this account can spend.
+                        </p>
+                        <p v-else-if="!ticket?.Mark" class="warnline">
+                            No mark price yet, so an amount cannot be turned into a quantity.
+                        </p>
+                    </template>
                 </div>
 
                 <div v-if="ticket" class="ticketinfo">
@@ -440,8 +479,17 @@ const ticketForm = reactive({
     authority: 'ApprovalRequired',
 });
 
-const accountOptions = computed<Array<{ Id: string; DisplayName: string; Environment: string; Authority: string }>>(
-    () => ticket.value?.Accounts ?? []);
+interface TicketAccount {
+    Id: string; DisplayName: string; Environment: string; Authority: string;
+    Currency: string;
+    /** What the venue says can be spent right now. Null when it could not be asked — which
+     *  is a different fact from zero, and must not be sized against. */
+    SpendingPower: number | null;
+    Balance: number | null;
+    Issue: string | null;
+}
+
+const accountOptions = computed<TicketAccount[]>(() => ticket.value?.Accounts ?? []);
 const selectedAccount = computed(() => accountOptions.value.find(a => a.Id === ticketForm.accountId));
 // Falls back to every venue the firm can reach, not the two it started with. The ticket
 // still refuses anything the instrument has no mapping for.
@@ -462,6 +510,51 @@ const shortBlocked = computed(() =>
     && (ticket.value?.FreeInventory ?? 0) < (ticketForm.quantity || 0));
 
 const estimatedNotional = computed(() => (ticketForm.quantity || 0) * (ticketForm.limitPrice || ticket.value?.Mark || 0));
+
+// ── sizing against spending power ────────────────────────────────────────────
+// A percentage of buying power is how the decision is actually made ("put a fifth in"),
+// but the venue takes a quantity. Quantity stays the single source of truth — the
+// percentage and the amount are derived from it — so the two can never disagree, and
+// typing a quantity directly still works.
+
+const SPEND_STEPS = [5, 10, 20, 25, 50, 100];
+
+const spendingPower = computed(() => selectedAccount.value?.SpendingPower ?? null);
+const accountCurrency = computed(() => selectedAccount.value?.Currency ?? ticket.value?.Instrument?.QuoteCurrency ?? '');
+/** The price an order would actually be sized at: a limit if one is set, else the mark. */
+const sizingPrice = computed(() => ticketForm.limitPrice || ticket.value?.Mark || 0);
+
+const spendAmount = computed(() => round((ticketForm.quantity || 0) * sizingPrice.value, 2));
+const spendPercent = computed(() => {
+    const power = spendingPower.value;
+    if (!power || power <= 0) return 0;
+    return round((spendAmount.value / power) * 100, 1);
+});
+const spendOverpower = computed(() =>
+    spendingPower.value !== null && spendAmount.value > spendingPower.value + 0.005);
+
+function round(n: number, dp: number): number {
+    const f = 10 ** dp;
+    return Number.isFinite(n) ? Math.round(n * f) / f : 0;
+}
+
+function applyPercent(percent: number) {
+    const power = spendingPower.value;
+    if (!power || power <= 0) return;
+    applyAmount((power * Math.max(0, Math.min(100, percent))) / 100);
+}
+
+function applyAmount(amount: number) {
+    const price = sizingPrice.value;
+    if (!price || price <= 0 || !Number.isFinite(amount)) return;
+    let quantity = amount / price;
+
+    // Land on a size the venue will accept rather than one it will round or refuse:
+    // step down so the order never costs more than the amount asked for.
+    const step = dealing.value?.QuantityStep;
+    if (step && step > 0) quantity = Math.floor(quantity / step) * step;
+    ticketForm.quantity = round(quantity, 8);
+}
 
 // Say why a size is unacceptable before the broker does — the dealing rules are
 // already on screen, so failing at the venue would be a self-inflicted round trip.
@@ -658,6 +751,32 @@ onMounted(async () => {
     background: var(--ot-accent-soft);
     font-size: 12.5px;
 }
+/* Sizing against spending power. Sits directly above the quantity field it drives, so
+   the cause and the effect are visible at once. */
+.sizer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ot-space-2);
+    padding: var(--ot-space-3);
+    margin-bottom: var(--ot-space-3);
+    border: 1px solid var(--ot-line);
+    border-radius: var(--ot-radius-sm);
+}
+.sizer > header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--ot-space-2); }
+.sizer .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ot-muted); }
+.sizer > header b { font-size: 15px; font-weight: 620; }
+.sizer .muted { font-size: 11.5px; color: var(--ot-muted); text-align: right; }
+
+.sizer .shortcuts { display: flex; gap: var(--ot-space-1); flex-wrap: wrap; }
+.sizer .shortcuts .ot-btn { flex: 1 1 auto; min-width: 52px; }
+
+.sizer .slider { width: 100%; accent-color: var(--ot-accent); cursor: pointer; }
+
+.sizer .amounts { display: grid; grid-template-columns: 1fr 1fr; gap: var(--ot-space-2); }
+.sizer .amounts .ot-field > span { font-size: 11px; color: var(--ot-muted); }
+
+.sizer .warnline { margin: 0; font-size: 11.5px; color: var(--ot-warning); }
+
 .fineprint { margin: var(--ot-space-2) 0 0; font-size: 11.5px; color: var(--ot-muted); line-height: 1.5; }
 .lead { margin: 0 0 var(--ot-space-4); color: var(--ot-text-2); }
 .facet { font-size: 10px; color: var(--ot-muted); margin-left: 4px; }

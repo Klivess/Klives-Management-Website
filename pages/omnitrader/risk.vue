@@ -1,17 +1,10 @@
 <template>
     <OmniTraderShell>
         <div class="ot-pagehead">
-            <div>
-                <h1>Risk</h1>
-                <p class="question">
-                    How close is the firm to a limit, and what can I do about it? Stopping automation and
-                    reducing exposure are deliberately separate decisions on this page.
-                </p>
-            </div>
             <div class="ot-actions">
                 <button class="ot-btn" :class="risk?.Controls.SafeModeActive ? 'primary' : 'warn'"
-                        :disabled="busy" @click="toggleSafeMode">
-                    {{ risk?.Controls.SafeModeActive ? 'Clear safe mode' : 'Engage safe mode' }}
+                    :disabled="busy" @click="toggleSafeMode">
+                {{ risk?.Controls.SafeModeActive ? 'Clear safe mode' : 'Engage safe mode' }}
                 </button>
                 <button class="ot-btn ghost" :disabled="loading" @click="load">Refresh</button>
             </div>
@@ -33,7 +26,7 @@
              to biting, on one common scale, with the escalation point marked. -->
         <div class="ot-grid three" style="margin-bottom:16px">
             <OmniTraderCard v-for="meter in meters" :key="meter.label" :title="meter.label"
-                            :question="meter.question">
+                            :subtitle="meter.subtitle">
                 <OmniTraderMeter :label="meter.detail" :percent="meter.percent" :value="meter.value"
                                  :value-tone="meter.tone" :limit="meter.limit" />
             </OmniTraderCard>
@@ -44,7 +37,7 @@
 
         <div class="ot-grid sidebar">
             <div class="ot-stack">
-                <OmniTraderCard title="Risk budget" question="What is every proposal measured against?"
+                <OmniTraderCard title="Risk budget"
                                 :loading="loading && !risk">
                     <template #controls>
                         <span v-if="dirty" class="ot-chip warn">unsaved changes</span>
@@ -68,7 +61,7 @@
                 </OmniTraderCard>
 
                 <OmniTraderCard title="Recent risk decisions"
-                                question="Every proposal has one, approved or not" flush
+                                subtitle="Every proposal has one, approved or not" flush
                                 :loading="loading && !risk" :empty="!decisions.length"
                                 empty-title="No decisions yet"
                                 empty-text="The record fills as proposals are evaluated.">
@@ -98,7 +91,7 @@
                     </OmniTraderDataTable>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Exposure concentration" question="Is the book leaning on one thing?">
+                <OmniTraderCard title="Exposure concentration">
                     <template #controls>
                         <div class="ot-segment sm" role="group" aria-label="Concentration dimension">
                             <button type="button" :aria-pressed="concentration === 'instrument'"
@@ -123,7 +116,7 @@
             </div>
 
             <div class="ot-stack">
-                <OmniTraderCard title="Kill switches" question="Stop new proposals in one scope">
+                <OmniTraderCard title="Kill switches" subtitle="Stop new proposals in one scope">
                     <p class="note">
                         A kill switch stops new automated proposals in its scope. Existing positions are
                         untouched — reducing exposure is the separate action below.
@@ -165,7 +158,7 @@
                     </div>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Reduce exposure" attention question="Close positions through the risk engine">
+                <OmniTraderCard title="Reduce exposure" attention subtitle="Close positions through the risk engine">
                     <p class="note">
                         This submits real closing orders. It changes the firm's economic position, so it
                         previews exactly what it would close and requires the token from that preview.
@@ -179,7 +172,7 @@
                     </button>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Operational gates" question="What is blocking automation right now?">
+                <OmniTraderCard title="Operational gates">
                     <dl class="ot-kv">
                         <dt>Unknown orders</dt>
                         <dd :class="risk?.Operations.UnknownOrders ? 'neg' : ''">{{ risk?.Operations.UnknownOrders ?? 0 }}</dd>
@@ -350,23 +343,23 @@ const meters = computed(() => {
     if (!u || !p || !limits) return [];
     return [
         {
-            label: 'Gross exposure', question: 'Sum of absolute notional',
+            label: 'Gross exposure', subtitle: 'Sum of absolute notional',
             detail: 'in use', percent: u.Gross, value: fmtMoney(p.GrossExposure, currency.value),
             limit: `limit ${fmtMoney(limits.MaxGrossExposure, currency.value, 0)}`, tone: '',
         },
         {
-            label: 'Net exposure', question: 'Directional lean of the book',
+            label: 'Net exposure', subtitle: 'Directional lean of the book',
             detail: 'in use', percent: u.Net, value: fmtSigned(p.NetExposure, currency.value),
             limit: `limit ±${fmtMoney(limits.MaxNetExposure, currency.value, 0)}`, tone: '',
         },
         {
-            label: 'Daily loss budget', question: 'Trips safe mode on breach',
+            label: 'Daily loss budget', subtitle: 'Trips safe mode on breach',
             detail: 'consumed', percent: u.DailyLoss, value: fmtSigned(p.DailyRealizedPnL, currency.value),
             limit: `limit ${fmtMoney(limits.MaxFirmDailyLoss, currency.value, 0)}`,
             tone: signTone(p.DailyRealizedPnL),
         },
         {
-            label: 'Drawdown', question: 'From peak equity',
+            label: 'Drawdown', subtitle: 'From peak equity',
             detail: 'of the allowance', percent: u.Drawdown, value: fmtPct(p.DrawdownPercent, 2),
             limit: `limit ${limits.MaxDrawdownPercent}%`, tone: (p.DrawdownPercent ?? 0) > 0 ? 'neg' : '',
         },

@@ -1,15 +1,5 @@
 <template>
     <OmniTraderShell>
-        <div class="ot-pagehead">
-            <div>
-                <h1>Performance</h1>
-                <p class="question">
-                    Is the operation making money, and where is it coming from? Attribution, execution
-                    quality and operator behaviour, all from the ledger and journal the accounting uses.
-                </p>
-            </div>
-        </div>
-
         <div class="ot-filterbar">
             <div class="ot-segment" role="group" aria-label="Reporting window">
                 <button v-for="w in WINDOWS" :key="w.days" type="button"
@@ -73,7 +63,7 @@
         </div>
 
         <div class="ot-grid two">
-            <OmniTraderCard title="Cumulative P&L" question="Is the curve compounding or just noisy?"
+            <OmniTraderCard title="Cumulative P&L"
                             :loading="loading" :empty="!dailyPoints.length"
                             empty-title="No closed trades in this window"
                             empty-text="A record appears once an order reaches a terminal state and its position closes.">
@@ -82,17 +72,17 @@
                 <template #footer>One point per calendar day. Quiet days hold the running total rather than being skipped.</template>
             </OmniTraderCard>
 
-            <OmniTraderCard title="Firm value" question="What did the account balances actually do?"
+            <OmniTraderCard title="Firm value" subtitle="Real money only"
                             :loading="loading" :empty="!equityPoints.length"
-                            empty-title="No value snapshots"
-                            empty-text="Snapshots are written when an account is reconciled.">
+                            empty-title="No value history yet"
+                            empty-text="The firm is valued every reconciliation sweep, about every 5 minutes.">
                 <OmniTraderLineChart :series="equitySeries" :height="280" :format="v => fmtMoney(v, currency, 0)" />
-                <template #footer>Account snapshots, independent of the journal — if these disagree, reconciliation is the place to look.</template>
+                <template #footer>Valued from broker state, independent of the journal — if these disagree, reconciliation is the place to look.</template>
             </OmniTraderCard>
         </div>
 
         <div class="ot-grid two" style="margin-top:16px">
-            <OmniTraderCard title="Attribution" question="Which slice of the operation earned it?">
+            <OmniTraderCard title="Attribution">
                 <template #controls>
                     <div class="ot-segment sm" role="group" aria-label="Attribution dimension">
                         <button v-for="s in SLICES" :key="s.key" type="button"
@@ -104,7 +94,7 @@
                 <template #footer>Net P&amp;L including costs, largest absolute contribution first.</template>
             </OmniTraderCard>
 
-            <OmniTraderCard :title="`${currentSlice.label} detail`" question="Read the numbers, not just the bars"
+            <OmniTraderCard :title="`${currentSlice.label} detail`" subtitle="Read the numbers, not just the bars"
                             flush :empty="!currentRows.length"
                             :empty-title="`Nothing to break down by ${currentSlice.label.toLowerCase()}`">
                 <OmniTraderDataTable :rows="currentRows" :columns="sliceColumns" bare
@@ -122,7 +112,6 @@
 
         <div class="ot-grid two" style="margin-top:16px">
             <OmniTraderCard title="Trade outcome distribution"
-                            question="Is the edge broad, or one trade carrying everything?"
                             :empty="!pnlBuckets.length"
                             empty-title="Not enough closed trades to describe a distribution"
                             empty-text="A histogram of one or two identical values would imply a shape that is not there.">
@@ -130,7 +119,7 @@
                 <template #footer>Buckets are P&amp;L per closed trade, smallest to largest.</template>
             </OmniTraderCard>
 
-            <OmniTraderCard title="Slippage distribution" question="Are fills landing where the decision expected?"
+            <OmniTraderCard title="Slippage distribution"
                             :empty="!slippageBuckets.length"
                             empty-title="No slippage measurements in this window"
                             empty-text="Slippage is recorded when a fill can be compared with a decision price.">
@@ -140,7 +129,7 @@
         </div>
 
         <div class="ot-grid two" style="margin-top:16px">
-            <OmniTraderCard title="Execution quality" question="How well did the platform talk to brokers?">
+            <OmniTraderCard title="Execution quality">
                 <dl class="ot-kv">
                     <dt>Submitted</dt><dd>{{ exec?.Submitted ?? 0 }}</dd>
                     <dt>Filled</dt><dd>{{ exec?.Filled ?? 0 }} ({{ fmtPct(exec?.FillRatePercent, 1) }})</dd>
@@ -160,7 +149,7 @@
                 </div>
             </OmniTraderCard>
 
-            <OmniTraderCard title="Behaviour" question="Did intervening actually help?">
+            <OmniTraderCard title="Behaviour">
                 <p class="verdict">{{ behaviour?.Verdict ?? 'No behaviour data in this window.' }}</p>
                 <dl class="ot-kv">
                     <dt>Interventions</dt><dd>{{ behaviour?.Interventions ?? 0 }}</dd>

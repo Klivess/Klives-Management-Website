@@ -1,13 +1,6 @@
 <template>
     <OmniTraderShell>
         <div class="ot-pagehead">
-            <div>
-                <h1>Journal</h1>
-                <p class="question">
-                    What did we decide, why, and what happened? The automatic decision record for every
-                    trade — what was seen, what risk said, who approved it, and how much heat it took.
-                </p>
-            </div>
             <div class="ot-actions">
                 <button class="ot-btn ghost" :disabled="loading" @click="load">Refresh</button>
             </div>
@@ -76,7 +69,7 @@
                            :foot="`${closedCount} closed in this view`" />
         </div>
 
-        <OmniTraderCard title="Trade records" question="Click a row for the full decision trail" flush
+        <OmniTraderCard title="Trade records" subtitle="Click a row for the full decision trail" flush
                         :loading="loading" :empty="!records.length" :error="error" @retry="load"
                         :empty-kind="activeCount ? 'filtered' : 'empty'"
                         empty-title="No journal records"

@@ -1,15 +1,5 @@
 <template>
     <OmniTraderShell>
-        <div class="ot-pagehead">
-            <div>
-                <h1>Markets</h1>
-                <p class="question">
-                    What is worth trading right now? Regime, momentum, breakout quality, multi-timeframe
-                    alignment, volatility and liquidity — the same shared analytics your strategies read.
-                </p>
-            </div>
-        </div>
-
         <!-- Global controls: everything here re-scopes the whole page. Anything that
              changes one card lives in that card's own header. -->
         <div class="ot-filterbar">
@@ -38,7 +28,8 @@
             </span>
 
             <div class="grow"></div>
-            <button class="ot-btn ghost" @click="openEditor">Edit watchlist</button>
+            <button class="ot-btn ghost" @click="renameWatchlist">Rename</button>
+            <button class="ot-btn ghost" @click="newWatchlist">New list</button>
             <button class="ot-btn" :disabled="loading" @click="load">{{ loading ? 'Evaluating…' : 'Re-evaluate' }}</button>
         </div>
 
@@ -69,80 +60,129 @@
                            :loading="loading && !rows.length" foot="crypto trades 24/7; CFDs do not" />
         </div>
 
+        <!-- Adding an instrument is one gesture, not a modal and a save: type, then drag the
+             card onto the watchlist (or press ＋). Each match is evaluated, because whether
+             something is worth watching is a judgement about its price action. -->
+        <OmniTraderCard title="Add instruments"
+                        :subtitle="addSubtitle">
+            <template #controls>
+                <span v-if="addBusy" class="ot-chip">saving…</span>
+                <span v-else-if="justAdded" class="ot-chip ok">{{ justAdded }} added</span>
+            </template>
+
+            <label class="ot-search wide">
+                <span class="visually-hidden">Search for an instrument</span>
+                <input class="ot-input" type="search" v-model="search" @input="searchInstruments"
+                       placeholder="btc, aapl, vod.l, ^ftse, gold…" />
+            </label>
+
+            <div v-if="searching" class="ot-skelrows" aria-busy="true">
+                <div class="ot-skel" style="width:100%;height:96px"></div>
+            </div>
+
+            <div v-else-if="searchResults.length" class="minigrid">
+                <OmniTraderInstrumentCard v-for="match in searchResults" :key="match.WatchKey"
+                                          :row="match.Row" :name="match.DisplayName"
+                                          :asset-class="match.AssetClass" :exchange="match.Exchange ?? undefined"
+                                          :watch-key="match.WatchKey" :watched="watchedIds.has(match.WatchKey)"
+                                          @add="addInstrument(match.WatchKey, match.DisplayName)" />
+            </div>
+
+            <OmniTraderStateBlock v-else-if="search.trim().length >= 2" compact kind="filtered"
+                                  title="No matches"
+                                  detail="Search any stock, crypto pair or index. You can watch and chart something even if no venue mapping exists yet." />
+
+            <OmniTraderStateBlock v-else compact
+                                  title="Search to add"
+                                  detail="Type at least two characters. Drag a result onto the watchlist below, or press ＋ on it." />
+        </OmniTraderCard>
+
         <div class="ot-grid sidebar">
-            <OmniTraderCard title="Watchlist" :question="`Ranked by momentum on ${intervalLabel} bars`" flush
-                            :loading="loading" :empty="!rows.length"
-                            empty-title="Nothing to evaluate"
-                            empty-text="Add instruments to this watchlist to see market context.">
-                <template #controls>
-                    <span class="ot-chip">click a row to open its chart</span>
-                </template>
-                <OmniTraderDataTable :rows="rows" :columns="columns" label="instruments" pinned selectable
-                                     :row-key="r => r.InstrumentId" 
-                                     default-sort="MomentumScore" search-placeholder="Filter instruments…"
-                                     :row-class="r => r.Stale ? 'attention' : ''"
-                                     @select="openInstrument($event.InstrumentId)">
-                    <template #cell-DisplayName="{ row }">
-                        <span class="cellstack">
-                            <span>{{ row.DisplayName }}</span>
-                            <span class="sub">{{ row.AssetClass }}</span>
-                        </span>
+            <div class="dropzone" :class="{ over: dragOver }"
+                 @dragenter.prevent="onDragEnter" @dragover.prevent="onDragOver"
+                 @dragleave="onDragLeave" @drop.prevent="onDrop">
+                <div v-if="dragOver" class="dropbanner" aria-hidden="true">Drop to add to “{{ watchlistName }}”</div>
+                <OmniTraderCard title="Watchlist" :subtitle="`Ranked by momentum on ${intervalLabel} bars`" flush
+                                :loading="loading" :empty="!rows.length"
+                                empty-title="Nothing to evaluate"
+                                empty-text="Search above, then drag an instrument here — or press ＋ on it.">
+                    <template #controls>
+                        <span class="ot-chip">click a row to open its chart</span>
                     </template>
-                    <template #cell-Spark="{ row }">
-                        <OmniTraderSparkline v-if="row.Spark?.length > 1" :values="row.Spark" :height="24"
-                                             :label="`${row.DisplayName} price`" style="width:80px" />
-                        <span v-else class="muted">—</span>
-                    </template>
-                    <template #cell-Price="{ row }">
-                        <span class="cellstack">
-                            <span :class="{ 'ot-stale': row.Stale }" :title="row.DataIssue ?? ''">{{ fmtNum(row.Price, 6) }}</span>
-                            <span v-if="row.Stale" class="sub" style="color:var(--ot-warning)">stale</span>
-                        </span>
-                    </template>
-                    <template #cell-ChangePercent24h="{ row }">
-                        <span :class="row.ChangePercent24h >= 0 ? 'pos' : 'neg'">
-                            {{ fmtSignedPct(row.ChangePercent24h) }}
-                        </span>
-                    </template>
-                    <template #cell-Regime="{ row }">
-                        <span class="cellstack">
-                            <span class="ot-chip" :class="regimeTone(row.Regime)">{{ regimeLabel(row.Regime) }}</span>
-                            <span class="sub">{{ (row.RegimeConfidence * 100).toFixed(0) }}% confidence</span>
-                        </span>
-                    </template>
-                    <template #cell-MomentumScore="{ row }">
-                        <span :class="row.MomentumScore >= 0 ? 'pos' : 'neg'">{{ fmtNum(row.MomentumScore, 1) }}</span>
-                    </template>
-                    <template #cell-Breakout="{ row }">
-                        <span v-if="row.BreakoutDirection === 0" class="ot-chip">in range</span>
-                        <span v-else class="ot-chip"
-                              :class="row.BreakoutQuality > 0.5 ? (row.BreakoutDirection > 0 ? 'ok' : 'bad') : 'warn'">
-                            {{ row.BreakoutDirection > 0 ? '▲ up' : '▼ down' }} {{ (row.BreakoutQuality * 100).toFixed(0) }}
-                        </span>
-                    </template>
-                    <template #cell-AlignmentScore="{ row }">
-                        <span :class="row.AlignmentScore > 0 ? 'pos' : row.AlignmentScore < 0 ? 'neg' : ''">
-                            {{ row.AlignmentScore.toFixed(2) }}
-                        </span>
-                    </template>
-                    <template #cell-AnnualizedVolatility="{ row }">{{ fmtPct(row.AnnualizedVolatility, 0) }}</template>
-                    <template #cell-AverageQuoteVolume="{ row }">{{ fmtCompact(row.AverageQuoteVolume) }}</template>
-                    <template #cell-EstimatedSpreadPercent="{ row }">{{ fmtPct(row.EstimatedSpreadPercent, 3) }}</template>
-                    <template #cell-TradableOn="{ row }">
-                        <span v-for="v in row.TradableOn" :key="v" class="ot-chip venue">{{ v }}</span>
-                        <span v-if="!row.TradableOn.length" class="ot-chip warn">unmapped</span>
-                    </template>
-                </OmniTraderDataTable>
-            </OmniTraderCard>
+                    <OmniTraderDataTable :rows="rows" :columns="columns" label="instruments" pinned selectable
+                                         :row-key="r => r.InstrumentId" 
+                                         default-sort="MomentumScore" search-placeholder="Filter instruments…"
+                                         :row-class="r => r.Stale ? 'attention' : ''"
+                                         @select="openInstrument($event.InstrumentId)">
+                        <template #cell-DisplayName="{ row }">
+                            <span class="cellstack">
+                                <span>{{ row.DisplayName }}</span>
+                                <span class="sub">{{ row.AssetClass }}</span>
+                            </span>
+                        </template>
+                        <template #cell-Spark="{ row }">
+                            <OmniTraderSparkline v-if="row.Spark?.length > 1" :values="row.Spark" :height="24"
+                                                 :label="`${row.DisplayName} price`" style="width:80px" />
+                            <span v-else class="muted">—</span>
+                        </template>
+                        <template #cell-Price="{ row }">
+                            <span class="cellstack">
+                                <span :class="{ 'ot-stale': row.Stale }" :title="row.DataIssue ?? ''">{{ fmtNum(row.Price, 6) }}</span>
+                                <!-- A shut exchange is not a broken feed, and must not read like one. -->
+                                <span v-if="row.Stale" class="sub" style="color:var(--ot-warning)">stale</span>
+                                <span v-else-if="row.MarketClosed" class="sub muted">market closed</span>
+                            </span>
+                        </template>
+                        <template #cell-ChangePercent24h="{ row }">
+                            <span :class="row.ChangePercent24h >= 0 ? 'pos' : 'neg'">
+                                {{ fmtSignedPct(row.ChangePercent24h) }}
+                            </span>
+                        </template>
+                        <template #cell-Regime="{ row }">
+                            <span class="cellstack">
+                                <span class="ot-chip" :class="regimeTone(row.Regime)">{{ regimeLabel(row.Regime) }}</span>
+                                <span class="sub">{{ (row.RegimeConfidence * 100).toFixed(0) }}% confidence</span>
+                            </span>
+                        </template>
+                        <template #cell-MomentumScore="{ row }">
+                            <span :class="row.MomentumScore >= 0 ? 'pos' : 'neg'">{{ fmtNum(row.MomentumScore, 1) }}</span>
+                        </template>
+                        <template #cell-Breakout="{ row }">
+                            <span v-if="row.BreakoutDirection === 0" class="ot-chip">in range</span>
+                            <span v-else class="ot-chip"
+                                  :class="row.BreakoutQuality > 0.5 ? (row.BreakoutDirection > 0 ? 'ok' : 'bad') : 'warn'">
+                                {{ row.BreakoutDirection > 0 ? '▲ up' : '▼ down' }} {{ (row.BreakoutQuality * 100).toFixed(0) }}
+                            </span>
+                        </template>
+                        <template #cell-AlignmentScore="{ row }">
+                            <span :class="row.AlignmentScore > 0 ? 'pos' : row.AlignmentScore < 0 ? 'neg' : ''">
+                                {{ row.AlignmentScore.toFixed(2) }}
+                            </span>
+                        </template>
+                        <template #cell-AnnualizedVolatility="{ row }">{{ fmtPct(row.AnnualizedVolatility, 0) }}</template>
+                        <template #cell-AverageQuoteVolume="{ row }">{{ fmtCompact(row.AverageQuoteVolume) }}</template>
+                        <template #cell-EstimatedSpreadPercent="{ row }">{{ fmtPct(row.EstimatedSpreadPercent, 3) }}</template>
+                        <template #cell-TradableOn="{ row }">
+                            <span v-for="v in row.TradableOn" :key="v" class="ot-chip venue">{{ v }}</span>
+                            <span v-if="!row.TradableOn.length" class="ot-chip warn">unmapped</span>
+                        </template>
+                        <template #cell-actions="{ row }">
+                            <button class="ot-btn sm ghost" :disabled="addBusy"
+                                    :title="`Remove ${row.DisplayName} from this watchlist`"
+                                    @click.stop="removeInstrument(row.InstrumentId, row.DisplayName)">✕</button>
+                        </template>
+                    </OmniTraderDataTable>
+                </OmniTraderCard>
+            </div>
 
             <div class="ot-stack">
-                <OmniTraderCard title="Momentum leaders" question="Which instruments are moving hardest?">
+                <OmniTraderCard title="Momentum leaders">
                     <OmniTraderBarList :items="momentumBars" :format="v => v.toFixed(1)" :limit="10"
                                        empty-title="Nothing evaluated yet"
                                        :on-select="openInstrument" />
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Regime mix" question="Is this a trending tape or a chopping one?">
+                <OmniTraderCard title="Regime mix">
                     <OmniTraderBarList :items="regimeBars" :format="v => `${v}`" :signed="false"
                                        empty-title="Nothing evaluated yet" />
                     <template #footer>
@@ -150,7 +190,7 @@
                     </template>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Liquidity risk" question="Where would a fill cost the most?">
+                <OmniTraderCard title="Liquidity risk">
                     <OmniTraderBarList :items="spreadBars" :format="v => `${v.toFixed(3)}%`" :signed="false"
                                        :limit="6" empty-title="Nothing evaluated yet" />
                     <template #footer>Estimated spread, widest first. High spread erodes an edge before it starts.</template>
@@ -158,69 +198,16 @@
             </div>
         </div>
 
-        <!-- watchlist editor -->
-        <div v-if="editing" class="ot-modal-backdrop" @click.self="editing = false">
-            <div class="ot-modal" role="dialog" aria-modal="true" aria-label="Edit watchlist">
-                <header>
-                    <h3>Edit watchlist</h3>
-                    <button class="ot-btn ghost sm" @click="editing = false">Close ✕</button>
-                </header>
-                <div class="body">
-                    <div class="ot-formgrid" style="margin-bottom:16px">
-                        <div class="ot-field">
-                            <label for="wl-name">Name</label>
-                            <input id="wl-name" class="ot-input" v-model="editName" />
-                        </div>
-                        <div class="ot-field">
-                            <label for="wl-search">Search any symbol</label>
-                            <input id="wl-search" class="ot-input" v-model="search"
-                                   placeholder="btc, aapl, vod.l, ^ftse…" @input="searchInstruments" />
-                        </div>
-                    </div>
-
-                    <div class="ot-grid two">
-                        <div>
-                            <h4 class="ot-sectionhead">In this list ({{ editIds.length }})</h4>
-                            <div class="picker">
-                                <button v-for="id in editIds" :key="id" class="ot-chip ok pick"
-                                        @click="editIds = editIds.filter(x => x !== id)">{{ id }} ✕</button>
-                                <OmniTraderStateBlock v-if="!editIds.length" compact title="Empty list"
-                                                      detail="Add instruments from the right." />
-                            </div>
-                        </div>
-                        <div>
-                            <h4 class="ot-sectionhead">Available</h4>
-                            <div class="picker">
-                                <button v-for="i in searchResults" :key="i.Symbol" class="ot-chip pick"
-                                        :class="i.Tradable ? 'ok' : ''"
-                                        :title="i.Tradable ? `Tradable on ${i.TradableOn.join(', ')}` : 'Chart and analytics only — no venue mapping'"
-                                        :disabled="editIds.includes(i.InstrumentId ?? i.Symbol)"
-                                        @click="addInstrument(i.InstrumentId ?? i.Symbol)">
-                                    {{ i.DisplayName }} +
-                                </button>
-                                <OmniTraderStateBlock v-if="!searchResults.length" compact kind="filtered"
-                                                      title="No matches"
-                                                      detail="Search any stock, crypto pair or index — you can watch and chart it even if no venue mapping exists yet." />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <footer>
-                    <button class="ot-btn ghost" @click="editing = false">Cancel</button>
-                    <button class="ot-btn primary" :disabled="busy || !editName" @click="saveWatchlist">Save watchlist</button>
-                </footer>
-            </div>
-        </div>
     </OmniTraderShell>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import Swal from 'sweetalert2';
 import {
     useOmniTrader, useUrlState, fmtNum, fmtPct, fmtSignedPct, fmtCompact,
-    regimeTone, SWAL_THEME, type MarketRow,
+    regimeTone, regimeLabel, INSTRUMENT_MIME, SWAL_THEME, type MarketRow,
 } from '~/composables/useOmniTrader';
 import type { TableColumn } from '~/components/OmniTrader/DataTable.vue';
 
@@ -244,11 +231,27 @@ const session = ref<any>(null);
 const loading = ref(false);
 const busy = ref(false);
 
-const editing = ref(false);
-const editName = ref('');
-const editIds = ref<string[]>([]);
+interface SearchMatch {
+    Row: MarketRow | null;
+    Symbol: string;
+    Exchange: string | null;
+    InstrumentId: string | null;
+    DisplayName: string;
+    AssetClass: string;
+    WatchKey: string;
+    TradableOn: string[];
+    Tradable: boolean;
+}
+
 const search = ref('');
-const searchResults = ref<Array<{ Symbol: string; InstrumentId: string | null; DisplayName: string; Tradable: boolean; TradableOn: string[] }>>([]);
+const searching = ref(false);
+const searchResults = ref<SearchMatch[]>([]);
+const addBusy = ref(false);
+const justAdded = ref('');
+const dragOver = ref(false);
+// Drag events fire for every child element entered, so a plain leave handler flickers the
+// highlight. Counting enters and leaves is what keeps it steady.
+let dragDepth = 0;
 
 const columns: TableColumn[] = [
     { key: 'DisplayName', label: 'Instrument', width: '190px' },
@@ -263,10 +266,17 @@ const columns: TableColumn[] = [
     { key: 'AverageQuoteVolume', label: 'Liquidity', num: true, optional: true },
     { key: 'EstimatedSpreadPercent', label: 'Spread', num: true, optional: true },
     { key: 'TradableOn', label: 'Venues', sortable: false },
+    { key: 'actions', label: '', sortable: false, num: true, width: '48px' },
 ];
 
 const intervalLabel = computed(() => INTERVALS.find(i => i.value === filters.interval)?.label ?? filters.interval);
 const staleCount = computed(() => rows.value.filter(r => r.Stale).length);
+const watchlistName = computed(() =>
+    watchlists.value.find(w => w.Id === filters.watchlist)?.Name ?? 'this watchlist');
+const watchedIds = computed(() => new Set(
+    (watchlists.value.find(w => w.Id === filters.watchlist)?.InstrumentIds ?? [])));
+const addSubtitle = computed(() =>
+    `Drag onto “${watchlistName.value}”, or press ＋ — saved immediately`);
 const breakoutCount = computed(() => rows.value.filter(r => r.BreakoutDirection !== 0 && r.BreakoutQuality > 0.5).length);
 
 const regimeCounts = computed(() => {
@@ -286,13 +296,6 @@ const regimeBars = computed(() => Object.entries(regimeCounts.value)
 const spreadBars = computed(() => rows.value
     .filter(r => r.EstimatedSpreadPercent > 0)
     .map(r => ({ key: r.InstrumentId, label: r.DisplayName, value: r.EstimatedSpreadPercent })));
-
-function regimeLabel(regime: string) {
-    return ({
-        TrendingUp: 'Trending up', TrendingDown: 'Trending down',
-        RangeBound: 'Range bound', Volatile: 'Volatile',
-    } as Record<string, string>)[regime] ?? regime;
-}
 
 // A watchlist row is a jumping-off point, not the whole story: open the instrument's own
 // page, where the candles, the live quote and the position all live.
@@ -317,37 +320,119 @@ async function load() {
     } finally { loading.value = false; }
 }
 
-function openEditor() {
-    const current = watchlists.value.find(w => w.Id === filters.watchlist);
-    editName.value = current?.Name ?? 'New list';
-    editIds.value = [...(current?.InstrumentIds ?? [])];
-    editing.value = true;
-    searchInstruments();
-}
+// ── adding and removing instruments ──────────────────────────────────────────
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
+let searchToken = 0;
+
 function searchInstruments() {
     if (searchTimer) clearTimeout(searchTimer);
-    // Debounced: a query per keystroke is load with nobody reading the result.
+    if (search.value.trim().length < 2) {
+        searchResults.value = [];
+        searching.value = false;
+        return;
+    }
+    // Debounced, and each result set carries a token: every match costs a candle fetch, so a
+    // slow early query must never land on top of a newer one's answers.
+    searching.value = true;
     searchTimer = setTimeout(async () => {
-        // The unified search, not just the instrument master: anything listed can be
-        // watched and charted, whether or not the firm can deal it yet.
-        try { searchResults.value = await get('/search', { q: search.value }); }
-        catch { searchResults.value = []; }
-    }, 250);
+        const token = ++searchToken;
+        try {
+            // The evaluated search, not just the instrument master: anything listed can be
+            // watched and charted, whether or not the firm can deal it yet.
+            const found = await get<SearchMatch[]>('/markets/search', {
+                q: search.value, interval: filters.interval,
+            });
+            if (token !== searchToken) return;
+            searchResults.value = found ?? [];
+        } catch {
+            if (token === searchToken) searchResults.value = [];
+        } finally {
+            if (token === searchToken) searching.value = false;
+        }
+    }, 300);
 }
 
-function addInstrument(id: string) {
-    if (!editIds.value.includes(id)) editIds.value.push(id);
+// Interval changes what the mini cards mean, so re-evaluate whatever is on screen.
+watch(() => filters.interval, () => { if (searchResults.value.length) searchInstruments(); });
+
+async function toggleInstrument(id: string, name: string, remove: boolean) {
+    if (!id || addBusy.value) return;
+    addBusy.value = true;
+    try {
+        // The server does the read-modify-write, so two tabs cannot overwrite each other's
+        // additions and the page never has to hold a draft copy of the list.
+        await post('/markets/watchlist/instrument', undefined, {
+            WatchlistId: filters.watchlist, InstrumentId: id, Remove: remove,
+        });
+        justAdded.value = remove ? '' : name;
+        if (!remove) setTimeout(() => { if (justAdded.value === name) justAdded.value = ''; }, 2500);
+        await loadWatchlists();
+        await load();
+    } catch (e: any) {
+        Swal.fire({
+            title: remove ? 'Could not remove' : 'Could not add', text: e?.message,
+            icon: 'error', ...SWAL_THEME,
+        });
+    } finally { addBusy.value = false; }
 }
 
-async function saveWatchlist() {
+const addInstrument = (id: string, name: string) => toggleInstrument(id, name, false);
+const removeInstrument = (id: string, name: string) => toggleInstrument(id, name, true);
+
+function onDragEnter(event: DragEvent) {
+    if (!event.dataTransfer?.types.includes(INSTRUMENT_MIME)) return;
+    dragDepth++;
+    dragOver.value = true;
+}
+
+function onDragOver(event: DragEvent) {
+    if (!event.dataTransfer?.types.includes(INSTRUMENT_MIME)) return;
+    event.dataTransfer.dropEffect = 'copy';
+}
+
+function onDragLeave() {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) dragOver.value = false;
+}
+
+function onDrop(event: DragEvent) {
+    dragDepth = 0;
+    dragOver.value = false;
+    const id = event.dataTransfer?.getData(INSTRUMENT_MIME);
+    if (!id || watchedIds.value.has(id)) return;
+    const match = searchResults.value.find(m => m.WatchKey === id);
+    void addInstrument(id, match?.DisplayName ?? id);
+}
+
+// ── watchlist management ─────────────────────────────────────────────────────
+
+async function renameWatchlist() {
+    const current = watchlists.value.find(w => w.Id === filters.watchlist);
+    if (!current) return;
+    const answer = await Swal.fire({
+        title: 'Rename watchlist', input: 'text', inputValue: current.Name,
+        showCancelButton: true, ...SWAL_THEME,
+    });
+    if (!answer.isConfirmed || !answer.value) return;
+    await saveList(current.Id, answer.value, current.InstrumentIds);
+}
+
+async function newWatchlist() {
+    const answer = await Swal.fire({
+        title: 'New watchlist', input: 'text', inputPlaceholder: 'e.g. Majors',
+        showCancelButton: true, ...SWAL_THEME,
+    });
+    if (!answer.isConfirmed || !answer.value) return;
+    await saveList('', answer.value, []);
+}
+
+async function saveList(id: string, name: string, instrumentIds: string[]) {
     busy.value = true;
     try {
         const saved = await post<any>('/markets/watchlist/save', undefined, {
-            Id: filters.watchlist, Name: editName.value, InstrumentIds: editIds.value,
+            Id: id, Name: name, InstrumentIds: instrumentIds,
         });
-        editing.value = false;
         await loadWatchlists();
         filters.watchlist = saved.Id;
         await load();
@@ -363,16 +448,36 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.picker {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--ot-space-2);
-    max-height: 280px;
+/* Search results: as many mini cards as the width allows, one row deep before it wraps.
+   Auto-fill rather than a fixed count, so a wide monitor shows more instead of stretching. */
+.minigrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: var(--ot-space-3);
+    max-height: 420px;
     overflow-y: auto;
-    align-content: flex-start;
 }
-.pick { cursor: pointer; font-family: inherit; }
-.pick:disabled { opacity: 0.35; cursor: not-allowed; }
+.ot-search.wide { display: block; margin-bottom: var(--ot-space-3); }
+.ot-search.wide .ot-input { width: 100%; }
+
+/* The drop target is the whole watchlist card, so the gesture does not require aim. */
+.dropzone { position: relative; border-radius: var(--ot-radius); min-width: 0; }
+.dropzone.over { outline: 2px dashed var(--ot-accent); outline-offset: 3px; }
+.dropbanner {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--ot-radius);
+    background: rgba(11, 13, 10, 0.72);
+    color: var(--ot-accent);
+    font-size: 14px;
+    font-weight: 600;
+    pointer-events: none;
+}
+
 .ot-chip.venue { margin-right: 4px; }
 .ot-field.auto { width: auto; }
 .visually-hidden {

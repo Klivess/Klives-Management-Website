@@ -355,20 +355,29 @@
 
 /* ── page frame ───────────────────────────────────────────────────────────── */
 
-.ot-page { padding: var(--ot-space-4) var(--ot-space-6) 64px; max-width: 1920px; margin: 0 auto; }
+/* No width cap: a trading screen is used zoomed out on wide monitors, and a 1920px
+   ceiling left the operator staring at gutters exactly when they wanted more rows on
+   screen. Line length is governed per-block (prose has its own `max-width`) rather
+   than by starving the whole page. */
+.ot-page { padding: var(--ot-space-4) var(--ot-space-6) 64px; width: 100%; }
 @media (max-width: 767px) { .ot-page { padding: var(--ot-space-3) var(--ot-space-4) 48px; } }
 
+/* No page title: the nav already says where you are, and a heading repeating it
+   costs a band of vertical space on every screen. What remains is the page's
+   controls, which are not a label. */
 .ot-pagehead {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: var(--ot-space-4);
     flex-wrap: wrap;
-    margin-bottom: var(--ot-space-4);
+    margin-bottom: var(--ot-space-3);
 }
 .ot-pagehead h1 { margin: 0; font-size: 24px; line-height: 32px; font-weight: 620; letter-spacing: -0.2px; }
-.ot-pagehead .question { margin: var(--ot-space-1) 0 0; color: var(--ot-text-2); font-size: 13px; max-width: 76ch; }
+.ot-pagehead .subtitle { margin: var(--ot-space-1) 0 0; color: var(--ot-text-2); font-size: 13px; max-width: 76ch; }
 .ot-pagehead .ot-actions { display: flex; gap: var(--ot-space-2); flex-wrap: wrap; align-items: center; }
+/* Controls with nothing to sit opposite still belong on the right. */
+.ot-pagehead > .ot-actions:only-child { margin-left: auto; }
 
 /* ── filter bar ───────────────────────────────────────────────────────────── */
 /* Global controls live here and nowhere else; anything that changes one card
@@ -538,7 +547,7 @@ a.ot-kpi::after, button.ot-kpi::after {
     font-weight: 600;
     color: var(--ot-text);
 }
-.ot-card > header .question { margin: 0; font-size: 11.5px; color: var(--ot-muted); }
+.ot-card > header .subtitle { margin: 0; font-size: 11.5px; color: var(--ot-muted); }
 .ot-card > header .controls { display: flex; align-items: center; gap: var(--ot-space-2); flex-wrap: wrap; }
 .ot-card > .body { padding: var(--ot-card-pad); flex: 1 1 auto; min-width: 0; }
 .ot-card > .body.flush { padding: 0; }

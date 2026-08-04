@@ -1,18 +1,11 @@
 <template>
     <OmniTraderShell>
         <div class="ot-pagehead">
-            <div>
-                <h1>Command Centre</h1>
-                <p class="question">
-                    Is the operation healthy, and is anything waiting on me? Value, exposure and exceptions
-                    for {{ scopeLabel }}, refreshed every 15 seconds.
-                </p>
-            </div>
             <div class="ot-actions">
                 <NuxtLink class="ot-btn ghost" to="/omnitrader/execution">Order ticket</NuxtLink>
                 <button class="ot-btn" :class="overview?.Controls.SafeModeActive ? 'primary' : 'warn'"
-                        :disabled="busy" @click="toggleSafeMode">
-                    {{ overview?.Controls.SafeModeActive ? 'Clear safe mode' : 'Engage safe mode' }}
+                    :disabled="busy" @click="toggleSafeMode">
+                {{ overview?.Controls.SafeModeActive ? 'Clear safe mode' : 'Engage safe mode' }}
                 </button>
             </div>
         </div>
@@ -77,22 +70,23 @@
 
         <div class="ot-grid sidebar">
             <div class="ot-stack">
-                <OmniTraderCard title="Firm value" question="Where has the book been over the last 30 days?"
+                <OmniTraderCard title="Firm value" subtitle="Real money only"
                                 :empty="!valuePoints.length"
                                 empty-title="No value history yet"
-                                empty-text="Snapshots are recorded each time an account is reconciled. Run a reconciliation on Portfolio to create the first one.">
+                                empty-text="The firm is valued every reconciliation sweep, about every 5 minutes. The first point appears shortly after startup.">
                     <template #controls>
                         <span class="ot-chip">{{ currency }}</span>
                     </template>
                     <OmniTraderLineChart :series="valueSeries" :height="260"
-                                         :format="v => fmtMoney(v, currency, 0)" x-label="Snapshot" />
+                                         :format="v => fmtMoney(v, currency, 0)" x-label="Valuation" />
                     <template #footer>
-                        Account snapshots, not tick data — the curve moves when a venue is reconciled.
+                        The same figure as the headline above, valued every 5 minutes. Paper and demo
+                        balances are excluded, and a sweep where a venue could not be reached leaves a
+                        gap rather than a dip.
                     </template>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Exposure against limits"
-                                question="How much of the risk budget is already spent?">
+                <OmniTraderCard title="Exposure against limits">
                     <template #controls>
                         <NuxtLink class="ot-btn ghost sm" to="/omnitrader/risk">Risk controls</NuxtLink>
                     </template>
@@ -115,7 +109,7 @@
                     </div>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Open alerts" question="What has the platform raised that is still open?"
+                <OmniTraderCard title="Open alerts"
                                 flush :empty="!alerts.length" empty-kind="ok"
                                 empty-title="Nothing open" empty-text="No alert is currently raised.">
                     <template #controls>
@@ -158,7 +152,7 @@
             </div>
 
             <div class="ot-stack">
-                <OmniTraderCard title="Venues" question="Can the firm actually reach a broker?" flush>
+                <OmniTraderCard title="Venues" flush>
                     <table class="ot-table">
                         <tbody>
                             <tr v-for="venue in overview?.Venues ?? []" :key="venue.Venue + venue.Environment">
@@ -184,7 +178,7 @@
                     </table>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Controls" question="What is currently restraining automation?">
+                <OmniTraderCard title="Controls">
                     <dl class="ot-kv">
                         <dt>Safe mode</dt>
                         <dd>
@@ -208,7 +202,7 @@
                     </div>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Today" question="What has happened since midnight UTC?">
+                <OmniTraderCard title="Today" subtitle="Since 00:00 UTC">
                     <dl class="ot-kv">
                         <dt>Realized</dt>
                         <dd :class="signTone(p?.RealizedPnLToday)">{{ fmtSigned(p?.RealizedPnLToday, currency) }}</dd>
@@ -220,7 +214,7 @@
                     </dl>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Simulated" question="Paper and demo — excluded from every figure above">
+                <OmniTraderCard title="Simulated" subtitle="Paper and demo — excluded from every figure above">
                     <dl class="ot-kv">
                         <dt>Value</dt><dd>{{ fmtMoney(sim?.TotalValue, currency) }}</dd>
                         <dt>Cash</dt><dd>{{ fmtMoney(sim?.Cash, currency) }}</dd>
@@ -290,7 +284,7 @@ const valueChange = computed(() => {
 
 const trendFoot = computed(() => {
     if (!overview.value) return undefined;
-    if (!valueChange.value) return 'No snapshot from 24 hours ago to compare against';
+    if (!valueChange.value) return 'No valuation from 24 hours ago to compare against';
     return undefined;
 });
 

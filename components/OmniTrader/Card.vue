@@ -3,8 +3,9 @@
         <header v-if="title || $slots.controls">
             <div class="titles">
                 <h2>{{ title }}</h2>
-                <!-- The question the card answers, in the operator's words. -->
-                <p v-if="question" class="question">{{ question }}</p>
+                <!-- What the card shows, stated plainly. Only worth setting when it tells the
+                     operator something the title does not. -->
+                <p v-if="subtitle" class="subtitle">{{ subtitle }}</p>
             </div>
             <div v-if="$slots.controls" class="controls"><slot name="controls" /></div>
         </header>
@@ -50,14 +51,15 @@
 <script setup lang="ts">
 withDefaults(defineProps<{
     title?: string;
-    question?: string;
+    subtitle?: string;
     footnote?: string;
     flush?: boolean;
     attention?: boolean;
     loading?: boolean;
     empty?: boolean;
-    /** `empty` = there is genuinely nothing; `filtered` = filters removed everything. */
-    emptyKind?: 'empty' | 'filtered' | 'nopermission';
+    /** `empty` = there is genuinely nothing; `filtered` = filters removed everything;
+     *  `ok` = nothing to show is the *good* outcome (no open breaks, no alerts). */
+    emptyKind?: 'empty' | 'filtered' | 'nopermission' | 'ok';
     emptyTitle?: string;
     emptyText?: string;
     error?: string;

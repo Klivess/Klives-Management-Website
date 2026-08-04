@@ -1,13 +1,6 @@
 <template>
     <OmniTraderShell>
         <div class="ot-pagehead">
-            <div>
-                <h1>Strategies</h1>
-                <p class="question">
-                    What is running, and what has each configuration earned the right to do? Authority is
-                    climbed one rung at a time: observe → paper → demo → approval-required → automated.
-                </p>
-            </div>
             <div class="ot-actions">
                 <button class="ot-btn ghost" :disabled="loading" @click="loadAll">Refresh</button>
             </div>
@@ -31,7 +24,7 @@
 
         <div class="ot-grid sidebar">
             <div class="ot-stack">
-                <OmniTraderCard title="Deployments" question="Running strategy instances" flush
+                <OmniTraderCard title="Deployments" subtitle="Running strategy instances" flush
                                 :loading="loading" :empty="!deployments.length"
                                 empty-title="No deployments"
                                 empty-text="Deploy a strategy from the panel on the right.">
@@ -81,8 +74,7 @@
                     </OmniTraderDataTable>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Versions & authority"
-                                question="Which configuration is allowed to do what?" flush
+                <OmniTraderCard title="Versions & authority" flush
                                 :loading="loading" :empty="!versions.length"
                                 empty-title="No versions registered"
                                 empty-text="A version gives a configuration an identity that evidence and authority can attach to.">
@@ -120,7 +112,7 @@
             </div>
 
             <div class="ot-stack">
-                <OmniTraderCard title="Deploy" question="Start a strategy instance">
+                <OmniTraderCard title="Deploy" subtitle="Start a strategy instance">
                     <div class="ot-field" style="margin-bottom:12px">
                         <label for="dp-strategy">Strategy</label>
                         <select id="dp-strategy" class="ot-select" v-model="deployForm.strategyClass">
@@ -198,7 +190,7 @@
                     </button>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Register a version" question="Give a configuration an identity">
+                <OmniTraderCard title="Register a version" subtitle="Give a configuration an identity">
                     <p class="note">
                         A version is an immutable configuration. Evidence and authority attach to it, which
                         is what makes a promotion mean something.

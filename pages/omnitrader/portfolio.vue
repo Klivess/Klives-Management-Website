@@ -1,13 +1,6 @@
 <template>
     <OmniTraderShell>
         <div class="ot-pagehead">
-            <div>
-                <h1>Portfolio</h1>
-                <p class="question">
-                    What is the firm actually exposed to, and does the internal book still agree with what
-                    each broker says? Owned inventory and derivative notional are never summed together.
-                </p>
-            </div>
             <div class="ot-actions">
                 <button class="ot-btn ghost" :disabled="busy" @click="runReconciliation">Reconcile now</button>
                 <button class="ot-btn" :disabled="loading" @click="loadAll">Refresh</button>
@@ -44,10 +37,10 @@
                            help="Paper and demo balances. Excluded from every real figure on this page, because they are not money." />
         </div>
 
-        <OmniTraderCard title="Value by venue" question="Where is the money held, and how has that moved?"
+        <OmniTraderCard title="Firm value" subtitle="Real money only"
                         :empty="!valueSeries.length" :loading="loading"
-                        empty-title="No account snapshots yet"
-                        empty-text="A snapshot is written each time an account is reconciled. Run a reconciliation to create the first one."
+                        empty-title="No value history yet"
+                        empty-text="The firm is valued every reconciliation sweep, about every 5 minutes."
                         style="margin-bottom:16px">
             <template #controls>
                 <div class="ot-segment sm" role="group" aria-label="History window">
@@ -56,10 +49,14 @@
                 </div>
             </template>
             <OmniTraderLineChart :series="valueSeries" :height="280" :format="v => fmtMoney(v, currency, 0)" />
+            <template #footer>
+                Cash, owned inventory and broker-reported CFD equity add up to the total. Paper and
+                demo balances are excluded.
+            </template>
         </OmniTraderCard>
 
         <div class="ot-grid sidebar">
-            <OmniTraderCard title="Positions" question="What is open, where, and how far is it offside?"
+            <OmniTraderCard title="Positions"
                             flush :loading="loading" :empty="!view?.Lines?.length"
                             empty-kind="ok" empty-title="Flat" empty-text="No open exposure anywhere.">
                 <OmniTraderDataTable :rows="view?.Lines ?? []" :columns="positionColumns" label="positions"
@@ -112,7 +109,7 @@
             </OmniTraderCard>
 
             <div class="ot-stack">
-                <OmniTraderCard title="Allocation" question="How concentrated is the book?">
+                <OmniTraderCard title="Allocation">
                     <template #controls>
                         <select class="ot-select auto sm" v-model="allocationKey" aria-label="Allocation dimension">
                             <option value="ExposureByVenue">By venue</option>
@@ -126,7 +123,7 @@
                     <template #footer>Absolute notional, largest first. Negative bars are short exposure.</template>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Valuation" :question="`How native balances became ${currency}`" flush
+                <OmniTraderCard title="Valuation" :subtitle="`How native balances became ${currency}`" flush
                                 :empty="!view?.Valuations?.length" empty-title="No cash balances yet">
                     <OmniTraderDataTable :rows="view?.Valuations ?? []" :columns="valuationColumns" bare
                                          :row-key="v => v.Asset" label="assets">
@@ -146,7 +143,7 @@
 
         <div class="ot-grid two" style="margin-top:16px">
             <OmniTraderCard title="Reconciliation"
-                            :question="`Last run ${fmtAgo(reconciliation?.LastRunUtc)} — holdings the platform did not trade are adopted, not flagged`" flush
+                            :subtitle="`Last run ${fmtAgo(reconciliation?.LastRunUtc)} — holdings the platform did not trade are adopted, not flagged`" flush
                             :empty="!reconciliation?.OpenBreaks?.length" empty-kind="ok"
                             empty-title="Internal and broker state agree"
                             empty-text="No open differences.">
@@ -191,7 +188,7 @@
                 </template>
             </OmniTraderCard>
 
-            <OmniTraderCard title="Ledger" question="What actually moved, and where did it come from?" flush
+            <OmniTraderCard title="Ledger" flush
                             :empty="!ledger.length" empty-title="No entries"
                             empty-text="The ledger fills as fills are booked.">
                 <OmniTraderDataTable :rows="ledger" :columns="ledgerColumns" label="entries"
@@ -274,7 +271,9 @@ const WINDOWS = [{ days: 7, label: '7d' }, { days: 30, label: '30d' }, { days: 9
 const view = ref<any>(null);
 const reconciliation = ref<any>(null);
 const ledger = ref<any[]>([]);
-const series = ref<Array<{ Ts: string; Venue: string; Value: number }>>([]);
+const series = ref<Array<{
+    Ts: string; Total: number; Cash: number; InventoryValue: number; DerivativeEquity: number;
+}>>([]);
 const windowDays = ref(30);
 const loading = ref(false);
 const busy = ref(false);
@@ -319,32 +318,27 @@ const ledgerColumns: TableColumn[] = [
     { key: 'Origin', label: 'Origin', width: '110px' },
 ];
 
-// One line per venue plus the firm total: the same measure on one scale, never a
-// second y-axis.
+// The total and what it is made of, on one scale — the components sum to the total,
+// so no second y-axis and nothing to reconcile by eye. Every point is a recorded
+// whole-firm valuation in the reporting currency, so there is nothing to add up here.
+const COMPONENTS = [
+    { key: 'Total', name: 'Firm value', fill: 'rgba(57, 135, 229, 0.10)' },
+    { key: 'Cash', name: 'Cash', fill: '' },
+    { key: 'InventoryValue', name: 'Owned inventory', fill: '' },
+    { key: 'DerivativeEquity', name: 'CFD equity', fill: '' },
+] as const;
+
 const valueSeries = computed(() => {
     if (!series.value.length) return [];
-    const byVenue = new Map<string, Array<{ x: number; y: number }>>();
-    const totals = new Map<number, number>();
-
-    for (const point of series.value) {
-        const x = new Date(point.Ts).getTime();
-        if (!byVenue.has(point.Venue)) byVenue.set(point.Venue, []);
-        byVenue.get(point.Venue)!.push({ x, y: point.Value });
-        totals.set(x, (totals.get(x) ?? 0) + point.Value);
-    }
-
-    const out = [{
-        name: 'Firm total',
-        colour: seriesColour(0),
-        fill: 'rgba(57, 135, 229, 0.10)',
-        points: [...totals.entries()].sort((a, b) => a[0] - b[0]).map(([x, y]) => ({ x, y })),
-    }];
-    let index = 1;
-    for (const [venue, points] of byVenue) {
-        if (index >= 6) break;
-        out.push({ name: venue, colour: seriesColour(index++), fill: '', points: points.sort((a, b) => a.x - b.x) });
-    }
-    return out;
+    return COMPONENTS.map((component, index) => ({
+        name: component.name,
+        colour: seriesColour(index),
+        fill: component.fill,
+        points: series.value.map(point => ({
+            x: new Date(point.Ts).getTime(),
+            y: point[component.key] ?? 0,
+        })),
+    }));
 });
 
 const totalSpark = computed(() => valueSeries.value[0]?.points.map(p => p.y) ?? []);
@@ -367,7 +361,7 @@ function classificationLabel(c: string) {
 
 async function loadSeries() {
     const from = new Date(Date.now() - windowDays.value * 86400000).toISOString();
-    try { series.value = await get('/portfolio/value-series', { from }); }
+    try { series.value = (await get<any>('/portfolio/value-series', { from }))?.Points ?? []; }
     catch { series.value = []; }
 }
 

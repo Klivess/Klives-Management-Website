@@ -1,13 +1,6 @@
 <template>
     <OmniTraderShell>
         <div class="ot-pagehead">
-            <div>
-                <h1>Systems</h1>
-                <p class="question">
-                    Is the platform healthy, and if not, which part? Every channel reports on its own — a
-                    dead price stream does not imply a dead order path.
-                </p>
-            </div>
             <div class="ot-actions">
                 <button class="ot-btn ghost" :disabled="busy" @click="reconnect">Reconnect venues</button>
                 <button class="ot-btn ghost" :disabled="busy" @click="refreshInstruments">Refresh instruments</button>
@@ -64,7 +57,7 @@
         </div>
 
         <div class="ot-grid two">
-            <OmniTraderCard title="Venue channels" question="Which connection is actually down?" flush
+            <OmniTraderCard title="Venue channels" flush
                             :loading="loading" :empty="!channelRows.length"
                             empty-title="No venue channels" empty-text="No venue is registered yet.">
                 <OmniTraderDataTable :rows="channelRows" :columns="channelColumns" label="channels"
@@ -103,7 +96,7 @@
                 </OmniTraderDataTable>
             </OmniTraderCard>
 
-            <OmniTraderCard title="Alerts" question="What has been raised, and has anyone seen it?" flush
+            <OmniTraderCard title="Alerts" flush
                             :loading="loading" :empty="!alerts.length"
                             :empty-kind="showAll ? 'empty' : 'ok'"
                             empty-title="Nothing raised" empty-text="No alert matches this filter.">
@@ -151,7 +144,7 @@
         </div>
 
         <div class="ot-grid two" style="margin-top:16px">
-            <OmniTraderCard title="Data freshness" question="Which instruments are running on old marks?" flush
+            <OmniTraderCard title="Data freshness" flush
                             :loading="loading" :empty="!freshness.length"
                             empty-title="No feeds observed yet"
                             empty-text="Freshness fills in as instruments are evaluated or marked.">
@@ -171,7 +164,7 @@
                 <template #footer>A stale instrument blocks automated actions on itself, not on the whole firm.</template>
             </OmniTraderCard>
 
-            <OmniTraderCard title="Audit trail" question="Who changed what?" flush
+            <OmniTraderCard title="Audit trail" flush
                             :loading="loading" :empty="!audit.length"
                             empty-title="No audit events"
                             empty-text="Configuration, authority and emergency actions are recorded here.">
@@ -191,7 +184,7 @@
         <!-- Every venue this build can talk to, configured or not. An unconfigured venue has to be
              visible as unconfigured — leaving it out is how you end up wondering whether the
              platform even supports it. -->
-        <OmniTraderCard title="Venue connections" question="What can this firm trade, and what is set up?"
+        <OmniTraderCard title="Venue connections"
                         flush style="margin-top:16px" :loading="loading" :empty="!connections.length"
                         empty-title="No venues compiled in">
             <OmniTraderDataTable :rows="connections" :columns="connectionColumns" label="venues"
@@ -247,7 +240,7 @@
             </template>
         </OmniTraderCard>
 
-        <OmniTraderCard title="Service" question="What is this instance running?" style="margin-top:16px">
+        <OmniTraderCard title="Service" style="margin-top:16px">
             <dl class="ot-kv">
                 <dt>Database</dt><dd>{{ service?.DbPath ?? '—' }}</dd>
                 <dt>Uptime</dt><dd>{{ service?.Uptime ?? '—' }}</dd>

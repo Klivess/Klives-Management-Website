@@ -27,7 +27,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { fmtCompact, fmtNum } from '~/composables/useOmniTrader';
 
 export interface Candle { Ts: string; Open: number; High: number; Low: number; Close: number; Volume: number }
@@ -93,7 +93,14 @@ function toSeries() {
 }
 
 async function build() {
-    if (!host.value || !props.candles.length) return;
+    if (!props.candles.length) return;
+    // The host element lives inside `v-else`, so it does not exist until the DOM has been
+    // patched for the first non-empty candle set. Waiting for that patch is what makes the
+    // chart appear at all: without it `build` bailed on a null host and was never retried,
+    // leaving the readout row above an empty canvas.
+    await nextTick();
+    if (!host.value || chart) return;
+
     const { createChart, CrosshairMode } = await import('lightweight-charts');
 
     chart = createChart(host.value, {
@@ -177,12 +184,14 @@ function destroy() {
     candleSeries = volumeSeries = null;
 }
 
+// `flush: 'post'` so the watcher runs after the DOM has caught up with the new candles —
+// the host element only exists once there is something to draw.
 watch(() => props.candles, async () => {
     if (!props.candles.length) { destroy(); return; }
     if (!chart) { await build(); return; }
     apply();
     chart.timeScale().fitContent();
-}, { deep: false });
+}, { deep: false, flush: 'post' });
 
 onMounted(build);
 onBeforeUnmount(destroy);

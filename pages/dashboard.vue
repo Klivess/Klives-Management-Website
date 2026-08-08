@@ -341,7 +341,6 @@ export default {
                 omnitrader: false,
                 omnigram: false,
                 omnitumblr: false,
-                kliveTech: false,
                 logs: false,
                 frontpage: false
             },
@@ -351,7 +350,6 @@ export default {
                 omnitrader: false,
                 omnigram: false,
                 omnitumblr: false,
-                kliveTech: false,
                 logs: false,
                 frontpage: false
             },
@@ -404,11 +402,6 @@ export default {
                 postedCount: 0,
                 successRate: 0,
                 pendingCount: 0,
-                hasAccess: true
-            },
-            kliveTechStats: {
-                connectedDevices: 0,
-                onlineDevices: 0,
                 hasAccess: true
             },
             recentActivities: [],
@@ -540,9 +533,6 @@ export default {
             this.loadOmniTumblrStats();
         },
 
-        retryKliveTechStats() {
-            this.loadKliveTechStats();
-        },
         
         retryLogs() {
             this.loadRecentActivity();
@@ -912,50 +902,6 @@ export default {
             }
         },
 
-        async loadKliveTechStats() {
-            this.loadingStates.kliveTech = true;
-            this.errorStates.kliveTech = false;
-            
-            try {
-                const response = await RequestGETFromKliveAPI('/klivetech/GetAllGadgets', false, false);
-                if (response.ok) {
-                    const gadgets = await response.json();
-                    this.kliveTechStats = {
-                        connectedDevices: gadgets.length,
-                        onlineDevices: gadgets.filter(g => g.isOnline).length,
-                        hasAccess: true
-                    };
-                } else if (response.status === 401) {
-                    // User doesn't have permission to view KliveTech devices
-                    this.kliveTechStats = {
-                        connectedDevices: 'Restricted',
-                        onlineDevices: 'Restricted',
-                        hasAccess: false
-                    };
-                    console.log('KliveTech access denied - insufficient permissions');
-                } else {
-                    // No fallback data
-                    this.errorStates.kliveTech = true;
-                    this.kliveTechStats = {
-                        connectedDevices: 0,
-                        onlineDevices: 0,
-                        hasAccess: true
-                    };
-                }
-            } catch (error) {
-                console.log('KliveTech API unavailable:', error);
-                this.errorStates.kliveTech = true;
-                this.kliveTechStats = {
-                    connectedDevices: 0,
-                    onlineDevices: 0,
-                    hasAccess: true
-                };
-            } finally {
-                this.loadingStates.kliveTech = false;
-                this.trackLoadCompletion();
-            }
-        },
-        
         async loadRecentActivity(prefetched, prefetchedSummary) {
             this.loadingStates.logs = true;
             this.errorStates.logs = false;
@@ -1023,23 +969,6 @@ export default {
         
         refreshDashboard() {
             this.loadDashboardData();
-        },
-        
-        async refreshKliveTechDevices() {
-            if (!this.kliveTechStats.hasAccess) {
-                this.showAccessDeniedMessage();
-                return;
-            }
-            
-            try {
-                await RequestPOSTFromKliveAPI('/klivetech/RefreshAllDevices', '', false);
-                await this.loadKliveTechStats();
-            } catch (error) {
-                console.error('Failed to refresh KliveTech devices:', error);
-                if (error.status === 401) {
-                    this.showAccessDeniedMessage();
-                }
-            }
         },
         
         navigateToScheme(path) {
@@ -1305,27 +1234,6 @@ export default {
 
 .metric-value.profit {
     color: #fbbf24;
-}
-
-/* KliveTech Overview */
-.klivetech-overview {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}
-
-.device-stats {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 15px;
-}
-
-.device-actions {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
 }
 
 /* Log Section */

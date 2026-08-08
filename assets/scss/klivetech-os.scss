@@ -1,0 +1,928 @@
+/*
+ * KliveTech OS — the fleet-control surface.
+ *
+ * The mental model is a bench instrument, not a web page: an oscilloscope or a rack
+ * analyser. Four rules follow from that and every rule below is one of them.
+ *
+ *   1. Green, amber and red are LAMPS. On real instrumentation they mean nominal,
+ *      caution and fault, and they are never used for chrome. So the interactive
+ *      accent here is cyan — the trace colour, the colour of the measurement — and a
+ *      coloured cell always means something.
+ *   2. A live value belongs in a recessed well (.kt-readout), not flat on a card. It
+ *      is a display, and it should look like one.
+ *   3. Every number carries its unit, its age and its sequence. A bare figure with no
+ *      freshness is indistinguishable from a frozen one.
+ *   4. A gadget that is offline, stale or dropping events says so. Degraded state is
+ *      shown, never implied by absence.
+ *
+ * Geometry is a 4px base with an 8px rhythm; every value below is a token. The z-scale
+ * deliberately matches --ot-z-* so the two systems compose predictably when both
+ * stylesheets are loaded, which they always are.
+ */
+
+:root {
+    /* Surfaces — a blue-tinted graphite. OmniTrader's black is green-tinted; at the
+       same darkness the opposite hue is what makes the two read as different machines
+       before you have read a single word. */
+    --kt-bg: #08090c;
+    --kt-surface: #101319;
+    --kt-surface-2: #171b23;      /* raised: drawer, sticky heads, menus, popovers */
+    --kt-surface-3: #1f242e;      /* hover / selected row */
+    --kt-inset: #05060a;          /* recessed wells: readouts, logs, image viewport */
+    --kt-overlay: rgba(3, 4, 7, 0.74);
+
+    /* Structure */
+    --kt-line: rgba(148, 170, 205, 0.14);
+    --kt-line-strong: rgba(148, 170, 205, 0.30);
+    --kt-etch: rgba(255, 255, 255, 0.05);   /* the machined top-bevel highlight */
+
+    /* Text — every value clears 4.5:1 on --kt-surface. --kt-axis and --kt-disabled are
+       non-text and exempt. */
+    --kt-text: #e6ecf5;
+    --kt-text-2: #adb9cc;
+    --kt-muted: #8b98ad;
+    --kt-disabled: #626e80;
+    --kt-on-accent: #04191b;
+
+    /* Chrome accent — the trace colour. Deliberately NOT a lamp colour. */
+    --kt-accent: #34c9d4;
+    --kt-accent-soft: rgba(52, 201, 212, 0.13);
+
+    /* Lamps — state only. Each ships with a glyph or a word; colour is never alone. */
+    --kt-lamp-ok: #3fd68a;      --kt-lamp-ok-soft: rgba(63, 214, 138, 0.13);
+    --kt-lamp-warn: #f2a93b;    --kt-lamp-warn-soft: rgba(242, 169, 59, 0.13);
+    --kt-lamp-fault: #ff5f5f;   --kt-lamp-fault-soft: rgba(255, 95, 95, 0.13);
+    --kt-lamp-idle: #5c6779;    --kt-lamp-idle-soft: rgba(92, 103, 121, 0.16);
+
+    /* Transports — one fixed colour per connectionType, used everywhere it appears. */
+    --kt-tx-bluetooth: #6ea8ff;
+    --kt-tx-hub: #c79cf5;
+    --kt-tx-relayed: #f2a93b;
+
+    /* Categorical traces — fixed slot order, never cycled or re-assigned by rank. */
+    --kt-trace-1: #35c9d4;
+    --kt-trace-2: #f2a93b;
+    --kt-trace-3: #8b9bf7;
+    --kt-trace-4: #5ac77a;
+    --kt-trace-5: #f07ba8;
+    --kt-trace-6: #c79cf5;
+    --kt-trace-7: #e0d04f;
+    --kt-trace-8: #ff8a6a;
+
+    /* Sequential — one hue, light to dark, for magnitude. */
+    --kt-seq-1: #cdf2f4;
+    --kt-seq-2: #82dbe1;
+    --kt-seq-3: #35c9d4;
+    --kt-seq-4: #1f97a3;
+    --kt-seq-5: #146873;
+
+    /* Chart furniture stays quieter than the data it frames. */
+    --kt-grid: rgba(148, 170, 205, 0.09);
+    --kt-axis: #71809a;
+
+    /* Geometry — 4px base, squarer and denser than OmniTrader. */
+    --kt-space-1: 4px;
+    --kt-space-2: 8px;
+    --kt-space-3: 12px;
+    --kt-space-4: 16px;
+    --kt-space-6: 24px;
+    --kt-space-8: 32px;
+    --kt-radius-sm: 3px;
+    --kt-radius: 6px;
+    --kt-radius-lg: 10px;
+    --kt-control-sm: 24px;
+    --kt-control: 30px;
+    --kt-control-lg: 36px;
+    --kt-row: 34px;
+    --kt-card-pad: 14px;
+    --kt-gutter: 14px;
+    --kt-focus: 2px;
+    --kt-focus-offset: 2px;
+
+    /* Motion */
+    --kt-fast: 80ms;
+    --kt-normal: 150ms;
+    --kt-pulse: 1400ms;
+
+    /* Layers — same scale as --ot-z-* on purpose. */
+    --kt-z-sticky: 20;
+    --kt-z-nav: 40;
+    --kt-z-popover: 60;
+    --kt-z-drawer: 80;
+    --kt-z-modal: 100;
+
+    --kt-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+}
+
+/* Compact density moves spacing only — never type size, because a smaller number is
+   not a denser one, it is a less legible one. */
+.kt-os[data-density='compact'] {
+    --kt-row: 28px;
+    --kt-card-pad: 10px;
+    --kt-gutter: 10px;
+    --kt-control: 26px;
+}
+
+/*
+ * Scope reset. The management site sets colour and font on the universal selector,
+ * gives every <button> uppercase letter-spaced 20/30px chrome, styles a bare <nav>
+ * with a green border, and sets p { font-size: 20px }. The OS is its own surface with
+ * its own type ramp, so it re-establishes inheritance at its root rather than fighting
+ * the cascade rule by rule. .kt-drawer / .kt-scrim / .kt-modal are listed because they
+ * teleport to <body>, outside the shell — omit them and the drawer's buttons inherit
+ * the global chrome and the layout breaks in a way that looks like a component bug.
+ */
+.kt-os, .kt-drawer, .kt-scrim, .kt-modal {
+    font-family: 'Inter', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px;
+    line-height: 18px;
+    color: var(--kt-text);
+    font-variant-numeric: tabular-nums;
+}
+
+.kt-os *, .kt-os *::before, .kt-os *::after,
+.kt-drawer *, .kt-drawer *::before, .kt-drawer *::after,
+.kt-scrim *, .kt-modal *, .kt-modal *::before, .kt-modal *::after {
+    color: inherit;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.kt-os button, .kt-drawer button, .kt-modal button {
+    letter-spacing: normal;
+    text-transform: none;
+    line-height: inherit;
+    overflow: visible;
+    display: inline-flex;
+    border: 0;
+    background: none;
+    padding: 0;
+    margin: 0;
+    font-size: inherit;
+    cursor: pointer;
+}
+
+.kt-os p, .kt-drawer p, .kt-modal p { font-size: inherit; line-height: inherit; margin: 0; }
+.kt-os h1, .kt-os h2, .kt-os h3, .kt-os h4,
+.kt-drawer h1, .kt-drawer h2, .kt-drawer h3 { margin: 0; line-height: 1.3; font-weight: 600; }
+.kt-os a, .kt-drawer a { text-decoration: none; color: inherit; }
+.kt-os ul, .kt-os ol, .kt-drawer ul, .kt-drawer ol { margin: 0; padding: 0; list-style: none; }
+.kt-os dl, .kt-os dd, .kt-os dt, .kt-drawer dl, .kt-drawer dd, .kt-drawer dt { margin: 0; }
+.kt-os input, .kt-os select, .kt-os textarea,
+.kt-drawer input, .kt-drawer select, .kt-drawer textarea {
+    font-family: inherit;
+    font-size: inherit;
+}
+/* navbar.scss styles a bare <nav>; the tab strip is naturally one. */
+.kt-os nav { background: none; border: 0; }
+
+.kt-os {
+    background: var(--kt-bg);
+    min-height: 100vh;
+    padding-bottom: var(--kt-space-8);
+}
+
+.kt-os :focus-visible, .kt-drawer :focus-visible {
+    outline: var(--kt-focus) solid var(--kt-accent);
+    outline-offset: var(--kt-focus-offset);
+    border-radius: var(--kt-radius-sm);
+}
+
+/* ---------------------------------------------------------------- front panel --- */
+
+.kt-top {
+    position: sticky;
+    top: 0;
+    z-index: var(--kt-z-nav);
+    display: flex;
+    align-items: center;
+    gap: var(--kt-space-3);
+    flex-wrap: wrap;
+    padding: var(--kt-space-3) var(--kt-space-4);
+    background: var(--kt-surface-2);
+    border-bottom: 1px solid var(--kt-line);
+    box-shadow: inset 0 1px 0 var(--kt-etch);
+}
+
+.kt-brand {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.15;
+    padding-right: var(--kt-space-3);
+    border-right: 1px solid var(--kt-line);
+}
+.kt-brand b { font-size: 14px; letter-spacing: 0.02em; }
+.kt-brand span { font-size: 10px; color: var(--kt-muted); text-transform: uppercase; letter-spacing: 0.14em; }
+
+/* The segmented power rail. Animated only while telemetry is actually live, so motion
+   on this page always means data is moving. */
+.kt-rail {
+    height: 2px;
+    width: 100%;
+    color: var(--kt-lamp-idle);
+    background-image: repeating-linear-gradient(90deg,
+        currentColor 0 8px, transparent 8px 14px);
+    background-size: 14px 100%;
+}
+.kt-rail.ok { color: var(--kt-lamp-ok); }
+.kt-rail.warn { color: var(--kt-lamp-warn); }
+.kt-rail.fault { color: var(--kt-lamp-fault); }
+.kt-rail.live { animation: kt-rail-run 900ms linear infinite; }
+@keyframes kt-rail-run { to { background-position: 14px 0; } }
+
+/* Chassis vent slots — pure decoration, and the only decoration on the page. */
+.kt-vent {
+    flex: 0 0 auto;
+    height: 10px;
+    width: 34px;
+    background-image: repeating-linear-gradient(90deg,
+        var(--kt-line) 0 1px, transparent 1px 4px);
+    opacity: 0.8;
+}
+
+.kt-fresh {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--kt-space-2);
+    font-size: 11px;
+    color: var(--kt-muted);
+}
+.kt-fresh b { color: var(--kt-text-2); font-weight: 500; }
+
+/* -------------------------------------------------------------------- lamps ----- */
+
+.kt-lamp {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--kt-space-2);
+    font-size: 12px;
+    white-space: nowrap;
+}
+.kt-lamp .bulb {
+    position: relative;
+    width: 8px;
+    height: 8px;
+    flex: 0 0 8px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+}
+/* The specular highlight is what separates a lit LED from a coloured circle. */
+.kt-lamp .bulb::after {
+    content: '';
+    position: absolute;
+    top: 1px;
+    left: 1.6px;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.55);
+}
+.kt-lamp.ok { color: var(--kt-lamp-ok); }
+.kt-lamp.warn { color: var(--kt-lamp-warn); }
+.kt-lamp.fault { color: var(--kt-lamp-fault); }
+.kt-lamp.idle { color: var(--kt-lamp-idle); }
+.kt-lamp.idle .bulb { box-shadow: none; }
+.kt-lamp .word { color: var(--kt-text-2); }
+.kt-lamp.pulse .bulb { animation: kt-breathe var(--kt-pulse) ease-in-out infinite; }
+@keyframes kt-breathe { 50% { opacity: 0.45; } }
+
+/* ------------------------------------------------------------------ readouts ---- */
+
+/* The signature surface: a live value sits in a sunken display, never flat on a card. */
+.kt-readout {
+    display: flex;
+    flex-direction: column;
+    gap: var(--kt-space-1);
+    padding: var(--kt-space-2) var(--kt-space-3);
+    background: var(--kt-inset);
+    border: 1px solid var(--kt-line);
+    border-radius: var(--kt-radius-sm);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
+    min-width: 0;
+}
+.kt-readout .rlabel {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--kt-space-2);
+    font-family: var(--kt-mono);
+    font-size: 11px;
+    color: var(--kt-text-2);
+    overflow: hidden;
+}
+.kt-readout .rlabel .id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kt-readout .rvalue {
+    font-family: var(--kt-mono);
+    font-size: 19px;
+    line-height: 24px;
+    color: var(--kt-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.kt-readout .rvalue .unit { font-size: 12px; color: var(--kt-muted); margin-left: 3px; }
+.kt-readout .rvalue.none { color: var(--kt-disabled); }
+.kt-readout .rmeta {
+    display: flex;
+    align-items: center;
+    gap: var(--kt-space-2);
+    flex-wrap: wrap;
+    font-size: 10px;
+    color: var(--kt-muted);
+    font-family: var(--kt-mono);
+}
+.kt-readout.clickable { cursor: pointer; transition: border-color var(--kt-fast); }
+.kt-readout.clickable:hover { border-color: var(--kt-line-strong); }
+
+/* -------------------------------------------------------------------- layout ---- */
+
+.kt-page { padding: var(--kt-space-4); display: flex; flex-direction: column; gap: var(--kt-gutter); }
+
+.kt-pagehead { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--kt-space-4); flex-wrap: wrap; }
+.kt-pagehead h1 { font-size: 18px; }
+.kt-pagehead .subtitle { color: var(--kt-muted); font-size: 12px; margin-top: 2px; }
+.kt-actions { display: flex; align-items: center; gap: var(--kt-space-2); flex-wrap: wrap; }
+
+.kt-grid { display: grid; gap: var(--kt-gutter); align-items: start; }
+.kt-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.kt-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.kt-grid.sidebar { grid-template-columns: minmax(0, 1fr) minmax(0, 360px); }
+.kt-grid.sidebar-left { grid-template-columns: minmax(0, 360px) minmax(0, 1fr); }
+.kt-stack { display: flex; flex-direction: column; gap: var(--kt-gutter); min-width: 0; }
+
+@media (max-width: 1100px) {
+    .kt-grid.three, .kt-grid.sidebar, .kt-grid.sidebar-left { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 720px) {
+    .kt-grid.two { grid-template-columns: minmax(0, 1fr); }
+    .kt-page { padding: var(--kt-space-3); }
+}
+
+/* --------------------------------------------------------------------- panel ---- */
+
+.kt-panel {
+    background: var(--kt-surface);
+    border: 1px solid var(--kt-line);
+    border-radius: var(--kt-radius);
+    /* The milled top bevel. One pixel of light is the whole effect. */
+    box-shadow: inset 0 1px 0 var(--kt-etch);
+    min-width: 0;
+}
+.kt-panel.attention { border-color: var(--kt-lamp-warn); }
+.kt-panel > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--kt-space-3);
+    padding: var(--kt-space-3) var(--kt-card-pad);
+    border-bottom: 1px solid var(--kt-line);
+}
+.kt-panel > header .titles { min-width: 0; }
+.kt-panel > header h2 { font-size: 13px; letter-spacing: 0.01em; }
+.kt-panel > header .subtitle { font-size: 11px; color: var(--kt-muted); margin-top: 1px; }
+.kt-panel > header .controls { display: flex; align-items: center; gap: var(--kt-space-2); flex: 0 0 auto; }
+.kt-panel > .body { padding: var(--kt-card-pad); min-width: 0; }
+.kt-panel > .body.flush { padding: 0; }
+.kt-panel > footer {
+    padding: var(--kt-space-2) var(--kt-card-pad);
+    border-top: 1px solid var(--kt-line);
+    font-size: 11px;
+    color: var(--kt-muted);
+}
+
+/* Corner fasteners. Opt-in, top-level panels only — on every panel they become noise. */
+.kt-panel.kt-screws { position: relative; }
+.kt-panel.kt-screws::before, .kt-panel.kt-screws::after {
+    content: '';
+    position: absolute;
+    top: 6px;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, var(--kt-line-strong), transparent 70%);
+}
+.kt-panel.kt-screws::before { left: 6px; }
+.kt-panel.kt-screws::after { right: 6px; }
+
+.kt-notice {
+    display: flex;
+    align-items: center;
+    gap: var(--kt-space-2);
+    padding: var(--kt-space-2) var(--kt-card-pad);
+    font-size: 11px;
+    border-bottom: 1px solid var(--kt-line);
+}
+.kt-notice.warn { color: var(--kt-lamp-warn); background: var(--kt-lamp-warn-soft); }
+.kt-notice.info { color: var(--kt-accent); background: var(--kt-accent-soft); }
+.kt-notice.fault { color: var(--kt-lamp-fault); background: var(--kt-lamp-fault-soft); }
+
+/* ----------------------------------------------------------------- stat tiles --- */
+
+.kt-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+    gap: var(--kt-space-2);
+}
+.kt-stat {
+    display: flex;
+    flex-direction: column;
+    gap: var(--kt-space-1);
+    padding: var(--kt-space-3);
+    background: var(--kt-surface);
+    border: 1px solid var(--kt-line);
+    border-left: 2px solid var(--kt-line-strong);
+    border-radius: var(--kt-radius-sm);
+    box-shadow: inset 0 1px 0 var(--kt-etch);
+    min-width: 0;
+}
+.kt-stat .k {
+    display: flex;
+    align-items: center;
+    gap: var(--kt-space-1);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--kt-muted);
+}
+.kt-stat .k abbr { text-decoration: none; cursor: help; font-size: 10px; }
+.kt-stat .v {
+    font-family: var(--kt-mono);
+    font-size: 21px;
+    line-height: 26px;
+    color: var(--kt-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.kt-stat .v .unit { font-size: 12px; color: var(--kt-muted); margin-left: 3px; }
+.kt-stat .foot { font-size: 10px; color: var(--kt-muted); }
+.kt-stat.ok { border-left-color: var(--kt-lamp-ok); }
+.kt-stat.ok .v { color: var(--kt-lamp-ok); }
+.kt-stat.warn { border-left-color: var(--kt-lamp-warn); }
+.kt-stat.warn .v { color: var(--kt-lamp-warn); }
+.kt-stat.fault { border-left-color: var(--kt-lamp-fault); }
+.kt-stat.fault .v { color: var(--kt-lamp-fault); }
+.kt-stat.accent { border-left-color: var(--kt-accent); }
+.kt-stat.accent .v { color: var(--kt-accent); }
+
+/* ------------------------------------------------------------------- controls --- */
+
+.kt-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--kt-space-2);
+    height: var(--kt-control);
+    padding: 0 var(--kt-space-3);
+    background: var(--kt-surface-2);
+    border: 1px solid var(--kt-line-strong);
+    border-radius: var(--kt-radius-sm);
+    color: var(--kt-text-2);
+    font-size: 12px;
+    white-space: nowrap;
+    transition: background var(--kt-fast), border-color var(--kt-fast), color var(--kt-fast);
+}
+.kt-btn:hover:not(:disabled) { background: var(--kt-surface-3); color: var(--kt-text); }
+.kt-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.kt-btn.primary { background: var(--kt-accent); border-color: var(--kt-accent); color: var(--kt-on-accent); font-weight: 600; }
+.kt-btn.primary:hover:not(:disabled) { filter: brightness(1.1); color: var(--kt-on-accent); }
+.kt-btn.ghost { background: transparent; border-color: var(--kt-line); }
+.kt-btn.danger { border-color: var(--kt-lamp-fault); color: var(--kt-lamp-fault); }
+.kt-btn.danger:hover:not(:disabled) { background: var(--kt-lamp-fault-soft); color: var(--kt-lamp-fault); }
+.kt-btn.warn { border-color: var(--kt-lamp-warn); color: var(--kt-lamp-warn); }
+.kt-btn.ok { border-color: var(--kt-lamp-ok); color: var(--kt-lamp-ok); }
+.kt-btn.sm { height: var(--kt-control-sm); padding: 0 var(--kt-space-2); font-size: 11px; }
+.kt-btn.block { width: 100%; }
+.kt-btn.active { border-color: var(--kt-accent); color: var(--kt-accent); }
+
+.kt-segment {
+    display: inline-flex;
+    border: 1px solid var(--kt-line-strong);
+    border-radius: var(--kt-radius-sm);
+    overflow: hidden;
+    background: var(--kt-surface-2);
+}
+.kt-segment button {
+    height: var(--kt-control);
+    padding: 0 var(--kt-space-3);
+    font-size: 12px;
+    color: var(--kt-muted);
+    border-right: 1px solid var(--kt-line);
+    align-items: center;
+    justify-content: center;
+    transition: background var(--kt-fast), color var(--kt-fast);
+}
+.kt-segment button:last-child { border-right: 0; }
+.kt-segment button:hover:not(:disabled) { color: var(--kt-text); }
+.kt-segment button[aria-pressed='true'] { background: var(--kt-accent-soft); color: var(--kt-accent); }
+.kt-segment button:disabled { opacity: 0.45; cursor: not-allowed; }
+.kt-segment.sm button { height: var(--kt-control-sm); padding: 0 var(--kt-space-2); font-size: 11px; }
+
+.kt-input, .kt-select {
+    height: var(--kt-control);
+    padding: 0 var(--kt-space-2);
+    background: var(--kt-inset);
+    border: 1px solid var(--kt-line-strong);
+    border-radius: var(--kt-radius-sm);
+    color: var(--kt-text);
+    font-size: 12px;
+    min-width: 0;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.kt-input.mono { font-family: var(--kt-mono); }
+.kt-input:disabled, .kt-select:disabled { opacity: 0.5; cursor: not-allowed; }
+.kt-input.invalid { border-color: var(--kt-lamp-fault); }
+.kt-select { cursor: pointer; }
+.kt-select option { background: var(--kt-surface-2); color: var(--kt-text); }
+
+.kt-field { display: flex; flex-direction: column; gap: var(--kt-space-1); min-width: 0; }
+.kt-field > label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--kt-muted); }
+.kt-field .hint { font-size: 10px; color: var(--kt-muted); }
+.kt-field .err { font-size: 10px; color: var(--kt-lamp-fault); }
+
+.kt-formgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--kt-space-3); }
+
+.kt-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--kt-space-2);
+    cursor: pointer;
+    font-size: 11px;
+    color: var(--kt-text-2);
+}
+.kt-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.kt-switch .track {
+    width: 30px;
+    height: 16px;
+    border-radius: 8px;
+    background: var(--kt-inset);
+    border: 1px solid var(--kt-line-strong);
+    position: relative;
+    transition: background var(--kt-normal), border-color var(--kt-normal);
+    flex: 0 0 auto;
+}
+.kt-switch .track::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--kt-disabled);
+    transition: transform var(--kt-normal), background var(--kt-normal);
+}
+.kt-switch input:checked + .track { background: var(--kt-accent-soft); border-color: var(--kt-accent); }
+.kt-switch input:checked + .track::after { transform: translateX(14px); background: var(--kt-accent); }
+.kt-switch input:disabled + .track { opacity: 0.45; }
+.kt-switch input:focus-visible + .track { outline: var(--kt-focus) solid var(--kt-accent); outline-offset: var(--kt-focus-offset); }
+
+/* ---------------------------------------------------------------------- tabs ---- */
+
+.kt-tabs {
+    display: flex;
+    align-items: center;
+    gap: var(--kt-space-1);
+    border-bottom: 1px solid var(--kt-line);
+    padding: 0 var(--kt-space-1);
+    background: var(--kt-surface);
+    border-radius: var(--kt-radius) var(--kt-radius) 0 0;
+}
+.kt-tabs button {
+    position: relative;
+    height: 36px;
+    padding: 0 var(--kt-space-3);
+    align-items: center;
+    gap: var(--kt-space-2);
+    font-size: 12px;
+    color: var(--kt-muted);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color var(--kt-fast), border-color var(--kt-fast);
+}
+.kt-tabs button:hover { color: var(--kt-text-2); }
+.kt-tabs button[aria-selected='true'] { color: var(--kt-accent); border-bottom-color: var(--kt-accent); }
+
+/* --------------------------------------------------------------------- chips ---- */
+
+.kt-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--kt-space-1);
+    height: 19px;
+    padding: 0 var(--kt-space-2);
+    border-radius: var(--kt-radius-sm);
+    border: 1px solid var(--kt-line);
+    background: var(--kt-surface-2);
+    color: var(--kt-text-2);
+    font-size: 10px;
+    white-space: nowrap;
+}
+.kt-chip.mono { font-family: var(--kt-mono); }
+.kt-chip.ok { color: var(--kt-lamp-ok); border-color: var(--kt-lamp-ok); background: var(--kt-lamp-ok-soft); }
+.kt-chip.warn { color: var(--kt-lamp-warn); border-color: var(--kt-lamp-warn); background: var(--kt-lamp-warn-soft); }
+.kt-chip.fault { color: var(--kt-lamp-fault); border-color: var(--kt-lamp-fault); background: var(--kt-lamp-fault-soft); }
+.kt-chip.accent { color: var(--kt-accent); border-color: var(--kt-accent); background: var(--kt-accent-soft); }
+.kt-chip.idle { color: var(--kt-muted); }
+/* Transport chips carry a fixed colour per connectionType wherever they appear. */
+.kt-chip.tx-bluetooth { color: var(--kt-tx-bluetooth); border-color: var(--kt-tx-bluetooth); background: rgba(110, 168, 255, 0.13); }
+.kt-chip.tx-hub { color: var(--kt-tx-hub); border-color: var(--kt-tx-hub); background: rgba(199, 156, 245, 0.13); }
+.kt-chip.tx-relayed { color: var(--kt-tx-relayed); border-color: var(--kt-tx-relayed); background: rgba(242, 169, 59, 0.13); }
+
+/* -------------------------------------------------------------------- tables ---- */
+
+.kt-tabletools {
+    display: flex;
+    align-items: center;
+    gap: var(--kt-space-2);
+    padding: var(--kt-space-2) var(--kt-card-pad);
+    border-bottom: 1px solid var(--kt-line);
+    flex-wrap: wrap;
+}
+.kt-tabletools .grow { flex: 1 1 auto; }
+.kt-tabletools .count { font-size: 11px; color: var(--kt-muted); }
+
+.kt-tablewrap { overflow: auto; min-width: 0; }
+
+table.kt-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.kt-table th, table.kt-table td {
+    padding: 0 var(--kt-space-3);
+    height: var(--kt-row);
+    text-align: left;
+    border-bottom: 1px solid var(--kt-line);
+    white-space: nowrap;
+}
+table.kt-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: var(--kt-z-sticky);
+    background: var(--kt-surface-2);
+    color: var(--kt-muted);
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    border-bottom: 1px solid var(--kt-line-strong);
+}
+table.kt-table thead th.sortable { cursor: pointer; user-select: none; }
+table.kt-table thead th.sortable:hover { color: var(--kt-text-2); }
+table.kt-table thead th .dir { color: var(--kt-accent); margin-left: 3px; }
+table.kt-table td.num, table.kt-table th.num { text-align: right; font-family: var(--kt-mono); }
+table.kt-table td.mono { font-family: var(--kt-mono); }
+table.kt-table tbody tr { transition: background var(--kt-fast); }
+table.kt-table tbody tr.clickable { cursor: pointer; }
+table.kt-table tbody tr:hover { background: var(--kt-surface-3); }
+table.kt-table tbody tr.selected { background: var(--kt-accent-soft); }
+table.kt-table tbody tr.fault td:first-child { box-shadow: inset 2px 0 0 var(--kt-lamp-fault); }
+table.kt-table tbody tr.warn td:first-child { box-shadow: inset 2px 0 0 var(--kt-lamp-warn); }
+table.kt-table tbody tr:last-child td { border-bottom: 0; }
+
+.kt-cellstack { display: flex; flex-direction: column; line-height: 1.25; padding: var(--kt-space-1) 0; }
+.kt-cellstack .sub { font-size: 10px; color: var(--kt-muted); font-family: var(--kt-mono); }
+
+.kt-pager {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--kt-space-2);
+    padding: var(--kt-space-2) var(--kt-card-pad);
+    border-top: 1px solid var(--kt-line);
+    font-size: 11px;
+    color: var(--kt-muted);
+}
+
+/* ------------------------------------------------------------ key/value lists --- */
+
+.kt-kv { display: grid; grid-template-columns: minmax(120px, auto) minmax(0, 1fr); gap: var(--kt-space-1) var(--kt-space-3); font-size: 12px; }
+.kt-kv dt { color: var(--kt-muted); font-size: 11px; }
+.kt-kv dd { font-family: var(--kt-mono); color: var(--kt-text-2); overflow-wrap: anywhere; }
+
+/* --------------------------------------------------------------------- meter ---- */
+
+.kt-meter { display: flex; flex-direction: column; gap: var(--kt-space-1); min-width: 0; }
+.kt-meter .mhead { display: flex; align-items: baseline; justify-content: space-between; gap: var(--kt-space-2); font-size: 11px; }
+.kt-meter .mhead .label { color: var(--kt-muted); }
+.kt-meter .mhead .value { font-family: var(--kt-mono); color: var(--kt-text-2); }
+.kt-meter .track {
+    position: relative;
+    height: 6px;
+    background: var(--kt-inset);
+    border-radius: 3px;
+    overflow: hidden;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.kt-meter .fill { height: 100%; background: var(--kt-accent); transition: width var(--kt-normal); }
+.kt-meter.ok .fill { background: var(--kt-lamp-ok); }
+.kt-meter.warn .fill { background: var(--kt-lamp-warn); }
+.kt-meter.fault .fill { background: var(--kt-lamp-fault); }
+.kt-meter .limit { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--kt-lamp-fault); }
+.kt-meter .foot { font-size: 10px; color: var(--kt-muted); }
+/* Compiling reports no total, so the bar must say "working", not "0 %". */
+.kt-meter.indeterminate .fill {
+    width: 32% !important;
+    animation: kt-indeterminate 1200ms ease-in-out infinite;
+}
+@keyframes kt-indeterminate {
+    0% { transform: translateX(-110%); }
+    100% { transform: translateX(320%); }
+}
+
+/* -------------------------------------------------------------------- states ---- */
+
+.kt-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--kt-space-2);
+    padding: var(--kt-space-8) var(--kt-space-4);
+    text-align: center;
+    color: var(--kt-muted);
+}
+.kt-state.compact { padding: var(--kt-space-4); }
+.kt-state .glyph { font-size: 22px; line-height: 1; color: var(--kt-disabled); }
+.kt-state .title { font-size: 13px; color: var(--kt-text-2); }
+.kt-state .detail { font-size: 11px; max-width: 46ch; }
+.kt-state.error .glyph { color: var(--kt-lamp-fault); }
+.kt-state.ok .glyph { color: var(--kt-lamp-ok); }
+.kt-state.offline .glyph, .kt-state.nohardware .glyph { color: var(--kt-lamp-idle); }
+
+.kt-skel {
+    height: 12px;
+    border-radius: var(--kt-radius-sm);
+    background: linear-gradient(90deg, var(--kt-surface-2) 25%, var(--kt-surface-3) 50%, var(--kt-surface-2) 75%);
+    background-size: 200% 100%;
+    animation: kt-shimmer 1300ms linear infinite;
+}
+@keyframes kt-shimmer { to { background-position: -200% 0; } }
+.kt-skelrows { display: flex; flex-direction: column; gap: var(--kt-space-2); padding: var(--kt-card-pad); }
+
+/* A value known to be older than it should be. Dotted underline, never a colour alone. */
+.kt-stale { text-decoration: underline dotted var(--kt-lamp-warn); text-underline-offset: 3px; }
+
+/* -------------------------------------------------------------------- charts ---- */
+
+.kt-chart { position: relative; width: 100%; min-width: 0; }
+.kt-chart svg { display: block; width: 100%; overflow: visible; }
+.kt-chart .gridline { stroke: var(--kt-grid); stroke-width: 1; }
+.kt-chart .axis { fill: var(--kt-axis); font-size: 9px; font-family: var(--kt-mono); }
+.kt-chart .trace { fill: none; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.kt-chart .crosshair { stroke: var(--kt-line-strong); stroke-width: 1; stroke-dasharray: 2 2; }
+.kt-chart .marker { stroke: var(--kt-bg); stroke-width: 1.5; }
+.kt-tooltip {
+    position: absolute;
+    z-index: var(--kt-z-popover);
+    pointer-events: none;
+    padding: var(--kt-space-1) var(--kt-space-2);
+    background: var(--kt-surface-2);
+    border: 1px solid var(--kt-line-strong);
+    border-radius: var(--kt-radius-sm);
+    font-family: var(--kt-mono);
+    font-size: 10px;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+.kt-spark { display: block; overflow: visible; }
+.kt-spark path { fill: none; stroke-width: 1.25; stroke-linejoin: round; stroke-linecap: round; }
+
+/* ------------------------------------------------------------------ log pane ---- */
+
+.kt-log {
+    background: var(--kt-inset);
+    border: 1px solid var(--kt-line);
+    border-radius: var(--kt-radius-sm);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+}
+.kt-log .logtools {
+    display: flex;
+    align-items: center;
+    gap: var(--kt-space-2);
+    padding: var(--kt-space-2);
+    border-bottom: 1px solid var(--kt-line);
+    background: var(--kt-surface-2);
+    flex-wrap: wrap;
+}
+.kt-log .logtools .grow { flex: 1 1 auto; }
+.kt-log pre {
+    margin: 0;
+    max-height: 40vh;
+    overflow: auto;
+    padding: var(--kt-space-2);
+    font-family: var(--kt-mono);
+    font-size: 11px;
+    line-height: 16px;
+    color: var(--kt-text-2);
+    white-space: pre;
+}
+.kt-log pre.wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.kt-log pre mark { background: var(--kt-lamp-fault-soft); color: var(--kt-lamp-fault); }
+
+/* -------------------------------------------------------------------- drawer ---- */
+
+.kt-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: var(--kt-z-drawer);
+    background: var(--kt-overlay);
+    backdrop-filter: blur(2px);
+}
+.kt-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: calc(var(--kt-z-drawer) + 1);
+    width: min(760px, 100vw);
+    display: flex;
+    flex-direction: column;
+    background: var(--kt-surface);
+    border-left: 1px solid var(--kt-line-strong);
+    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.55);
+}
+.kt-drawer > header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--kt-space-3);
+    padding: var(--kt-space-3) var(--kt-space-4);
+    border-bottom: 1px solid var(--kt-line);
+    background: var(--kt-surface-2);
+    box-shadow: inset 0 1px 0 var(--kt-etch);
+}
+.kt-drawer > header h2 { font-size: 15px; }
+.kt-drawer > header .sub { font-family: var(--kt-mono); font-size: 11px; color: var(--kt-muted); margin-top: 2px; }
+.kt-drawer > .dbody { flex: 1 1 auto; overflow: auto; padding: var(--kt-space-4); display: flex; flex-direction: column; gap: var(--kt-gutter); }
+.kt-drawer > footer {
+    display: flex;
+    align-items: center;
+    gap: var(--kt-space-2);
+    padding: var(--kt-space-3) var(--kt-space-4);
+    border-top: 1px solid var(--kt-line);
+    background: var(--kt-surface-2);
+}
+
+/* ---------------------------------------------------------- section headings ---- */
+
+.kt-sectionhead {
+    display: flex;
+    align-items: center;
+    gap: var(--kt-space-2);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--kt-muted);
+}
+.kt-sectionhead::after { content: ''; flex: 1 1 auto; height: 1px; background: var(--kt-line); }
+
+/* ------------------------------------------------------------------ topology ---- */
+
+.kt-topo { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--kt-space-4); align-items: start; }
+.kt-topo .col { display: flex; flex-direction: column; gap: var(--kt-space-2); min-width: 0; }
+.kt-topo .colhead { font-size: 10px; text-transform: uppercase; letter-spacing: 0.11em; color: var(--kt-muted); }
+.kt-node {
+    display: flex;
+    flex-direction: column;
+    gap: var(--kt-space-1);
+    padding: var(--kt-space-2) var(--kt-space-3);
+    background: var(--kt-surface-2);
+    border: 1px solid var(--kt-line);
+    border-radius: var(--kt-radius-sm);
+    box-shadow: inset 0 1px 0 var(--kt-etch);
+    cursor: pointer;
+    text-align: left;
+    align-items: stretch;
+    transition: border-color var(--kt-fast), background var(--kt-fast);
+}
+.kt-node:hover { border-color: var(--kt-line-strong); background: var(--kt-surface-3); }
+.kt-node.root { cursor: default; border-color: var(--kt-accent); background: var(--kt-accent-soft); }
+.kt-node .nname { display: flex; align-items: center; gap: var(--kt-space-2); font-size: 12px; }
+.kt-node .nmeta { display: flex; align-items: center; gap: var(--kt-space-1); flex-wrap: wrap; }
+@media (max-width: 900px) { .kt-topo { grid-template-columns: minmax(0, 1fr); } }
+
+/* ------------------------------------------------------------------- utility ---- */
+
+.kt-os .mono, .kt-drawer .mono { font-family: var(--kt-mono); }
+.kt-os .muted, .kt-drawer .muted { color: var(--kt-muted); }
+.kt-os .nowrap { white-space: nowrap; }
+.kt-os .grow { flex: 1 1 auto; }
+.kt-os .none, .kt-drawer .none { color: var(--kt-disabled); }
+.kt-sr {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* A breathing LED and a running rail are exactly the motion that causes trouble for
+   vestibular disorders, and neither carries information the text does not. */
+@media (prefers-reduced-motion: reduce) {
+    .kt-lamp.pulse .bulb,
+    .kt-rail.live,
+    .kt-skel,
+    .kt-meter.indeterminate .fill { animation: none; }
+    .kt-meter.indeterminate .fill { width: 100% !important; opacity: 0.4; }
+}

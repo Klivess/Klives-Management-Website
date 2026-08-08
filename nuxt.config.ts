@@ -14,6 +14,7 @@ export default defineNuxtConfig({
     '/dashboard': {ssr: false}, // Disable SSR for dashboard to avoid hydration issues
     '/profilepage': {ssr: false}, // Disable SSR for profilepage
     '/omnidefence': {ssr: false}, // Live security console is client-driven
+    '/klivetech': {ssr: false}, // Telemetry needs WebSocket, object URLs and ResizeObserver
     '/*': {cors: true},
   },
   vite: {
@@ -43,7 +44,7 @@ export default defineNuxtConfig({
     '~/assets/scss/button.scss',
     '~/assets/scss/inputbox.scss',
     '~/assets/scss/navbar.scss',
-    '~/assets/scss/klivetech.scss',
+    '~/assets/scss/klivetech-os.scss',
     '~/assets/scss/omniscience.scss',
     '~/assets/scss/omnitrader-os.scss'],
   modules: []

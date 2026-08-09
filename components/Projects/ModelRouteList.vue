@@ -65,14 +65,29 @@
           </span>
         </div>
         <div class="param-control">
+          <details v-if="p.kind === 'multi-enum'" class="param-multi">
+            <summary :aria-label="`${label} ${p.label}`">{{ multiEnumSummary(p.name) }}</summary>
+            <div class="param-multi-menu">
+              <label v-for="o in p.options || []" :key="optionValue(o)" class="param-multi-option">
+                <input
+                  type="checkbox"
+                  :checked="selectedValues(p.name).includes(optionValue(o))"
+                  @change="toggleMultiParam(p.name, optionValue(o), ($event.target as HTMLInputElement).checked)"
+                />
+                <span>{{ optionLabel(o) }}</span>
+                <code v-if="optionLabel(o) !== optionValue(o)">{{ optionValue(o) }}</code>
+              </label>
+              <span v-if="!p.options?.length" class="param-multi-empty">No providers found for this model.</span>
+            </div>
+          </details>
           <select
-            v-if="p.kind === 'enum'"
+            v-else-if="p.kind === 'enum'"
             class="param-value param-enum"
             :value="String(parameters[p.name])"
             :aria-label="`${label} ${p.label}`"
             @change="setParam(p.name, ($event.target as HTMLSelectElement).value)"
           >
-            <option v-for="o in p.options || []" :key="o" :value="o">{{ o }}</option>
+            <option v-for="o in p.options || []" :key="optionValue(o)" :value="optionValue(o)">{{ optionLabel(o) }}</option>
           </select>
           <template v-else>
             <input
@@ -107,18 +122,19 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 
-type ParameterValue = number | string;
+type ParameterValue = number | string | string[];
+type ParameterOption = string | { value: string; label: string };
 type ParameterDefinition = {
   name: string;
   label: string;
-  kind: 'number' | 'integer' | 'enum';
+  kind: 'number' | 'integer' | 'enum' | 'multi-enum';
   min: number | null;
   max: number | null;
   step: number | null;
   description: string;
   defaultHint: string;
   openRouterOnly: boolean;
-  options: string[] | null;
+  options: ParameterOption[] | null;
   supportedBy: string[];
   supportedByAll: boolean;
 };
@@ -220,6 +236,13 @@ const configured = computed(() => Object.keys(props.parameters ?? {}).map(name =
   const unsupportedBy = definition && !definition.supportedByAll
     ? props.modelValue.map(m => m.trim()).filter(m => m && !definition.supportedBy.includes(m))
     : [];
+  const options = [...(definition?.options ?? [])];
+  const optionValues = new Set(options.map(optionValue));
+  // Keep a saved provider visible even if the endpoint catalog changed, so it can be unchecked
+  // instead of silently persisting outside the dropdown.
+  for (const selected of selectedValues(name)) {
+    if (!optionValues.has(selected)) options.push(selected);
+  }
   return {
     name,
     label: definition?.label ?? name,
@@ -229,14 +252,16 @@ const configured = computed(() => Object.keys(props.parameters ?? {}).map(name =
     step: definition?.step ?? null,
     description: definition?.description ?? '',
     defaultHint: definition?.defaultHint ?? 'the model default',
-    options: definition?.options ?? null,
+    options,
     unsupported: unsupportedBy.length > 0,
     unsupportedBy: unsupportedBy.join(', '),
   };
 }).sort((a, b) =>
   definitions.value.findIndex(d => d.name === a.name) - definitions.value.findIndex(d => d.name === b.name)));
 
-const addable = computed(() => definitions.value.filter(d => !(d.name in (props.parameters ?? {}))));
+const addable = computed(() => definitions.value.filter(d =>
+  !(d.name in (props.parameters ?? {}))
+  && (d.kind !== 'multi-enum' || !!d.options?.length)));
 const fullySupported = computed(() => addable.value.filter(d => d.supportedByAll));
 const partiallySupported = computed(() => addable.value.filter(d => !d.supportedByAll));
 
@@ -256,7 +281,11 @@ function onAdd(event: Event) {
 function startingValue(d: ParameterDefinition): ParameterValue {
   // 'medium' matches the global ThinkingType default, so pinning reasoning starts where the route
   // already was rather than jumping the effort up or down on the first click.
-  if (d.kind === 'enum') return d.options?.find(o => o === 'medium') ?? d.options?.[0] ?? '';
+  if (d.kind === 'multi-enum') return [];
+  if (d.kind === 'enum') {
+    const options = d.options ?? [];
+    return optionValue(options.find(o => optionValue(o) === 'medium') ?? options[0] ?? '');
+  }
   const neutral: Record<string, number> = {
     temperature: 1, top_p: 1, top_k: 0, frequency_penalty: 0, presence_penalty: 0,
     repetition_penalty: 1, min_p: 0, top_a: 0, seed: 0,
@@ -268,6 +297,30 @@ function startingValue(d: ParameterDefinition): ParameterValue {
 function setParam(name: string, value: ParameterValue) {
   if (typeof value === 'number' && !Number.isFinite(value)) return;
   emitParameters({ ...(props.parameters ?? {}), [name]: value });
+}
+
+function optionValue(option: ParameterOption): string {
+  return typeof option === 'string' ? option : option.value;
+}
+
+function optionLabel(option: ParameterOption): string {
+  return typeof option === 'string' ? option : option.label;
+}
+
+function selectedValues(name: string): string[] {
+  const value = props.parameters?.[name];
+  return Array.isArray(value) ? value.map(String) : [];
+}
+
+function multiEnumSummary(name: string): string {
+  const count = selectedValues(name).length;
+  return count === 0 ? 'Select providers…' : `${count} provider${count === 1 ? '' : 's'} selected`;
+}
+
+function toggleMultiParam(name: string, option: string, checked: boolean) {
+  const selected = new Set(selectedValues(name));
+  if (checked) selected.add(option); else selected.delete(option);
+  setParam(name, [...selected]);
 }
 
 function removeParam(name: string) {
@@ -314,6 +367,18 @@ function removeParam(name: string) {
 .param-value { width: 74px; box-sizing: border-box; background: #14141a; color: #eee; border: 1px solid #333; border-radius: 5px; padding: 5px 7px; font-size: 12px; font-family: ui-monospace, monospace; }
 .param-value:focus { outline: none; border-color: #4d9e39; }
 .param-enum { width: auto; flex: 1; font-family: inherit; cursor: pointer; }
+.param-multi { position: relative; flex: 1; min-width: 180px; }
+.param-multi summary { list-style: none; cursor: pointer; background: #14141a; color: #eee; border: 1px solid #333; border-radius: 5px; padding: 5px 8px; font-size: 12px; }
+.param-multi summary::-webkit-details-marker { display: none; }
+.param-multi summary::after { content: '▾'; float: right; color: #777; margin-left: 10px; }
+.param-multi[open] summary { border-color: #4d9e39; }
+.param-multi-menu { position: absolute; z-index: 20; top: calc(100% + 4px); right: 0; min-width: 250px; max-height: 240px; overflow-y: auto; padding: 6px; background: #1b1b21; border: 1px solid #3a3a42; border-radius: 6px; box-shadow: 0 8px 24px rgba(0, 0, 0, .4); }
+.param-multi-option { display: grid; grid-template-columns: auto 1fr; gap: 2px 7px; align-items: center; padding: 5px 6px; border-radius: 4px; cursor: pointer; }
+.param-multi-option:hover { background: #25252c; }
+.param-multi-option input { grid-row: 1 / 3; accent-color: #4d9e39; }
+.param-multi-option span { color: #ddd; font-size: 12px; }
+.param-multi-option code { color: #71717b; font-size: 9px; }
+.param-multi-empty { display: block; padding: 6px; color: #777; font-size: 11px; }
 .param-remove { width: 25px; height: 26px; border: 1px solid #35353b; border-radius: 4px; background: #222228; color: #aaa; cursor: pointer; flex: none; }
 
 @media (max-width: 620px) {

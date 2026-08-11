@@ -1,1785 +1,944 @@
 <template>
-    <div class="dashboard-container">
-        <!-- Welcome Header -->
-        <div class="dashboard-header">
-            <h1 class="dashboard-title">Dashboard</h1>
-            <p class="dashboard-subtitle">Monitor all systems, schemes, and operations</p>
-            <div class="last-update">
-                <span v-if="loading">Refreshing data...</span>
-                <span v-else-if="error">Last Update: Error</span>
-                <span v-else>Last Update: {{ lastUpdate }}</span>
+  <div
+    class="dashboard-shell"
+    data-testid="dashboard-shell"
+    :data-fast-stale="fastStale"
+    :data-slow-stale="slowStale"
+  >
+    <header class="dashboard-commandbar">
+      <div class="dashboard-identity">
+        <span class="dashboard-wordmark">Dashboard</span>
+        <span class="dashboard-health" :class="overallHealthTone">
+          <span class="dashboard-health__dot" aria-hidden="true" />
+          {{ overallHealthLabel }}
+        </span>
+        <span class="dashboard-freshness" aria-live="polite">
+          {{ freshnessLabel }}
+        </span>
+      </div>
+
+      <div class="dashboard-actions" aria-label="Dashboard quick actions">
+        <DashboardAction
+          v-if="isKlives"
+          data-testid="action-ask-agent"
+          label="Ask Agent"
+          icon="AI"
+          to="/kliveagent"
+          tone="primary"
+        />
+        <DashboardAction
+          v-if="isKlives"
+          data-testid="action-new-project"
+          label="New Project"
+          icon="+"
+          to="/projects/new"
+          tone="primary"
+        />
+        <DashboardAction
+          data-testid="action-upload"
+          label="Upload"
+          icon="↑"
+          :badge="upload.active ? `${upload.percent}%` : null"
+          :disabled="actionPending.upload"
+          @click="openUploadPicker"
+        />
+        <input
+          ref="uploadInput"
+          data-testid="upload-input"
+          class="dashboard-file-input"
+          type="file"
+          multiple
+          tabindex="-1"
+          aria-hidden="true"
+          @change="handleFilesSelected"
+        >
+        <DashboardAction
+          v-if="isKlives"
+          data-testid="action-mail"
+          label="Mail"
+          icon="@"
+          to="/klivemail"
+          :badge="mailUnread || null"
+        />
+        <DashboardAction v-else label="Cloud" icon="C" to="/klivecloud" />
+        <DashboardAction v-if="!isKlives" label="Chat" icon="#" to="/klivechat" />
+        <DashboardAction v-if="!isKlives" label="Schemes" icon="S" to="/schemes" />
+
+        <details v-if="isKlives" ref="protectMenu" class="dashboard-protect">
+          <summary
+            data-testid="protective-menu"
+            class="dashboard-protect__summary"
+            aria-label="Open protective controls"
+          >
+            <span aria-hidden="true">!</span>
+            Protect
+          </summary>
+          <div class="dashboard-protect__menu" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              :disabled="!offlineServices.length || actionPending.restart"
+              @click="confirmRestartService()"
+            >
+              <strong>Restart failed service</strong>
+              <span>{{ offlineServices.length ? `${offlineServices.length} offline` : 'All services online' }}</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              :disabled="!activeProjectCount || actionPending.halt"
+              @click="confirmHaltProjects"
+            >
+              <strong>Halt projects</strong>
+              <span>{{ activeProjectCount }} available to halt</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              :disabled="firmSafeMode || actionPending.safeMode"
+              @click="confirmFirmSafeMode"
+            >
+              <strong>Enter Firm safe mode</strong>
+              <span>{{ firmSafeMode ? 'Already active' : 'Blocks new Firm orders' }}</span>
+            </button>
+          </div>
+        </details>
+
+        <DashboardAction
+          data-testid="dashboard-refresh"
+          :label="inFlight.fast || inFlight.slow ? 'Refreshing' : 'Refresh'"
+          icon="↻"
+          :disabled="inFlight.fast || inFlight.slow"
+          @click="refreshDashboard"
+        />
+      </div>
+    </header>
+
+    <section class="dashboard-attention-strip" aria-labelledby="attention-title">
+      <div class="dashboard-attention-strip__label">
+        <span id="attention-title">Attention</span>
+        <strong v-if="attentionItems.length">{{ attentionItems.length }}</strong>
+      </div>
+      <div v-if="attentionItems.length" class="dashboard-attention-strip__items">
+        <DashboardAttentionItem
+          v-for="item in attentionPreview"
+          :key="item.id"
+          :item="attentionView(item)"
+        />
+      </div>
+      <div v-else class="dashboard-all-clear" role="status">
+        <span aria-hidden="true">✓</span>
+        No operational attention required
+      </div>
+      <button
+        v-if="attentionOverflow"
+        class="dashboard-attention-strip__more"
+        type="button"
+        @click="attentionDialogOpen = true"
+      >
+        +{{ attentionOverflow }} more
+      </button>
+    </section>
+
+    <main
+      class="dashboard-workspace"
+      :class="workspaceClass"
+      data-testid="dashboard-workspace"
+    >
+      <section class="dashboard-column dashboard-column--system" data-testid="panel-system">
+        <DashboardPanel
+          title="Host health"
+          :status="fastStale ? 'Stale' : 'Live'"
+          :loading="initialLoading.fast && !data.frontpage"
+        >
+          <template v-if="data.frontpage">
+            <div class="dashboard-kpi-grid dashboard-kpi-grid--two">
+              <DashboardKpi label="CPU" :value="percent(cpuUsage)" :tone="resourceTone(cpuUsage)" detail="current host load" />
+              <DashboardKpi label="RAM" :value="percent(ramUsage)" :tone="resourceTone(ramUsage)" :detail="`${fixed(data.frontpage?.RamUsedGB, 1)} / ${fixed(data.frontpage?.RamTotalGB, 0)} GB`" />
+              <DashboardKpi label="Primary disk" :value="percent(diskUsage)" :tone="resourceTone(diskUsage)" :detail="diskDetail" />
+              <DashboardKpi label="Process" :value="`${fixed(data.frontpage?.ProcessMemoryMB, 0)} MB`" detail="Omnipotent working set" />
+              <DashboardKpi label="Services" :value="`${serviceOnline}/${serviceTotal}`" :tone="offlineServices.length ? 'danger' : 'good'" detail="online" />
+              <DashboardKpi label="Uptime" :value="data.frontpage?.BotUptimeHumanized || '—'" tone="good" detail="current process" />
             </div>
-        </div>
-
-        <!-- Service Health Dots -->
-        <div class="service-health-bar">
-            <span class="shb-label">Services</span>
-            <div class="shb-dots">
-                <div
-                    v-for="svc in frontpageStats.Services"
-                    :key="svc.Name"
-                    class="shb-dot"
-                    :class="svc.IsActive ? 'dot-on' : 'dot-off'"
-                    :title="svc.Name + ' — ' + svc.UptimeHumanized"
-                ></div>
+            <div class="dashboard-resource-trends">
+              <div>
+                <span>CPU · session</span>
+                <DashboardSparkline :values="cpuSamples" label="CPU session trend" :tone="resourceTone(cpuUsage)" />
+              </div>
+              <div>
+                <span>RAM · session</span>
+                <DashboardSparkline :values="ramSamples" label="RAM session trend" :tone="resourceTone(ramUsage)" />
+              </div>
             </div>
-            <span class="shb-summary" v-if="frontpageStats.Services.length">
-                <span class="shb-count-ok">{{ frontpageStats.Services.filter(s => s.IsActive).length }}</span>/<span>{{ frontpageStats.Services.length }}</span> online
-            </span>
+          </template>
+          <div v-else class="dashboard-empty">Host telemetry unavailable</div>
+        </DashboardPanel>
+
+        <DashboardPanel
+          title="Reliability"
+          :subtitle="data.frontpage ? (data.frontpage.NextTaskScheduledSummary || 'No upcoming task reported') : 'Schedule unavailable'"
+          :status="isAdmin ? (errors24h == null ? 'Errors unavailable' : `${errors24h} errors / 24h`) : 'Core telemetry'"
+          :loading="initialLoading.fast && !data.api"
+        >
+          <div class="dashboard-kpi-grid dashboard-kpi-grid--two dashboard-kpi-grid--compact">
+            <DashboardKpi label="API availability" :value="data.api ? percent(apiAvailability, 2) : '—'" :tone="!data.api ? 'neutral' : apiAvailability < 99 ? 'warning' : 'good'" detail="lifetime" />
+            <DashboardKpi label="API latency" :value="data.api ? duration(apiLatency) : '—'" :tone="!data.api ? 'neutral' : apiLatency > 350 ? 'warning' : 'good'" detail="average response" />
+            <DashboardKpi label="Requests" :value="data.api ? compact(apiLifetime.totalRequests) : '—'" detail="lifetime" />
+            <DashboardKpi label="Scheduled" :value="data.frontpage ? compact(data.frontpage.TotalScheduledTasks) : '—'" detail="tasks registered" />
+          </div>
+
+          <div v-if="data.frontpage" class="dashboard-service-state">
+            <div class="dashboard-section-label">
+              <span>Service state</span>
+              <button type="button" @click="servicesDialogOpen = true">View all</button>
+            </div>
+            <div v-if="offlineServices.length" class="dashboard-offline-list">
+              <button
+                v-for="service in offlineServices.slice(0, 3)"
+                :key="service.Name"
+                type="button"
+                :disabled="actionPending.restart"
+                :title="`${service.Name} is offline`"
+                @click="isKlives ? confirmRestartService(service.Name) : servicesDialogOpen = true"
+              >
+                <span aria-hidden="true" />{{ service.Name }}
+              </button>
+              <button v-if="offlineServices.length > 3" type="button" @click="servicesDialogOpen = true">
+                +{{ offlineServices.length - 3 }} more
+              </button>
+            </div>
+            <div v-else class="dashboard-service-ok"><span aria-hidden="true">✓</span> All registered services are online</div>
+          </div>
+          <div v-else class="dashboard-empty">Service telemetry unavailable</div>
+        </DashboardPanel>
+
+        <DashboardPanel title="Estate" :status="slowStale ? 'Stale' : 'Current'" :loading="initialLoading.slow">
+          <div v-if="estateChips.length" class="dashboard-estate-grid">
+            <DashboardEstateChip
+              v-for="chip in estateChips"
+              :key="chip.id"
+              :label="chip.label"
+              :value="chip.value"
+              :tone="componentTone(chip.tone)"
+              :to="chip.href"
+            />
+          </div>
+          <div v-else class="dashboard-empty">Estate telemetry unavailable</div>
+        </DashboardPanel>
+      </section>
+
+      <section v-if="isAdmin" class="dashboard-column dashboard-column--work" data-testid="panel-work">
+        <template v-if="isKlives">
+          <DashboardPanel
+            title="Active work"
+            :subtitle="activeWorkSubtitle"
+            :status="agentStatusLabel"
+            :loading="initialLoading.fast && !data.agentStatus"
+          >
+            <div class="dashboard-agent-strip">
+              <DashboardKpi label="Agent" :value="data.agentStatus ? (data.agentStatus.ready ? 'Ready' : (data.agentStatus.state || 'Starting')) : '—'" :tone="!data.agentStatus ? 'neutral' : data.agentStatus.ready ? 'good' : 'warning'" :detail="data.agentStatus?.message || 'Durable agent runtime'" />
+              <DashboardKpi label="Jobs" :value="routeHasData('/kliveagent/jobs?activeOnly=true') ? data.agentJobs.length : '—'" :tone="!routeHasData('/kliveagent/jobs?activeOnly=true') ? 'neutral' : data.agentJobs.some((job: any) => job.attentionRequired) ? 'warning' : 'good'" detail="active long-term" />
+              <DashboardKpi label="Unread" :value="routeHasData('/kliveagent/notifications?unreadOnly=true') ? data.agentNotifications.length : '—'" :tone="!routeHasData('/kliveagent/notifications?unreadOnly=true') ? 'neutral' : data.agentNotifications.length ? 'warning' : 'good'" detail="Agent notifications" />
+              <DashboardKpi label="Today" :value="data.agentStats ? `${compact(data.agentStats.TodayMessages)} msgs` : '—'" :detail="data.agentStats ? `${compact(data.agentStats.TodayTotalTokens)} tokens` : 'summary unavailable'" />
+              <DashboardKpi label="Agent cost" :value="data.agentStats ? money(data.agentStats.TodayEstimatedCostUsd, 'USD') : '—'" :tone="data.agentStats ? 'info' : 'neutral'" detail="today estimate" />
+              <DashboardKpi label="Scripts" :value="data.agentStats ? percent(data.agentStats.LifetimeScriptSuccessRatePct, 1) : '—'" :tone="!data.agentStats ? 'neutral' : number(data.agentStats.LifetimeScriptSuccessRatePct) >= 90 ? 'good' : 'warning'" :detail="data.agentStats ? `${compact(data.agentStats.TodayScriptsRun)} today` : 'summary unavailable'" />
+            </div>
+
+            <div class="dashboard-section-label dashboard-section-label--projects">
+              <span>Priority projects</span>
+              <NuxtLink to="/projects">View fleet</NuxtLink>
+            </div>
+            <div v-if="projectRows.length" class="dashboard-project-list">
+              <NuxtLink
+                v-for="project in projectRows.slice(0, 4)"
+                :key="project.id"
+                :to="`/projects/${project.id}`"
+                class="dashboard-project-row"
+                :title="project.blocker || project.name"
+              >
+                <span class="dashboard-project-row__state" :class="projectTone(project.status)" aria-hidden="true" />
+                <span class="dashboard-project-row__copy">
+                  <strong>{{ project.name }}</strong>
+                  <small>{{ project.status }} · {{ project.activeAgents == null ? 'agents unavailable' : `${project.activeAgents} active agents` }} · {{ project.lastActivityAt ? age(project.lastActivityAt) : 'activity unavailable' }}{{ project.blocker ? ` · ${project.blocker}` : '' }}</small>
+                </span>
+                <span class="dashboard-project-row__metrics">
+                  <strong>{{ fixed(project.budgetUsedPct, 0) }}%</strong>
+                  <small>{{ project.pendingApprovals ? `${project.pendingApprovals} approvals` : 'budget' }}</small>
+                </span>
+              </NuxtLink>
+            </div>
+            <div v-else class="dashboard-empty">{{ routeHasData('/projects/list') ? 'No active project work' : 'Project list unavailable' }}</div>
+          </DashboardPanel>
+
+          <DashboardPanel title="Recent operational signals" :status="`${recentSignals.length} total`">
+            <DashboardBoundedList
+              :items="recentSignals"
+              :limit="5"
+              aria-label="Recent operational signals"
+              empty-text="No recent operational signals"
+              @overflow="signalsDialogOpen = true"
+            >
+              <template #item="{ item }">
+                <DashboardAttentionItem :item="attentionView(item)" />
+              </template>
+            </DashboardBoundedList>
+          </DashboardPanel>
+        </template>
+
+        <template v-else>
+          <DashboardPanel title="Recent errors" :status="routeHasData('/api/logs?type=1&limit=5&sort=desc') ? `${data.errors.length} shown` : 'Unavailable'" :loading="initialLoading.fast">
+            <DashboardBoundedList :items="adminErrorItems" :limit="5" :empty-text="routeHasData('/api/logs?type=1&limit=5&sort=desc') ? 'No recent errors' : 'Error feed unavailable'" aria-label="Recent errors">
+              <template #item="{ item }">
+                <DashboardAttentionItem :item="item" />
+              </template>
+            </DashboardBoundedList>
+          </DashboardPanel>
+          <DashboardPanel title="Uptime" subtitle="Historical process availability" :status="!data.uptime ? 'Unavailable' : fastStale ? 'Stale' : 'Current'">
+            <div v-if="data.uptime" class="dashboard-kpi-grid dashboard-kpi-grid--two">
+              <DashboardKpi label="Current" :value="secondsDuration(data.uptime?.CurrentUptimeSeconds)" tone="good" detail="current period" />
+              <DashboardKpi label="Total" :value="secondsDuration(data.uptime?.TotalUptimeSeconds)" detail="recorded uptime" />
+              <DashboardKpi label="Average" :value="`${fixed(data.uptime?.AverageUptimeHours, 1)}h`" detail="per period" />
+              <DashboardKpi label="Outage" :value="secondsDuration(data.uptime?.TotalOutageSeconds)" :tone="number(data.uptime?.TotalOutageSeconds) ? 'warning' : 'good'" detail="recorded downtime" />
+            </div>
+            <div v-else class="dashboard-empty">Uptime telemetry unavailable</div>
+          </DashboardPanel>
+        </template>
+      </section>
+
+      <section class="dashboard-column dashboard-column--analytics" data-testid="panel-analytics">
+        <DashboardPanel
+          title="OmniTrader"
+          :subtitle="traderHealthSummary"
+          :status="firmSafeMode ? 'Safe mode' : traderPermissionLabel"
+          :loading="initialLoading.fast && !data.trader"
+        >
+          <template v-if="data.trader">
+            <div class="dashboard-kpi-grid dashboard-kpi-grid--two dashboard-kpi-grid--compact">
+              <DashboardKpi label="Real value" :value="money(data.trader?.Portfolio?.TotalValue, traderCurrency)" :tone="data.trader?.Portfolio?.HasRealAccounts ? 'live' : 'neutral'" detail="never includes simulation" />
+              <DashboardKpi label="Simulated" :value="money(data.trader?.Simulated?.TotalValue, traderCurrency)" tone="paper" detail="paper and demo" />
+              <DashboardKpi label="Realized today" :value="money(data.trader?.Portfolio?.RealizedPnLToday, traderCurrency, true)" :tone="signedTone(data.trader?.Portfolio?.RealizedPnLToday)" detail="real accounts" />
+              <DashboardKpi label="Gross exposure" :value="money(data.trader?.Portfolio?.GrossExposure, traderCurrency)" detail="real accounts" />
+              <DashboardKpi label="Exceptions" :value="tradingExceptions" :tone="tradingExceptions ? 'danger' : 'good'" detail="orders, breaks, alerts" />
+              <DashboardKpi label="Strategies" :value="data.trader?.Strategies?.Running ?? 0" detail="running deployments" />
+            </div>
+            <div class="dashboard-chart-row">
+              <span>Firm value · 30 days</span>
+              <strong :class="signedToneClass(data.trader?.Trend?.ChangePercent24h)">{{ signedPercent(data.trader?.Trend?.ChangePercent24h) }} / 24h</strong>
+              <DashboardSparkline :values="traderTrend" label="Firm value over 30 days" :tone="signedSparkTone(data.trader?.Trend?.Change24h)" />
+            </div>
+          </template>
+          <div v-else class="dashboard-empty">Trading telemetry unavailable</div>
+        </DashboardPanel>
+
+        <DashboardPanel
+          v-if="isKlives"
+          title="Projects analytics"
+          subtitle="Seven-day autonomous work"
+          :status="data.projectAnalytics ? `${data.projectAnalytics.Summary?.ActiveAgents ?? 0} agents active` : 'Unavailable'"
+          :loading="initialLoading.slow && !data.projectAnalytics"
+        >
+          <template v-if="data.projectAnalytics">
+            <div class="dashboard-kpi-grid dashboard-kpi-grid--two dashboard-kpi-grid--compact">
+              <DashboardKpi label="Projects" :value="data.projectAnalytics?.Summary?.ActiveProjects ?? 0" detail="active or planning" />
+              <DashboardKpi label="Spend · 7d" :value="money(data.projectAnalytics?.Summary?.RangeSpendUsd, 'USD')" tone="info" detail="model tokens" />
+              <DashboardKpi label="Wakes" :value="compact(data.projectAnalytics?.Summary?.Wakes)" detail="execution cycles" />
+              <DashboardKpi label="Success" :value="percent(data.projectAnalytics?.Summary?.SuccessRate, 1)" :tone="number(data.projectAnalytics?.Summary?.SuccessRate) >= 80 ? 'good' : 'warning'" detail="terminal wake outcomes" />
+            </div>
+            <div class="dashboard-chart-row">
+              <span>Daily spend · 7 days</span>
+              <strong>{{ compact(data.projectAnalytics?.Summary?.RangeTokens) }} tokens</strong>
+              <DashboardSparkline :values="projectTrend" label="Project spend over seven days" tone="info" />
+            </div>
+          </template>
+          <div v-else class="dashboard-empty">Project analytics unavailable</div>
+        </DashboardPanel>
+
+        <DashboardPanel
+          title="Schemes"
+          subtitle="Compact production outcomes"
+          :status="slowStale ? 'Stale' : 'Current'"
+          :loading="initialLoading.slow && !data.cs2"
+        >
+          <div v-if="schemeRows.length" class="dashboard-scheme-list">
+            <NuxtLink
+              v-for="scheme in schemeRows"
+              :key="scheme.id"
+              :to="scheme.href"
+              class="dashboard-scheme-row"
+            >
+              <span class="dashboard-scheme-row__name">{{ scheme.label }}</span>
+              <strong :class="`tone-${componentTone(scheme.tone)}`">{{ scheme.primary }}</strong>
+              <span>{{ scheme.secondary }}</span>
+              <span>{{ scheme.tertiary }}</span>
+            </NuxtLink>
+          </div>
+          <div v-else class="dashboard-empty">Scheme telemetry unavailable</div>
+        </DashboardPanel>
+      </section>
+    </main>
+
+    <div class="dashboard-announcer" aria-live="polite" role="status">{{ actionMessage }}</div>
+
+    <DashboardDetailDialog v-model:open="attentionDialogOpen" title="All attention items">
+      <div class="dashboard-dialog-list">
+        <DashboardAttentionItem v-for="item in attentionItems" :key="item.id" :item="attentionView(item)" />
+      </div>
+    </DashboardDetailDialog>
+
+    <DashboardDetailDialog v-model:open="signalsDialogOpen" title="Operational signals">
+      <div class="dashboard-dialog-list">
+        <DashboardAttentionItem v-for="item in recentSignals" :key="item.id" :item="attentionView(item)" />
+      </div>
+    </DashboardDetailDialog>
+
+    <DashboardDetailDialog v-model:open="servicesDialogOpen" title="Service state">
+      <div class="dashboard-service-dialog">
+        <div v-for="service in services" :key="service.Name" class="dashboard-service-dialog__row">
+          <span class="dashboard-service-dialog__state" :class="service.IsActive ? 'is-online' : 'is-offline'" aria-hidden="true" />
+          <span><strong>{{ service.Name }}</strong><small>{{ service.IsActive ? service.UptimeHumanized : 'Inactive' }}</small></span>
+          <button v-if="isKlives && !service.IsActive" type="button" :disabled="actionPending.restart" @click="confirmRestartService(service.Name)">Restart</button>
         </div>
-
-        <!-- Server Status Summary -->
-        <KMInfoGrid columns="1" rows="1" rowHeight="140" style="padding-bottom: 0px;">
-            <KMInfoBox caption="Server Status">
-                <div class="data-zone server-stats-zone" :class="{ 'zone-loading': loadingStates.frontpage, 'zone-error': errorStates.frontpage }">
-                    <div v-if="loadingStates.frontpage" class="loading-overlay">
-                        <div class="loading-spinner"></div>
-                        <span>Loading Stats...</span>
-                    </div>
-                    <div v-if="errorStates.frontpage" class="error-overlay">
-                        <span>ERROR</span>
-                        <button @click="retryFrontpageStats" class="retry-btn">Retry</button>
-                    </div>
-                    <div class="server-stats-grid">
-                        <div class="server-stat">
-                            <span class="server-stat-value" :class="frontpageStats.BotUptimeHumanized !== 'N/A' ? 'stat-success' : ''">{{ frontpageStats.BotUptimeHumanized }}</span>
-                            <span class="server-stat-label">Bot Uptime</span>
-                        </div>
-                        <div class="server-stat">
-                            <span class="server-stat-value" :class="frontpageStats.CpuUsagePercentage > 85 ? 'stat-danger' : frontpageStats.CpuUsagePercentage > 60 ? 'stat-warning' : 'stat-success'">{{ frontpageStats.CpuUsagePercentage.toFixed(0) }}%</span>
-                            <span class="server-stat-label">CPU</span>
-                        </div>
-                        <div class="server-stat">
-                            <span class="server-stat-value" :class="frontpageStats.RamUsagePercentage > 85 ? 'stat-danger' : frontpageStats.RamUsagePercentage > 60 ? 'stat-warning' : 'stat-success'">{{ frontpageStats.RamUsedGB.toFixed(1) }}/{{ frontpageStats.RamTotalGB.toFixed(0) }}GB</span>
-                            <span class="server-stat-label">RAM ({{ frontpageStats.RamUsagePercentage.toFixed(0) }}%)</span>
-                        </div>
-                        <div class="server-stat">
-                            <span class="server-stat-value" :class="frontpageStats.TotalServicesActive === frontpageStats.TotalServicesRegistered ? 'stat-success' : 'stat-warning'">{{ frontpageStats.TotalServicesActive }}/{{ frontpageStats.TotalServicesRegistered }}</span>
-                            <span class="server-stat-label">Services</span>
-                        </div>
-                        <div class="server-stat">
-                            <span class="server-stat-value">{{ frontpageStats.TotalLogs.toLocaleString() }}</span>
-                            <span class="server-stat-label">Logs</span>
-                        </div>
-                        <div class="server-stat">
-                            <span class="server-stat-value" :class="frontpageStats.TotalErrorLogs > 0 ? 'stat-danger' : 'stat-success'">{{ frontpageStats.TotalErrorLogs }}</span>
-                            <span class="server-stat-label">Errors</span>
-                        </div>
-                        <div class="server-stat">
-                            <span class="server-stat-value">{{ frontpageStats.TotalScheduledTasks }}</span>
-                            <span class="server-stat-label">Tasks</span>
-                        </div>
-                    </div>
-                    <div class="server-stats-footer" v-if="frontpageStats.NextTaskScheduledSummary">
-                        <span class="footer-label">Next:</span>
-                        <span class="footer-value">{{ frontpageStats.NextTaskScheduledSummary }}</span>
-                    </div>
-                </div>
-            </KMInfoBox>
-        </KMInfoGrid>
-
-        <!-- Recent Errors -->
-        <KMInfoGrid columns="1" rows="1" :rowHeight="recentErrors.length > 0 ? 40 + recentErrors.length * 38 : 65" v-if="recentErrors.length > 0 || loadingStates.frontpage" style="padding-bottom: 0px;">
-            <KMInfoBox caption="Recent Errors">
-                <div class="recent-errors-zone">
-                    <div v-if="recentErrors.length === 0 && !loadingStates.frontpage" class="no-errors">
-                        <span class="no-errors-icon">✓</span> No errors recorded
-                    </div>
-                    <div v-else class="error-list">
-                        <div class="error-row" v-for="(err, i) in recentErrors" :key="i">
-                            <span class="err-dot"></span>
-                            <span class="err-service">{{ err.serviceName }}</span>
-                            <span class="err-msg">{{ err.message }}</span>
-                            <span class="err-time">{{ err.timeAgo }}</span>
-                        </div>
-                    </div>
-                </div>
-            </KMInfoBox>
-        </KMInfoGrid>
-
-        <!-- Schemes Performance Overview -->
-        <KMInfoGrid columns="1" rows="1" rowHeight="auto">
-            <KMInfoBox caption="Active Schemes Performance">
-                <div class="data-zone schemes-overview">
-                    <div class="scheme-cards">
-                        <div class="scheme-card cs2-card" @click="navigateToScheme('/schemery/cs2arbitragebot')"
-                             :class="{ 'card-loading': loadingStates.cs2, 'card-error': errorStates.cs2 }">
-                            <div v-if="loadingStates.cs2" class="card-loading-overlay">
-                                <div class="loading-spinner-small"></div>
-                            </div>
-                            <div v-if="errorStates.cs2" class="card-error-overlay">
-                                <span>ERROR</span>
-                                <button @click.stop="retryCS2Stats" class="retry-btn-small">↻</button>
-                            </div>
-                            <div class="scheme-header">
-                                <h3>CS2 Arbitrage Bot</h3>
-                                <div class="scheme-status active">Active</div>
-                            </div>
-                            <div class="scheme-metrics">
-                                <div class="metric">
-                                    <span class="metric-label">Success Rate</span>
-                                    <span class="metric-value success">{{ cs2Stats.successRate.toFixed(1) }}%</span>
-                                </div>
-                                <div class="metric">
-                                    <span class="metric-label">Items Scanned</span>
-                                    <span class="metric-value">{{ cs2Stats.itemsScanned.toLocaleString() }}</span>
-                                </div>
-                                <div class="metric">
-                                    <span class="metric-label">Best Find</span>
-                                    <span class="metric-value profit">+{{ cs2Stats.bestFind.toFixed(1) }}%</span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="scheme-card memescraper-card" @click="memescraperStats.hasAccess ? navigateToScheme('/schemery/memescraper') : showAccessDeniedMessage()"
-                             :class="{ 'card-loading': loadingStates.memescraper, 'card-error': errorStates.memescraper }">
-                            <div v-if="loadingStates.memescraper" class="card-loading-overlay">
-                                <div class="loading-spinner-small"></div>
-                            </div>
-                            <div v-if="errorStates.memescraper" class="card-error-overlay">
-                                <span>ERROR</span>
-                                <button @click.stop="retryMemescraperStats" class="retry-btn-small">↻</button>
-                            </div>
-                            <div class="scheme-header">
-                                <h3>Meme Scraper</h3>
-                                <div :class="['scheme-status', memescraperStats.hasAccess ? 'active' : 'restricted']">
-                                    {{ memescraperStats.hasAccess ? 'Active' : 'Restricted' }}
-                                </div>
-                            </div>
-                            <div class="scheme-metrics">
-                                <div class="metric">
-                                    <span class="metric-label">Total Memes</span>
-                                    <span class="metric-value">{{ memescraperStats.totalMemes === 'Restricted' ? 'Restricted' : memescraperStats.totalMemes.toLocaleString() }}</span>
-                                </div>
-                                <div class="metric">
-                                    <span class="metric-label">Today's Downloads</span>
-                                    <span class="metric-value success">{{ memescraperStats.todayDownloads === 'Restricted' ? 'Restricted' : '+' + memescraperStats.todayDownloads }}</span>
-                                </div>
-                                <div class="metric">
-                                    <span class="metric-label">Top Source</span>
-                                    <span class="metric-value profit">{{ memescraperStats.topPerformingSource }}</span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="scheme-card omnitrader-card" @click="omniTraderStats.hasAccess ? navigateToScheme('/omnitrader') : showAccessDeniedMessage()"
-                             :class="{ 'card-loading': loadingStates.omnitrader, 'card-error': errorStates.omnitrader }">
-                            <div v-if="loadingStates.omnitrader" class="card-loading-overlay">
-                                <div class="loading-spinner-small"></div>
-                            </div>
-                            <div v-if="errorStates.omnitrader" class="card-error-overlay">
-                                <span>ERROR</span>
-                                <button @click.stop="retryOmniTraderStats" class="retry-btn-small">↻</button>
-                            </div>
-                            <div class="scheme-header">
-                                <h3>OmniTrader</h3>
-                                <div v-if="!omniTraderStats.hasAccess" class="scheme-status restricted">Restricted</div>
-                                <div v-else-if="omniTraderStats.liveArmed > 0" class="scheme-status ot-live-armed">Live Armed</div>
-                                <div v-else-if="omniTraderStats.liveCount > 0" class="scheme-status ot-live">Live</div>
-                                <div v-else-if="omniTraderStats.paperCount > 0" class="scheme-status ot-paper">Paper</div>
-                                <div v-else class="scheme-status inactive">Idle</div>
-                            </div>
-                            <div v-if="omniTraderStats.hasAccess" class="ot-split">
-                                <div class="ot-split-section ot-split-paper">
-                                    <div class="ot-split-head">PAPER</div>
-                                    <div class="ot-split-stats">
-                                        <div class="ot-split-stat">
-                                            <span class="ot-split-val paper-col">{{ omniTraderStats.paperCount }}</span>
-                                            <span class="ot-split-lbl">Sessions</span>
-                                        </div>
-                                        <div class="ot-split-stat">
-                                            <span class="ot-split-val" :class="omniTraderStats.paperPnL >= 0 ? 'paper-col' : 'neg-col'">{{ omniTraderStats.paperPnL >= 0 ? '+' : '' }}{{ omniTraderStats.paperPnL.toFixed(1) }}%</span>
-                                            <span class="ot-split-lbl">Net PnL</span>
-                                        </div>
-                                        <div class="ot-split-stat">
-                                            <span class="ot-split-val paper-col">{{ omniTraderStats.backtestCount }}</span>
-                                            <span class="ot-split-lbl">Backtests</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="ot-split-section ot-split-live">
-                                    <div class="ot-split-head">LIVE</div>
-                                    <div class="ot-split-stats">
-                                        <div class="ot-split-stat">
-                                            <span class="ot-split-val live-col">{{ omniTraderStats.liveCount }}</span>
-                                            <span class="ot-split-lbl">Sessions</span>
-                                        </div>
-                                        <div class="ot-split-stat">
-                                            <span class="ot-split-val" :class="omniTraderStats.liveArmed > 0 ? 'armed-col' : 'live-col'">{{ omniTraderStats.liveArmed }}</span>
-                                            <span class="ot-split-lbl">Armed</span>
-                                        </div>
-                                        <div class="ot-split-stat">
-                                            <span class="ot-split-val" :class="omniTraderStats.krakenOn ? 'live-col' : 'neg-col'">{{ omniTraderStats.krakenOn ? 'ON' : 'OFF' }}</span>
-                                            <span class="ot-split-lbl">Kraken</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div v-else class="scheme-metrics">
-                                <div class="metric">
-                                    <span class="metric-label">Access</span>
-                                    <span class="metric-value" style="color:#ef4444">Restricted</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="scheme-card omnigram-card" @click="omniGramStats.hasAccess ? navigateToScheme('/schemery/omnigram') : showAccessDeniedMessage()"
-                             :class="{ 'card-loading': loadingStates.omnigram, 'card-error': errorStates.omnigram }">
-                            <div v-if="loadingStates.omnigram" class="card-loading-overlay">
-                                <div class="loading-spinner-small"></div>
-                            </div>
-                            <div v-if="errorStates.omnigram" class="card-error-overlay">
-                                <span>ERROR</span>
-                                <button @click.stop="retryOmniGramStats" class="retry-btn-small">↻</button>
-                            </div>
-                            <div class="scheme-header">
-                                <h3>OmniGram</h3>
-                                <div :class="['scheme-status', omniGramStats.hasAccess ? 'active' : 'restricted']">
-                                    {{ omniGramStats.hasAccess ? 'Active' : 'Restricted' }}
-                                </div>
-                            </div>
-                            <div class="scheme-metrics">
-                                <div class="metric">
-                                    <span class="metric-label">Accounts</span>
-                                    <span class="metric-value">{{ omniGramStats.totalAccounts === 'Restricted' ? 'Restricted' : omniGramStats.activeAccounts + '/' + omniGramStats.totalAccounts }}</span>
-                                </div>
-                                <div class="metric">
-                                    <span class="metric-label">Success Rate</span>
-                                    <span class="metric-value success">{{ omniGramStats.successRate === 'Restricted' ? 'Restricted' : omniGramStats.successRate.toFixed(1) + '%' }}</span>
-                                </div>
-                                <div class="metric">
-                                    <span class="metric-label">Posts</span>
-                                    <span class="metric-value">{{ omniGramStats.totalPosts === 'Restricted' ? 'Restricted' : omniGramStats.postedCount + ' posted' }}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="scheme-card omnitumblr-card" @click="omniTumblrStats.hasAccess ? navigateToScheme('/schemery/omnitumblr') : showAccessDeniedMessage()"
-                             :class="{ 'card-loading': loadingStates.omnitumblr, 'card-error': errorStates.omnitumblr }">
-                            <div v-if="loadingStates.omnitumblr" class="card-loading-overlay">
-                                <div class="loading-spinner-small"></div>
-                            </div>
-                            <div v-if="errorStates.omnitumblr" class="card-error-overlay">
-                                <span>ERROR</span>
-                                <button @click.stop="retryOmniTumblrStats" class="retry-btn-small">↻</button>
-                            </div>
-                            <div class="scheme-header">
-                                <h3>OmniTumblr</h3>
-                                <div :class="['scheme-status', omniTumblrStats.hasAccess ? 'active' : 'restricted']">
-                                    {{ omniTumblrStats.hasAccess ? 'Active' : 'Restricted' }}
-                                </div>
-                            </div>
-                            <div class="scheme-metrics">
-                                <div class="metric">
-                                    <span class="metric-label">Blogs</span>
-                                    <span class="metric-value">{{ omniTumblrStats.totalAccounts === 'Restricted' ? 'Restricted' : omniTumblrStats.activeAccounts + '/' + omniTumblrStats.totalAccounts }}</span>
-                                </div>
-                                <div class="metric">
-                                    <span class="metric-label">Success Rate</span>
-                                    <span class="metric-value success">{{ omniTumblrStats.successRate === 'Restricted' ? 'Restricted' : omniTumblrStats.successRate.toFixed(1) + '%' }}</span>
-                                </div>
-                                <div class="metric">
-                                    <span class="metric-label">Posts</span>
-                                    <span class="metric-value">{{ omniTumblrStats.totalPosts === 'Restricted' ? 'Restricted' : omniTumblrStats.postedCount + ' posted' }}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="scheme-card inactive-card">
-                            <div class="scheme-header">
-                                <h3>OmniTube Bot</h3>
-                                <div class="scheme-status inactive">Development</div>
-                            </div>
-                            <div class="scheme-metrics">
-                                <div class="metric">
-                                    <span class="metric-label">Status</span>
-                                    <span class="metric-value">Planned</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </KMInfoBox>
-        </KMInfoGrid>
-    </div>
+      </div>
+    </DashboardDetailDialog>
+  </div>
 </template>
 
-<script setup>
-definePageMeta({ layout: 'navbar' });
-</script>
-
-<script>
-import KMInfoGrid from '~/components/KMInfoGrid.vue';
-import KMInfoBox from '~/components/KMInfoBox.vue';
-import KMButton from '~/components/KMButton.vue';
-import CS2MetricCard from '~/components/CS2MetricCard.vue';
-import GradientProgress from '~/components/GradientProgress.vue';
-import QuickActionCard from '~/components/QuickActionCard.vue';
-import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, RequestBatchFromKliveAPI } from '~/scripts/APIInterface';
+<script setup lang="ts">
+import { computed, ref } from 'vue';
 import Swal from 'sweetalert2';
+import DashboardAction from '~/components/Dashboard/DashboardAction.vue';
+import DashboardAttentionItem from '~/components/Dashboard/DashboardAttentionItem.vue';
+import DashboardBoundedList from '~/components/Dashboard/DashboardBoundedList.vue';
+import DashboardDetailDialog from '~/components/Dashboard/DashboardDetailDialog.vue';
+import DashboardEstateChip from '~/components/Dashboard/DashboardEstateChip.vue';
+import DashboardKpi from '~/components/Dashboard/DashboardKpi.vue';
+import DashboardPanel from '~/components/Dashboard/DashboardPanel.vue';
+import DashboardSparkline from '~/components/Dashboard/DashboardSparkline.vue';
+import {
+  useDashboardOverview,
+  type DashboardAttentionItem as AttentionModel,
+  type DashboardTone,
+} from '~/composables/useDashboardOverview';
 
-export default {
-    components: {
-        KMInfoGrid,
-        KMInfoBox,
-        KMButton,
-        CS2MetricCard,
-        GradientProgress,
-        QuickActionCard
-    },
-    data() {
-        return {
-            loading: false,
-            error: null,
-            lastUpdate: 'Never',
-            loadInterval: null,
-            completedLoads: 0,
-            totalLoads: 7, // CS2, Memescraper, OmniTrader, OmniGram, OmniTumblr, FrontpageStats, Logs
-            loadingStates: {
-                cs2: false,
-                memescraper: false,
-                omnitrader: false,
-                omnigram: false,
-                omnitumblr: false,
-                logs: false,
-                frontpage: false
-            },
-            errorStates: {
-                cs2: false,
-                memescraper: false,
-                omnitrader: false,
-                omnigram: false,
-                omnitumblr: false,
-                logs: false,
-                frontpage: false
-            },
-            systemStats: {
-                totalUptime: 'Loading...',
-                totalLogs: 0,
-                totalErrors: 0,
-                totalServices: 0,
-                cpuUsage: 0,
-                ramUsage: 0,
-                logsAccessible: true
-            },
-            cs2Stats: {
-                successRate: 0,
-                itemsScanned: 0,
-                bestFind: 0,
-                hasAccess: true
-            },
-            memescraperStats: {
-                totalSources: 0,
-                totalMemes: 0,
-                activeNiches: 0,
-                todayDownloads: 0,
-                avgDownloadsPerDay: 0,
-                topPerformingSource: 'N/A',
-                hasAccess: true
-            },
-            omniTraderStats: {
-                paperCount: 0,
-                liveCount: 0,
-                liveArmed: 0,
-                paperPnL: 0,
-                backtestCount: 0,
-                krakenOn: false,
-                hasAccess: true
-            },
-            omniGramStats: {
-                totalAccounts: 0,
-                activeAccounts: 0,
-                totalPosts: 0,
-                postedCount: 0,
-                successRate: 0,
-                pendingCount: 0,
-                hasAccess: true
-            },
-            omniTumblrStats: {
-                totalAccounts: 0,
-                activeAccounts: 0,
-                totalPosts: 0,
-                postedCount: 0,
-                successRate: 0,
-                pendingCount: 0,
-                hasAccess: true
-            },
-            recentActivities: [],
-            recentErrors: [],
-            frontpageStats: {
-                BotUptimeHumanized: 'N/A',
-                CpuUsagePercentage: 0,
-                RamUsagePercentage: 0,
-                RamUsedGB: 0,
-                RamTotalGB: 0,
-                TotalServicesActive: 0,
-                TotalServicesRegistered: 0,
-                TotalLogs: 0,
-                TotalErrorLogs: 0,
-                TotalScheduledTasks: 0,
-                NextTaskScheduledSummary: '',
-                lastOmnipotentUpdateHumanized: 'N/A',
-                Services: []
-            }
-        }
-    },
-    methods: {
-        // Wraps a /batch item as the subset of the fetch Response interface the
-        // loaders use (.ok / .status / .json() / .text()). Server sends already-parsed
-        // JSON bodies, so .json() just returns item.body.
-        batchResponse(item) {
-            return {
-                ok: !!(item && item.ok),
-                status: item ? item.status : 504,
-                json: async () => (item ? item.body : null),
-                text: async () => {
-                    if (!item) return '';
-                    return typeof item.body === 'string' ? item.body : JSON.stringify(item.body);
-                },
-            };
-        },
+definePageMeta({ layout: 'navbar' });
 
-        async loadDashboardData() {
-            this.loading = true;
-            this.error = null;
-            this.completedLoads = 0;
+const dashboard = useDashboardOverview();
+const {
+  currentProfile,
+  data,
+  isAdmin,
+  isKlives,
+  initialLoading,
+  inFlight,
+  fastStale,
+  slowStale,
+  freshness,
+  routeFreshness,
+  lastUpdatedAt,
+  cpuSamples,
+  ramSamples,
+  offlineServices,
+  primaryDisk,
+  apiLifetime,
+  projectRows,
+  activeProjectCount,
+  attentionItems,
+  recentSignals,
+  schemeRows,
+  estateChips,
+  projectTrend,
+  traderTrend,
+  actionPending,
+  actionMessage,
+  safeModeAcknowledged,
+  upload,
+} = dashboard;
 
-            try {
-                // Load general bot statistics (minimal required data)
-                this.loadGeneralStats();
+const uploadInput = ref<HTMLInputElement | null>(null);
+const protectMenu = ref<HTMLDetailsElement | null>(null);
+const attentionDialogOpen = ref(false);
+const signalsDialogOpen = ref(false);
+const servicesDialogOpen = ref(false);
 
-                // One /batch round-trip instead of ~8 parallel fetches (each of which
-                // paid its own connection/preflight cost). Each zone still updates
-                // independently from its slice of the combined result.
-                // The activity feed only shows a handful of entries, so ask for a small
-                // newest-first page plus the cheap aggregate summary — never the full
-                // process-lifetime log dump (which grows unbounded with server uptime
-                // and was making this 10s poll multi-MB).
-                const paths = [
-                    '/GeneralBotStatistics/GetFrontpageStats',
-                    '/api/logs?type=1&limit=5',
-                    '/cs2arbitragebot/getscanalytics',
-                    '/memescraper/memeScraperAnalytics',
-                    '/api/omnitrader/status',
-                    '/api/omnitrader/deployments',
-                    '/api/omnitrader/backtests',
-                    '/omnigram/dashboard-stats',
-                    '/omnitumblr/dashboard-stats',
-                    '/api/logs?limit=25&sort=desc',
-                    '/api/logs/summary?hours=24',
-                ];
-                const results = await RequestBatchFromKliveAPI(paths);
+const number = (value: unknown, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+const fixed = (value: unknown, digits = 0) => number(value).toFixed(digits);
+const percent = (value: unknown, digits = 0) => `${fixed(value, digits)}%`;
+const compactFormatter = new Intl.NumberFormat('en-GB', { notation: 'compact', maximumFractionDigits: 1 });
+const compact = (value: unknown) => compactFormatter.format(number(value));
+const duration = (value: unknown) => {
+  const ms = number(value);
+  return ms >= 1_000 ? `${(ms / 1_000).toFixed(1)}s` : `${ms.toFixed(0)}ms`;
+};
+const secondsDuration = (value: unknown) => {
+  const seconds = number(value);
+  if (seconds >= 86_400) return `${(seconds / 86_400).toFixed(1)}d`;
+  if (seconds >= 3_600) return `${(seconds / 3_600).toFixed(1)}h`;
+  if (seconds >= 60) return `${(seconds / 60).toFixed(0)}m`;
+  return `${seconds.toFixed(0)}s`;
+};
+const money = (value: unknown, currency = 'GBP', signed = false) => {
+  const amount = number(value);
+  try {
+    const formatted = new Intl.NumberFormat('en-GB', {
+      style: 'currency', currency: /^[A-Z]{3}$/.test(currency) ? currency : 'GBP',
+      maximumFractionDigits: Math.abs(amount) < 100 ? 2 : 0,
+    }).format(Math.abs(amount));
+    return signed && amount !== 0 ? `${amount > 0 ? '+' : '-'}${formatted}` : amount < 0 ? `-${formatted}` : formatted;
+  } catch { return `${amount.toFixed(2)} ${currency}`; }
+};
+const age = (value: unknown) => {
+  if (!value) return 'no activity yet';
+  const timestamp = typeof value === 'number' ? value : new Date(String(value)).getTime();
+  const elapsed = Date.now() - timestamp;
+  if (!Number.isFinite(elapsed) || elapsed < 0) return 'just now';
+  const minutes = Math.floor(elapsed / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+};
 
-                if (results.size === 0) {
-                    // Batch unavailable (e.g. server not yet updated) — fall back to the
-                    // original independent fetches so the dashboard still populates.
-                    this.loadCS2Stats();
-                    this.loadMemescraperStats();
-                    this.loadOmniTraderStats();
-                    this.loadOmniGramStats();
-                    this.loadOmniTumblrStats();
-                    this.loadFrontpageStats();
-                    this.loadRecentActivity();
-                    return;
-                }
+const services = computed<any[]>(() => Array.isArray(data.frontpage?.Services) ? data.frontpage.Services : []);
+const cpuUsage = computed(() => number(data.frontpage?.CpuUsagePercentage));
+const ramUsage = computed(() => number(data.frontpage?.RamUsagePercentage));
+const diskUsage = computed(() => number(primaryDisk.value?.UsagePercentage ?? data.cloud?.UsagePercentage));
+const diskDetail = computed(() => primaryDisk.value
+  ? `${fixed(primaryDisk.value.FreeSpaceGB, 1)} GB free on ${primaryDisk.value.DriveName || 'primary'}`
+  : `${fixed(data.cloud?.FreeCapacityGB, 1)} GB free`);
+const serviceOnline = computed(() => number(data.frontpage?.TotalServicesActive));
+const serviceTotal = computed(() => number(data.frontpage?.TotalServicesRegistered));
+const apiAvailability = computed(() => number(apiLifetime.value?.availabilityPct, 100));
+const apiLatency = computed(() => number(apiLifetime.value?.avgResponseMs));
+const errors24h = computed<number | null>(() => {
+  if (!isAdmin.value) return null;
+  const value = data.logs?.ErrorsLast24Hours ?? data.logs?.errorsLast24Hours;
+  return value == null ? null : number(value);
+});
+const mailUnread = computed(() => number(data.mail?.unread));
+const traderCurrency = computed(() => String(data.trader?.Portfolio?.ReportingCurrency || 'GBP'));
+const firmSafeMode = computed(() => !!data.trader?.Controls?.SafeModeActive || safeModeAcknowledged.value);
+const tradingExceptions = computed(() => {
+  const exceptions = data.trader?.Exceptions || {};
+  const criticalAlerts = Math.max(number(exceptions.CriticalAlerts), number(exceptions.UnacknowledgedCritical));
+  return number(exceptions.UnknownOrders) + number(exceptions.MaterialBreaks) + criticalAlerts;
+});
+const traderHealthSummary = computed(() => data.trader?.Health?.Summary || 'Trading health unavailable');
+const traderPermissionLabel = computed(() => !data.trader ? 'Unavailable' : data.trader.Health?.TradingPermitted ? 'Permitted' : 'Trading paused');
+const agentStatusLabel = computed(() => !data.agentStatus ? 'Unavailable' : data.agentStatus.ready ? 'Agent ready' : `${fixed(number(data.agentStatus.progress) * (number(data.agentStatus.progress) <= 1 ? 100 : 1), 0)}% ready`);
+const activeWorkSubtitle = computed(() => {
+  const projects = routeHasData('/projects/list') ? `${projectRows.value.length} non-terminal projects` : 'Projects unavailable';
+  const jobs = routeHasData('/kliveagent/jobs?activeOnly=true') ? `${data.agentJobs.length} Agent jobs` : 'Agent jobs unavailable';
+  return `${projects} · ${jobs}`;
+});
 
-                const r = (p) => this.batchResponse(results.get(p));
-                this.loadFrontpageStats(r('/GeneralBotStatistics/GetFrontpageStats'), r('/api/logs?type=1&limit=5'));
-                this.loadCS2Stats(r('/cs2arbitragebot/getscanalytics'));
-                this.loadMemescraperStats(r('/memescraper/memeScraperAnalytics'));
-                this.loadOmniTraderStats({
-                    status: r('/api/omnitrader/status'),
-                    deployments: r('/api/omnitrader/deployments'),
-                    backtests: r('/api/omnitrader/backtests'),
-                });
-                this.loadOmniGramStats(r('/omnigram/dashboard-stats'));
-                this.loadOmniTumblrStats(r('/omnitumblr/dashboard-stats'));
-                this.loadRecentActivity(r('/api/logs?limit=25&sort=desc'), r('/api/logs/summary?hours=24'));
+const attentionPreview = computed(() => attentionItems.value.slice(0, 4));
+const attentionOverflow = computed(() => Math.max(0, attentionItems.value.length - 4));
+const freshnessLabel = computed(() => {
+  if (currentProfile.error.value && !lastUpdatedAt.value) return 'Profile unavailable · retrying';
+  if (!lastUpdatedAt.value) return initialLoading.fast || initialLoading.slow ? 'Loading live data…' : 'Waiting for data';
+  if (fastStale.value || slowStale.value) {
+    const staleTimes = [fastStale.value ? freshness.fast : null, slowStale.value ? freshness.slow : null]
+      .filter((value): value is number => typeof value === 'number' && value > 0);
+    return staleTimes.length ? `Data stale · last complete ${age(Math.min(...staleTimes))}` : 'Data incomplete · retrying';
+  }
+  return `Updated ${age(lastUpdatedAt.value)}`;
+});
+const overallHealthTone = computed(() => attentionItems.value.some(item => item.severity === 'critical') ? 'is-critical'
+  : attentionItems.value.some(item => item.severity === 'warning')
+    || initialLoading.fast || initialLoading.slow || fastStale.value || slowStale.value || !!currentProfile.error.value
+    ? 'is-warning' : 'is-good');
+const overallHealthLabel = computed(() => {
+  if (overallHealthTone.value === 'is-critical') return 'Action needed';
+  if (currentProfile.error.value) return 'Profile retrying';
+  if (initialLoading.fast || initialLoading.slow) return 'Loading';
+  if (fastStale.value || slowStale.value) return 'Data stale';
+  return overallHealthTone.value === 'is-warning' ? 'Watch' : 'Healthy';
+});
+const workspaceClass = computed(() => ({
+  'dashboard-workspace--klives': isKlives.value,
+  'dashboard-workspace--admin': isAdmin.value && !isKlives.value,
+  'dashboard-workspace--public': !isAdmin.value,
+}));
 
-            } catch (err) {
-                console.error('Dashboard data loading error:', err);
-                this.error = err;
-                this.lastUpdate = 'Error loading data';
-            } finally {
-                this.loading = false;
-            }
-        },
-        
-        trackLoadCompletion() {
-            this.completedLoads++;
-            if (this.completedLoads >= this.totalLoads) {
-                this.lastUpdate = new Date().toLocaleString();
-            }
-        },
-        
-        // Individual retry methods that can be called from error overlays
-        retryCS2Stats() {
-            this.loadCS2Stats();
-        },
-        
-        retryMemescraperStats() {
-            this.loadMemescraperStats();
-        },
+const componentTone = (tone: DashboardTone) => tone === 'success' ? 'good' : tone;
+const routeHasData = (path: string) => Boolean(routeFreshness[path]);
+const resourceTone = (value: unknown) => number(value) > 85 ? 'danger' : number(value) > 60 ? 'warning' : 'good';
+const signedTone = (value: unknown) => number(value) < 0 ? 'danger' : number(value) > 0 ? 'good' : 'neutral';
+const signedToneClass = (value: unknown) => `tone-${signedTone(value)}`;
+const signedSparkTone = (value: unknown) => number(value) < 0 ? 'danger' : number(value) > 0 ? 'good' : 'neutral';
+const signedPercent = (value: unknown) => {
+  if (value == null) return '—';
+  const amount = number(value);
+  return `${amount > 0 ? '+' : ''}${amount.toFixed(2)}%`;
+};
+const projectTone = (status: string) => {
+  const state = status.toLowerCase();
+  if (state === 'blocked') return 'is-danger';
+  if (state === 'budgetpaused' || state === 'paused') return 'is-warning';
+  return 'is-good';
+};
 
-        retryOmniTraderStats() {
-            this.loadOmniTraderStats();
-        },
+function attentionView(item: AttentionModel) {
+  return { ...item, to: item.href, timeAgo: item.timestamp ? age(item.timestamp) : '' };
+}
 
-        retryOmniGramStats() {
-            this.loadOmniGramStats();
-        },
+const adminErrorItems = computed(() => (Array.isArray(data.errors) ? data.errors : []).map((error: any, index: number) => ({
+  id: String(error.id ?? error.Id ?? index),
+  source: error.serviceName || error.ServiceName || 'Logs',
+  severity: 'critical' as const,
+  title: error.message || error.Message || 'Recent error',
+  detail: error.fullMessage || error.FullMessage || '',
+  timeAgo: age(error.timestamp || error.Timestamp),
+  to: '/admin',
+})));
 
-        retryOmniTumblrStats() {
-            this.loadOmniTumblrStats();
-        },
+const swalTheme = {
+  background: '#161616',
+  color: '#f4f4f4',
+  confirmButtonColor: '#4d9e39',
+  cancelButtonColor: '#555',
+};
 
-        
-        retryLogs() {
-            this.loadRecentActivity();
-        },
-        
-        async loadGeneralStats() {
-            // No real API endpoint available for general stats
-            // Keep minimal required data for UI functionality
-            this.systemStats = {
-                totalUptime: 'N/A',
-                totalLogs: 0,
-                totalErrors: 0,
-                totalServices: 0,
-                cpuUsage: 0,
-                ramUsage: 0,
-                logsAccessible: true
-            };
-        },
+function closeProtectMenu() {
+  if (protectMenu.value) protectMenu.value.open = false;
+}
 
-        async loadFrontpageStats(prefetched, prefetchedErrors) {
-            this.loadingStates.frontpage = true;
-            this.errorStates.frontpage = false;
-            try {
-                const response = prefetched || await RequestGETFromKliveAPI('/GeneralBotStatistics/GetFrontpageStats', false, false);
-                if (response.ok) {
-                    const data = await response.json();
-                    this.frontpageStats = {
-                        BotUptimeHumanized: data.BotUptimeHumanized || 'N/A',
-                        CpuUsagePercentage: data.CpuUsagePercentage || 0,
-                        RamUsagePercentage: data.RamUsagePercentage || 0,
-                        RamUsedGB: data.RamUsedGB || 0,
-                        RamTotalGB: data.RamTotalGB || 0,
-                        TotalServicesActive: data.TotalServicesActive || 0,
-                        TotalServicesRegistered: data.TotalServicesRegistered || 0,
-                        TotalLogs: data.TotalLogs || 0,
-                        TotalErrorLogs: data.TotalErrorLogs || 0,
-                        TotalScheduledTasks: data.TotalScheduledTasks || 0,
-                        NextTaskScheduledSummary: data.NextTaskScheduledSummary || '',
-                        lastOmnipotentUpdateHumanized: data.lastOmnipotentUpdateHumanized || 'N/A',
-                        Services: data.Services || []
-                    };
-                    // Load recent errors from the logs API (reuse batch slice if given)
-                    this.loadRecentErrors(prefetchedErrors);
-                } else {
-                    this.errorStates.frontpage = true;
-                }
-            } catch (error) {
-                console.log('Frontpage stats API unavailable:', error);
-                this.errorStates.frontpage = true;
-            } finally {
-                this.loadingStates.frontpage = false;
-                this.trackLoadCompletion();
-            }
-        },
+async function showResult(message: string, icon: 'success' | 'warning' | 'error' = 'success') {
+  await Swal.fire({ ...swalTheme, icon, text: message, timer: icon === 'success' ? 1800 : undefined, showConfirmButton: icon !== 'success' });
+}
 
-        retryFrontpageStats() {
-            this.loadFrontpageStats();
-        },
+async function confirmRestartService(preselected = '') {
+  closeProtectMenu();
+  const options = Object.fromEntries(offlineServices.value.map((service: any) => [service.Name, service.Name]));
+  if (!Object.keys(options).length) return;
+  const selection = await Swal.fire({
+    ...swalTheme,
+    icon: 'warning',
+    title: 'Restart failed service',
+    text: 'The restart is queued in the background and then verified for up to 30 seconds.',
+    input: 'select',
+    inputOptions: options,
+    inputValue: preselected || offlineServices.value[0]?.Name,
+    showCancelButton: true,
+    confirmButtonText: 'Queue restart',
+    inputValidator: value => value ? undefined : 'Select a service.',
+  });
+  if (!selection.isConfirmed || !selection.value) return;
+  try {
+    const result = await dashboard.restartService(String(selection.value));
+    await showResult(result.message, result.verified ? 'success' : 'warning');
+  } catch (error: any) { await showResult(error?.message || 'Restart failed.', 'error'); }
+}
 
-        async loadRecentErrors(prefetched) {
-            try {
-                const response = prefetched || await RequestGETFromKliveAPI('/api/logs?type=1&limit=5', false, false);
-                if (response.ok) {
-                    const logs = await response.json();
-                    const errorLogs = (Array.isArray(logs) ? logs : [])
-                        .filter(l => l.type === 1 || l.logType === 'Error' || l.LogType === 1)
-                        .slice(0, 5);
-                    this.recentErrors = errorLogs.map(l => ({
-                        serviceName: l.serviceName || l.ServiceName || 'Unknown',
-                        message: (l.message || l.Message || 'Error').substring(0, 120),
-                        timeAgo: this.formatTime(l.timestamp || l.Timestamp || new Date())
-                    }));
-                }
-            } catch (e) {
-                console.log('Recent errors unavailable:', e);
-            }
-        },
+async function confirmHaltProjects() {
+  closeProtectMenu();
+  const result = await Swal.fire({
+    ...swalTheme,
+    icon: 'warning',
+    title: `Halt ${activeProjectCount.value} projects?`,
+    text: 'Each available non-terminal project will remember its prior state. Resuming remains on the Projects page.',
+    showCancelButton: true,
+    confirmButtonText: 'Halt projects',
+  });
+  if (!result.isConfirmed) return;
+  try {
+    const response = await dashboard.haltProjects();
+    await showResult(`${number(response?.halted)} project${number(response?.halted) === 1 ? '' : 's'} halted.`);
+  } catch (error: any) { await showResult(error?.message || 'Project halt failed.', 'error'); }
+}
 
-        
-        async loadCS2Stats(prefetched) {
-            this.loadingStates.cs2 = true;
-            this.errorStates.cs2 = false;
+async function confirmFirmSafeMode() {
+  closeProtectMenu();
+  if (firmSafeMode.value) return;
+  const result = await Swal.fire({
+    ...swalTheme,
+    icon: 'warning',
+    title: 'Enter Firm safe mode?',
+    text: 'This blocks new Firm orders. It does not stop legacy deployment sessions, and it cannot be cleared from this dashboard.',
+    showCancelButton: true,
+    confirmButtonText: 'Enter safe mode',
+  });
+  if (!result.isConfirmed) return;
+  try {
+    await dashboard.enterFirmSafeMode();
+    await showResult('Firm safe mode is active.');
+  } catch (error: any) { await showResult(error?.message || 'Safe mode request failed.', 'error'); }
+}
 
-            try {
-                const response = prefetched || await RequestGETFromKliveAPI('/cs2arbitragebot/getscanalytics', false, false);
-                if (response.ok) {
-                    const data = await response.json();
-                    this.cs2Stats = {
-                        successRate: Math.round((data.PercentageChanceOfFindingPositiveGainListing || 0) * 100) / 100,
-                        itemsScanned: data.TotalListingsScanned || 0,
-                        bestFind: Math.round(((data.HighestPredictedGainFoundSoFar - 1) * 100 || 0) * 100) / 100
-                    };
-                } else {
-                    // API returned an error status (404, 500, etc.)
-                    console.log('CS2 stats API returned error status:', response.status);
-                    this.errorStates.cs2 = true;
-                    this.cs2Stats = {
-                        successRate: 0,
-                        itemsScanned: 0,
-                        bestFind: 0
-                    };
-                }
-            } catch (error) {
-                console.log('CS2 stats API unavailable:', error);
-                this.errorStates.cs2 = true;
-                this.cs2Stats = {
-                    successRate: 0,
-                    itemsScanned: 0,
-                    bestFind: 0
-                };
-            } finally {
-                this.loadingStates.cs2 = false;
-                this.trackLoadCompletion();
-            }
-        },
-        
-        async loadMemescraperStats(prefetched) {
-            this.loadingStates.memescraper = true;
-            this.errorStates.memescraper = false;
+function openUploadPicker() {
+  if (!actionPending.upload) uploadInput.value?.click();
+}
 
-            try {
-                const response = prefetched || await RequestGETFromKliveAPI('/memescraper/memeScraperAnalytics', false, false);
-                if (response.ok) {
-                    const analytics = await response.json();
-                    
-                    // Calculate today's downloads with multiple date format attempts
-                    let todayDownloads = 0;
-                    if (analytics.MemesDownloadedPerDay) {
-                        const today = new Date();
-                        const dateFormats = [
-                            // Try different date formats
-                            today.toISOString().split('T')[0], // YYYY-MM-DD
-                            today.toLocaleDateString('en-US'), // M/D/YYYY
-                            today.toLocaleDateString('en-GB'), // DD/MM/YYYY
-                            `${today.getMonth() + 1}/${today.getDate()}/${today.getFullYear()}`, // M/D/YYYY
-                            `${today.getDate()}/${today.getMonth() + 1}/${today.getFullYear()}`, // D/M/YYYY
-                            today.toDateString(), // Full date string
-                        ];
-                        
-                        // Try to find today's data with any of these formats
-                        for (const dateFormat of dateFormats) {
-                            if (analytics.MemesDownloadedPerDay[dateFormat]) {
-                                todayDownloads = analytics.MemesDownloadedPerDay[dateFormat];
-                                break;
-                            }
-                        }
-                        
-                        // If still not found, check if any key contains today's date
-                        if (todayDownloads === 0) {
-                            const todayStr = today.toISOString().split('T')[0];
-                            const keys = Object.keys(analytics.MemesDownloadedPerDay);
-                            for (const key of keys) {
-                                if (key.includes(todayStr) || new Date(key).toDateString() === today.toDateString()) {
-                                    todayDownloads = analytics.MemesDownloadedPerDay[key];
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        // Debug logging
-                        console.log('Available date keys:', Object.keys(analytics.MemesDownloadedPerDay));
-                        console.log('Today download count found:', todayDownloads);
-                    }
-                    
-                    // Calculate average downloads per day
-                    const downloadEntries = Object.entries(analytics.MemesDownloadedPerDay || {});
-                    const totalDownloads = downloadEntries.reduce((sum, [, count]) => sum + (count || 0), 0);
-                    const totalDays = downloadEntries.length || 1;
-                    const avgDownloadsPerDay = Math.round(totalDownloads / totalDays);
-                    
-                    // Find top performing source from ReelsDownloadedPerSource
-                    let topSource = 'N/A';
-                    if (analytics.ReelsDownloadedPerSource) {
-                        const sortedSources = Object.entries(analytics.ReelsDownloadedPerSource)
-                            .sort(([,a], [,b]) => b - a);
-                        if (sortedSources.length > 0) {
-                            topSource = sortedSources[0][0] || 'N/A';
-                            if (topSource.length > 15) {
-                                topSource = topSource.substring(0, 12) + '...';
-                            }
-                        }
-                    }
-                    
-                    this.memescraperStats = {
-                        totalSources: analytics.TotalInstagramSources || 0,
-                        totalMemes: analytics.TotalReelsDownloaded || 0,
-                        activeNiches: Object.keys(analytics.TopNichesByDownload || {}).length,
-                        todayDownloads: todayDownloads,
-                        avgDownloadsPerDay: avgDownloadsPerDay,
-                        topPerformingSource: topSource,
-                        hasAccess: true
-                    };
-                } else if (response.status === 401) {
-                    // User doesn't have permission to view meme scraper analytics
-                    this.memescraperStats = {
-                        totalSources: 'Restricted',
-                        totalMemes: 'Restricted',
-                        activeNiches: 'Restricted',
-                        todayDownloads: 'Restricted',
-                        avgDownloadsPerDay: 'Restricted',
-                        topPerformingSource: 'Restricted',
-                        hasAccess: false
-                    };
-                    console.log('Meme Scraper analytics access denied - insufficient permissions');
-                } else {
-                    // API not available or other error
-                    console.log('Meme Scraper analytics API returned status:', response.status);
-                    this.errorStates.memescraper = true;
-                    this.memescraperStats = {
-                        totalSources: 0,
-                        totalMemes: 0,
-                        activeNiches: 0,
-                        todayDownloads: 0,
-                        avgDownloadsPerDay: 0,
-                        topPerformingSource: 'N/A',
-                        hasAccess: true
-                    };
-                }
-            } catch (error) {
-                console.log('Meme Scraper analytics API unavailable:', error);
-                this.errorStates.memescraper = true;
-                this.memescraperStats = {
-                    totalSources: 0,
-                    totalMemes: 0,
-                    activeNiches: 0,
-                    todayDownloads: 0,
-                    avgDownloadsPerDay: 0,
-                    topPerformingSource: 'N/A',
-                    hasAccess: true
-                };
-            } finally {
-                this.loadingStates.memescraper = false;
-                this.trackLoadCompletion();
-            }
-        },
+async function handleFilesSelected(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const files = Array.from(input.files || []);
+  input.value = '';
+  if (!files.length) return;
+  try {
+    await dashboard.uploadFiles(files);
+    await showResult(`${files.length} file${files.length === 1 ? '' : 's'} uploaded to KliveCloud root.`);
+  } catch (error: any) { await showResult(error?.message || 'Upload failed.', 'error'); }
+}
 
-        async loadOmniTraderStats(prefetched) {
-            this.loadingStates.omnitrader = true;
-            this.errorStates.omnitrader = false;
-
-            try {
-                const [statusRes, deploymentsRes, backtestsRes] = prefetched
-                    ? [prefetched.status, prefetched.deployments, prefetched.backtests]
-                    : await Promise.all([
-                        RequestGETFromKliveAPI('/api/omnitrader/status', false, false),
-                        RequestGETFromKliveAPI('/api/omnitrader/deployments', false, false),
-                        RequestGETFromKliveAPI('/api/omnitrader/backtests', false, false),
-                    ]);
-
-                if (statusRes.status === 401 || deploymentsRes.status === 401) {
-                    this.omniTraderStats = { paperCount: 0, liveCount: 0, liveArmed: 0, paperPnL: 0, backtestCount: 0, krakenOn: false, hasAccess: false };
-                    return;
-                }
-
-                if (!statusRes.ok || !deploymentsRes.ok) {
-                    this.errorStates.omnitrader = true;
-                    return;
-                }
-
-                const status = await statusRes.json();
-                const deployments = deploymentsRes.ok ? await deploymentsRes.json() : [];
-                const backtests = backtestsRes.ok ? await backtestsRes.json() : [];
-
-                const deps = Array.isArray(deployments) ? deployments : [];
-                const paper = deps.filter(d => d.Mode === 'Paper');
-                const live = deps.filter(d => d.Mode === 'Live');
-                const paperEquity = paper.reduce((s, d) => s + (Number(d.EquityCurrent) || 0), 0);
-                const paperInitial = paper.reduce((s, d) => s + (Number(d.EquityInitial) || 0), 0);
-
-                this.omniTraderStats = {
-                    paperCount: paper.filter(d => d.Status === 'Running').length,
-                    liveCount: live.length,
-                    liveArmed: live.filter(d => d.Armed).length,
-                    paperPnL: paperInitial === 0 ? 0 : (paperEquity - paperInitial) / paperInitial * 100,
-                    backtestCount: Array.isArray(backtests) ? backtests.length : 0,
-                    krakenOn: status?.KrakenConfigured ?? false,
-                    hasAccess: true,
-                };
-            } catch (error) {
-                console.log('OmniTrader analytics API unavailable:', error);
-                this.errorStates.omnitrader = true;
-            } finally {
-                this.loadingStates.omnitrader = false;
-                this.trackLoadCompletion();
-            }
-        },
-
-        async loadOmniGramStats(prefetched) {
-            this.loadingStates.omnigram = true;
-            this.errorStates.omnigram = false;
-
-            try {
-                const response = prefetched || await RequestGETFromKliveAPI('/omnigram/dashboard-stats', false, false);
-
-                if (response.status === 401) {
-                    this.omniGramStats = {
-                        totalAccounts: 'Restricted',
-                        activeAccounts: 'Restricted',
-                        totalPosts: 'Restricted',
-                        postedCount: 'Restricted',
-                        successRate: 'Restricted',
-                        pendingCount: 'Restricted',
-                        hasAccess: false
-                    };
-                    console.log('OmniGram access denied - insufficient permissions');
-                } else if (response.ok) {
-                    const data = await response.json();
-                    this.omniGramStats = {
-                        totalAccounts: data.TotalAccounts ?? 0,
-                        activeAccounts: data.ActiveAccounts ?? 0,
-                        totalPosts: data.TotalPosts ?? 0,
-                        postedCount: data.PostedCount ?? 0,
-                        successRate: data.SuccessRate ?? 0,
-                        pendingCount: data.PendingCount ?? 0,
-                        hasAccess: true
-                    };
-                } else {
-                    console.log('OmniGram API returned status:', response.status);
-                    this.errorStates.omnigram = true;
-                }
-            } catch (error) {
-                console.log('OmniGram API unavailable:', error);
-                this.errorStates.omnigram = true;
-            } finally {
-                this.loadingStates.omnigram = false;
-                this.trackLoadCompletion();
-            }
-        },
-
-        async loadOmniTumblrStats(prefetched) {
-            this.loadingStates.omnitumblr = true;
-            this.errorStates.omnitumblr = false;
-
-            try {
-                const response = prefetched || await RequestGETFromKliveAPI('/omnitumblr/dashboard-stats', false, false);
-
-                if (response.status === 401) {
-                    this.omniTumblrStats = {
-                        totalAccounts: 'Restricted',
-                        activeAccounts: 'Restricted',
-                        totalPosts: 'Restricted',
-                        postedCount: 'Restricted',
-                        successRate: 'Restricted',
-                        pendingCount: 'Restricted',
-                        hasAccess: false
-                    };
-                } else if (response.ok) {
-                    const data = await response.json();
-                    this.omniTumblrStats = {
-                        totalAccounts: data.TotalAccounts ?? 0,
-                        activeAccounts: data.ActiveAccounts ?? 0,
-                        totalPosts: data.TotalPosts ?? 0,
-                        postedCount: data.PostedCount ?? 0,
-                        successRate: data.SuccessRate ?? 0,
-                        pendingCount: data.PendingCount ?? 0,
-                        hasAccess: true
-                    };
-                } else {
-                    this.errorStates.omnitumblr = true;
-                }
-            } catch (error) {
-                console.log('OmniTumblr API unavailable:', error);
-                this.errorStates.omnitumblr = true;
-            } finally {
-                this.loadingStates.omnitumblr = false;
-                this.trackLoadCompletion();
-            }
-        },
-
-        async loadRecentActivity(prefetched, prefetchedSummary) {
-            this.loadingStates.logs = true;
-            this.errorStates.logs = false;
-
-            try {
-                const response = prefetched || await RequestGETFromKliveAPI('/api/logs?limit=25&sort=desc', false, false);
-                if (response.ok) {
-                    const logs = await response.json();
-                    // Get the 5 most recent activities
-                    this.recentActivities = logs.slice(0, 5).map((log, index) => ({
-                        id: index,
-                        time: log.timestamp || new Date(),
-                        description: log.message || `${log.serviceName}: ${log.logType}`
-                    }));
-
-                    // Log analytics come from the aggregate summary route (the log list
-                    // itself is just a small recent page now, so counting it would lie).
-                    let totalLogs = logs.length;
-                    let totalErrors = logs.filter(log => log.type === 1).length;
-                    try {
-                        const summaryResponse = prefetchedSummary
-                            || await RequestGETFromKliveAPI('/api/logs/summary?hours=24', false, false);
-                        if (summaryResponse && summaryResponse.ok) {
-                            const summary = await summaryResponse.json();
-                            if (summary && typeof summary.TotalLogs === 'number') {
-                                totalLogs = summary.TotalLogs;
-                                totalErrors = summary.ErrorCount ?? totalErrors;
-                            }
-                        }
-                    } catch (summaryError) {
-                        console.log('Log summary unavailable, using recent-page counts:', summaryError);
-                    }
-                    this.systemStats.totalLogs = totalLogs;
-                    this.systemStats.totalErrors = totalErrors;
-                    this.systemStats.logsAccessible = true;
-                } else if (response.status === 401) {
-                    // User doesn't have permission to view logs
-                    this.recentActivities = [
-                        { id: 1, time: new Date(), description: 'Access to detailed logs restricted for your permission level' }
-                    ];
-                    this.systemStats.totalLogs = 'Restricted';
-                    this.systemStats.totalErrors = 'Restricted';
-                    this.systemStats.logsAccessible = false;
-                    console.log('Logs access denied - insufficient permissions');
-                } else {
-                    // No real logs available
-                    this.errorStates.logs = true;
-                    this.recentActivities = [];
-                    this.systemStats.totalLogs = 0;
-                    this.systemStats.totalErrors = 0;
-                    this.systemStats.logsAccessible = true;
-                }
-            } catch (error) {
-                console.log('Logs API unavailable:', error);
-                this.errorStates.logs = true;
-                this.recentActivities = [];
-                this.systemStats.totalLogs = 0;
-                this.systemStats.totalErrors = 0;
-                this.systemStats.logsAccessible = true;
-            } finally {
-                this.loadingStates.logs = false;
-                this.trackLoadCompletion();
-            }
-        },
-        
-        refreshDashboard() {
-            this.loadDashboardData();
-        },
-        
-        navigateToScheme(path) {
-            this.$router.push(path);
-        },
-        
-        showAccessDeniedMessage() {
-            Swal.fire({
-                icon: 'warning',
-                title: 'Access Restricted',
-                text: 'You do not have sufficient permissions to access this feature.',
-                confirmButtonColor: '#4d9e39',
-                background: '#161516',
-                color: '#ffffff',
-                customClass: {
-                    popup: 'swal-dark-theme'
-                }
-            });
-        },
-        
-        formatTime(time) {
-            const now = new Date();
-            const diff = now - new Date(time);
-            const minutes = Math.floor(diff / 60000);
-            const hours = Math.floor(minutes / 60);
-            
-            if (hours > 0) {
-                return `${hours}h ${minutes % 60}m ago`;
-            } else if (minutes > 0) {
-                return `${minutes}m ago`;
-            } else {
-                return 'Just now';
-            }
-        }
-    },
-    mounted() {
-        this.loadDashboardData();
-        
-        // Set up auto-refresh every 30 seconds
-        this.loadInterval = setInterval(() => {
-            this.loadDashboardData();
-        }, 10000);
-    },
-    beforeUnmount() {
-        if (this.loadInterval) {
-            clearInterval(this.loadInterval);
-        }
-    }
+async function refreshDashboard() {
+  await dashboard.refreshAll();
 }
 </script>
 
 <style scoped>
-.dashboard-container {
-    padding: 20px 24px;
-    background-color: #201f20;
-    min-height: 100vh;
-}
-
-.dashboard-header {
-    text-align: center;
-    margin-bottom: 30px;
-    padding: 0 20px;
-}
-
-.dashboard-title {
-    font-size: 2.5rem;
-    font-weight: bold;
-    color: #4d9e39;
-    margin: 0 0 10px 0;
-    background: linear-gradient(135deg, #4d9e39, #62ce47);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-.dashboard-subtitle {
-    color: #969696;
-    font-size: 1.2rem;
-    margin: 0 0 15px 0;
-    line-height: 1.4;
-}
-
-.last-update {
-    color: #4d9e39;
-    font-size: 1rem;
-    font-weight: 500;
-    padding: 8px 16px;
-    background: rgba(77, 158, 57, 0.1);
-    border-radius: 20px;
-    display: inline-block;
-    border: 1px solid rgba(77, 158, 57, 0.2);
-}
-
-/* System Health Overview */
-.system-health-grid {
-    display: grid;
-    grid-template-columns: 2fr 1fr;
-    gap: 20px;
-    height: 100%;
-    align-items: center;
-}
-
-.health-metrics {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 15px;
-}
-
-.resource-usage {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 15px;
-    height: 120px;
-}
-
-/* Schemes Overview */
-.schemes-overview {
-    height: 100%;
-}
-
-.scheme-cards {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 15px;
-    height: 100%;
-}
-
-.scheme-card {
-    background: linear-gradient(135deg, #161616 0%, #201f20 100%);
-    border: 1px solid rgba(77, 158, 57, 0.3);
-    border-radius: 12px;
-    padding: 16px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    position: relative;
-    overflow: hidden;
-}
-
-.scheme-card:hover {
-    transform: translateY(-2px);
-    border-color: rgba(77, 158, 57, 0.6);
-    box-shadow: 0 8px 25px rgba(77, 158, 57, 0.2);
-}
-
-.scheme-card.cs2-card {
-    border-color: rgba(34, 197, 94, 0.4);
-}
-
-.scheme-card.cs2-card:hover {
-    border-color: rgba(34, 197, 94, 0.7);
-    box-shadow: 0 8px 25px rgba(34, 197, 94, 0.2);
-}
-
-.scheme-card.memescraper-card {
-    border-color: rgba(139, 92, 246, 0.4);
-}
-
-.scheme-card.memescraper-card:hover {
-    border-color: rgba(139, 92, 246, 0.7);
-    box-shadow: 0 8px 25px rgba(139, 92, 246, 0.2);
-}
-
-.scheme-card.omnitrader-card {
-    border-color: rgba(245, 158, 11, 0.4);
-}
-
-.scheme-card.omnitrader-card:hover {
-    border-color: rgba(245, 158, 11, 0.75);
-    box-shadow: 0 8px 25px rgba(245, 158, 11, 0.2);
-}
-
-.scheme-card.inactive-card {
-    border-color: rgba(156, 163, 175, 0.3);
-    opacity: 0.7;
-}
-
-.scheme-card.inactive-card:hover {
-    border-color: rgba(156, 163, 175, 0.5);
-    box-shadow: 0 8px 25px rgba(156, 163, 175, 0.1);
-    opacity: 0.85;
-}
-
-.scheme-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 12px;
-}
-
-.scheme-header h3 {
-    color: #ffffff;
-    font-size: 1rem;
-    font-weight: 600;
-    margin: 0;
-    line-height: 1.2;
-}
-
-.scheme-status {
-    padding: 4px 8px;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.scheme-status.active {
-    background: rgba(34, 197, 94, 0.2);
-    color: #22c55e;
-    border: 1px solid rgba(34, 197, 94, 0.3);
-}
-
-.scheme-status.inactive {
-    background: rgba(156, 163, 175, 0.2);
-    color: #9ca3af;
-    border: 1px solid rgba(156, 163, 175, 0.3);
-}
-
-.scheme-status.restricted {
-    background: rgba(239, 68, 68, 0.2);
-    color: #ef4444;
-    border: 1px solid rgba(239, 68, 68, 0.3);
-}
-
-.scheme-status.simulator {
-    background: rgba(245, 158, 11, 0.2);
-    color: #fbbf24;
-    border: 1px solid rgba(245, 158, 11, 0.3);
-}
-
-.scheme-status.automated {
-    background: rgba(249, 115, 22, 0.2);
-    color: #fdba74;
-    border: 1px solid rgba(249, 115, 22, 0.35);
-}
-
-.scheme-metrics {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.metric {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.metric-label {
-    color: #969696;
-    font-size: 0.8rem;
-}
-
-.metric-value {
-    color: #ffffff;
-    font-size: 0.85rem;
-    font-weight: 600;
-}
-
-.metric-value.success {
-    color: #22c55e;
-}
-
-.metric-value.profit {
-    color: #fbbf24;
-}
-
-/* Log Section */
-.log-section {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-}
-
-.log-actions {
-    margin-top: auto;
-}
-
-.log-metrics {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 15px;
-    margin-bottom: 15px;
-}
-
-.no-activity,
-.no-data-section {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100px;
-    background: rgba(77, 158, 57, 0.05);
-    border-radius: 8px;
-    border: 1px solid rgba(77, 158, 57, 0.2);
-}
-
-.no-data-text {
-    color: #969696;
-    font-style: italic;
-    font-size: 0.9rem;
-}
-
-/* Custom scrollbar for activity list */
-.activity-list::-webkit-scrollbar {
-    width: 4px;
-}
-
-.activity-list::-webkit-scrollbar-track {
-    background: rgba(77, 158, 57, 0.1);
-    border-radius: 2px;
-}
-
-.activity-list::-webkit-scrollbar-thumb {
-    background: rgba(77, 158, 57, 0.3);
-    border-radius: 2px;
-}
-
-.activity-list::-webkit-scrollbar-thumb:hover {
-    background: rgba(77, 158, 57, 0.5);
-}
-
-/* Responsive Design */
-@media (max-width: 1400px) {
-    .scheme-cards {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 12px;
-    }
-    
-    .system-health-grid {
-        grid-template-columns: 1fr;
-        gap: 15px;
-    }
-    
-    .health-metrics {
-        grid-template-columns: repeat(3, 1fr);
-    }
-}
-
-@media (max-width: 768px) {
-    .dashboard-container {
-        padding: 15px 12px;
-    }
-    
-    .dashboard-title {
-        font-size: 2rem;
-    }
-    
-    .dashboard-subtitle {
-        font-size: 1rem;
-    }
-    
-    .scheme-cards {
-        grid-template-columns: 1fr;
-    }
-    
-    .health-metrics {
-        grid-template-columns: 1fr;
-        gap: 10px;
-    }
-    
-    .resource-usage {
-        grid-template-columns: 1fr;
-    }
-    
-    .device-stats {
-        grid-template-columns: 1fr;
-    }
-    
-    .system-health-grid {
-        gap: 10px;
-    }
-}
-
-@media (max-width: 480px) {
-    .dashboard-header {
-        padding: 0 15px;
-    }
-    
-    .dashboard-title {
-        font-size: 1.8rem;
-    }
-    
-    .last-update {
-        font-size: 0.9rem;
-        padding: 6px 12px;
-    }
-}
-
-/* Loading states */
-.loading {
-    opacity: 0.7;
-    pointer-events: none;
-}
-
-.error {
-    color: #ef4444;
-    background: rgba(239, 68, 68, 0.1);
-    border-color: rgba(239, 68, 68, 0.3);
-}
-
-/* Smooth transitions */
-* {
-    transition: all 0.3s ease;
-}
-
-/* Focus states for accessibility */
-.scheme-card:focus,
-button:focus {
-    outline: 2px solid #4d9e39;
-    outline-offset: 2px;
-}
-
-/* Restricted access states */
-.restricted-access {
-    opacity: 0.6;
-    position: relative;
-}
-
-.restricted-access::after {
-    content: '🔒';
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    font-size: 1.2rem;
-    opacity: 0.7;
-}
-
-.access-denied-message {
-    color: #ef4444;
-    font-style: italic;
-    font-size: 0.9rem;
-    margin-top: 8px;
-}
-
-/* Data Zone Loading and Error States */
-.data-zone {
-    position: relative;
-    height: 100%;
-}
-
-.zone-loading .loading-overlay,
-.zone-error .error-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(32, 31, 32, 0.95);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    z-index: 10;
-    border-radius: 12px;
-}
-
-.loading-overlay {
-    color: #4d9e39;
-}
-
-.error-overlay {
-    color: #ef4444;
-    background: rgba(239, 68, 68, 0.15);
-    border: 2px solid rgba(239, 68, 68, 0.4);
-}
-
-.loading-spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid rgba(77, 158, 57, 0.3);
-    border-top: 3px solid #4d9e39;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin-bottom: 10px;
-}
-
-.loading-spinner-small {
-    width: 20px;
-    height: 20px;
-    border: 2px solid rgba(77, 158, 57, 0.3);
-    border-top: 2px solid #4d9e39;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-.retry-btn {
-    margin-top: 10px;
-    padding: 8px 16px;
-    background: #ef4444;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: background-color 0.3s ease;
-}
-
-.retry-btn:hover {
-    background: #dc2626;
-}
-
-.retry-btn-small {
-    position: absolute;
-    top: 5px;
-    right: 5px;
-    width: 20px;
-    height: 20px;
-    background: #ef4444;
-    color: white;
-    border: none;
-    border-radius: 50%;
-    cursor: pointer;
-    font-size: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color 0.3s ease;
-}
-
-.retry-btn-small:hover {
-    background: #dc2626;
-}
-
-/* Card-level loading and error states */
-.card-loading {
-    opacity: 0.7;
-    position: relative;
-}
-
-.card-error {
-    opacity: 0.6;
-    position: relative;
-    border-color: rgba(239, 68, 68, 0.6) !important;
-}
-
-.card-loading-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(32, 31, 32, 0.9);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    border-radius: 12px;
-    z-index: 5;
-}
-
-.card-error-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(239, 68, 68, 0.2);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    border-radius: 12px;
-    z-index: 5;
-    color: #ef4444;
-    font-weight: bold;
-}
-
-/* Server Status Summary */
-.server-stats-zone {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-}
-
-.server-stats-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 8px;
-    padding: 0 5px;
-}
-
-.server-stat {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    padding: 8px 4px;
-    background: rgba(77, 158, 57, 0.05);
-    border-radius: 8px;
-    border: 1px solid rgba(77, 158, 57, 0.1);
-}
-
-.server-stat-value {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: #ffffff;
-    line-height: 1.2;
-}
-
-.server-stat-value.stat-success { color: #22c55e; }
-.server-stat-value.stat-warning { color: #fbbf24; }
-.server-stat-value.stat-danger { color: #ef4444; }
-
-.server-stat-label {
-    font-size: 0.7rem;
-    color: #969696;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    text-align: center;
-}
-
-.server-stats-footer {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 8px;
-    padding: 5px 12px;
-    background: rgba(77, 158, 57, 0.08);
-    border-radius: 6px;
-    font-size: 0.8rem;
-}
-
-.footer-label {
-    color: #969696;
-    font-weight: 600;
-    white-space: nowrap;
-}
-
-.footer-value {
-    color: #4d9e39;
-    font-weight: 500;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-@media (max-width: 768px) {
-    .server-stats-grid {
-        grid-template-columns: repeat(4, 1fr);
-    }
-}
-
-@media (max-width: 480px) {
-    .server-stats-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
-
-/* Service Health Bar */
-.service-health-bar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 8px 16px;
-    margin: 0 5px 8px 5px;
-    background: #161616;
-    border-radius: 12px;
-    border: 1px solid rgba(77, 158, 57, 0.15);
-}
-
-.shb-label {
-    color: #969696;
-    font-size: 0.78rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    white-space: nowrap;
-}
-
-.shb-dots {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    flex: 1;
-}
-
-.shb-dot {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    cursor: default;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.shb-dot:hover {
-    transform: scale(1.4);
-}
-
-.shb-dot.dot-on {
-    background: #22c55e;
-    box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
-}
-
-.shb-dot.dot-off {
-    background: #ef4444;
-    box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
-    animation: pulse-red 1.5s infinite;
-}
-
-@keyframes pulse-red {
-    0%, 100% { box-shadow: 0 0 6px rgba(239, 68, 68, 0.5); }
-    50% { box-shadow: 0 0 14px rgba(239, 68, 68, 0.9); }
-}
-
-.shb-summary {
-    color: #969696;
-    font-size: 0.78rem;
-    white-space: nowrap;
-}
-
-.shb-count-ok {
-    color: #22c55e;
-    font-weight: 700;
-}
-
-/* OmniTrader card Paper/Live split */
-.scheme-status.ot-live-armed { background: rgba(239,68,68,.2); color: #ff7a84; border: 1px solid rgba(239,68,68,.35); }
-.scheme-status.ot-live       { background: rgba(245,158,11,.18); color: #fbbf24; border: 1px solid rgba(245,158,11,.35); }
-.scheme-status.ot-paper      { background: rgba(56,189,248,.14); color: #7ad4f7; border: 1px solid rgba(56,189,248,.3); }
-
-.ot-split { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; }
-.ot-split-section { border-radius: 7px; overflow: hidden; border: 1px solid; }
-.ot-split-paper { border-color: rgba(56,189,248,.22); background: rgba(56,189,248,.03); }
-.ot-split-live  { border-color: rgba(245,158,11,.22); background: rgba(245,158,11,.03); }
-
-.ot-split-head { padding: 4px 10px; font: 800 9px ui-monospace, Consolas, monospace; letter-spacing: 1.3px; }
-.ot-split-paper .ot-split-head { background: rgba(56,189,248,.12); color: #7ad4f7; border-bottom: 1px solid rgba(56,189,248,.14); }
-.ot-split-live  .ot-split-head { background: rgba(245,158,11,.1);  color: #fbbf24; border-bottom: 1px solid rgba(245,158,11,.14); }
-
-.ot-split-stats { display: grid; grid-template-columns: repeat(3,1fr); }
-.ot-split-stat  { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; border-right: 1px solid rgba(255,255,255,.04); }
-.ot-split-stat:last-child { border-right: none; }
-.ot-split-val { font-size: 0.9rem; font-weight: 700; line-height: 1; }
-.ot-split-lbl { font-size: 0.62rem; color: #666; text-transform: uppercase; letter-spacing: .4px; font-weight: 600; }
-
-.paper-col { color: #7ad4f7; }
-.live-col   { color: #fbbf24; }
-.armed-col  { color: #ff7a84; }
-.neg-col    { color: #ef4444; }
-
-/* Recent Errors */
-.recent-errors-zone {
-    padding: 0 5px;
-}
-
-.no-errors {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: #22c55e;
-    font-size: 0.85rem;
-    padding: 8px 12px;
-    background: rgba(34, 197, 94, 0.08);
-    border-radius: 6px;
-}
-
-.no-errors-icon {
-    font-size: 1rem;
-    font-weight: 700;
-}
-
-.error-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.error-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 10px;
-    border-radius: 6px;
-    background: rgba(239, 68, 68, 0.06);
-    border-left: 3px solid rgba(239, 68, 68, 0.5);
-}
-
-.err-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #ef4444;
-    flex-shrink: 0;
-}
-
-.err-service {
-    color: #ef4444;
-    font-size: 0.78rem;
-    font-weight: 600;
-    white-space: nowrap;
-    min-width: 100px;
-}
-
-.err-msg {
-    color: #cccccc;
-    font-size: 0.78rem;
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.err-time {
-    color: #969696;
-    font-size: 0.72rem;
-    white-space: nowrap;
+.dashboard-shell {
+  --dash-bg: #201f20;
+  --dash-card: #161616;
+  --dash-border: rgba(255, 255, 255, 0.075);
+  --dash-text: #ededed;
+  --dash-muted: #858585;
+  display: grid;
+  min-width: 0;
+  min-height: 100vh;
+  grid-template-rows: 42px auto auto;
+  gap: 8px;
+  padding: 10px;
+  overflow-x: hidden;
+  background: var(--dash-bg);
+  color: var(--dash-text);
+}
+
+.dashboard-commandbar,
+.dashboard-attention-strip {
+  min-width: 0;
+  border: 1px solid var(--dash-border);
+  border-radius: 6px;
+  background: var(--dash-card);
+}
+
+.dashboard-commandbar {
+  display: flex;
+  height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 6px 4px 10px;
+}
+
+.dashboard-identity,
+.dashboard-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.dashboard-identity { gap: 9px; }
+.dashboard-actions { flex: 0 0 auto; gap: 5px; }
+.dashboard-wordmark { color: #f4f4f4; font-size: 15px; font-weight: 750; letter-spacing: .02em; }
+
+.dashboard-health {
+  display: inline-flex;
+  height: 22px;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 0 7px;
+  background: rgba(255, 255, 255, .035);
+  color: #aaa;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.dashboard-health__dot { width: 7px; height: 7px; border-radius: 50%; background: #62ce47; box-shadow: 0 0 0 3px rgba(98, 206, 71, .1); }
+.dashboard-health.is-warning { color: #f0c35b; }
+.dashboard-health.is-warning .dashboard-health__dot { background: #e3b341; box-shadow: 0 0 0 3px rgba(227, 179, 65, .1); }
+.dashboard-health.is-critical { color: #ff8f8f; }
+.dashboard-health.is-critical .dashboard-health__dot { background: #ef6464; box-shadow: 0 0 0 3px rgba(239, 100, 100, .1); }
+.dashboard-freshness { overflow: hidden; color: #707070; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-file-input { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+.dashboard-protect { position: relative; height: 34px; }
+.dashboard-protect__summary {
+  display: inline-flex;
+  height: 34px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(227, 179, 65, .3);
+  border-radius: 5px;
+  padding: 0 9px;
+  background: rgba(227, 179, 65, .08);
+  color: #f0c35b;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  list-style: none;
+}
+.dashboard-protect__summary::-webkit-details-marker { display: none; }
+.dashboard-protect__summary:focus-visible { outline: 2px solid #62ce47; outline-offset: 2px; }
+.dashboard-protect__menu {
+  position: absolute;
+  z-index: 1200;
+  top: 38px;
+  right: 0;
+  display: grid;
+  width: 260px;
+  gap: 4px;
+  border: 1px solid rgba(227, 179, 65, .26);
+  border-radius: 6px;
+  padding: 5px;
+  background: #131313;
+  box-shadow: 0 14px 38px rgba(0, 0, 0, .55);
+}
+.dashboard-protect__menu button {
+  display: flex;
+  min-height: 45px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 5px 8px;
+  background: transparent;
+  color: #d4d4d4;
+  cursor: pointer;
+  text-align: left;
+}
+.dashboard-protect__menu button:hover:not(:disabled), .dashboard-protect__menu button:focus-visible { border-color: rgba(227, 179, 65, .25); background: rgba(227, 179, 65, .07); outline: none; }
+.dashboard-protect__menu button:disabled { opacity: .45; cursor: not-allowed; }
+.dashboard-protect__menu strong { color: inherit; font-size: 11px; }
+.dashboard-protect__menu span { color: #777; font-size: 9px; }
+
+.dashboard-attention-strip {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  gap: 7px;
+  padding: 7px;
+}
+.dashboard-attention-strip__label { display: flex; width: 70px; flex: 0 0 auto; align-items: center; gap: 5px; color: #888; font-size: 9px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.dashboard-attention-strip__label strong { display: grid; min-width: 17px; height: 17px; place-items: center; border-radius: 999px; background: rgba(239, 100, 100, .12); color: #ff8f8f; font-size: 9px; }
+.dashboard-attention-strip__items { display: grid; min-width: 0; flex: 1; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+.dashboard-all-clear { display: flex; min-width: 0; flex: 1; align-items: center; gap: 7px; color: #7dda67; font-size: 11px; }
+.dashboard-all-clear span { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 50%; background: rgba(98, 206, 71, .09); color: #7dda67; }
+.dashboard-attention-strip__more { height: 28px; flex: 0 0 auto; border: 1px dashed rgba(255, 255, 255, .12); border-radius: 5px; padding: 0 8px; background: transparent; color: #999; cursor: pointer; font-size: 9px; }
+.dashboard-attention-strip__more:hover, .dashboard-attention-strip__more:focus-visible { border-color: rgba(98, 206, 71, .35); color: #8de279; outline: none; }
+
+.dashboard-workspace {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  gap: 8px;
+}
+.dashboard-workspace--klives { grid-template-columns: minmax(250px, 3fr) minmax(390px, 5fr) minmax(320px, 4fr); }
+.dashboard-workspace--admin { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.dashboard-workspace--public { grid-template-columns: minmax(300px, 4fr) minmax(500px, 8fr); }
+.dashboard-column { display: grid; min-width: 0; min-height: 0; gap: 8px; }
+.dashboard-column--system { grid-template-rows: minmax(0, 1.05fr) minmax(0, 1fr) minmax(0, .7fr); }
+.dashboard-column--work { grid-template-rows: minmax(0, 1.2fr) minmax(0, .8fr); }
+.dashboard-column--analytics { grid-template-rows: repeat(3, minmax(0, 1fr)); }
+
+.dashboard-shell :deep(.dashboard-panel__body) { overflow: hidden; }
+.dashboard-kpi-grid { display: grid; min-width: 0; gap: 4px; }
+.dashboard-kpi-grid--two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.dashboard-kpi-grid--compact :deep(.dashboard-kpi) { min-height: 29px; }
+.dashboard-resource-trends { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 7px; }
+.dashboard-resource-trends > div { min-width: 0; border-top: 1px solid rgba(255, 255, 255, .055); padding-top: 4px; }
+.dashboard-resource-trends span, .dashboard-chart-row > span { color: #777; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
+
+.dashboard-service-state { margin-top: 7px; }
+.dashboard-section-label { display: flex; height: 22px; align-items: center; justify-content: space-between; color: #777; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
+.dashboard-section-label button, .dashboard-section-label a { border: 0; padding: 0; background: transparent; color: #71bd60; cursor: pointer; font-size: 10px; text-decoration: none; text-transform: none; }
+.dashboard-offline-list { display: flex; min-width: 0; flex-wrap: wrap; gap: 4px; }
+.dashboard-offline-list button { display: inline-flex; height: 25px; min-width: 0; align-items: center; gap: 5px; border: 1px solid rgba(239, 100, 100, .18); border-radius: 4px; padding: 0 6px; overflow: hidden; background: rgba(239, 68, 68, .05); color: #e6a0a0; cursor: pointer; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-offline-list button span { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: #ef6464; }
+.dashboard-service-ok { display: flex; height: 27px; align-items: center; gap: 6px; color: #7dda67; font-size: 10px; }
+.dashboard-service-ok span { color: inherit; }
+.dashboard-estate-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+
+.dashboard-agent-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.dashboard-section-label--projects { margin-top: 6px; }
+.dashboard-project-list { display: grid; gap: 4px; }
+.dashboard-project-row { display: grid; min-width: 0; height: 47px; grid-template-columns: 7px minmax(0, 1fr) auto; align-items: center; gap: 7px; border: 1px solid rgba(255, 255, 255, .06); border-radius: 5px; padding: 4px 7px; background: rgba(255, 255, 255, .018); color: inherit; text-decoration: none; }
+.dashboard-project-row:hover, .dashboard-project-row:focus-visible { border-color: rgba(98, 206, 71, .3); background: rgba(77, 158, 57, .055); outline: none; }
+.dashboard-project-row__state { width: 7px; height: 7px; border-radius: 50%; background: #62ce47; }
+.dashboard-project-row__state.is-warning { background: #e3b341; }
+.dashboard-project-row__state.is-danger { background: #ef6464; }
+.dashboard-project-row__copy, .dashboard-project-row__metrics { display: flex; min-width: 0; flex-direction: column; }
+.dashboard-project-row__copy strong, .dashboard-project-row__copy small, .dashboard-project-row__metrics strong, .dashboard-project-row__metrics small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-project-row__copy strong { color: #e7e7e7; font-size: 11px; }
+.dashboard-project-row__copy small, .dashboard-project-row__metrics small { color: #777; font-size: 10px; }
+.dashboard-project-row__metrics { align-items: flex-end; }
+.dashboard-project-row__metrics strong { color: #a8d69e; font-size: 11px; font-variant-numeric: tabular-nums; }
+.dashboard-empty { display: grid; height: 54px; place-items: center; color: #707070; font-size: 10px; }
+
+.dashboard-chart-row { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 8px; margin-top: 5px; border-top: 1px solid rgba(255, 255, 255, .055); padding-top: 4px; }
+.dashboard-chart-row strong { color: #9c9c9c; font-size: 9px; font-variant-numeric: tabular-nums; }
+.dashboard-chart-row :deep(.dashboard-sparkline) { grid-column: 1 / -1; height: 25px; }
+.dashboard-scheme-list { display: grid; gap: 4px; }
+.dashboard-scheme-row { display: grid; min-width: 0; height: 32px; grid-template-columns: minmax(90px, 1.25fr) repeat(3, minmax(62px, 1fr)); align-items: center; gap: 6px; border: 1px solid rgba(255, 255, 255, .055); border-radius: 5px; padding: 0 7px; color: inherit; text-decoration: none; }
+.dashboard-scheme-row:hover, .dashboard-scheme-row:focus-visible { border-color: rgba(98, 206, 71, .3); background: rgba(77, 158, 57, .05); outline: none; }
+.dashboard-scheme-row > * { overflow: hidden; color: #888; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-scheme-row__name { color: #dedede; font-size: 11px; font-weight: 650; }
+.dashboard-scheme-row strong { color: #d8d8d8; font-variant-numeric: tabular-nums; }
+.tone-good { color: #7dda67 !important; }
+.tone-warning { color: #f0c35b !important; }
+.tone-danger { color: #ff8282 !important; }
+.tone-info { color: #7dd3fc !important; }
+
+.dashboard-announcer { position: fixed; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.dashboard-dialog-list { display: grid; gap: 5px; }
+.dashboard-service-dialog { display: grid; gap: 4px; }
+.dashboard-service-dialog__row { display: grid; min-height: 42px; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 8px; border: 1px solid rgba(255, 255, 255, .06); border-radius: 5px; padding: 5px 7px; }
+.dashboard-service-dialog__state { width: 8px; height: 8px; border-radius: 50%; background: #ef6464; }
+.dashboard-service-dialog__state.is-online { background: #62ce47; }
+.dashboard-service-dialog__row > span:nth-child(2) { display: flex; min-width: 0; flex-direction: column; }
+.dashboard-service-dialog__row strong { color: #eee; font-size: 11px; }
+.dashboard-service-dialog__row small { color: #777; font-size: 9px; }
+.dashboard-service-dialog__row button { height: 27px; border: 1px solid rgba(98, 206, 71, .25); border-radius: 4px; padding: 0 8px; background: rgba(77, 158, 57, .08); color: #8de279; cursor: pointer; font-size: 9px; }
+.dashboard-offline-list button:disabled, .dashboard-service-dialog__row button:disabled { cursor: not-allowed; opacity: .45; }
+
+@media (min-width: 1440px) and (min-height: 900px) {
+  .dashboard-shell { height: 100dvh; min-height: 0; grid-template-rows: 42px 58px minmax(0, 1fr); overflow: hidden; }
+  .dashboard-workspace--admin .dashboard-column--analytics { grid-template-rows: repeat(2, minmax(0, 1fr)); }
+  .dashboard-workspace--public .dashboard-column--analytics { grid-template-rows: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1439px), (max-height: 899px) {
+  .dashboard-shell { height: auto; min-height: 100vh; overflow: visible; }
+  .dashboard-workspace { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-column { min-height: 650px; }
+  .dashboard-column--analytics { grid-column: 1 / -1; min-height: 700px; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto; }
+  .dashboard-column--analytics > :last-child { grid-column: 1 / -1; }
+  .dashboard-attention-strip__items { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-attention-strip { align-items: flex-start; }
+}
+
+@media (max-width: 980px) {
+  .dashboard-commandbar { height: auto; min-height: 42px; flex-wrap: wrap; }
+  .dashboard-actions { flex-wrap: wrap; }
+  .dashboard-attention-strip { flex-wrap: wrap; }
+  .dashboard-attention-strip__label { width: auto; }
+  .dashboard-attention-strip__items { flex-basis: calc(100% - 90px); }
+}
+
+@media (max-width: 899px) {
+  .dashboard-workspace, .dashboard-column--analytics { grid-template-columns: 1fr; }
+  .dashboard-column, .dashboard-column--analytics { min-height: auto; grid-column: auto; grid-template-rows: auto; }
+  .dashboard-column > :deep(.dashboard-panel) { min-height: 230px; }
+  .dashboard-column--analytics > :last-child { grid-column: auto; }
+}
+
+@media (max-width: 767px) {
+  .dashboard-shell { padding: 8px 8px 8px 62px; }
+  .dashboard-freshness, .dashboard-health { display: none; }
+  .dashboard-actions :deep(.dashboard-action__label), .dashboard-protect__summary { font-size: 0; }
+  .dashboard-actions :deep(.dashboard-action__icon), .dashboard-protect__summary span { font-size: 11px; }
+  .dashboard-attention-strip__items { grid-template-columns: 1fr; flex-basis: 100%; }
+  .dashboard-agent-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-scheme-row { height: auto; min-height: 42px; grid-template-columns: minmax(100px, 1.5fr) minmax(80px, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-shell *, .dashboard-shell *::before, .dashboard-shell *::after { scroll-behavior: auto !important; transition-duration: .001ms !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; }
 }
 </style>

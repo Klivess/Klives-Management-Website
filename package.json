@@ -7,7 +7,10 @@
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.2.0",
@@ -28,6 +31,7 @@
     "ws": "^8.19.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/ws": "^8.18.1",
     "sass": "^1.77.8",
     "vue-tsc": "^2.2.12"

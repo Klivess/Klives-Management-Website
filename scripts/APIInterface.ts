@@ -52,6 +52,7 @@ async function RequestGETFromKliveAPI(
     redirectToDashboardIfUnauthorized = true,
     alertUserIfUnauthorized = true,
     extraHeaders: Record<string, string> = {},
+    signal?: AbortSignal,
 ) {
     let res: Response;
     try {
@@ -59,6 +60,7 @@ async function RequestGETFromKliveAPI(
             method: 'GET',
             mode: 'cors',
             headers: { ...BuildKliveHeaders(), ...extraHeaders },
+            signal,
         });
     } catch (error) {
         console.warn('Klive API GET failed:', query, error);
@@ -91,7 +93,7 @@ async function RequestGETFromKliveAPI(
     return res;
 }
 
-async function RequestPOSTFromKliveAPI(query: string, content: BodyInit | null = "", redirectToDashboardIfUnauthorized = true, isJson = false) {
+async function RequestPOSTFromKliveAPI(query: string, content: BodyInit | null = "", redirectToDashboardIfUnauthorized = true, isJson = false, signal?: AbortSignal) {
     let response;
     const headers = BuildKliveHeaders(isJson);
 
@@ -101,6 +103,7 @@ async function RequestPOSTFromKliveAPI(query: string, content: BodyInit | null =
             mode: 'cors',
             body: content,
             headers: headers,
+            signal,
         });
     } catch (error) {
         console.warn('Klive API POST failed:', query, error);
@@ -183,12 +186,12 @@ interface KliveBatchItem {
 // transport failure the Map is empty and callers treat missing keys as a
 // per-zone error. Built on RequestPOSTFromKliveAPI so the auth-failure handling
 // (stale-cookie logout) applies here too.
-async function RequestBatchFromKliveAPI(paths: string[]): Promise<Map<string, KliveBatchItem>> {
+async function RequestBatchFromKliveAPI(paths: string[], signal?: AbortSignal): Promise<Map<string, KliveBatchItem>> {
     const map = new Map<string, KliveBatchItem>();
     if (!paths || paths.length === 0) return map;
 
     const body = JSON.stringify(paths.map(p => ({ path: p })));
-    const response = await RequestPOSTFromKliveAPI('/batch', body, false, true);
+    const response = await RequestPOSTFromKliveAPI('/batch', body, false, true, signal);
     if (!response.ok) return map;
 
     try {

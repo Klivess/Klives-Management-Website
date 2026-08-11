@@ -4,7 +4,15 @@
       <div class="vnav-header">
         <img src="~/public/klivebot.png" class="vnav-logo" alt="logo" />
         <span v-if="!collapsed" class="vnav-brand">KLIVES</span>
-        <button class="vnav-toggle" @click="toggleCollapsed" :title="collapsed ? 'Expand' : 'Collapse'">
+        <button
+          class="vnav-toggle"
+          data-testid="nav-toggle"
+          type="button"
+          @click="toggleCollapsed"
+          :title="collapsed ? 'Expand' : 'Collapse'"
+          :aria-label="collapsed ? 'Expand navigation' : 'Collapse navigation'"
+          :aria-expanded="!collapsed"
+        >
           <span>{{ collapsed ? '›' : '‹' }}</span>
         </button>
       </div>
@@ -34,7 +42,7 @@
           <div class="vnav-user-name">{{ username || 'unknown' }}</div>
           <div class="vnav-user-role">rank {{ rank ?? '?' }}</div>
         </div>
-        <button class="vnav-logout" @click="logOut" :title="'Log Out'">
+        <button class="vnav-logout" type="button" @click="logOut" title="Log Out">
           <span class="vnav-icon">⏻</span>
           <span v-if="!collapsed" class="vnav-label">Log Out</span>
         </button>
@@ -47,8 +55,8 @@
   </div>
 </template>
 
-<script>
-import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
+<script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 const NAV_GROUPS = [
   {
@@ -62,7 +70,7 @@ const NAV_GROUPS = [
     id: 'intel',
     label: 'Intel',
     items: [
-      { to: '/omniscience', label: 'Omniscience', icon: '◎' },
+      { to: '/omniscience', label: 'Omniscience', icon: '◎', klivesOnly: true },
       { to: '/omnidefence', label: 'OmniDefence', icon: '⛨', klivesOnly: true },
     ],
   },
@@ -87,9 +95,10 @@ const NAV_GROUPS = [
       { to: '/klivetech', label: 'KliveTech', icon: '⚙', klivesOnly: true },
       { to: '/klivechat', label: 'KliveChat', icon: '✉' },
       { to: '/klivemail', label: 'KliveMail', icon: '@', klivesOnly: true },
-      { to: '/kliveagent', label: 'KliveAgent', icon: '◈' },
+      { to: '/kliveagent', label: 'KliveAgent', icon: '◈', klivesOnly: true },
       { to: '/projects', label: 'Projects', icon: '⛓', klivesOnly: true },
       { to: '/klivegames', label: 'KliveGames', icon: '⛏', klivesOnly: true },
+      { to: '/klivelink', label: 'KliveLink', icon: '⌁', klivesOnly: true },
       { to: '/klivetools', label: 'KliveTools', icon: '⚒' },
       { to: '/stratum', label: 'Stratum', icon: '▲' },
     ],
@@ -98,83 +107,80 @@ const NAV_GROUPS = [
     id: 'ops',
     label: 'Ops',
     items: [
-      { to: '/botSchedule', label: 'Schedule', icon: '◷' },
-      { to: '/admin', label: 'Admin', icon: '★' },
+      { to: '/botSchedule', label: 'Schedule', icon: '◷', minRank: 4 },
+      { to: '/admin', label: 'Admin', icon: '★', minRank: 4 },
     ],
   },
 ];
 
-export default {
-  name: 'navbarLayout',
-  data() {
-    return {
-      collapsed: false,
-      overlay: false,
-      isKlives: false,
-      username: '',
-      rank: null,
-      openGroups: {},
-      _resizeHandler: null,
-    };
-  },
-  computed: {
-    railWidth() {
-      return this.collapsed ? '56px' : '220px';
-    },
-    visibleGroups() {
-      return NAV_GROUPS.map(g => ({
-        ...g,
-        items: g.items.filter(i => !i.klivesOnly || this.isKlives),
-      })).filter(g => g.items.length > 0);
-    },
-  },
-  async mounted() {
-    if (typeof window !== 'undefined') {
-      const stored = window.localStorage.getItem('vnavCollapsed');
-      if (stored !== null) this.collapsed = stored === '1';
-      this._resizeHandler = () => this.applyResponsive();
-      window.addEventListener('resize', this._resizeHandler);
-      this.applyResponsive();
-    }
-    try {
-      const r = await RequestGETFromKliveAPI('/KMProfiles/GetCurrentProfile', false, false);
-      if (r.ok) {
-        const p = await r.json();
-        this.rank = Number(p?.KlivesManagementRank);
-        this.isKlives = this.rank === 5;
-        this.username = p?.Username || p?.Name || p?.Nickname || '';
-      }
-    } catch { /* ignore */ }
-  },
-  beforeUnmount() {
-    if (this._resizeHandler && typeof window !== 'undefined') {
-      window.removeEventListener('resize', this._resizeHandler);
-    }
-  },
-  methods: {
-    applyResponsive() {
-      if (typeof window === 'undefined') return;
-      const narrow = window.innerWidth < 768;
-      this.overlay = narrow;
-      if (narrow) this.collapsed = true;
-    },
-    toggleCollapsed() {
-      this.collapsed = !this.collapsed;
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('vnavCollapsed', this.collapsed ? '1' : '0');
-      }
-    },
-    toggleGroup(id) {
-      const cur = this.openGroups[id];
-      this.openGroups = { ...this.openGroups, [id]: cur === false ? true : false };
-    },
-    logOut() {
-      const cook = useCookie('password');
-      cook.value = '';
-      this.$router.push('/');
-    },
-  },
+interface NavItem {
+  to: string;
+  label: string;
+  icon: string;
+  klivesOnly?: boolean;
+  minRank?: number;
+}
+
+interface NavGroup {
+  id: string;
+  label: string;
+  items: NavItem[];
+}
+
+const collapsed = ref(false);
+const overlay = ref(false);
+const openGroups = ref<Record<string, boolean>>({});
+const router = useRouter();
+const { rank, username, isKlives, ensureLoaded, reset: resetCurrentProfile } = useCurrentProfile();
+
+const railWidth = computed(() => collapsed.value ? '56px' : '220px');
+const visibleGroups = computed(() => (NAV_GROUPS as NavGroup[])
+  .map(group => ({
+    ...group,
+    items: group.items.filter(item => (!item.klivesOnly || isKlives.value)
+      && (item.minRank == null || (rank.value ?? -1) >= item.minRank)),
+  }))
+  .filter(group => group.items.length > 0));
+
+const applyResponsive = () => {
+  if (!import.meta.client) return;
+  const narrow = window.innerWidth < 768;
+  overlay.value = narrow;
+  if (narrow) collapsed.value = true;
 };
+
+const toggleCollapsed = () => {
+  collapsed.value = !collapsed.value;
+  if (import.meta.client) {
+    window.localStorage.setItem('vnavCollapsed', collapsed.value ? '1' : '0');
+  }
+};
+
+const toggleGroup = (id: string) => {
+  openGroups.value = {
+    ...openGroups.value,
+    [id]: openGroups.value[id] === false,
+  };
+};
+
+const logOut = async () => {
+  const cookie = useCookie('password');
+  cookie.value = '';
+  resetCurrentProfile();
+  await router.push('/');
+};
+
+onMounted(() => {
+  const stored = window.localStorage.getItem('vnavCollapsed');
+  if (stored !== null) collapsed.value = stored === '1';
+  window.addEventListener('resize', applyResponsive);
+  applyResponsive();
+  void ensureLoaded();
+});
+
+onBeforeUnmount(() => {
+  if (import.meta.client) window.removeEventListener('resize', applyResponsive);
+});
 </script>
 
 <style scoped lang="scss">

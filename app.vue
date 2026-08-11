@@ -46,7 +46,7 @@ useHead(() => ({
 <style>
 .page-enter-active,
 .page-leave-active {
-  transition: all 0.1s;
+  transition: opacity 0.1s ease, filter 0.1s ease;
 }
 
 .page-enter-from,
@@ -57,7 +57,7 @@ useHead(() => ({
 
 .layout-enter-active,
 .layout-leave-active {
-  transition: all 0.1s;
+  transition: opacity 0.1s ease, filter 0.1s ease;
 }
 .layout-enter-from,
 .layout-leave-to {

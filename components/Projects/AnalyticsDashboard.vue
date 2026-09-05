@@ -9,6 +9,12 @@
           <span v-if="analytics?.generatedAt" class="generated-at">
             Updated {{ formatDateTime(analytics.generatedAt) }}
           </span>
+          <span v-if="lastLoadMs > 0" class="generated-at">
+            API {{ formatCompactDuration(lastLoadMs) }}
+          </span>
+          <span v-if="analytics?.buildDurationMs" class="generated-at">
+            snapshot build {{ formatCompactDuration(analytics.buildDurationMs) }}
+          </span>
         </p>
       </div>
 
@@ -27,7 +33,7 @@
             {{ option.shortLabel }}
           </button>
         </div>
-        <button type="button" class="refresh-button" :disabled="loading" @click="loadAnalytics">
+        <button type="button" class="refresh-button" :disabled="loading" @click="loadAnalytics(true)">
           {{ loading ? 'Refreshing...' : 'Refresh' }}
         </button>
       </div>
@@ -46,7 +52,7 @@
         <strong>Analytics could not be loaded</strong>
         <p>{{ error }}</p>
       </div>
-      <button type="button" class="retry-button" @click="loadAnalytics">Try again</button>
+      <button type="button" class="retry-button" @click="loadAnalytics()">Try again</button>
     </div>
 
     <template v-else-if="analytics">
@@ -81,6 +87,179 @@
             <div v-if="metric.detail" class="metric-detail">{{ metric.detail }}</div>
           </article>
         </div>
+      </section>
+
+      <section class="cache-verification" aria-labelledby="prompt-cache-heading">
+        <div class="section-heading cache-section-heading">
+          <div>
+            <div class="cache-title-row">
+              <h3 id="prompt-cache-heading">OpenRouter prompt-cache verification</h3>
+              <span class="cache-status" :class="`cache-status-${promptCache.status}`">
+                {{ cacheStatusLabel }}
+              </span>
+            </div>
+            <p>
+              Provider-reported cached_tokens / prompt_tokens from post-fix Projects requests only.
+              Reusable-prefix efficiency tests the cacheable portion against the previous turn;
+              raw hit rate also includes each uncached, newly-added suffix. Whole-response caching
+              is disabled so it cannot create a false positive.
+            </p>
+          </div>
+          <span v-if="promptCache.lastMeasuredAt" class="card-total">
+            Last sample {{ formatDateTime(promptCache.lastMeasuredAt) }}
+          </span>
+        </div>
+
+        <div class="cache-verdict" :class="`cache-verdict-${promptCache.status}`" role="status">
+          <strong>{{ cacheStatusLabel }}</strong>
+          <span>{{ promptCache.verdict }}</span>
+        </div>
+
+        <div class="cache-metric-grid">
+          <article v-for="metric in cacheMetricCards" :key="metric.label" class="cache-metric">
+            <span>{{ metric.label }}</span>
+            <strong>{{ metric.value }}</strong>
+            <small>{{ metric.detail }}</small>
+          </article>
+        </div>
+
+        <div v-if="promptCache.measuredRequests > 0" class="cache-content-grid">
+          <article class="cache-chart-card">
+            <div class="card-heading">
+              <div>
+                <h3>Cached vs uncached prefill</h3>
+                <p>Provider-reported prompt tokens and weighted hit rate by period</p>
+              </div>
+            </div>
+            <div class="chart-frame chart-frame-tall">
+              <canvas ref="promptCacheCanvas" role="img" aria-label="OpenRouter prompt cache usage over time">
+                OpenRouter prompt cache usage chart.
+              </canvas>
+            </div>
+          </article>
+
+          <article class="cache-gates-card">
+            <div class="card-heading">
+              <div>
+                <h3>Verification gate</h3>
+                <p>Required integrity gates, plus the separate 99.7% whole-prompt stretch target</p>
+              </div>
+            </div>
+            <ul class="cache-gates">
+              <li :class="gateClass(promptCache.measuredRequests >= 20 && promptCache.promptTokens >= 1_000_000 && promptCache.reusablePrefixSamples >= 10)">
+                <span>Clean sample</span>
+                <strong>{{ formatCount(promptCache.measuredRequests) }} requests · {{ formatCount(promptCache.reusablePrefixSamples) }} comparable</strong>
+              </li>
+              <li :class="gateClass(promptCache.meetsReusablePrefixTarget)">
+                <span>Reusable-prefix efficiency ≥{{ formatPct(promptCache.targetReusablePrefixEfficiencyPct) }}</span><strong>{{ formatPct(promptCache.reusablePrefixEfficiencyPct) }}</strong>
+              </li>
+              <li :class="gateClass(promptCache.routedProviderCoveragePct >= 95 && promptCache.providerStabilityPct >= 95)">
+                <span>Provider route coverage/stability ≥95%</span><strong>{{ formatPct(promptCache.routedProviderCoveragePct) }} / {{ formatPct(promptCache.providerStabilityPct) }}</strong>
+              </li>
+              <li :class="gateClass(promptCache.telemetryCoveragePct >= 95)">
+                <span>Telemetry coverage ≥95%</span><strong>{{ formatPct(promptCache.telemetryCoveragePct) }}</strong>
+              </li>
+              <li :class="gateClass(promptCache.responseCacheHits === 0)">
+                <span>Response-cache hits = 0</span><strong>{{ formatCount(promptCache.responseCacheHits) }}</strong>
+              </li>
+              <li :class="gateClass(promptCache.meetsCacheHitTarget)">
+                <span>Whole-prompt stretch target ≥{{ formatPct(promptCache.targetCacheHitRatePct) }}</span><strong>{{ formatPct(promptCache.cacheHitRatePct) }}</strong>
+              </li>
+            </ul>
+          </article>
+        </div>
+
+        <article v-if="promptCache.breakdown.length" class="cache-table-card">
+          <div class="card-heading">
+            <div>
+              <h3>Provider / model breakdown</h3>
+              <p>Use this to spot route drift or a single model dragging down the aggregate</p>
+            </div>
+          </div>
+          <div class="table-scroll cache-table-scroll">
+            <table class="cache-table">
+              <thead>
+                <tr>
+                  <th scope="col">Routed provider</th>
+                  <th scope="col">Model</th>
+                  <th scope="col">Source</th>
+                  <th scope="col" class="numeric">Requests</th>
+                  <th scope="col" class="numeric">Prompt</th>
+                  <th scope="col" class="numeric">Cached</th>
+                  <th scope="col" class="numeric">Uncached</th>
+                  <th scope="col" class="numeric">Hit rate</th>
+                  <th scope="col" class="numeric">Zero-hit</th>
+                  <th scope="col" class="numeric">Avg latency</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in promptCache.breakdown" :key="item.key">
+                  <td>{{ item.provider }}</td>
+                  <td>{{ item.model }}</td>
+                  <td>{{ item.source }}</td>
+                  <td class="numeric">{{ formatCount(item.requests) }}</td>
+                  <td class="numeric">{{ formatCount(item.promptTokens) }}</td>
+                  <td class="numeric">{{ formatCount(item.cachedTokens) }}</td>
+                  <td class="numeric">{{ formatCount(item.uncachedTokens) }}</td>
+                  <td class="numeric">{{ formatPct(item.cacheHitRatePct) }}</td>
+                  <td class="numeric">{{ formatPct(item.zeroHitRatePct) }}</td>
+                  <td class="numeric">{{ formatCompactDuration(item.averageRequestDurationMs) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article v-if="promptCache.recent.length" class="cache-table-card recent-cache-table">
+          <div class="card-heading">
+            <div>
+              <h3>Recent request evidence</h3>
+              <p>Generation-level counters returned by OpenRouter</p>
+            </div>
+            <span class="table-count">{{ promptCache.recent.length }} samples</span>
+          </div>
+          <div class="table-scroll cache-table-scroll">
+            <table class="cache-table cache-samples-table">
+              <thead>
+                <tr>
+                  <th scope="col">Time</th>
+                  <th scope="col">Agent / turn</th>
+                  <th scope="col">Provider</th>
+                  <th scope="col">Model</th>
+                  <th scope="col" class="numeric">Prompt</th>
+                  <th scope="col" class="numeric">Cached</th>
+                  <th scope="col" class="numeric">Uncached</th>
+                  <th scope="col" class="numeric">Hit</th>
+                  <th scope="col" class="numeric">Cache write</th>
+                  <th scope="col" class="numeric">Latency</th>
+                  <th scope="col">Flags</th>
+                  <th scope="col">Generation</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="sample in promptCache.recent" :key="`${sample.generationID || sample.occurredAt}-${sample.agentID}-${sample.turnIndex}`">
+                  <td>{{ formatDateTime(sample.occurredAt) }}</td>
+                  <td>{{ sample.agentID }} <span class="cell-sub">turn {{ sample.turnIndex || '?' }}</span></td>
+                  <td>{{ sample.routedProvider || 'Not returned' }}</td>
+                  <td>{{ sample.model }}</td>
+                  <td class="numeric">{{ formatCount(sample.promptTokens) }}</td>
+                  <td class="numeric">{{ formatCount(sample.cachedTokens) }}</td>
+                  <td class="numeric">{{ formatCount(sample.uncachedTokens) }}</td>
+                  <td class="numeric">{{ formatPct(sample.cacheHitRatePct) }}</td>
+                  <td class="numeric">{{ formatCount(sample.cacheWriteTokens) }}</td>
+                  <td class="numeric">{{ formatCompactDuration(sample.requestDurationMs) }}</td>
+                  <td>
+                    <span v-if="sample.contextWasCompacted" class="sample-flag">compacted</span>
+                    <span v-if="sample.responseCacheStatus" class="sample-flag">response {{ sample.responseCacheStatus }}</span>
+                    <span v-if="sample.routerAttempt && sample.routerAttempt > 1" class="sample-flag">attempt {{ sample.routerAttempt }}</span>
+                    <span v-if="!sample.contextWasCompacted && !sample.responseCacheStatus && (!sample.routerAttempt || sample.routerAttempt <= 1)">—</span>
+                  </td>
+                  <td :title="sample.generationID || ''">{{ shortId(sample.generationID) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
       </section>
 
       <div v-if="!hasRangeActivity" class="state-card empty-state" role="status">
@@ -276,7 +455,7 @@
                 <p>{{ pauseSummaryDetail }}</p>
               </div>
             </div>
-            <div v-if="summary.rangeTrackedDurationMs > 0" class="chart-frame">
+            <div v-if="numeric(summary.rangeTrackedDurationMs) > 0" class="chart-frame">
               <canvas
                 ref="availabilityMixCanvas"
                 role="img"
@@ -637,9 +816,105 @@ interface AnalyticsBudgetForecast {
   estimatedExhaustionAt?: string | null;
 }
 
+interface PromptCacheSeriesPoint {
+  date: string;
+  requests: number;
+  promptTokens: number;
+  cachedTokens: number;
+  uncachedTokens: number;
+  cacheHitRatePct: number;
+  averageRequestDurationMs: number;
+}
+
+interface PromptCacheBreakdown {
+  key: string;
+  provider: string;
+  model: string;
+  source: string;
+  requests: number;
+  zeroHitRequests: number;
+  promptTokens: number;
+  cachedTokens: number;
+  uncachedTokens: number;
+  cacheHitRatePct: number;
+  zeroHitRatePct: number;
+  averageRequestDurationMs: number;
+}
+
+interface PromptCacheSample {
+  occurredAt: string;
+  projectID: string;
+  wakeID?: string | null;
+  agentID: string;
+  source: string;
+  turnIndex: number;
+  model: string;
+  provider: string;
+  routedProvider?: string | null;
+  routerStrategy?: string | null;
+  routerAttempt?: number | null;
+  generationID?: string | null;
+  promptTokens: number;
+  cachedTokens: number;
+  uncachedTokens: number;
+  cacheWriteTokens: number;
+  cacheHitRatePct: number;
+  requestDurationMs: number;
+  contextWasCompacted: boolean;
+  responseCacheStatus?: string | null;
+}
+
+interface PromptCacheAnalytics {
+  telemetryVersion: string;
+  status: 'no-data' | 'warming' | 'healthy' | 'degraded' | string;
+  verdict: string;
+  measurementStartedAt?: string | null;
+  lastMeasuredAt?: string | null;
+  requests: number;
+  measuredRequests: number;
+  hitRequests: number;
+  zeroHitRequests: number;
+  promptTokens: number;
+  cachedTokens: number;
+  uncachedTokens: number;
+  cacheWriteTokens: number;
+  cacheHitRatePct: number;
+  targetCacheHitRatePct: number;
+  meetsCacheHitTarget: boolean;
+  targetUncachedTokenBudget: number;
+  excessUncachedTokens: number;
+  reusablePrefixSamples: number;
+  reusablePrefixTokens: number;
+  reusedPrefixTokens: number;
+  reusablePrefixEfficiencyPct: number;
+  targetReusablePrefixEfficiencyPct: number;
+  meetsReusablePrefixTarget: boolean;
+  zeroHitRatePct: number;
+  telemetryCoveragePct: number;
+  averagePromptTokens: number;
+  averageUncachedTokens: number;
+  averageRequestDurationMs: number;
+  firstTurnRequests: number;
+  firstTurnHitRatePct: number;
+  continuationRequests: number;
+  continuationHitRatePct: number;
+  compactedRequests: number;
+  compactionRatePct: number;
+  routedProviderSamples: number;
+  routedProviderCoveragePct: number;
+  providerComparisons: number;
+  providerSwitches: number;
+  providerStabilityPct: number;
+  responseCacheHits: number;
+  series: PromptCacheSeriesPoint[];
+  breakdown: PromptCacheBreakdown[];
+  recent: PromptCacheSample[];
+}
+
 interface AnalyticsPayload {
   scope: string;
   generatedAt: string;
+  buildDurationMs?: number;
   range: { key: string; label: string; bucket?: string; fromUtc?: string | null; toUtc?: string | null };
   project?: { projectID?: string; name?: string } | null;
   summary: AnalyticsSummary;
@@ -653,6 +928,7 @@ interface AnalyticsPayload {
   projects: AnalyticsProject[];
   statuses: AnalyticsStatus[];
   coverage?: unknown;
+  promptCache: PromptCacheAnalytics;
 }
 
 interface MetricCard {
@@ -683,7 +959,9 @@ const selectedRange = ref<RangeKey>('30d');
 const analytics = ref<AnalyticsPayload | null>(null);
 const loading = ref(false);
 const error = ref('');
+const lastLoadMs = ref(0);
 let requestGeneration = 0;
+let requestController: AbortController | null = null;
 
 const spendCanvas = ref<HTMLCanvasElement | null>(null);
 const tokenMixCanvas = ref<HTMLCanvasElement | null>(null);
@@ -696,6 +974,7 @@ const eventTypesCanvas = ref<HTMLCanvasElement | null>(null);
 const budgetCanvas = ref<HTMLCanvasElement | null>(null);
 const projectSpendCanvas = ref<HTMLCanvasElement | null>(null);
 const statusesCanvas = ref<HTMLCanvasElement | null>(null);
+const promptCacheCanvas = ref<HTMLCanvasElement | null>(null);
 let charts: Chart[] = [];
 
 const EMPTY_SUMMARY: AnalyticsSummary = {
@@ -728,7 +1007,137 @@ const EMPTY_SUMMARY: AnalyticsSummary = {
   activeAgents: 0,
 };
 
+const EMPTY_PROMPT_CACHE: PromptCacheAnalytics = {
+  telemetryVersion: 'projects-prefix-v2',
+  status: 'no-data',
+  verdict: 'No post-fix OpenRouter Projects requests are in this range yet.',
+  requests: 0,
+  measuredRequests: 0,
+  hitRequests: 0,
+  zeroHitRequests: 0,
+  promptTokens: 0,
+  cachedTokens: 0,
+  uncachedTokens: 0,
+  cacheWriteTokens: 0,
+  cacheHitRatePct: 0,
+  targetCacheHitRatePct: 99.7,
+  meetsCacheHitTarget: false,
+  targetUncachedTokenBudget: 0,
+  excessUncachedTokens: 0,
+  reusablePrefixSamples: 0,
+  reusablePrefixTokens: 0,
+  reusedPrefixTokens: 0,
+  reusablePrefixEfficiencyPct: 0,
+  targetReusablePrefixEfficiencyPct: 99.7,
+  meetsReusablePrefixTarget: false,
+  zeroHitRatePct: 0,
+  telemetryCoveragePct: 0,
+  averagePromptTokens: 0,
+  averageUncachedTokens: 0,
+  averageRequestDurationMs: 0,
+  firstTurnRequests: 0,
+  firstTurnHitRatePct: 0,
+  continuationRequests: 0,
+  continuationHitRatePct: 0,
+  compactedRequests: 0,
+  compactionRatePct: 0,
+  routedProviderSamples: 0,
+  routedProviderCoveragePct: 0,
+  providerComparisons: 0,
+  providerSwitches: 0,
+  providerStabilityPct: 0,
+  responseCacheHits: 0,
+  series: [],
+  breakdown: [],
+  recent: [],
+};
+
 const summary = computed<AnalyticsSummary>(() => analytics.value?.summary ?? EMPTY_SUMMARY);
+const promptCache = computed<PromptCacheAnalytics>(() => analytics.value?.promptCache ?? EMPTY_PROMPT_CACHE);
+const cacheStatusLabel = computed(() => ({
+  'no-data': 'No data',
+  warming: 'Collecting evidence',
+  healthy: 'Prefix cache verified',
+  degraded: 'Do not switch',
+}[promptCache.value.status] ?? promptCache.value.status));
+
+const cacheMetricCards = computed(() => {
+  const value = promptCache.value;
+  return [
+    {
+      label: 'Weighted cache hit',
+      value: formatPct(value.cacheHitRatePct),
+      detail: `${formatCount(value.cachedTokens)} of ${formatCount(value.promptTokens)} prompt tokens`,
+    },
+    {
+      label: 'Reusable-prefix efficiency',
+      value: formatPct(value.reusablePrefixEfficiencyPct),
+      detail: `${formatCount(value.reusedPrefixTokens)} of ${formatCount(value.reusablePrefixTokens)} reusable · ${formatCount(value.reusablePrefixSamples)} comparisons`,
+    },
+    {
+      label: '99.7% raw target gap',
+      value: value.meetsCacheHitTarget ? 'Met' : formatCount(value.excessUncachedTokens),
+      detail: value.meetsCacheHitTarget
+        ? `${formatCount(value.uncachedTokens)} uncached within ${formatCount(value.targetUncachedTokenBudget)} allowance`
+        : `uncached tokens above the ${formatCount(value.targetUncachedTokenBudget)} allowance`,
+    },
+    {
+      label: 'Uncached prefill',
+      value: formatCount(value.uncachedTokens),
+      detail: `${formatCount(value.averageUncachedTokens)} average / request`,
+    },
+    {
+      label: 'Zero-hit requests',
+      value: formatPct(value.zeroHitRatePct),
+      detail: `${formatCount(value.zeroHitRequests)} of ${formatCount(value.measuredRequests)} measured`,
+    },
+    {
+      label: 'Continuation hit',
+      value: formatPct(value.continuationHitRatePct),
+      detail: `${formatCount(value.continuationRequests)} continuation turns`,
+    },
+    {
+      label: 'First-turn hit',
+      value: formatPct(value.firstTurnHitRatePct),
+      detail: `${formatCount(value.firstTurnRequests)} wake-opening turns`,
+    },
+    {
+      label: 'Provider stability',
+      value: formatPct(value.providerStabilityPct),
+      detail: `${formatCount(value.providerSwitches)} switches · ${formatPct(value.routedProviderCoveragePct)} route coverage`,
+    },
+    {
+      label: 'Telemetry coverage',
+      value: formatPct(value.telemetryCoveragePct),
+      detail: `${formatCount(value.measuredRequests)} of ${formatCount(value.requests)} eligible requests`,
+    },
+    {
+      label: 'Average latency',
+      value: formatCompactDuration(value.averageRequestDurationMs),
+      detail: `${formatCount(value.averagePromptTokens)} average prompt tokens`,
+    },
+    {
+      label: 'Cache writes',
+      value: formatCount(value.cacheWriteTokens),
+      detail: 'May be zero for automatic provider caches',
+    },
+    {
+      label: 'Compaction rate',
+      value: formatPct(value.compactionRatePct),
+      detail: `${formatCount(value.compactedRequests)} rewritten contexts`,
+    },
+    {
+      label: 'Response-cache hits',
+      value: formatCount(value.responseCacheHits),
+      detail: 'Must stay at zero during this test',
+    },
+    {
+      label: 'Measurement window',
+      value: value.measurementStartedAt ? formatDate(value.measurementStartedAt) : 'Not started',
+      detail: value.telemetryVersion,
+    },
+  ];
+});
 const activeRangeLabel = computed(() =>
   rangeOptions.find(option => option.key === selectedRange.value)?.label ?? 'Selected range');
 
@@ -1155,6 +1564,7 @@ function normalizePayload(raw: any): AnalyticsPayload {
   return {
     scope: String(raw?.scope ?? (isAllProjects.value ? 'all' : 'project')),
     generatedAt: String(raw?.generatedAt ?? ''),
+    buildDurationMs: numeric(raw?.buildDurationMs),
     range: {
       key: String(raw?.range?.key ?? selectedRange.value),
       label: String(raw?.range?.label ?? activeRangeLabel.value),
@@ -1174,6 +1584,15 @@ function normalizePayload(raw: any): AnalyticsPayload {
     projects: arrayOrEmpty<AnalyticsProject>(raw?.projects),
     statuses: arrayOrEmpty<AnalyticsStatus>(raw?.statuses),
     coverage: raw?.coverage,
+    promptCache: raw?.promptCache && typeof raw.promptCache === 'object'
+      ? {
+          ...EMPTY_PROMPT_CACHE,
+          ...raw.promptCache,
+          series: arrayOrEmpty<PromptCacheSeriesPoint>(raw.promptCache.series),
+          breakdown: arrayOrEmpty<PromptCacheBreakdown>(raw.promptCache.breakdown),
+          recent: arrayOrEmpty<PromptCacheSample>(raw.promptCache.recent),
+        }
+      : { ...EMPTY_PROMPT_CACHE, series: [], breakdown: [], recent: [] },
   };
 }
 
@@ -1187,25 +1606,31 @@ function selectRange(range: RangeKey) {
   loadAnalytics();
 }
 
-async function loadAnalytics() {
+async function loadAnalytics(forceRefresh = false) {
   if (!isAllProjects.value && !props.projectId) {
     error.value = 'A project identifier is required for project analytics.';
     return;
   }
 
   const generation = ++requestGeneration;
+  requestController?.abort();
+  const controller = new AbortController();
+  requestController = controller;
+  const startedAt = performance.now();
   loading.value = true;
   error.value = '';
+  const freshness = forceRefresh ? '&fresh=1' : '';
   const endpoint = isAllProjects.value
-    ? `/projects/analytics/all?range=${selectedRange.value}`
-    : `/projects/analytics?projectID=${encodeURIComponent(props.projectId)}&range=${selectedRange.value}`;
+    ? `/projects/analytics/all?range=${selectedRange.value}${freshness}`
+    : `/projects/analytics?projectID=${encodeURIComponent(props.projectId)}&range=${selectedRange.value}${freshness}`;
 
   try {
     const response = await RequestGETFromKliveAPI(
       endpoint,
       false,
       false,
-      { 'Cache-Control': 'no-cache' },
+      forceRefresh ? { 'Cache-Control': 'no-cache' } : {},
+      controller.signal,
     );
     if (generation !== requestGeneration) return;
     if (!response.ok) {
@@ -1215,13 +1640,21 @@ async function loadAnalytics() {
     const payload = normalizePayload(await response.json());
     if (generation !== requestGeneration) return;
     analytics.value = payload;
+    lastLoadMs.value = Math.max(1, Math.round(performance.now() - startedAt));
+    // Let the payload paint before Chart.js builds every visualization on the main thread.
+    loading.value = false;
     await nextTick();
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    if (generation !== requestGeneration) return;
     renderCharts();
   } catch (cause: any) {
     if (generation !== requestGeneration) return;
     error.value = cause?.message ? String(cause.message) : 'The analytics service did not return a result.';
   } finally {
-    if (generation === requestGeneration) loading.value = false;
+    if (generation === requestGeneration) {
+      loading.value = false;
+      if (requestController === controller) requestController = null;
+    }
   }
 }
 
@@ -1244,6 +1677,83 @@ function renderCharts() {
   const gridColor = 'rgba(255,255,255,0.055)';
   const tickColor = '#777780';
   const legendColor = '#a7a7af';
+
+  const cacheSeries = promptCache.value.series;
+  if (cacheSeries.some(point => numeric(point.requests) > 0)) {
+    addChart(promptCacheCanvas.value, {
+      type: 'bar',
+      data: {
+        labels: cacheSeries.map(point => formatSeriesDate(point.date)),
+        datasets: [
+          {
+            type: 'bar',
+            label: 'Cached prompt tokens',
+            data: cacheSeries.map(point => numeric(point.cachedTokens)),
+            backgroundColor: 'rgba(98,206,71,0.72)',
+            borderColor: '#62ce47',
+            borderWidth: 1,
+            borderRadius: 2,
+            stack: 'prompt',
+            yAxisID: 'y',
+          },
+          {
+            type: 'bar',
+            label: 'Uncached prompt tokens',
+            data: cacheSeries.map(point => numeric(point.uncachedTokens)),
+            backgroundColor: 'rgba(224,88,75,0.68)',
+            borderColor: '#e0584b',
+            borderWidth: 1,
+            borderRadius: 2,
+            stack: 'prompt',
+            yAxisID: 'y',
+          },
+          {
+            type: 'line',
+            label: 'Cache hit rate',
+            data: cacheSeries.map(point => numeric(point.cacheHitRatePct)),
+            borderColor: '#7fb0d9',
+            backgroundColor: '#7fb0d9',
+            pointRadius: cacheSeries.length > 45 ? 0 : 2.5,
+            pointHoverRadius: 4,
+            borderWidth: 2,
+            tension: 0.24,
+            yAxisID: 'y1',
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { color: legendColor, usePointStyle: true, boxWidth: 8 } },
+          tooltip: {
+            callbacks: {
+              label: (context: any) => context.dataset.yAxisID === 'y1'
+                ? ` ${context.dataset.label}: ${formatPct(context.parsed.y)}`
+                : ` ${context.dataset.label}: ${formatCount(context.parsed.y)}`,
+            },
+          },
+        },
+        scales: {
+          x: { stacked: true, grid: { display: false }, ticks: { color: tickColor, maxTicksLimit: 9 } },
+          y: {
+            stacked: true,
+            beginAtZero: true,
+            grid: { color: gridColor },
+            ticks: { color: tickColor, callback: (value: any) => formatCount(value) },
+          },
+          y1: {
+            beginAtZero: true,
+            max: 100,
+            position: 'right',
+            grid: { drawOnChartArea: false },
+            ticks: { color: tickColor, callback: (value: any) => `${value}%` },
+          },
+        },
+      },
+    });
+  }
 
   addChart(spendCanvas.value, {
     type: 'line',
@@ -1720,6 +2230,16 @@ function statusClass(status: string) {
   return `status-${String(status || 'unknown').toLowerCase().replace(/[^a-z0-9]+/g, '')}`;
 }
 
+function gateClass(passed: boolean) {
+  return passed ? 'gate-pass' : 'gate-pending';
+}
+
+function shortId(value: unknown) {
+  const id = String(value ?? '').trim();
+  if (!id) return '—';
+  return id.length <= 18 ? id : `${id.slice(0, 8)}…${id.slice(-7)}`;
+}
+
 function numeric(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -1763,6 +2283,14 @@ function formatDuration(value: unknown) {
   if (milliseconds < 1000) return `${Math.round(milliseconds)} ms average`;
   if (milliseconds < 60_000) return `${(milliseconds / 1000).toFixed(milliseconds < 10_000 ? 1 : 0)} s average`;
   return `${(milliseconds / 60_000).toFixed(1)} min average`;
+}
+
+function formatCompactDuration(value: unknown) {
+  const milliseconds = numeric(value);
+  if (milliseconds <= 0) return '—';
+  if (milliseconds < 1000) return `${Math.round(milliseconds)} ms`;
+  if (milliseconds < 60_000) return `${(milliseconds / 1000).toFixed(milliseconds < 10_000 ? 1 : 0)} s`;
+  return `${(milliseconds / 60_000).toFixed(1)} min`;
 }
 
 function formatLongDuration(value: unknown) {
@@ -1856,6 +2384,8 @@ watch(
 onMounted(loadAnalytics);
 onBeforeUnmount(() => {
   requestGeneration += 1;
+  requestController?.abort();
+  requestController = null;
   destroyCharts();
 });
 </script>
@@ -2173,6 +2703,181 @@ onBeforeUnmount(() => {
   margin-top: 4px;
 }
 
+.cache-verification {
+  min-width: 0;
+  margin-bottom: 16px;
+  background: linear-gradient(145deg, rgba(31, 42, 31, 0.42), rgba(22, 21, 25, 0.96) 42%);
+  border: 1px solid #30402d;
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.cache-section-heading {
+  margin-bottom: 10px;
+}
+
+.cache-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cache-status {
+  border: 1px solid #4b4b52;
+  border-radius: 999px;
+  color: #b8b8bf;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.045em;
+  padding: 3px 8px;
+  text-transform: uppercase;
+}
+
+.cache-status-healthy { color: #8be376; background: #183016; border-color: #376632; }
+.cache-status-degraded { color: #f09a91; background: #321918; border-color: #6b312d; }
+.cache-status-warming { color: #dfc581; background: #302917; border-color: #65572d; }
+.cache-status-no-data { color: #a2a2aa; background: #25252a; border-color: #46464e; }
+
+.cache-verdict {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border: 1px solid #34343a;
+  border-radius: 7px;
+  background: rgba(17, 17, 20, 0.72);
+  color: #92929b;
+  font-size: 11px;
+  line-height: 1.45;
+  padding: 9px 11px;
+}
+
+.cache-verdict strong {
+  color: #d7d7dc;
+  flex-shrink: 0;
+}
+
+.cache-verdict-healthy { border-color: #355e30; background: rgba(24, 48, 22, 0.58); }
+.cache-verdict-degraded { border-color: #67302d; background: rgba(50, 25, 24, 0.58); }
+.cache-verdict-warming { border-color: #5d502b; background: rgba(48, 41, 23, 0.48); }
+
+.cache-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(115px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.cache-metric {
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: 7px;
+  background: rgba(21, 21, 25, 0.82);
+  padding: 10px;
+}
+
+.cache-metric span,
+.cache-metric small {
+  display: block;
+}
+
+.cache-metric span {
+  color: #777780;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.cache-metric strong {
+  display: block;
+  color: #e9e9ed;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  margin-top: 5px;
+}
+
+.cache-metric small {
+  color: #686871;
+  font-size: 9px;
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
+.cache-content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(270px, 0.8fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.cache-chart-card,
+.cache-gates-card,
+.cache-table-card {
+  min-width: 0;
+  background: rgba(18, 18, 21, 0.74);
+  border: 1px solid #2d2d33;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.cache-gates {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+
+.cache-gates li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.045);
+  color: #898992;
+  font-size: 10px;
+  padding: 7px 0 7px 16px;
+  position: relative;
+}
+
+.cache-gates li:first-child { border-top: 0; }
+.cache-gates li::before {
+  position: absolute;
+  left: 0;
+  content: '○';
+  color: #d9b872;
+}
+.cache-gates li.gate-pass::before { content: '✓'; color: var(--green-bright); }
+.cache-gates li.gate-pass strong { color: #9dce92; }
+.cache-gates li.gate-pending strong { color: #d6ad6f; }
+.cache-gates strong { font-variant-numeric: tabular-nums; text-align: right; }
+
+.cache-table-card {
+  margin-top: 10px;
+}
+
+.cache-table-scroll {
+  margin: 10px -12px -12px;
+}
+
+.cache-table {
+  min-width: 1040px;
+}
+
+.cache-samples-table {
+  min-width: 1320px;
+}
+
+.sample-flag {
+  display: inline-flex;
+  border: 1px solid #414148;
+  border-radius: 999px;
+  color: #a1a1a9;
+  font-size: 8px;
+  margin: 1px 2px 1px 0;
+  padding: 2px 5px;
+  white-space: nowrap;
+}
+
 .chart-grid {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(260px, 0.9fr);
@@ -2444,6 +3149,10 @@ th:nth-child(2) .sort-button {
     grid-template-columns: repeat(4, minmax(120px, 1fr));
   }
 
+  .cache-metric-grid {
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+  }
+
   .chart-grid-three {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2475,7 +3184,8 @@ th:nth-child(2) .sort-button {
 
   .chart-grid,
   .chart-grid-even,
-  .chart-grid-three {
+  .chart-grid-three,
+  .cache-content-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2503,6 +3213,19 @@ th:nth-child(2) .sort-button {
 
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cache-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cache-verification {
+    padding: 12px;
+  }
+
+  .cache-verdict {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .chart-card,

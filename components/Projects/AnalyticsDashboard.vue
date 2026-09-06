@@ -39,6 +39,24 @@
       </div>
     </header>
 
+    <form class="precision-controls" @submit.prevent="loadAnalytics()" aria-label="Precise analytics range">
+      <template v-if="selectedRange === 'custom'">
+        <label>From (local time)<input v-model="customFrom" type="datetime-local" required aria-label="From (local time)" :disabled="loading" /></label>
+        <label>To (local time)<input v-model="customTo" type="datetime-local" required aria-label="To (local time)" :disabled="loading" /></label>
+      </template>
+      <label>Chart interval
+        <select v-model="selectedBucket" aria-label="Chart interval" :disabled="loading">
+          <option value="auto">Automatic</option><option value="minute">1 minute</option>
+          <option value="5minute">5 minutes</option><option value="15minute">15 minutes</option>
+          <option value="hour">Hourly</option><option value="day">Daily</option>
+          <option value="week">Weekly</option><option value="month">Monthly</option>
+        </select>
+      </label>
+      <button type="submit" class="refresh-button" :disabled="loading">Apply range</button>
+      <span>Dates use {{ localTimezone }}. Charts use UTC. Up to 1,000 intervals.</span>
+    </form>
+    <p v-if="rangeError" class="inline-error" role="alert">{{ rangeError }}</p>
+
     <div v-if="loading && !analytics" class="state-card loading-state" role="status">
       <span class="loading-spinner" aria-hidden="true"></span>
       <div>
@@ -60,6 +78,8 @@
         {{ error }} The last successful result is still shown.
       </div>
       <div v-if="loading" class="refresh-progress" role="status">Refreshing analytics...</div>
+
+      <ExecutionTrends :execution="analytics.execution" :series="analytics.series" />
 
       <section class="metrics-section" aria-labelledby="analytics-summary-heading">
         <div class="section-heading">
@@ -644,9 +664,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Chart from 'chart.js/auto';
+import ExecutionTrends from './ExecutionTrends.vue';
 import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 
-type RangeKey = '7d' | '30d' | '90d' | '365d' | 'all';
+type RangeKey = '1h' | '6h' | '24h' | '7d' | '30d' | '90d' | '365d' | 'all' | 'custom';
+type ExecutionMetrics = NonNullable<InstanceType<typeof ExecutionTrends>['$props']['execution']>;
 type SortDirection = 'asc' | 'desc';
 type ProjectSortKey =
   | 'name'
@@ -706,6 +728,9 @@ interface AnalyticsSummary {
 }
 
 interface AnalyticsSeriesPoint {
+  execution?: ExecutionMetrics;
+  deferredWakes?: number;
+  cancelledWakes?: number;
   date: string;
   spendUsd: number;
   moneySpendUsd: number;
@@ -912,6 +937,7 @@ interface PromptCacheAnalytics {
 }
 
 interface AnalyticsPayload {
+  execution?: ExecutionMetrics | null;
   scope: string;
   generatedAt: string;
   buildDurationMs?: number;
@@ -947,6 +973,10 @@ const props = withDefaults(defineProps<{
 });
 
 const rangeOptions: Array<{ key: RangeKey; label: string; shortLabel: string }> = [
+  { key: '1h', label: 'Last hour', shortLabel: '1H' },
+  { key: '6h', label: 'Last 6 hours', shortLabel: '6H' },
+  { key: '24h', label: 'Last 24 hours', shortLabel: '24H' },
+  { key: 'custom', label: 'Custom range', shortLabel: 'Custom' },
   { key: '7d', label: 'Last 7 days', shortLabel: '7D' },
   { key: '30d', label: 'Last 30 days', shortLabel: '30D' },
   { key: '90d', label: 'Last 90 days', shortLabel: '90D' },
@@ -955,7 +985,15 @@ const rangeOptions: Array<{ key: RangeKey; label: string; shortLabel: string }> 
 ];
 
 const isAllProjects = computed(() => props.allProjects);
-const selectedRange = ref<RangeKey>('30d');
+const selectedRange = ref<RangeKey>('24h');
+const selectedBucket = ref('auto');
+const localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+function localInputValue(date: Date) {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+const customFrom = ref(localInputValue(new Date(Date.now() - 86_400_000)));
+const customTo = ref(localInputValue(new Date()));
+const rangeError = ref('');
 const analytics = ref<AnalyticsPayload | null>(null);
 const loading = ref(false);
 const error = ref('');
@@ -1575,6 +1613,7 @@ function normalizePayload(raw: any): AnalyticsPayload {
     project: raw?.project && typeof raw.project === 'object' ? raw.project : null,
     summary: { ...EMPTY_SUMMARY, ...(raw?.summary && typeof raw.summary === 'object' ? raw.summary : {}) },
     series: arrayOrEmpty<AnalyticsSeriesPoint>(raw?.series),
+    execution: raw?.execution ?? null,
     outcomes: arrayOrEmpty<AnalyticsOutcome>(raw?.outcomes),
     models: arrayOrEmpty<AnalyticsModel>(raw?.models),
     agents: arrayOrEmpty<AnalyticsAgent>(raw?.agents),
@@ -1603,7 +1642,9 @@ function arrayOrEmpty<T>(value: unknown): T[] {
 function selectRange(range: RangeKey) {
   if (range === selectedRange.value || loading.value) return;
   selectedRange.value = range;
-  loadAnalytics();
+  selectedBucket.value = 'auto';
+  rangeError.value = '';
+  if (range !== 'custom') loadAnalytics();
 }
 
 async function loadAnalytics(forceRefresh = false) {
@@ -1612,6 +1653,23 @@ async function loadAnalytics(forceRefresh = false) {
     return;
   }
 
+  rangeError.value = '';
+  const query = new URLSearchParams({ range: selectedRange.value, bucket: selectedBucket.value });
+  if (selectedRange.value === 'custom') {
+    const from = new Date(customFrom.value);
+    const to = new Date(customTo.value);
+    if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from >= to) {
+      rangeError.value = 'Choose a valid start time before the end time.';
+      return;
+    }
+    if (to.getTime() > Date.now() + 60_000) {
+      rangeError.value = 'The end time cannot be in the future.';
+      return;
+    }
+    query.set('from', from.toISOString());
+    query.set('to', to.toISOString());
+  }
+  if (forceRefresh) query.set('fresh', '1');
   const generation = ++requestGeneration;
   requestController?.abort();
   const controller = new AbortController();
@@ -1619,10 +1677,9 @@ async function loadAnalytics(forceRefresh = false) {
   const startedAt = performance.now();
   loading.value = true;
   error.value = '';
-  const freshness = forceRefresh ? '&fresh=1' : '';
   const endpoint = isAllProjects.value
-    ? `/projects/analytics/all?range=${selectedRange.value}${freshness}`
-    : `/projects/analytics?projectID=${encodeURIComponent(props.projectId)}&range=${selectedRange.value}${freshness}`;
+    ? `/projects/analytics/all?${query}`
+    : `/projects/analytics?projectID=${encodeURIComponent(props.projectId)}&${query}`;
 
   try {
     const response = await RequestGETFromKliveAPI(
@@ -2011,7 +2068,10 @@ function renderCharts() {
         labels: analytics.value.outcomes.map(item => item.label || item.key),
         datasets: [{
           data: analytics.value.outcomes.map(item => numeric(item.count)),
-          backgroundColor: palette(analytics.value.outcomes.length),
+          backgroundColor: analytics.value.outcomes.map(item => ({
+            'wake-completed': '#69bd83', 'wake-failed': '#e7646d',
+            'wake-deferred': '#f2ad3f', 'wake-cancelled': '#ae83ef',
+          }[item.key] ?? '#8794a6')),
           borderColor: '#1a1a1e',
           borderWidth: 3,
           hoverOffset: 5,
@@ -2351,6 +2411,9 @@ function formatSeriesDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   const bucket = analytics.value?.range.bucket ?? 'day';
+  if (['minute', '5minute', '15minute', 'hour'].includes(bucket)) {
+    return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+  }
   if (bucket === 'month') {
     return date.toLocaleDateString(undefined, {
       month: 'short',
@@ -3272,4 +3335,12 @@ th:nth-child(2) .sort-button {
     animation-duration: 1.8s;
   }
 }
+
+.precision-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 14px 0 22px; }
+.precision-controls label { display: flex; flex-direction: column; gap: 6px; color: #aab4c2; font-size: 12px; }
+.precision-controls input, .precision-controls select { background: #1c2027; color: #e6ebf2; border: 1px solid #3b4553; border-radius: 7px; padding: 8px 10px; color-scheme: dark; max-width: 100%; }
+.precision-controls span { color: #909aa9; font-size: 12px; padding-bottom: 8px; }
+.range-control { flex-wrap: wrap; }
+.range-button { flex: 0 0 auto; min-width: max-content; letter-spacing: normal; }
+@media(max-width: 600px) { .precision-controls label { width: 100%; } }
 </style>

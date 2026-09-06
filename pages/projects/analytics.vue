@@ -57,7 +57,7 @@ p {
 
 @media (max-width: 680px) {
   .fleet-analytics-page {
-    padding: 16px;
+    padding: 16px 16px 16px 72px;
   }
 }
 </style>

@@ -209,7 +209,9 @@
                   <th scope="col" class="numeric">Uncached</th>
                   <th scope="col" class="numeric">Hit rate</th>
                   <th scope="col" class="numeric">Zero-hit</th>
-                  <th scope="col" class="numeric">Avg latency</th>
+                  <th scope="col" class="numeric">Avg total</th>
+                  <th scope="col" class="numeric">Avg queue</th>
+                  <th scope="col" class="numeric">Avg provider</th>
                 </tr>
               </thead>
               <tbody>
@@ -224,6 +226,8 @@
                   <td class="numeric">{{ formatPct(item.cacheHitRatePct) }}</td>
                   <td class="numeric">{{ formatPct(item.zeroHitRatePct) }}</td>
                   <td class="numeric">{{ formatCompactDuration(item.averageRequestDurationMs) }}</td>
+                  <td class="numeric">{{ item.latencyBreakdownRequests ? formatCompactDuration(item.averageQueueDurationMs) : '—' }}</td>
+                  <td class="numeric">{{ item.latencyBreakdownRequests ? formatCompactDuration(item.averageProviderDurationMs) : '—' }}</td>
                 </tr>
               </tbody>
             </table>
@@ -234,7 +238,7 @@
           <div class="card-heading">
             <div>
               <h3>Recent request evidence</h3>
-              <p>Generation-level counters returned by OpenRouter</p>
+              <p>Generation-level provider counters with local queue and transport timing</p>
             </div>
             <span class="table-count">{{ promptCache.recent.length }} samples</span>
           </div>
@@ -251,7 +255,9 @@
                   <th scope="col" class="numeric">Uncached</th>
                   <th scope="col" class="numeric">Hit</th>
                   <th scope="col" class="numeric">Cache write</th>
-                  <th scope="col" class="numeric">Latency</th>
+                  <th scope="col" class="numeric">Total</th>
+                  <th scope="col" class="numeric">Queue</th>
+                  <th scope="col" class="numeric">Provider</th>
                   <th scope="col">Flags</th>
                   <th scope="col">Generation</th>
                 </tr>
@@ -268,6 +274,8 @@
                   <td class="numeric">{{ formatPct(sample.cacheHitRatePct) }}</td>
                   <td class="numeric">{{ formatCount(sample.cacheWriteTokens) }}</td>
                   <td class="numeric">{{ formatCompactDuration(sample.requestDurationMs) }}</td>
+                  <td class="numeric">{{ sample.latencyBreakdownAvailable ? formatCompactDuration(sample.queueDurationMs) : '—' }}</td>
+                  <td class="numeric">{{ sample.latencyBreakdownAvailable ? formatCompactDuration(sample.providerDurationMs) : '—' }}</td>
                   <td>
                     <span v-if="sample.contextWasCompacted" class="sample-flag">compacted</span>
                     <span v-if="sample.responseCacheStatus" class="sample-flag">response {{ sample.responseCacheStatus }}</span>
@@ -864,6 +872,9 @@ interface PromptCacheBreakdown {
   cacheHitRatePct: number;
   zeroHitRatePct: number;
   averageRequestDurationMs: number;
+  latencyBreakdownRequests: number;
+  averageQueueDurationMs: number;
+  averageProviderDurationMs: number;
 }
 
 interface PromptCacheSample {
@@ -885,6 +896,9 @@ interface PromptCacheSample {
   cacheWriteTokens: number;
   cacheHitRatePct: number;
   requestDurationMs: number;
+  queueDurationMs: number;
+  providerDurationMs: number;
+  latencyBreakdownAvailable: boolean;
   contextWasCompacted: boolean;
   responseCacheStatus?: string | null;
 }
@@ -919,6 +933,10 @@ interface PromptCacheAnalytics {
   averagePromptTokens: number;
   averageUncachedTokens: number;
   averageRequestDurationMs: number;
+  latencyBreakdownRequests: number;
+  averageQueueDurationMs: number;
+  averageProviderDurationMs: number;
+  latencyBreakdownCoveragePct: number;
   firstTurnRequests: number;
   firstTurnHitRatePct: number;
   continuationRequests: number;
@@ -1073,6 +1091,10 @@ const EMPTY_PROMPT_CACHE: PromptCacheAnalytics = {
   averagePromptTokens: 0,
   averageUncachedTokens: 0,
   averageRequestDurationMs: 0,
+  latencyBreakdownRequests: 0,
+  averageQueueDurationMs: 0,
+  averageProviderDurationMs: 0,
+  latencyBreakdownCoveragePct: 0,
   firstTurnRequests: 0,
   firstTurnHitRatePct: 0,
   continuationRequests: 0,
@@ -1152,7 +1174,9 @@ const cacheMetricCards = computed(() => {
     {
       label: 'Average latency',
       value: formatCompactDuration(value.averageRequestDurationMs),
-      detail: `${formatCount(value.averagePromptTokens)} average prompt tokens`,
+      detail: value.latencyBreakdownRequests > 0
+        ? `${formatCompactDuration(value.averageQueueDurationMs)} queue · ${formatCompactDuration(value.averageProviderDurationMs)} provider · ${formatPct(value.latencyBreakdownCoveragePct)} split coverage`
+        : 'Queue/provider split awaiting fresh samples',
     },
     {
       label: 'Cache writes',
@@ -2923,11 +2947,11 @@ onBeforeUnmount(() => {
 }
 
 .cache-table {
-  min-width: 1040px;
+  min-width: 1200px;
 }
 
 .cache-samples-table {
-  min-width: 1320px;
+  min-width: 1500px;
 }
 
 .sample-flag {

@@ -31,6 +31,13 @@
           <span class="sp-label">Containers enabled<span class="sp-hint">allow desktop containers (text-only project: off)</span></span>
           <input type="checkbox" v-model="form.containersEnabled" />
         </label>
+        <label v-if="!system && form.containersEnabled" class="sp-row">
+          <span class="sp-label">Browser sign-ins<span class="sp-hint">Shared puts every agent on one locked desktop, so one login is immediately available to the whole project.</span></span>
+          <select v-model="form.desktopAllocation" class="sp-select">
+            <option value="PerAgentContainers">Separate per agent</option>
+            <option value="SharedDesktopWithInputLock">One shared session</option>
+          </select>
+        </label>
         <label class="sp-row sp-toggle">
           <span class="sp-label">Live activity<span class="sp-hint">stream model output so the conversation shows who is generating, and what</span></span>
           <input type="checkbox" v-model="form.liveActivityStreaming" />
@@ -92,8 +99,9 @@ form.visionEnabled = true;
 form.containersEnabled = true;
 form.liveActivityStreaming = true;
 form.desktopImage = 'omnipotent/projects-desktop:latest';
+form.desktopAllocation = 'PerAgentContainers';
 const EDITABLE = [...modelFields.map(f => f.key), 'routeParameters', 'visionEnabled', 'containersEnabled',
-  'liveActivityStreaming', 'desktopImage'];
+  'liveActivityStreaming', 'desktopImage', ...(props.system ? [] : ['desktopAllocation'])];
 
 // Every route gets a (possibly empty) bag so v-model:parameters always has a target. Empty bags are
 // dropped again on save, which is exactly how the server clears a route back to model defaults.
@@ -115,20 +123,25 @@ const dirty = computed(() => EDITABLE.some(k => !same(form[k], original.value[k]
 const invalidRoutes = computed(() => modelFields.some(f =>
   !Array.isArray(form[f.key]) || form[f.key].length === 0 || form[f.key].some((r: string) => !r.trim())));
 
-function applySettings(s: Record<string, any>) {
+function applySettings(s: Record<string, any>, desktopAllocation?: string) {
   for (const f of modelFields) form[f.key] = cleanRoutes(s[f.key], s[f.legacy]);
   const saved = s.routeParameters ?? {};
   form.routeParameters = Object.fromEntries(
     modelFields.map(f => [f.route, { ...(saved[f.route] ?? {}) }]));
   for (const k of ['visionEnabled', 'containersEnabled', 'liveActivityStreaming', 'desktopImage']) form[k] = s[k];
+  if (!props.system) form.desktopAllocation = desktopAllocation ?? form.desktopAllocation ?? 'PerAgentContainers';
 }
 
 async function load() {
   loading.value = true;
   try {
-    const res = await RequestGETFromKliveAPI(getUrl(), false, false);
+    const [res, projectRes] = await Promise.all([
+      RequestGETFromKliveAPI(getUrl(), false, false),
+      props.system ? Promise.resolve(null) : RequestGETFromKliveAPI(`/projects/get?projectID=${props.projectId}`, false, false),
+    ]);
     if (res.ok) {
-      applySettings(await res.json());
+      const project = projectRes?.ok ? await projectRes.json() : null;
+      applySettings(await res.json(), project?.desktopAllocation);
       original.value = clone(form);
     }
   } catch { /* transient */ }
@@ -152,7 +165,7 @@ async function save() {
     const res = await RequestPOSTFromKliveAPI(updateUrl(), updateBody(patch), false, true);
     if (res.ok) {
       const body = await res.json();
-      applySettings(body.settings ?? form);
+      applySettings(body.settings ?? form, body.desktopAllocation);
       original.value = clone(form);
     }
   } finally { saving.value = false; }
@@ -170,8 +183,8 @@ onMounted(load);
 .sp-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .sp-label { font-size: 13px; color: #ccc; display: flex; flex-direction: column; }
 .sp-hint { font-size: 11px; color: #666; font-weight: 400; }
-.sp-input { flex: 1; max-width: 320px; background: #14141a; color: #eee; border: 1px solid #333; border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: ui-monospace, monospace; }
-.sp-input:focus { outline: none; border-color: #4d9e39; }
+.sp-input, .sp-select { flex: 1; max-width: 320px; background: #14141a; color: #eee; border: 1px solid #333; border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: ui-monospace, monospace; }
+.sp-input:focus, .sp-select:focus { outline: none; border-color: #4d9e39; }
 .sp-toggle input { width: 18px; height: 18px; accent-color: #4d9e39; }
 .sp-error { color: #ff9a8c; font-size: 11px; margin: 0 0 8px; }
 .sp-actions { display: flex; gap: 8px; margin-top: 8px; }

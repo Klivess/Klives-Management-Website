@@ -70,6 +70,14 @@
             </span>
             <input type="checkbox" v-model="settings.containersEnabled" />
           </label>
+          <label v-if="settings.containersEnabled" class="np-field">
+            <span class="np-label">Browser sign-ins</span>
+            <select v-model="settings.desktopAllocation" class="np-input">
+              <option value="PerAgentContainers">Separate browser per agent</option>
+              <option value="SharedDesktopWithInputLock">One shared browser session</option>
+            </select>
+            <span class="np-sublabel">Shared mode lets every agent use the same logged-in Chromium desktop; their input is automatically locked one at a time.</span>
+          </label>
           <label class="np-toggle">
             <span>
               <span class="np-label">Vision</span>
@@ -122,6 +130,7 @@
             <div class="np-recap-row"><span>Autonomous ≤</span><span>${{ (form.moneyAutonomousThresholdUsd || 0).toFixed(2) }}</span></div>
             <div class="np-recap-row"><span>Agent cap</span><span>{{ form.subAgentCap || 5 }}</span></div>
             <div class="np-recap-row"><span>Containers</span><span>{{ settings.containersEnabled ? 'on' : 'off' }}</span></div>
+            <div v-if="settings.containersEnabled" class="np-recap-row"><span>Sign-ins</span><span>{{ settings.desktopAllocation === 'SharedDesktopWithInputLock' ? 'shared' : 'separate' }}</span></div>
             <div class="np-recap-row"><span>Commander</span><span class="mono ellip">{{ settings.commanderRoutes?.[0] || '—' }}</span></div>
           </div>
           <p v-if="error" class="np-error">{{ error }}</p>
@@ -176,6 +185,7 @@ const settings = reactive<Record<string, any>>({
   visionEnabled: true,
   containersEnabled: false,
   desktopImage: 'omnipotent/projects-desktop:latest',
+  desktopAllocation: 'PerAgentContainers',
   commanderRoutes: [''], utilityRoutes: [''], councilRoutes: [''],
   tierTextRoutes: [''], tierTextImageRoutes: [''], tierTextImageVideoRoutes: [''], tierTextImageVideoAudioRoutes: [''],
   stimulusFreeRoutes: [''], stimulusFallbackRoutes: [''],
@@ -230,7 +240,7 @@ function prunedRouteParameters(source: Record<string, any>): Record<string, any>
 
 function changedSettings(): Record<string, any> {
   const patch: Record<string, any> = {};
-  const keys = [...modelFields.map(f => f.key), 'routeParameters', 'visionEnabled', 'containersEnabled', 'desktopImage'];
+  const keys = [...modelFields.map(f => f.key), 'routeParameters', 'visionEnabled', 'containersEnabled', 'desktopImage', 'desktopAllocation'];
   for (const k of keys) {
     const cur = k === 'routeParameters' ? prunedRouteParameters(settings[k]) : settings[k];
     const base = k === 'routeParameters' ? prunedRouteParameters(defaults.value[k]) : defaults.value[k];

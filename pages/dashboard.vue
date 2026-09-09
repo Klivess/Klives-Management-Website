@@ -334,10 +334,16 @@
           v-if="isKlives"
           title="Projects analytics"
           subtitle="Seven-day autonomous work"
-          :status="data.projectAnalytics ? `${data.projectAnalytics.Summary?.ActiveAgents ?? 0} agents active` : 'Unavailable'"
+          :status="data.projectAnalytics?.HistoricalLoading
+            ? `${data.projectAnalytics.Summary?.ActiveAgents ?? 0} agents active · building history`
+            : data.projectAnalytics ? `${data.projectAnalytics.Summary?.ActiveAgents ?? 0} agents active` : 'Unavailable'"
           :loading="initialLoading.slow && !data.projectAnalytics"
         >
-          <template v-if="data.projectAnalytics">
+          <div v-if="data.projectAnalytics?.HistoricalLoading" class="dashboard-empty" role="status" aria-live="polite">
+            {{ data.projectAnalytics.HistoricalLoadingMessage || 'Building seven-day project activity from the durable event log' }}.
+            Live project status is already available; analytics will fill in automatically.
+          </div>
+          <template v-else-if="data.projectAnalytics">
             <div class="dashboard-kpi-grid dashboard-kpi-grid--two dashboard-kpi-grid--compact">
               <DashboardKpi label="Projects" :value="data.projectAnalytics?.Summary?.ActiveProjects ?? 0" detail="active or planning" />
               <DashboardKpi label="Spend · 7d" :value="money(data.projectAnalytics?.Summary?.RangeSpendUsd, 'USD')" tone="info" detail="model tokens" />

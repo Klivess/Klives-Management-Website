@@ -1,6 +1,6 @@
 <template>
   <div class="project-workspace">
-    <div v-if="loadError" class="error-banner">{{ loadError }}</div>
+    <div v-if="loadError" class="error-banner">{{ loadError }} <button class="ae-dismiss" @click="refresh">Retry</button></div>
 
     <template v-else-if="project">
       <div class="pw-header">
@@ -31,6 +31,7 @@
         </div>
       </div>
       <div v-if="actionError" class="action-error">{{ actionError }} <button class="ae-dismiss" @click="actionError = ''">✕</button></div>
+      <div v-if="detailsLoading" class="info-banner loading-banner" role="status"><span class="project-loading-spinner" aria-hidden="true"></span>{{ detailsLoading }}</div>
 
       <div v-if="project.status === 'Blocked'" class="blocked-banner">
         <span class="bb-icon">⛔</span>
@@ -158,7 +159,7 @@
       <ProjectsEventDetail :project-id="projectId" :event="selectedEvent" @close="selectedEvent = null" />
     </template>
 
-    <div v-else class="info-banner">Loading project…</div>
+    <div v-else class="info-banner project-loading" role="status"><span class="project-loading-spinner" aria-hidden="true"></span><div><strong>{{ loadingStage }}</strong><small>The workspace will open automatically as soon as this step finishes.</small></div></div>
   </div>
 </template>
 
@@ -214,8 +215,11 @@ const observables = ref<any[]>([]);
 const councils = ref<any[]>([]);
 const grandPlan = ref<any>({ current: null, versions: [] });
 const loadError = ref('');
+const loadingStage = ref('Connecting to Omnipotent…');
+const detailsLoading = ref('');
 const selectedEvent = ref<any>(null);
 let poll: ReturnType<typeof setInterval> | null = null;
+let projectRetry: ReturnType<typeof setTimeout> | null = null;
 
 const pendingGates = computed(() =>
   events.value.filter(e => e.type === 'approval-requested').length -
@@ -232,12 +236,44 @@ function selectEvent(ev: any) { selectedEvent.value = ev; }
 // Clicking an agent in the Agents tab jumps to the Desktops CCTV wall (which shows every screen).
 function watchDesktop(_containerId: string) { tab.value = 'desktops'; }
 
-async function loadProject() {
+function retryProjectSoon(delay = 1000) {
+  if (projectRetry) clearTimeout(projectRetry);
+  projectRetry = setTimeout(() => { projectRetry = null; refresh(); }, delay);
+}
+async function loadProject(): Promise<boolean> {
   try {
+    if (!project.value) loadingStage.value = 'Loading the project record…';
     const res = await RequestGETFromKliveAPI(`/projects/get?projectID=${projectId}`, false, false);
-    if (!res.ok) { loadError.value = `Failed to load project (HTTP ${res.status}).`; return; }
+    const routeMissing = res.status === 404 && (await res.clone().text()).includes('Route not found');
+    let startingStage = '';
+    if (res.status === 503) {
+      try {
+        const body = await res.clone().json();
+        if (body?.ready === false) startingStage = body?.stage ? `${body.stage}…` : 'Waiting for the Projects API to finish starting…';
+      } catch { /* an unrelated 503 is handled as an ordinary load failure below */ }
+    } else if (routeMissing) startingStage = 'Waiting for the Projects API to finish starting…';
+    if (startingStage) {
+      loadError.value = '';
+      loadingStage.value = startingStage;
+      retryProjectSoon(Number(res.headers.get('Retry-After') || 1) * 1000);
+      return false;
+    }
+    if (!res.ok) {
+      loadError.value = res.status === 404
+        ? 'This project does not exist or has been removed.'
+        : `The project could not be loaded (HTTP ${res.status}).`;
+      return false;
+    }
     project.value = await res.json();
-  } catch (err: any) { loadError.value = err?.message ?? String(err); }
+    loadError.value = '';
+    loadingStage.value = '';
+    return true;
+  } catch (err: any) {
+    loadingStage.value = 'Reconnecting to Omnipotent…';
+    loadError.value = '';
+    retryProjectSoon(1000);
+    return false;
+  }
 }
 async function loadDigest() {
   try { const r = await RequestGETFromKliveAPI(`/projects/digest?projectID=${projectId}`, false, false); if (r.ok) digest.value = await r.json(); } catch { /* transient */ }
@@ -355,7 +391,14 @@ async function commitRename() {
   } finally { renameSaving.value = false; }
 }
 
-function refresh() { loadProject(); loadDigest(); loadLedger(); loadAgents(); loadObservables(); loadCouncils(); loadGrandPlan(); }
+async function refresh() {
+  const firstLoad = !project.value;
+  const loaded = await loadProject();
+  if (!loaded && !project.value) return;
+  if (firstLoad) detailsLoading.value = 'Loading budget, plan, agents and live measurements…';
+  await Promise.allSettled([loadDigest(), loadLedger(), loadAgents(), loadObservables(), loadCouncils(), loadGrandPlan()]);
+  detailsLoading.value = '';
+}
 
 // Live push (Phase 3): refresh the side-rail data on any project event (debounced) instead of a
 // tight 5s poll. ConversationPanel streams its own events; this keeps status/budget/agents fresh.
@@ -371,12 +414,15 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (poll) clearInterval(poll);
   if (refreshTimer) clearTimeout(refreshTimer);
+  if (projectRetry) clearTimeout(projectRetry);
   wsStream.disconnect();
 });
 </script>
 
 <style scoped>
 .project-workspace { padding: 24px; color: #e6e6e6; }
+.project-loading { min-height:260px; display:flex; align-items:center; justify-content:center; gap:14px; }.project-loading>div { display:flex; flex-direction:column; gap:5px; }.project-loading strong { font-weight:500; }.project-loading small { color:#888; }.project-loading-spinner { width:16px; height:16px; border:2px solid #4a4a4f; border-top-color:#71bd59; border-radius:50%; animation:project-spin .8s linear infinite; flex:0 0 auto; }.project-loading .project-loading-spinner { width:28px; height:28px; border-width:3px; }.loading-banner { display:flex; align-items:center; gap:9px; }
+@keyframes project-spin { to { transform:rotate(360deg); } }
 .action-error { background: #3a1717; border: 1px solid #5a2424; color: #e08a8a; padding: 8px 12px; border-radius: 8px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
 .ae-dismiss { background: none; border: none; color: #e08a8a; cursor: pointer; }
 .blocked-banner { display: flex; align-items: center; gap: 12px; background: #3a1f17; border: 1px solid #6a3a22; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }

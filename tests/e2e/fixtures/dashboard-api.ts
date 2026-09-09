@@ -229,6 +229,7 @@ function responseForPath(pathWithQuery: string, role: DashboardRole): unknown {
       return { TotalLogs: 42_500, ErrorCount: 1, WarningCount: 3, Hours: 24 };
     case '/projects/list':
       return projects;
+    case '/projects/overview':
     case '/projects/analytics/all':
       return {
         range: '7d',

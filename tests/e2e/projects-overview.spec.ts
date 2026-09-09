@@ -25,15 +25,24 @@ function fixture(count = 9): OverviewSnapshot {
     execution:{ productiveRate:76, coveragePct:92, observedWakes:92, outcomes:100 }, series:count?series:[], projects,
     attention: count ? [{ projectID:'project-1', name:names[1], kind:'approval', label:'2 approvals pending' },{ projectID:'project-2', name:names[2], kind:'blocked', label:'Payment account needs verification' }] : [] };
 }
-async function setup(page: Page, count = 9) {
+async function setup(page: Page, count = 9, options: { waitForReady?: boolean; startupResponses?: number; historicalLoading?: boolean } = {}) {
   await installDashboardApiMock(page, 'Klives');
   await page.context().addCookies([{ name:'password', value:'e2e-klives', url:dashboardTestOrigin }]);
-  const state = { snapshot:fixture(count), fail:false, calls:[] as string[], mutations:[] as { path:string; body:any }[], socket:null as any };
+  const state = { snapshot:fixture(count), fail:false, startupResponses:options.startupResponses ?? 0, calls:[] as string[], mutations:[] as { path:string; body:any }[], socket:null as any };
+  if (options.historicalLoading) {
+    state.snapshot.historicalLoading = true;
+    state.snapshot.historicalLoadingMessage = 'Building historical activity for 9 projects from the durable event log';
+    state.snapshot.projects.forEach(project => { project.historicalReady = false; });
+  }
   await page.routeWebSocket('wss://klive.dev/projects/events/stream**', ws => { state.socket = ws; });
   await page.route('https://klive.dev/projects/**', async route => {
     const url = new URL(route.request().url());
     if (url.pathname === '/projects/overview') {
       state.calls.push(url.searchParams.get('range')!);
+      if (state.startupResponses > 0) {
+        state.startupResponses--;
+        await route.fulfill({ status:503, headers:{ 'Retry-After':'1' }, contentType:'application/json', body:JSON.stringify({ ready:false, stage:'Opening project history and runtime state' }) }); return;
+      }
       const snapshot = structuredClone(state.snapshot); snapshot.range.key = url.searchParams.get('range')!;
       await route.fulfill({ status:state.fail?503:200, contentType:'application/json', body:JSON.stringify(snapshot) }); return;
     }
@@ -47,8 +56,8 @@ async function setup(page: Page, count = 9) {
     }
     await route.fallback();
   });
-  await page.goto('/projects');
-  await expect(page.getByRole('region', { name:'Fleet summary' })).toBeAttached();
+  await page.goto('/projects', { waitUntil:'domcontentloaded' });
+  if (options.waitForReady !== false) await expect(page.getByRole('region', { name:'Fleet summary' })).toBeAttached();
   return state;
 }
 async function fits(page: Page) {
@@ -122,6 +131,25 @@ test('empty fleet and accessibility reflow do not clip controls', async ({ page 
   await setup(page,0); await expect(page.getByText('No unshelved projects. Create a project or restore one from Shelved.')).toBeVisible(); await fits(page);
   await page.setViewportSize({width:640,height:450}); await page.getByRole('tab',{name:'projects',exact:true}).click();
   await expect(page.getByLabel('Search projects')).toBeVisible(); expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
+});
+
+test('service startup stays on a descriptive loading screen and retries automatically', async ({ page }) => {
+  const state = await setup(page, 9, { waitForReady:false, startupResponses:2 });
+  await expect(page.getByRole('status')).toContainText('Opening project history and runtime state');
+  await expect(page.locator('.loading-state')).toContainText('The page will open automatically');
+  await expect(page.getByRole('region', { name:'Fleet summary' })).toBeVisible({ timeout:5_000 });
+  expect(state.calls.length).toBeGreaterThanOrEqual(3);
+});
+
+test('cold historical analytics never blocks live project status', async ({ page }) => {
+  const state = await setup(page, 9, { historicalLoading:true });
+  await expect(page.locator('.loading-notice')).toContainText('Building historical activity for 9 projects');
+  await expect(page.locator('.project-lane').first()).toBeVisible();
+  await expect(page.locator('.project-lane').first()).toContainText('Building activity');
+  state.snapshot.historicalLoading = false;
+  state.snapshot.historicalLoadingMessage = null;
+  state.snapshot.projects.forEach(project => { project.historicalReady = true; });
+  await expect(page.locator('.loading-notice')).toHaveCount(0, { timeout:5_000 });
 });
 
 test('Chart.js legends, aligned zoom, hover tooltips and project selection are interactive', async ({ page }) => {

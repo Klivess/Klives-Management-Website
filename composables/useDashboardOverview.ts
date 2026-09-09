@@ -77,7 +77,9 @@ const routes = {
   memes: '/memescraper/memeScraperAnalytics',
   gram: '/omnigram/dashboard-stats',
   tumblr: '/omnitumblr/dashboard-stats',
-  projectAnalytics: '/projects/analytics/all?range=7d',
+  // The overview returns live fleet state immediately and warms historical JSONL analytics
+  // out-of-band. The full portfolio analytics route can take tens of seconds after a restart.
+  projectAnalytics: '/projects/overview?range=7d',
   agentStats: '/kliveagent/stats/summary',
   defence: '/omnidefence/overview',
   omniscience: '/omniscience/stats/overview',
@@ -157,6 +159,55 @@ function normalizeLog(log: any, index: number) {
 }
 
 function normalizeProjectAnalytics(payload: any) {
+  const isOverview = payload?.LiveAt != null || payload?.liveAt != null;
+  if (isOverview) {
+    const projects = asArray(payload?.Projects ?? payload?.projects);
+    const series = asArray(payload?.Series ?? payload?.series);
+    const outcome = series.reduce((total: any, point: any) => {
+      total.completed += numberValue(point?.Completed ?? point?.completed);
+      total.failed += numberValue(point?.Failed ?? point?.failed);
+      total.deferred += numberValue(point?.Deferred ?? point?.deferred);
+      total.cancelled += numberValue(point?.Cancelled ?? point?.cancelled);
+      return total;
+    }, { completed: 0, failed: 0, deferred: 0, cancelled: 0 });
+    const wakes = outcome.completed + outcome.failed + outcome.deferred + outcome.cancelled;
+    const activeProjects = projects.filter((project: any) => {
+      const status = stringValue(project?.Status ?? project?.status).toLowerCase();
+      return status === 'active' || status === 'planning';
+    }).length;
+    const activeAgents = projects.reduce((total: number, project: any) =>
+      total + numberValue(project?.WorkingAgents ?? project?.workingAgents), 0);
+    return {
+      ...payload,
+      HistoricalLoading: payload?.HistoricalLoading ?? payload?.historicalLoading ?? false,
+      HistoricalLoadingMessage: payload?.HistoricalLoadingMessage ?? payload?.historicalLoadingMessage ?? null,
+      Summary: {
+        ActiveProjects: activeProjects,
+        ActiveAgents: activeAgents,
+        RangeSpendUsd: payload?.ModelSpendUsd ?? payload?.modelSpendUsd ?? 0,
+        Wakes: wakes,
+        SuccessRate: wakes > 0 ? outcome.completed * 100 / wakes : 0,
+        RangeTokens: payload?.RangeTokens ?? payload?.rangeTokens ?? 0,
+      },
+      Series: series.map((point: any) => ({
+        ...point,
+        SpendUsd: point?.SpendUsd ?? point?.spendUsd ?? 0,
+        Events: point?.Events ?? point?.events ?? 0,
+      })),
+      Projects: projects.map((project: any) => {
+        const spend = numberValue(project?.TokenSpendUsd ?? project?.tokenSpendUsd);
+        const budget = numberValue(project?.TokenBudgetUsd ?? project?.tokenBudgetUsd);
+        return {
+          ...project,
+          ProjectID: project?.ProjectID ?? project?.projectID ?? '',
+          ActiveAgents: project?.WorkingAgents ?? project?.workingAgents ?? 0,
+          BudgetUsedPct: budget > 0 ? Math.min(100, spend / budget * 100) : 0,
+          LastActivityAt: project?.CurrentWorkAt ?? project?.currentWorkAt
+            ?? project?.HistoricalAt ?? project?.historicalAt ?? null,
+        };
+      }),
+    };
+  }
   const summary = payload?.Summary ?? payload?.summary ?? {};
   const series = asArray(payload?.Series ?? payload?.series);
   const projects = asArray(payload?.Projects ?? payload?.projects);

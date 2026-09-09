@@ -19,7 +19,7 @@ export interface OverviewProject {
   currentWork: string; currentWorkSource: string; currentWorkAt: string | null;
   workingAgents: number; activityPhase: string | null; subAgentCap: number;
   tokenSpendUsd: number; moneySpendUsd: number; tokenBudgetUsd: number; moneyBudgetUsd: number;
-  rangeSpendUsd: number; rangeMoneySpendUsd: number; completedSteps: number; historicalAt: string | null;
+  rangeSpendUsd: number; rangeMoneySpendUsd: number; completedSteps: number; historicalReady?: boolean; historicalAt: string | null;
   result: OverviewResult; resultOptions: { observableID: string; name: string }[]; series: OverviewPoint[];
 }
 export interface OverviewSnapshot {
@@ -28,12 +28,14 @@ export interface OverviewSnapshot {
   execution: { productiveRate: number | null; coveragePct: number; observedWakes: number; outcomes: number };
   series: OverviewPoint[]; projects: OverviewProject[];
   attention: { projectID: string; name: string; kind: string; label: string }[];
+  historicalLoading?: boolean; historicalLoadingMessage?: string | null;
 }
 
 export function useProjectsOverview() {
   const range = ref('24h');
   const data = ref<OverviewSnapshot | null>(null);
   const loading = ref(true);
+  const loadingMessage = ref('Connecting to Omnipotent…');
   const refreshing = ref(false);
   const error = ref('');
   const now = ref(Date.now());
@@ -43,6 +45,20 @@ export function useProjectsOverview() {
   let debounce: ReturnType<typeof setTimeout> | undefined;
   let poll: ReturnType<typeof setInterval> | undefined;
   let clock: ReturnType<typeof setInterval> | undefined;
+  let retry: ReturnType<typeof setTimeout> | undefined;
+
+  function retrySoon(delay = 1000) {
+    clearTimeout(retry);
+    retry = setTimeout(() => { retry = undefined; if (!stopped) refresh(); }, delay);
+  }
+
+  async function startupStage(res: Response) {
+    try {
+      const body = await res.clone().json();
+      if (body?.ready === false && body?.stage) return `${body.stage}…`;
+    } catch { /* a route-level 404 is plain text on older servers */ }
+    return null;
+  }
 
   async function refresh() {
     controller?.abort();
@@ -50,9 +66,22 @@ export function useProjectsOverview() {
     const current = ++revision;
     const requestedRange = range.value;
     refreshing.value = true;
+    if (!data.value) loadingMessage.value = 'Loading live project status…';
     const timeout = setTimeout(() => controller && current === revision && controller.abort(), 30000);
     try {
       const res = await RequestGETFromKliveAPI(`/projects/overview?range=${requestedRange}`, false, false, {}, controller.signal);
+      const routeMissing = res.status === 404 && (await res.clone().text()).includes('Route not found');
+      const starting = res.status === 503 ? await startupStage(res) : routeMissing
+        ? 'Waiting for the Projects API to finish starting…' : null;
+      if (starting) {
+        if (current !== revision || stopped) return;
+        loading.value = true;
+        refreshing.value = false;
+        error.value = '';
+        loadingMessage.value = starting;
+        retrySoon(Number(res.headers.get('Retry-After') || 1) * 1000);
+        return;
+      }
       if (!res.ok) throw new Error(`Overview refresh failed (HTTP ${res.status}).`);
       const body = await res.json();
       if (!body || !Array.isArray(body.projects) || !Array.isArray(body.series) || !body.range || !body.execution)
@@ -61,11 +90,13 @@ export function useProjectsOverview() {
       data.value = body;
       error.value = '';
       now.value = Date.now();
+      if (body.historicalLoading) retrySoon(1000);
     } catch (e: any) {
       if (current === revision && !stopped) error.value = e?.message || 'Overview unavailable.';
     } finally {
       clearTimeout(timeout);
-      if (current === revision && !stopped) { loading.value = false; refreshing.value = false; }
+      if (current === revision && !stopped && !retry) { loading.value = false; refreshing.value = false; }
+      else if (current === revision && !stopped && data.value) { loading.value = false; refreshing.value = false; }
     }
   }
   function scheduleRefresh() {
@@ -86,7 +117,7 @@ export function useProjectsOverview() {
   });
   onBeforeUnmount(() => {
     stopped = true; revision++; controller?.abort();
-    clearTimeout(debounce); clearInterval(poll); clearInterval(clock); stream.disconnect();
+    clearTimeout(debounce); clearTimeout(retry); clearInterval(poll); clearInterval(clock); stream.disconnect();
   });
-  return { range, data, loading, refreshing, error, now, connected: stream.connected, refresh };
+  return { range, data, loading, loadingMessage, refreshing, error, now, connected: stream.connected, refresh };
 }

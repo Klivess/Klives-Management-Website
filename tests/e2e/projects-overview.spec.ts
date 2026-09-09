@@ -28,7 +28,7 @@ function fixture(count = 9): OverviewSnapshot {
 async function setup(page: Page, count = 9, options: { waitForReady?: boolean; startupResponses?: number; historicalLoading?: boolean } = {}) {
   await installDashboardApiMock(page, 'Klives');
   await page.context().addCookies([{ name:'password', value:'e2e-klives', url:dashboardTestOrigin }]);
-  const state = { snapshot:fixture(count), fail:false, startupResponses:options.startupResponses ?? 0, calls:[] as string[], mutations:[] as { path:string; body:any }[], socket:null as any };
+  const state = { snapshot:fixture(count), fail:false, failureBody:null as string | null, startupResponses:options.startupResponses ?? 0, calls:[] as string[], mutations:[] as { path:string; body:any }[], socket:null as any };
   if (options.historicalLoading) {
     state.snapshot.historicalLoading = true;
     state.snapshot.historicalLoadingMessage = 'Building historical activity for 9 projects from the durable event log';
@@ -42,6 +42,9 @@ async function setup(page: Page, count = 9, options: { waitForReady?: boolean; s
       if (state.startupResponses > 0) {
         state.startupResponses--;
         await route.fulfill({ status:503, headers:{ 'Retry-After':'1' }, contentType:'application/json', body:JSON.stringify({ ready:false, stage:'Opening project history and runtime state' }) }); return;
+      }
+      if (state.failureBody) {
+        await route.fulfill({ status:500, contentType:'text/plain', body:state.failureBody }); return;
       }
       const snapshot = structuredClone(state.snapshot); snapshot.range.key = url.searchParams.get('range')!;
       await route.fulfill({ status:state.fail?503:200, contentType:'application/json', body:JSON.stringify(snapshot) }); return;
@@ -131,6 +134,18 @@ test('empty fleet and accessibility reflow do not clip controls', async ({ page 
   await setup(page,0); await expect(page.getByText('No unshelved projects. Create a project or restore one from Shelved.')).toBeVisible(); await fits(page);
   await page.setViewportSize({width:640,height:450}); await page.getByRole('tab',{name:'projects',exact:true}).click();
   await expect(page.getByLabel('Search projects')).toBeVisible(); expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
+});
+test('server error details and degraded project warnings remain visible', async ({ page }) => {
+  const state = await setup(page);
+  state.failureBody = 'Observable history is invalid.';
+  await page.getByRole('button',{name:'Refresh overview'}).click();
+  await expect(page.locator('.notice[role=status]').first()).toContainText('Observable history is invalid.');
+  state.failureBody = null;
+  state.snapshot.degraded = true;
+  state.snapshot.warnings = ['project-1: project results unavailable (legacy history was null)'];
+  await page.getByRole('button',{name:'Refresh overview'}).click();
+  await expect(page.getByText('Live operations loaded with partial project data.', { exact:false })).toBeVisible();
+  await expect(page.getByText('project-1: project results unavailable', { exact:false })).toBeVisible();
 });
 
 test('service startup stays on a descriptive loading screen and retries automatically', async ({ page }) => {

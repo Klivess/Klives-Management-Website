@@ -28,6 +28,7 @@ export interface OverviewSnapshot {
   execution: { productiveRate: number | null; coveragePct: number; observedWakes: number; outcomes: number };
   series: OverviewPoint[]; projects: OverviewProject[];
   attention: { projectID: string; name: string; kind: string; label: string }[];
+  degraded?: boolean; warnings?: string[];
   historicalLoading?: boolean; historicalLoadingMessage?: string | null;
 }
 
@@ -63,6 +64,22 @@ export function useProjectsOverview() {
     return null;
   }
 
+  async function responseFailure(res: Response) {
+    let parsedJson = false;
+    try {
+      const body = await res.clone().json();
+      parsedJson = true;
+      if (typeof body?.error === 'string' && body.error.trim()) return body.error.trim();
+      if (typeof body?.message === 'string' && body.message.trim()) return body.message.trim();
+    } catch { /* older servers return the exception as plain text */ }
+    if (parsedJson) return `Overview refresh failed (HTTP ${res.status}).`;
+    try {
+      const text = (await res.clone().text()).trim();
+      if (text && !/^<!doctype html/i.test(text)) return text;
+    } catch { /* fall through to the status */ }
+    return `Overview refresh failed (HTTP ${res.status}).`;
+  }
+
   async function refresh() {
     controller?.abort();
     controller = new AbortController();
@@ -86,7 +103,7 @@ export function useProjectsOverview() {
         retrySoon(Number(res.headers.get('Retry-After') || 1) * 1000);
         return;
       }
-      if (!res.ok) throw new Error(`Overview refresh failed (HTTP ${res.status}).`);
+      if (!res.ok) throw new Error(await responseFailure(res));
       const body = await res.json();
       if (!body || !Array.isArray(body.projects) || !Array.isArray(body.series) || !body.range || !body.execution)
         throw new Error('The server returned an incomplete overview.');

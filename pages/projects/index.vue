@@ -18,6 +18,7 @@
     <template v-else>
       <div v-if="error || actionMessage" class="notice" :class="{ error: !!error }" role="status">{{ error || actionMessage }}<span v-if="error && data"> Showing last successful snapshot from {{ time(data.liveAt) }}.</span></div>
       <template v-if="data">
+        <div v-if="data.degraded && data.warnings?.length" class="notice error" role="status"><strong>Live operations loaded with partial project data.</strong> {{ data.warnings.join(' · ') }}</div>
         <div v-if="data.historicalLoading" class="notice loading-notice" role="status"><span class="loading-spinner" aria-hidden="true"></span><span><strong>{{ data.historicalLoadingMessage || 'Building historical activity' }}…</strong> Live project state is already available; charts, spend and wake outcomes will fill in automatically.</span></div>
         <section class="summary-ribbon" aria-label="Fleet summary">
           <div><span>Working <em>Now</em></span><strong>{{ data.workingProjects }}<small> / {{ live.length }}</small></strong></div>

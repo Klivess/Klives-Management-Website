@@ -55,6 +55,8 @@ export function useEventStream(opts: {
           opts.onEvent?.(msg.event);
         } else if (msg.kind === 'project-event') {
           opts.onFleet?.(msg.projectID, msg.type);
+        } else if (msg.kind === 'resync') {
+          opts.onFleet?.('', 'resync');
         } else if (msg.kind === 'activity' && msg.activity) {
           opts.onActivity?.(msg.activity);
         } else if (msg.kind === 'activity-snapshot') {

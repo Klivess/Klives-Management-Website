@@ -52,10 +52,13 @@ export function useProjectsOverview() {
     retry = setTimeout(() => { retry = undefined; if (!stopped) refresh(); }, delay);
   }
 
-  async function startupStage(res: Response) {
+  async function startupState(res: Response) {
     try {
       const body = await res.clone().json();
-      if (body?.ready === false && body?.stage) return `${body.stage}…`;
+      if (body?.ready === false && body?.failed === true) return {
+        failure: `${body?.stage || 'Projects startup failed'}${body?.error ? `: ${body.error}` : ''}`,
+      };
+      if (body?.ready === false && body?.stage) return { loading: `${body.stage}…` };
     } catch { /* a route-level 404 is plain text on older servers */ }
     return null;
   }
@@ -71,8 +74,9 @@ export function useProjectsOverview() {
     try {
       const res = await RequestGETFromKliveAPI(`/projects/overview?range=${requestedRange}`, false, false, {}, controller.signal);
       const routeMissing = res.status === 404 && (await res.clone().text()).includes('Route not found');
-      const starting = res.status === 503 ? await startupStage(res) : routeMissing
-        ? 'Waiting for the Projects API to finish starting…' : null;
+      const state = res.status >= 500 ? await startupState(res) : null;
+      if (state?.failure) throw new Error(state.failure);
+      const starting = state?.loading ?? (routeMissing ? 'Waiting for the Projects API to finish starting…' : null);
       if (starting) {
         if (current !== revision || stopped) return;
         loading.value = true;

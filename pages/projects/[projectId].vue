@@ -246,9 +246,13 @@ async function loadProject(): Promise<boolean> {
     const res = await RequestGETFromKliveAPI(`/projects/get?projectID=${projectId}`, false, false);
     const routeMissing = res.status === 404 && (await res.clone().text()).includes('Route not found');
     let startingStage = '';
-    if (res.status === 503) {
+    if (res.status >= 500) {
       try {
         const body = await res.clone().json();
+        if (body?.ready === false && body?.failed === true) {
+          loadError.value = `${body?.stage || 'Projects startup failed'}${body?.error ? `: ${body.error}` : ''}`;
+          return false;
+        }
         if (body?.ready === false) startingStage = body?.stage ? `${body.stage}…` : 'Waiting for the Projects API to finish starting…';
       } catch { /* an unrelated 503 is handled as an ordinary load failure below */ }
     } else if (routeMissing) startingStage = 'Waiting for the Projects API to finish starting…';

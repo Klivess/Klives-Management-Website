@@ -67,7 +67,13 @@
             </template>
             <ProjectsCouncilsPanel v-if="tab === 'councils'" :project-id="projectId" :councils="councils" />
             <ProjectsLiveDesktopWall v-if="tab === 'desktops'" :project-id="projectId" />
-            <ProjectsAgentsPanel v-if="tab === 'agents'" :project-id="projectId" @watch="watchDesktop" />
+            <ProjectsAgentsPanel
+              v-if="tab === 'agents'"
+              :project-id="projectId"
+              :cap="project.subAgentCap"
+              @watch="watchDesktop"
+              @roster-changed="loadAgents"
+            />
             <ProjectsObservablesPanel v-if="tab === 'observables'" :project-id="projectId" :observables="observables" @changed="loadObservables" />
             <ProjectsHooksPanel v-if="tab === 'hooks'" :project-id="projectId" />
             <ProjectsSettingsPanel v-if="tab === 'settings'" :project-id="projectId" />
@@ -103,10 +109,21 @@
                 <span>Agent cap</span>
                 <input v-model.number="budgetDraft.subAgentCap" type="number" min="1" step="1" class="bf-input" />
               </label>
+              <!-- Lowering the cap under the live roster retires agents the moment you save, so the
+                   cost is stated before the click rather than discovered after it. -->
+              <p v-if="capReduction > 0" class="bf-warn">
+                {{ capReduction }} agent{{ capReduction === 1 ? '' : 's' }} will be retired immediately and
+                {{ capReduction === 1 ? 'its' : 'their' }} desktop{{ capReduction === 1 ? '' : 's' }} destroyed.
+                The Commander picks the least disruptive ones and is handed everything they were working on —
+                objectives, milestones and their exact next action — so no work is lost.
+              </p>
               <div v-if="budgetError" class="bf-error">{{ budgetError }}</div>
               <div class="bf-actions">
-                <button class="bf-save" :disabled="budgetSaving" @click="saveBudgets">{{ budgetSaving ? 'Saving…' : 'Save budgets' }}</button>
+                <button class="bf-save" :class="{ destructive: capReduction > 0 }" :disabled="budgetSaving" @click="saveBudgets">
+                  {{ budgetSaving ? 'Saving…' : (capReduction > 0 ? `Save and retire ${capReduction}` : 'Save budgets') }}
+                </button>
               </div>
+              <p v-if="retiredSummary" class="bf-retired">{{ retiredSummary }}</p>
               <p v-if="project.status === 'BudgetPaused'" class="bf-hint">Raising the token budget above current spend resumes the project.</p>
             </div>
           </div>
@@ -337,9 +354,20 @@ const editingBudget = ref(false);
 const budgetSaving = ref(false);
 const budgetError = ref('');
 const budgetDraft = ref({ tokenBudgetUsd: 0, moneyBudgetUsd: 0, moneyAutonomousThresholdUsd: 0, subAgentCap: 1 });
+const retiredSummary = ref('');
+
+// How many agents a save at the drafted cap would retire. The backend chooses WHICH — replicating
+// its ranking here would drift out of sync with it — so this only ever states the count.
+const capReduction = computed(() => {
+  if (!editingBudget.value) return 0;
+  const drafted = Number(budgetDraft.value.subAgentCap);
+  if (!(drafted >= 1)) return 0;
+  return Math.max(0, agents.value.length - drafted);
+});
 
 function toggleBudgetEdit() {
   budgetError.value = '';
+  retiredSummary.value = '';
   if (!editingBudget.value && project.value) {
     budgetDraft.value = {
       tokenBudgetUsd: Number(project.value.tokenBudgetUsd) || 0,
@@ -362,8 +390,22 @@ async function saveBudgets() {
     const res = await RequestPOSTFromKliveAPI('/projects/budget/update',
       JSON.stringify({ projectID: projectId, ...d }), false, true);
     if (!res.ok) { budgetError.value = `Save failed (HTTP ${res.status}).`; return; }
-    project.value = await res.json();
-    editingBudget.value = false;
+    const saved = await res.json();
+    project.value = saved;
+    const retired: any[] = Array.isArray(saved.retiredAgents) ? saved.retiredAgents : [];
+    if (retired.length) {
+      // Name who actually lost their slot. A cap that silently drops by four is a destructive
+      // action with no receipt; the roster and timeline below carry the detail.
+      const unowned = retired.reduce((n, h) => n + (h.activeMilestoneIDs?.length || 0), 0);
+      retiredSummary.value =
+        `Retired ${retired.map(h => `${h.role} (${h.agentID})`).join(', ')}. `
+        + (unowned ? `${unowned} milestone${unowned === 1 ? '' : 's'} now unowned — ` : '')
+        + 'their work is preserved and the Commander has been told.';
+      await loadAgents();
+    } else {
+      retiredSummary.value = '';
+      editingBudget.value = false;
+    }
   } catch (e: any) {
     budgetError.value = e?.message ? `Save failed: ${e.message}` : 'Save failed.';
   } finally {
@@ -473,7 +515,10 @@ onBeforeUnmount(() => {
 .bf-actions { display: flex; justify-content: flex-end; }
 .bf-save { background: #4d9e39; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; }
 .bf-save:disabled { opacity: 0.5; }
+.bf-save.destructive { background: #7a3a3a; }
 .bf-hint { font-size: 11px; color: #d9c47f; margin: 4px 0 0; }
+.bf-warn { font-size: 11px; color: #d9c47f; line-height: 1.5; margin: 0; background: #241f14; border-left: 2px solid #7a6a2a; border-radius: 4px; padding: 8px 10px; }
+.bf-retired { font-size: 11px; color: #9ac48a; line-height: 1.5; margin: 6px 0 0; }
 .side-card h3 { margin: 0 0 8px; font-size: 13px; color: #bbb; }
 .side-card h3:not(:first-child) { margin-top: 14px; }
 .obs-all-btn { background: none; border: none; color: #7fb0d9; cursor: pointer; font-size: 12px; padding: 2px 4px; }

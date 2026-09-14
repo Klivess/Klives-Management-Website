@@ -245,7 +245,9 @@ function appendEvents(batch: any[]) {
 }
 
 // Chatty internal events stay off the conversation view; the Timeline shows everything.
-const CHAT_TYPES = new Set(['klives-message', 'commander-message', 'commander-thought', 'tool-call', 'tool-result', 'stimulus', 'approval-requested', 'approval-resolved']);
+// agent-handover is here because it is not internal chatter: it is work that lost its owner, usually
+// because Klives took a slot away, and the conversation is where he watches the consequence land.
+const CHAT_TYPES = new Set(['klives-message', 'commander-message', 'commander-thought', 'tool-call', 'tool-result', 'stimulus', 'approval-requested', 'approval-resolved', 'agent-handover']);
 const visibleEvents = computed(() => events.value.filter(e => CHAT_TYPES.has(e.type)));
 
 function whoLabel(e: any) {

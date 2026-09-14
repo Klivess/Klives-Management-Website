@@ -156,7 +156,10 @@ const placedEvents = computed(() => {
 });
 
 function markerR(ev: any) {
-  return ['approval-requested', 'watchdog-escalation', 'agent-spawned', 'budget-warning', 'budget-paused', 'wake-failed'].includes(ev.type) ? 6 : 4;
+  // agent-handover joins the emphasised set: it marks work that lost its owner, which is a bigger
+  // event on this timeline than the retirement that caused it.
+  return ['approval-requested', 'watchdog-escalation', 'agent-spawned', 'agent-handover',
+    'budget-warning', 'budget-paused', 'wake-failed'].includes(ev.type) ? 6 : 4;
 }
 
 const nowX = computed(() => {

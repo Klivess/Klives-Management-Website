@@ -17,6 +17,11 @@ export const EVENT_TYPE_COLORS: Record<string, string> = {
   'approval-resolved': '#b0a35e',
   'agent-spawned': '#a679d9',
   'agent-retired': '#7a5aa0',
+  // Work a retired agent left behind, and the decision that closed it out. Warmer than the
+  // retirement itself: the retirement is bookkeeping, the handover is unowned work.
+  'agent-handover': '#c9a8e0',
+  'agent-handover-resolved': '#8a7f99',
+  'agent-cap-changed': '#d9c47f',
   'budget-warning': '#d98c2b',
   'budget-paused': '#d95b5b',
   'money-spent': '#3fae8f',

@@ -25,10 +25,12 @@ function fixture(count = 9): OverviewSnapshot {
     execution:{ productiveRate:76, coveragePct:92, observedWakes:92, outcomes:100 }, series:count?series:[], projects,
     attention: count ? [{ projectID:'project-1', name:names[1], kind:'approval', label:'2 approvals pending' },{ projectID:'project-2', name:names[2], kind:'blocked', label:'Payment account needs verification' }] : [] };
 }
-async function setup(page: Page, count = 9, options: { waitForReady?: boolean; startupResponses?: number; historicalLoading?: boolean } = {}) {
+type CacheHaltFixture = { engaged: boolean; engagedAt: string | null; reason: string; haltedProjectIDs: string[] };
+async function setup(page: Page, count = 9, options: { waitForReady?: boolean; startupResponses?: number; historicalLoading?: boolean; cacheHalt?: CacheHaltFixture } = {}) {
   await installDashboardApiMock(page, 'Klives');
   await page.context().addCookies([{ name:'password', value:'e2e-klives', url:dashboardTestOrigin }]);
-  const state = { snapshot:fixture(count), fail:false, failureBody:null as string | null, startupResponses:options.startupResponses ?? 0, calls:[] as string[], mutations:[] as { path:string; body:any }[], socket:null as any };
+  const state = { snapshot:fixture(count), fail:false, failureBody:null as string | null, startupResponses:options.startupResponses ?? 0, calls:[] as string[], mutations:[] as { path:string; body:any }[], socket:null as any,
+    cacheHalt: options.cacheHalt ?? { engaged:false, engagedAt:null, reason:'', haltedProjectIDs:[] as string[] } };
   if (options.historicalLoading) {
     state.snapshot.historicalLoading = true;
     state.snapshot.historicalLoadingMessage = 'Building historical activity for 9 projects from the durable event log';
@@ -49,8 +51,18 @@ async function setup(page: Page, count = 9, options: { waitForReady?: boolean; s
       const snapshot = structuredClone(state.snapshot); snapshot.range.key = url.searchParams.get('range')!;
       await route.fulfill({ status:state.fail?503:200, contentType:'application/json', body:JSON.stringify(snapshot) }); return;
     }
+    if (url.pathname === '/projects/cache-health' && route.request().method() === 'GET') {
+      await route.fulfill({ contentType:'application/json', body:JSON.stringify({ halt:state.cacheHalt,
+        window:{ weightedHitRatePct:78.3, measuredRequests:20 }, settings:{} }) }); return;
+    }
     if (route.request().method() === 'POST') {
       const body = route.request().postDataJSON(); state.mutations.push({ path:url.pathname, body });
+      if (url.pathname === '/projects/cache-health/clear') {
+        state.cacheHalt = { engaged:false, engagedAt:null, reason:'', haltedProjectIDs:[] };
+        if (body.unhalt) state.snapshot.projects.forEach(p=>p.halted=false);
+        await route.fulfill({ contentType:'application/json', body:JSON.stringify({ ok:true, cleared:true,
+          restored:body.unhalt?5:0, projectIDs:[], halt:state.cacheHalt }) }); return;
+      }
       const p = state.snapshot.projects.find(p=>p.projectID === body.projectID);
       if (url.pathname === '/projects/result-pin' && p) { p.result.selection = body.observableID ? 'pinned' : 'commander'; p.result.observableID = body.observableID ?? `metric-${p.projectID.split('-')[1]}`; }
       if (url.pathname === '/projects/unarchive' && p) p.status = 'Active';
@@ -189,4 +201,35 @@ test('Chart.js legends, aligned zoom, hover tooltips and project selection are i
   await expect(page.locator('.overview-charts [role="status"]')).toContainText('completed steps');
   await page.getByRole('button',{name:'Inspect selected project point'}).click();
   await expect(page.locator('dialog')).toBeVisible();
+});
+
+test('an engaged prompt-cache halt is announced and can be cleared from the dashboard', async ({ page }) => {
+  // The kill switch stops every agent silently — the dashboard is where Klives finds out, so the
+  // banner has to carry the reason as well as the control.
+  const state = await setup(page, 9, { cacheHalt: { engaged:true, engagedAt:new Date(Date.now()-3600000).toISOString(),
+    reason:'Reusable-prefix efficiency is 42.0% over 31 live continuations, below the 90% floor.', haltedProjectIDs:['project-0','project-1'] } });
+  const banner = page.getByRole('alert', { name:'Prompt-cache fleet halt' });
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText('below the 90% floor');
+  await expect(banner).toContainText('2 project(s) stopped');
+
+  await banner.getByRole('button', { name:'Clear halt & resume' }).click();
+  await expect.poll(() => state.mutations.filter(m => m.path === '/projects/cache-health/clear')).toEqual([
+    { path:'/projects/cache-health/clear', body:{ unhalt:true } },
+  ]);
+  await expect(banner).toBeHidden();
+  await expect(page.locator('.notice')).toContainText('5 project(s) restored');
+});
+
+test('clearing the latch alone leaves the projects halted', async ({ page }) => {
+  const state = await setup(page, 9, { cacheHalt: { engaged:true, engagedAt:new Date().toISOString(),
+    reason:'Weighted hit rate 41%.', haltedProjectIDs:['project-0'] } });
+  await page.getByRole('button', { name:'Clear latch only' }).click();
+  await expect.poll(() => state.mutations.at(-1)).toEqual({ path:'/projects/cache-health/clear', body:{ unhalt:false } });
+  await expect(page.locator('.notice')).toContainText('Projects stay halted');
+});
+
+test('a healthy fleet shows no prompt-cache banner', async ({ page }) => {
+  await setup(page);
+  await expect(page.getByRole('alert', { name:'Prompt-cache fleet halt' })).toHaveCount(0);
 });

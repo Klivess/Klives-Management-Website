@@ -19,6 +19,17 @@
       <div v-if="error || actionMessage" class="notice" :class="{ error: !!error }" role="status">{{ error || actionMessage }}<span v-if="error && data"> Showing last successful snapshot from {{ time(data.liveAt) }}.</span></div>
       <template v-if="data">
         <div v-if="data.degraded && data.warnings?.length" class="notice error" role="status"><strong>Live operations loaded with partial project data.</strong> {{ data.warnings.join(' · ') }}</div>
+        <section v-if="cacheHalt?.engaged" class="cache-halt" role="alert" aria-label="Prompt-cache fleet halt">
+          <div class="cache-halt-copy">
+            <strong>Fleet halted on prompt-cache health</strong>
+            <p>{{ cacheHalt.reason }}</p>
+            <small>Engaged {{ age(cacheHalt.engagedAt) }} · {{ cacheHalt.haltedProjectIDs?.length ?? 0 }} project(s) stopped · no agent sends another model request until this is cleared.<span v-if="cacheWindow?.measuredRequests"> Since the trip: {{ cacheWindow.weightedHitRatePct.toFixed(1) }}% weighted over {{ cacheWindow.measuredRequests }} request(s).</span></small>
+          </div>
+          <div class="cache-halt-actions">
+            <button class="primary" :disabled="busy" @click="clearCacheHalt(true)">{{ busy ? 'Clearing…' : 'Clear halt & resume' }}</button>
+            <button :disabled="busy" title="Open the latch but leave every project halted, so nothing restarts while you check the cause." @click="clearCacheHalt(false)">Clear latch only</button>
+          </div>
+        </section>
         <div v-if="data.historicalLoading" class="notice loading-notice" role="status"><span class="loading-spinner" aria-hidden="true"></span><span><strong>{{ data.historicalLoadingMessage || 'Building historical activity' }}…</strong> Live project state is already available; charts, spend and wake outcomes will fill in automatically.</span></div>
         <section class="summary-ribbon" aria-label="Fleet summary">
           <div><span>Working <em>Now</em></span><strong>{{ data.workingProjects }}<small> / {{ live.length }}</small></strong></div>
@@ -73,7 +84,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
-import { RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import { useProjectsOverview, type OverviewProject, type OverviewResult } from '~/composables/useProjectsOverview';
 definePageMeta({ layout: 'navbar' });
 const { range, data, loading, loadingMessage, refreshing, error, now, connected, refresh } = useProjectsOverview();
@@ -145,6 +156,36 @@ function openAttention(id = '') { attentionProject.value = id; attentionPage.val
 async function post(path: string, body: unknown = {}) { const res = await RequestPOSTFromKliveAPI(path, JSON.stringify(body), false, true); if (!res.ok) throw new Error(`Action failed (HTTP ${res.status}).`); return res.json().catch(() => ({})); }
 async function fleetAction() { if (busy.value) return; busy.value = true; actionMessage.value = ''; try { const restoring = haltedCount.value > 0; const response = await post(restoring ? '/projects/unhalt-all' : '/projects/halt-all'); actionMessage.value = restoring ? `Restored ${response.restored ?? ''} project(s).` : `Halted ${response.halted ?? ''} project(s).`; await refresh(); } catch(e: any) { actionMessage.value = e.message; } finally { busy.value = false; } }
 async function unarchive(projectID: string) { busy.value = true; try { await post('/projects/unarchive', { projectID }); await refresh(); actionMessage.value = 'Project unshelved.'; } catch(e: any) { actionMessage.value = e.message; } finally { busy.value = false; } }
+// The prompt-cache kill switch is a separate latch from the manual fleet halt: "Unhalt all" restores
+// statuses but every restored project would wake and immediately defer while this is still engaged,
+// so it needs its own control rather than being folded into the halt button.
+type CacheHaltState = { engaged: boolean; engagedAt: string | null; reason: string; haltedProjectIDs: string[] | null };
+type CacheWindow = { weightedHitRatePct: number; measuredRequests: number };
+const cacheHalt = ref<CacheHaltState | null>(null), cacheWindow = ref<CacheWindow | null>(null);
+async function loadCacheHealth() {
+  // Deliberately silent: the banner is additional to the dashboard, so a failed poll must leave the
+  // rest of the page working rather than surfacing an error for something nobody asked to see.
+  try {
+    const res = await RequestGETFromKliveAPI('/projects/cache-health', false, false);
+    if (!res.ok) return;
+    const body = await res.json();
+    cacheHalt.value = body?.halt ?? null;
+    cacheWindow.value = body?.window ?? null;
+  } catch { /* leave the last known state in place */ }
+}
+async function clearCacheHalt(unhalt: boolean) {
+  if (busy.value) return; busy.value = true; actionMessage.value = '';
+  try {
+    const response = await post('/projects/cache-health/clear', { unhalt });
+    cacheHalt.value = response?.halt ?? null;
+    actionMessage.value = unhalt
+      ? `Prompt-cache halt cleared; ${response?.restored ?? 0} project(s) restored to their pre-halt status.`
+      : 'Prompt-cache halt cleared. Projects stay halted until you unhalt them.';
+    await Promise.all([refresh(), loadCacheHealth()]);
+  } catch(e: any) { actionMessage.value = e.message; } finally { busy.value = false; }
+}
+onMounted(loadCacheHealth);
+watch(data, () => { void loadCacheHealth(); });
 async function sendBroadcast() { if (busy.value || !broadcast.value.trim()) return; busy.value = true; try { const response = await post('/projects/broadcast', { text: broadcast.value.trim() }); closeOverlay(); broadcast.value = ''; actionMessage.value = `Broadcast delivered to ${response.delivered ?? '?'} project(s).`; } catch(e: any) { dialogError.value = e.message; } finally { busy.value = false; } }
 async function savePin() { if (!selected.value || busy.value) return; busy.value = true; dialogError.value = ''; try { await post('/projects/result-pin', { projectID: selected.value.projectID, observableID: pinID.value || null, direction: pinDirection.value }); await refresh(); } catch(e: any) { dialogError.value = e.message; } finally { busy.value = false; } }
 </script>

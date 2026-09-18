@@ -72,6 +72,7 @@ const NAV_GROUPS = [
     items: [
       { to: '/omniscience', label: 'Omniscience', icon: '◎', klivesOnly: true },
       { to: '/omnidefence', label: 'OmniDefence', icon: '⛨', klivesOnly: true },
+      { to: '/tripwires', label: 'Tripwires', icon: '⚡', klivesOnly: true },
     ],
   },
   {
@@ -99,7 +100,6 @@ const NAV_GROUPS = [
       { to: '/projects', label: 'Projects', icon: '⛓', klivesOnly: true },
       { to: '/klivegames', label: 'KliveGames', icon: '⛏', klivesOnly: true },
       { to: '/klivelink', label: 'KliveLink', icon: '⌁', klivesOnly: true },
-      { to: '/tripwires', label: 'Tripwires', icon: '⚡', klivesOnly: true },
       { to: '/klivetools', label: 'KliveTools', icon: '⚒' },
       { to: '/stratum', label: 'Stratum', icon: '▲' },
     ],

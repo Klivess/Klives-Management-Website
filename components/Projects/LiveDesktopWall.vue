@@ -5,21 +5,35 @@
       <span v-if="tiles.length" class="dw-count">{{ tiles.length }} desktop{{ tiles.length === 1 ? '' : 's' }}</span>
     </div>
 
+    <div v-if="hostProblem" class="dw-problem" role="status">
+      <strong>Project computers are unavailable</strong>
+      <p>{{ hostProblem }}</p>
+      <details v-if="health?.recoveryStatus"><summary>Recovery details</summary>{{ health.recoveryStatus }}</details>
+    </div>
+    <p v-if="error" class="dw-problem" role="alert">{{ error }}</p>
+
     <div v-if="loading" class="dw-info">Loading desktops…</div>
     <div v-else-if="!tiles.length" class="dw-empty">
-      No live desktops. Desktops appear here once a video-tier agent starts one (text-only projects have none).
+      No computers yet. An agent’s computer appears when it first uses a desktop or terminal tool.
     </div>
 
     <div v-else class="dw-grid" :style="gridStyle">
-      <ProjectsLiveDesktop
-        v-for="t in tiles"
-        :key="t.containerId"
+      <template v-for="t in tiles" :key="t.containerId">
+      <div v-if="t.suspended || t.lost || hostProblem" class="dw-sleeping">
+        <strong>{{ t.label }}</strong>
+        <p>{{ t.lost ? 'Computer is missing from the host.' : t.suspended ? 'Sleeping — installed apps and files are preserved.' : 'Waiting for the computer host to recover.' }}</p>
+        <button v-if="t.suspended && !t.lost" :disabled="!!resuming || !!hostProblem" @click="resume(t.containerId)">
+          {{ resuming === t.containerId ? 'Resuming…' : 'Resume computer' }}
+        </button>
+      </div>
+      <ProjectsLiveDesktop v-else
         :container-id="t.containerId"
         :label="t.label"
         :fps="4"
         clickable
         @maximize="maximize(t)"
       />
+      </template>
     </div>
 
     <!-- Maximised overlay: a higher-fps stream with full remote control (take over the desktop
@@ -40,7 +54,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
+import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import ProjectsLiveDesktop from '~/components/Projects/LiveDesktop.vue';
 import ProjectsContainerRemoteDesktop from '~/components/Projects/ContainerRemoteDesktop.vue';
 
@@ -49,6 +63,11 @@ const props = defineProps<{ projectId: string }>();
 const containers = ref<any[]>([]);
 const agents = ref<any[]>([]);
 const loading = ref(true);
+const health = ref<any>(null);
+const error = ref('');
+const resuming = ref('');
+const hostProblem = computed(() => health.value?.daemonProblem || (health.value?.available === false ? health.value.reason : ''));
+let loadingRequest = false;
 const maxTile = ref<{ containerId: string; label: string } | null>(null);
 let poll: ReturnType<typeof setInterval> | null = null;
 
@@ -59,7 +78,7 @@ const tiles = computed(() => {
     const label = c.agentID
       ? (agent ? `${agent.role} · ${c.agentID}` : c.agentID)
       : 'Shared desktop';
-    return { containerId: c.containerID, label };
+    return { containerId: c.containerID, label, suspended: !!c.suspended, lost: !!c.lost };
   });
 });
 
@@ -84,15 +103,33 @@ function maximize(t: { containerId: string; label: string }) { maxTile.value = t
 function onKey(e: KeyboardEvent) { if (e.key === 'Escape' && !e.defaultPrevented) maxTile.value = null; }
 
 async function load() {
+  if (loadingRequest) return;
+  loadingRequest = true;
   try {
-    const [cr, ar] = await Promise.all([
+    const [cr, ar, hr] = await Promise.all([
       RequestGETFromKliveAPI(`/projects/containers?projectID=${props.projectId}`, false, false),
       RequestGETFromKliveAPI(`/projects/agents?projectID=${props.projectId}`, false, false),
+      RequestGETFromKliveAPI('/projects/computers/health', false, false),
     ]);
     if (cr.ok) containers.value = await cr.json();
     if (ar.ok) agents.value = await ar.json();
+    if (hr.ok) health.value = await hr.json();
+    if (!cr.ok) error.value = 'Could not refresh project computers. Retrying…';
+    else if (!resuming.value) error.value = '';
   } catch { /* transient */ }
-  finally { loading.value = false; }
+  finally { loading.value = false; loadingRequest = false; }
+}
+
+async function resume(containerId: string) {
+  resuming.value = containerId;
+  error.value = '';
+  try {
+    const response = await RequestPOSTFromKliveAPI(`/projects/computers/resume?projectID=${encodeURIComponent(props.projectId)}`,
+      JSON.stringify({ containerID: containerId }), false, true);
+    if (!response.ok) throw new Error(await response.text());
+    await load();
+  } catch (e: any) { error.value = e.message || 'Computer could not resume.'; }
+  finally { resuming.value = ''; }
 }
 
 onMounted(() => {
@@ -112,6 +149,10 @@ onBeforeUnmount(() => {
 .dw-note { font-size: 12px; color: #888; margin: 0; }
 .dw-count { font-size: 11px; color: #7fd97f; white-space: nowrap; }
 .dw-info, .dw-empty { color: #777; font-size: 13px; padding: 24px; text-align: center; }
+.dw-problem { padding: 14px; margin-bottom: 12px; border: 1px solid #80642f; border-radius: 8px; color: #e8cf9b; overflow-wrap: anywhere; }
+.dw-problem p { margin: 6px 0; }
+.dw-sleeping { padding: 24px; background: #161519; border-radius: 8px; color: #ccc; }
+.dw-sleeping button { padding: 8px 14px; border-radius: 6px; cursor: pointer; }
 .dw-grid { display: grid; gap: 12px; } /* columns come from gridStyle (scales with desktop count) */
 .dw-grid :deep(.ld-frame) { aspect-ratio: 16 / 10; min-height: 0; }
 /* Narrow screens: always stack, overriding the inline column count. */

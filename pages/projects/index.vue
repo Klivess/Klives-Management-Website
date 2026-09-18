@@ -5,7 +5,7 @@
       <div class="header-actions">
         <button :disabled="!live.length" @click="openOverlay('broadcast')">Broadcast</button>
         <button :disabled="busy || !live.length" class="halt" @click="fleetAction">{{ haltedCount ? `▶ Unhalt all (${haltedCount})` : 'Ⅱ Halt all' }}</button>
-        <NuxtLink to="/projects/analytics">Analytics ↗</NuxtLink><NuxtLink to="/projects/accounts">Accounts</NuxtLink>
+        <NuxtLink to="/projects/analytics">Analytics ↗</NuxtLink><NuxtLink to="/projects/cost-simulator">Cost simulator</NuxtLink><NuxtLink to="/projects/accounts">Accounts</NuxtLink>
         <button @click="openOverlay('settings')">Settings</button><NuxtLink to="/projects/new" class="primary">+ New project</NuxtLink>
       </div>
     </header>

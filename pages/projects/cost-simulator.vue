@@ -1,26 +1,29 @@
 <template>
-  <div class="fleet-analytics-page">
+  <div class="cost-simulator-page">
     <div class="page-header">
       <div>
         <NuxtLink to="/projects" class="back-link">Back to projects</NuxtLink>
-        <h1>Project analytics</h1>
-        <p>Spend, token usage, activity, and delivery performance across the complete KliveAgent fleet.</p>
+        <h1>Cost simulator</h1>
+        <p>
+          Re-price the fleet's recorded token usage at any input, output and cache-read rate, over any
+          timeframe — broken down per project, and per agent inside each one.
+        </p>
       </div>
-      <NuxtLink to="/projects/cost-simulator" class="side-link">Cost simulator ↗</NuxtLink>
+      <NuxtLink to="/projects/analytics" class="side-link">Analytics ↗</NuxtLink>
     </div>
 
-    <ProjectsAnalyticsDashboard all-projects />
+    <ProjectsCostSimulator />
   </div>
 </template>
 
 <script setup lang="ts">
-import ProjectsAnalyticsDashboard from '~/components/Projects/AnalyticsDashboard.vue';
+import ProjectsCostSimulator from '~/components/Projects/CostSimulator.vue';
 
 definePageMeta({ layout: 'navbar' });
 </script>
 
 <style scoped>
-.fleet-analytics-page {
+.cost-simulator-page {
   min-height: 100vh;
   padding: 24px;
   color: #e6e6e6;
@@ -34,6 +37,16 @@ definePageMeta({ layout: 'navbar' });
   margin-bottom: 22px;
 }
 
+.back-link {
+  color: #7fb0d9;
+  display: inline-block;
+  font-size: 12px;
+  margin-bottom: 7px;
+  text-decoration: none;
+}
+
+.back-link:hover { color: #a8ccec; }
+
 .side-link {
   background: #26262b;
   border-radius: 6px;
@@ -45,18 +58,6 @@ definePageMeta({ layout: 'navbar' });
 }
 
 .side-link:hover { background: #303036; color: #e6e6eb; }
-
-.back-link {
-  display: inline-block;
-  color: #7fb0d9;
-  font-size: 12px;
-  margin-bottom: 7px;
-  text-decoration: none;
-}
-
-.back-link:hover {
-  color: #a8ccec;
-}
 
 h1 {
   color: #e6e6e6;
@@ -70,10 +71,11 @@ p {
   font-size: 14px;
   line-height: 1.5;
   margin: 5px 0 0;
+  max-width: 720px;
 }
 
 @media (max-width: 680px) {
-  .fleet-analytics-page {
+  .cost-simulator-page {
     padding: 16px 16px 16px 72px;
   }
 }

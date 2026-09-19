@@ -11,16 +11,20 @@
       <details v-if="health?.recoveryStatus"><summary>Recovery details</summary>{{ health.recoveryStatus }}</details>
     </div>
     <p v-if="error" class="dw-problem" role="alert">{{ error }}</p>
+    <p v-if="health?.admissionReason || health?.schedulerError" class="dw-problem" role="status">
+      {{ health.admissionReason || health.schedulerError }}. Active computers keep working; additional work waits.
+    </p>
 
     <div v-if="loading" class="dw-info">Loading desktops…</div>
     <div v-else-if="!tiles.length" class="dw-empty">
       No computers yet. An agent’s computer appears when it first uses a desktop or terminal tool.
     </div>
 
-    <div v-else class="dw-grid" :style="gridStyle">
+    <div v-else-if="!maxTile" class="dw-grid" :style="gridStyle">
       <template v-for="t in tiles" :key="t.containerId">
-      <div v-if="t.suspended || t.lost || hostProblem" class="dw-sleeping">
+      <div v-if="t.suspended || t.lost || hostProblem || t.pending" class="dw-sleeping">
         <strong>{{ t.label }}</strong>
+        <p v-if="t.pending">{{ t.state }} · {{ t.reason || 'Waiting for capacity. Existing work is preserved.' }}</p>
         <p>{{ t.lost ? 'Computer is missing from the host.' : t.suspended ? 'Sleeping — installed apps and files are preserved.' : 'Waiting for the computer host to recover.' }}</p>
         <button v-if="t.suspended && !t.lost" :disabled="!!resuming || !!hostProblem" @click="resume(t.containerId)">
           {{ resuming === t.containerId ? 'Resuming…' : 'Resume computer' }}
@@ -29,7 +33,7 @@
       <ProjectsLiveDesktop v-else
         :container-id="t.containerId"
         :label="t.label"
-        :fps="4"
+        :fps="1"
         clickable
         @maximize="maximize(t)"
       />
@@ -45,7 +49,8 @@
           <button class="dw-close" title="Close (Esc)" @click="maxTile = null">✕</button>
         </div>
         <div class="dw-modal-body">
-          <ProjectsContainerRemoteDesktop :container-id="maxTile.containerId" :label="maxTile.label" :fps="12" />
+          <ProjectsComputerWorkspace v-if="maxTile.provider === 'incus'" :project-id="projectId" :computer-id="maxTile.containerId" :label="maxTile.label" />
+          <ProjectsContainerRemoteDesktop v-else :container-id="maxTile.containerId" :label="maxTile.label" :fps="12" />
         </div>
       </div>
     </div>
@@ -57,6 +62,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import ProjectsLiveDesktop from '~/components/Projects/LiveDesktop.vue';
 import ProjectsContainerRemoteDesktop from '~/components/Projects/ContainerRemoteDesktop.vue';
+import ProjectsComputerWorkspace from '~/components/Projects/ComputerWorkspace.vue';
 
 const props = defineProps<{ projectId: string }>();
 
@@ -68,7 +74,7 @@ const error = ref('');
 const resuming = ref('');
 const hostProblem = computed(() => health.value?.daemonProblem || (health.value?.available === false ? health.value.reason : ''));
 let loadingRequest = false;
-const maxTile = ref<{ containerId: string; label: string } | null>(null);
+const maxTile = ref<{ containerId: string; label: string; provider?: string } | null>(null);
 let poll: ReturnType<typeof setInterval> | null = null;
 
 // One tile per registered desktop container, labelled by the owning agent's role (or "shared").
@@ -78,7 +84,8 @@ const tiles = computed(() => {
     const label = c.agentID
       ? (agent ? `${agent.role} · ${c.agentID}` : c.agentID)
       : 'Shared desktop';
-    return { containerId: c.containerID, label, suspended: !!c.suspended, lost: !!c.lost };
+    return { containerId: c.containerID || c.computerID, label, suspended: !!c.suspended, lost: !!c.lost,
+      provider: c.provider, state: c.state, reason: c.reason, pending: c.provider === 'incus' && c.state !== 'ready' };
   });
 });
 
@@ -97,7 +104,7 @@ const gridStyle = computed(() => {
   return style;
 });
 
-function maximize(t: { containerId: string; label: string }) { maxTile.value = t; }
+function maximize(t: { containerId: string; label: string; provider?: string }) { maxTile.value = t; }
 // While the remote desktop is controlling, it consumes Escape (preventDefault) to forward it to
 // the container — only an unhandled Escape closes the modal.
 function onKey(e: KeyboardEvent) { if (e.key === 'Escape' && !e.defaultPrevented) maxTile.value = null; }
@@ -109,7 +116,7 @@ async function load() {
     const [cr, ar, hr] = await Promise.all([
       RequestGETFromKliveAPI(`/projects/containers?projectID=${props.projectId}`, false, false),
       RequestGETFromKliveAPI(`/projects/agents?projectID=${props.projectId}`, false, false),
-      RequestGETFromKliveAPI('/projects/computers/health', false, false),
+      RequestGETFromKliveAPI(`/projects/computers/health?projectID=${encodeURIComponent(props.projectId)}`, false, false),
     ]);
     if (cr.ok) containers.value = await cr.json();
     if (ar.ok) agents.value = await ar.json();

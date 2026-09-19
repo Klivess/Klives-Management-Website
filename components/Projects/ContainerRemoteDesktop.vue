@@ -106,11 +106,12 @@ function openStream() {
   try {
     streamWs = new WebSocket(url);
     streamWs.binaryType = 'blob';
-    streamWs.onopen = () => { streamConnected.value = true; };
+    streamWs.onopen = () => { streamConnected.value = false; };
     streamWs.onclose = () => { streamConnected.value = false; scheduleStreamReconnect(); };
     streamWs.onerror = () => { streamConnected.value = false; try { streamWs && streamWs.close(); } catch { /* ignore */ } };
     streamWs.onmessage = (e) => {
-      if (!(e.data instanceof Blob)) return;
+      if (!(e.data instanceof Blob)) { streamConnected.value = false; return; }
+      streamConnected.value = true;
       if (lastUrl) URL.revokeObjectURL(lastUrl);
       lastUrl = URL.createObjectURL(e.data);
       frameSrc.value = lastUrl;
@@ -128,20 +129,20 @@ let inputWs: WebSocket | null = null;
 let inputReconnect: ReturnType<typeof setTimeout> | null = null;
 
 function openInput() {
-  if (stopped || !props.containerId || typeof window === 'undefined') return;
+  if (stopped || !control.value || inputWs || !props.containerId || typeof window === 'undefined') return;
   try {
     inputWs = new WebSocket(`${wsBase()}/projects/containers/remote/input?containerID=${encodeURIComponent(props.containerId)}&authorization=${encodeURIComponent(getPassword())}`);
     inputWs.onopen = () => { inputConnected.value = true; };
-    inputWs.onclose = () => { inputConnected.value = false; if (!stopped) scheduleInputReconnect(); };
+    inputWs.onclose = () => { inputWs = null; inputConnected.value = false; if (!stopped && control.value) scheduleInputReconnect(); };
     inputWs.onerror = () => { try { inputWs && inputWs.close(); } catch { /* ignore */ } };
   } catch { scheduleInputReconnect(); }
 }
 function scheduleInputReconnect() {
-  if (stopped || inputReconnect) return;
+  if (stopped || !control.value || inputReconnect) return;
   inputReconnect = setTimeout(() => { inputReconnect = null; openInput(); }, 1500);
 }
 function send(obj: Record<string, unknown>) {
-  if (inputWs && inputWs.readyState === WebSocket.OPEN) {
+  if (control.value && inputWs && inputWs.readyState === WebSocket.OPEN) {
     try { inputWs.send(JSON.stringify(obj)); } catch { /* ignore */ }
   }
 }
@@ -278,6 +279,13 @@ onBeforeUnmount(() => {
 });
 // A different container in the same modal → reconnect both channels cleanly.
 watch(() => props.containerId, () => { stop(); start(); });
+watch(control, enabled => {
+  if (enabled) { openInput(); return; }
+  pressed = false;
+  if (inputReconnect) { clearTimeout(inputReconnect); inputReconnect = null; }
+  inputConnected.value = false;
+  try { inputWs?.close(); } catch { /* ignore */ }
+});
 
 defineExpose({ controlling: control });
 </script>

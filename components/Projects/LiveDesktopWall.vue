@@ -10,6 +10,14 @@
       <p>{{ hostProblem }}</p>
       <details v-if="health?.recoveryStatus"><summary>Recovery details</summary>{{ health.recoveryStatus }}</details>
     </div>
+    <div v-if="health?.workerSetup" class="dw-problem" role="status">
+      <strong>Persistent Linux computer setup · {{ health.workerSetup.state }}</strong>
+      <p>{{ health.workerSetup.reason }}</p>
+      <button v-if="['elevation_required', 'prerequisites_required'].includes(health.workerSetup.state)" :disabled="settingUp" @click="setupWorker">
+        {{ settingUp ? 'Starting Windows setup…' : 'Set up computer host' }}
+      </button>
+      <p v-if="setupMessage">{{ setupMessage }}</p>
+    </div>
     <p v-if="error" class="dw-problem" role="alert">{{ error }}</p>
     <p v-if="health?.admissionReason || health?.schedulerError" class="dw-problem" role="status">
       {{ health.admissionReason || health.schedulerError }}. Active computers keep working; additional work waits.
@@ -72,6 +80,8 @@ const loading = ref(true);
 const health = ref<any>(null);
 const error = ref('');
 const resuming = ref('');
+const settingUp = ref(false);
+const setupMessage = ref('');
 const hostProblem = computed(() => health.value?.daemonProblem || (health.value?.available === false ? health.value.reason : ''));
 let loadingRequest = false;
 const maxTile = ref<{ containerId: string; label: string; provider?: string } | null>(null);
@@ -137,6 +147,17 @@ async function resume(containerId: string) {
     await load();
   } catch (e: any) { error.value = e.message || 'Computer could not resume.'; }
   finally { resuming.value = ''; }
+}
+
+async function setupWorker() {
+  settingUp.value = true;
+  try {
+    const response = await RequestPOSTFromKliveAPI('/projects/computers/setup', '{}', false, false);
+    if (!response.ok) throw new Error(await response.text());
+    setupMessage.value = (await response.json()).reason;
+    await load();
+  } catch (e: any) { error.value = e.message || 'Windows setup could not start.'; }
+  finally { settingUp.value = false; }
 }
 
 onMounted(() => {

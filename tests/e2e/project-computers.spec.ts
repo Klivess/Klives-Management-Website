@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { dashboardTestOrigin, installDashboardApiMock } from './fixtures/dashboard-api';
 
-async function computers(page: Page, unavailable = false, worker = false, setup = false) {
+async function computers(page: Page, unavailable = false, worker = false) {
   await installDashboardApiMock(page, 'Klives');
   await page.context().addCookies([{ name: 'password', value: 'e2e-klives', url: dashboardTestOrigin }]);
   let suspended = true;
@@ -21,12 +21,7 @@ async function computers(page: Page, unavailable = false, worker = false, setup 
     if (url.pathname === '/projects/computers/health') return json({
       daemonProblem: unavailable ? 'Docker engine is unreachable.' : null,
       recoveryStatus: 'Checking host dependencies; computer data is preserved.',
-      workerSetup: setup ? { state: 'elevation_required', reason: 'Windows requires administrator permission; Linux setup is automatic.' } : undefined,
     });
-    if (url.pathname === '/projects/computers/setup') {
-      requests.push({ setup: true });
-      return json({ started: true, reason: 'Windows may show an administrator prompt on the host.' });
-    }
     if (url.pathname === '/projects/containers') return json([
       worker ? { computerID: 'ka-one', agentID: 'commander', provider: 'incus', state: 'ready' }
         : { containerID: 'computer-1', agentID: 'commander', suspended, lost: false },
@@ -97,12 +92,4 @@ test('viewing a worker leaves agent input available and terminals reconnect to t
   await expect(page.getByText(`Job ${id}`, { exact: false })).toBeVisible();
   await expect(page.getByLabel('Terminal output')).toContainText('hello');
   expect(launches()).toHaveLength(1);
-});
-
-test('missing Windows prerequisites expose automatic setup rather than a Docker-only dead end', async ({ page }) => {
-  const { requests } = await computers(page, true, false, true);
-  await expect(page.getByText('Windows requires administrator permission; Linux setup is automatic.')).toBeVisible();
-  await page.getByRole('button', { name: 'Set up computer host' }).click();
-  await expect(page.getByText('Windows may show an administrator prompt on the host.')).toBeVisible();
-  expect(requests.filter(r => r.setup)).toHaveLength(1);
 });

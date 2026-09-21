@@ -1,5 +1,5 @@
 <template>
-  <div ref="surface" class="live-desktop" :class="{ clickable }" @click="clickable && $emit('maximize')">
+  <div class="live-desktop" :class="{ clickable }" @click="clickable && $emit('maximize')">
     <div class="ld-head">
       <span class="ld-label">{{ label || 'Live desktop' }}</span>
       <span class="ld-status" :class="{ on: connected }">{{ connected ? 'live' : 'offline' }}</span>
@@ -13,7 +13,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, watch, onBeforeUnmount } from 'vue';
 import { KliveAPIUrl } from '~/scripts/APIInterface';
 
 const props = defineProps<{ containerId: string; fps?: number; label?: string; clickable?: boolean }>();
@@ -21,11 +21,6 @@ defineEmits<{ (e: 'maximize'): void }>();
 
 const frameSrc = ref('');
 const connected = ref(false);
-const surface = ref<HTMLElement | null>(null);
-let visible = true;
-let observer: IntersectionObserver | null = null;
-let freshness: ReturnType<typeof setInterval> | null = null;
-let lastFrameAt = 0;
 let ws: WebSocket | null = null;
 let lastUrl = '';
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -41,19 +36,17 @@ function wsBase() { return KliveAPIUrl.replace('https', 'wss').replace('http', '
 function connect() {
   disconnect();
   stopped = false;
-  if (!props.containerId || typeof window === 'undefined' || !visible || document.hidden) return;
-  const fps = props.fps ?? 1;
+  if (!props.containerId || typeof window === 'undefined') return;
+  const fps = props.fps ?? 4;
   const url = `${wsBase()}/projects/containers/screen/stream?containerID=${encodeURIComponent(props.containerId)}&fps=${fps}&authorization=${encodeURIComponent(getPassword())}`;
   try {
     ws = new WebSocket(url);
     ws.binaryType = 'blob';
-    ws.onopen = () => { connected.value = false; };
+    ws.onopen = () => { connected.value = true; };
     ws.onclose = () => { connected.value = false; scheduleReconnect(); };
     ws.onerror = () => { connected.value = false; try { ws && ws.close(); } catch { /* ignore */ } };
     ws.onmessage = (e) => {
-      if (!(e.data instanceof Blob)) { connected.value = false; return; }
-      connected.value = true;
-      lastFrameAt = Date.now();
+      if (!(e.data instanceof Blob)) return;
       if (lastUrl) URL.revokeObjectURL(lastUrl);
       lastUrl = URL.createObjectURL(e.data);
       frameSrc.value = lastUrl;
@@ -74,22 +67,7 @@ function disconnect() {
 }
 
 watch(() => [props.containerId, props.fps], connect, { immediate: true });
-function visibilityChanged() { if (visible && !document.hidden) connect(); else disconnect(); }
-onMounted(() => {
-  observer = new IntersectionObserver(entries => {
-    const next = !!entries[0]?.isIntersecting;
-    if (visible !== next) { visible = next; visibilityChanged(); }
-  });
-  if (surface.value) observer.observe(surface.value);
-  document.addEventListener('visibilitychange', visibilityChanged);
-  freshness = setInterval(() => { if (Date.now() - lastFrameAt > 15000) connected.value = false; }, 5000);
-});
-onBeforeUnmount(() => {
-  disconnect(); observer?.disconnect();
-  document.removeEventListener('visibilitychange', visibilityChanged);
-  if (freshness) clearInterval(freshness);
-  if (lastUrl) URL.revokeObjectURL(lastUrl);
-});
+onBeforeUnmount(() => { disconnect(); if (lastUrl) URL.revokeObjectURL(lastUrl); });
 </script>
 
 <style scoped>

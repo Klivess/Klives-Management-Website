@@ -29,6 +29,14 @@
                             <input type="checkbox" v-model="hideApproximateMapPoints" /> Exact Geo
                         </label>
                     </div>
+                    <div class="map-filters" role="group" aria-label="Colour points by">
+                        <button :class="{ active: mapColorBy === 'class' }" title="Colour by fingerprint class" @click="mapColorBy = 'class'">Class</button>
+                        <button :class="{ active: mapColorBy === 'status' }" title="Colour by defence status" @click="mapColorBy = 'status'">Status</button>
+                    </div>
+                    <select v-model="mapTagFilter" class="map-tag-select" aria-label="Filter by fingerprint tag">
+                        <option value="">Any tag</option>
+                        <option v-for="t in mapTagOptions" :key="t.tag" :value="t.tag">{{ t.tag }} ({{ t.count }})</option>
+                    </select>
                     <div class="map-filters" role="group" aria-label="Map mode">
                         <button :class="{ active: !boxMode }" @click="boxMode = false" title="Pan and zoom">Pan</button>
                         <button :class="{ active: boxMode }" @click="boxMode = true" title="Drag a box to mass-block IPs in a region">Box Block</button>
@@ -62,10 +70,23 @@
                 </div>
                 <aside class="map-intel">
                     <div class="map-stat"><span>Mapped</span><strong>{{ fmtNum(filteredMapPoints.length) }}</strong></div>
-                    <div class="map-stat"><span>Attackers</span><strong>{{ fmtNum(mapAttackersCount) }}</strong></div>
-                    <div class="map-stat"><span>Profiled</span><strong>{{ fmtNum(mapProfiledCount) }}</strong></div>
-                    <div class="map-stat"><span>Recent</span><strong>{{ fmtNum(mapRecentCount) }}</strong></div>
-                    <div class="map-legend">
+                    <div class="map-stat hostile"><span>Hostile</span><strong>{{ fmtNum(mapGroupCounts.hostile) }}</strong></div>
+                    <div class="map-stat human"><span>Humans</span><strong>{{ fmtNum(mapGroupCounts.human) }}</strong></div>
+                    <div class="map-stat bot"><span>Bots</span><strong>{{ fmtNum(mapGroupCounts.bot) }}</strong></div>
+                    <div v-if="mapColorBy === 'class'" class="map-legend class-legend">
+                        <button v-for="c in classLegend" :key="c.id" class="legend-chip" :class="{ off: hiddenClasses[c.id], empty: !c.count }"
+                            :aria-pressed="!hiddenClasses[c.id]" :title="c.description + ' (click to toggle)'" @click="toggleMapClass(c.id)">
+                            <span class="legend-dot" :style="{ background: c.color, color: c.color }"></span>
+                            <span class="legend-label">{{ c.label }}</span>
+                            <strong>{{ fmtNum(c.count) }}</strong>
+                        </button>
+                        <div class="legend-status">
+                            <span><span class="legend-icon cross"></span>Blocked</span>
+                            <span><span class="legend-icon ring"></span>Honeypot</span>
+                            <span><span class="legend-icon strike"></span>Tarpit</span>
+                        </div>
+                    </div>
+                    <div v-else class="map-legend">
                         <div><span class="legend-dot attacker"></span>Attacker</div>
                         <div><span class="legend-dot attacker recent"></span>Recent attacker</div>
                         <div><span class="legend-dot profile"></span>Profile</div>
@@ -75,7 +96,7 @@
                         <div><span class="legend-icon strike"></span>Tarpitted</div>
                     </div>
                     <div v-if="selectedIp" class="map-selected">
-                        <span>{{ selectedIp.profileName ? 'Profile' : 'Attacker' }}</span>
+                        <span :style="{ color: classColor(selectedIp.classification) }">{{ classLabel(selectedIp.classification) }} {{ selectedIp.classConfidence ? '/ ' + Math.round(selectedIp.classConfidence * 100) + '%' : '' }}</span>
                         <strong>{{ selectedIp.ip }}</strong>
                         <small>{{ formatGeo(selectedIp) }} / {{ fmtTime(selectedIp.lastSeen) }}</small>
                     </div>
@@ -256,10 +277,11 @@
                     <div v-if="loading.ips" class="loading-strip"><span class="spinner"></span>Loading IP control</div>
                     <div class="table-shell">
                         <table>
-                            <thead><tr><th>IP</th><th>Geo</th><th>KM Profile</th><th>Status</th><th>Score</th><th>Total</th><th>Unauth</th><th>Deny</th><th>Last Seen</th><th>Response</th></tr></thead>
+                            <thead><tr><th>IP</th><th>Class</th><th>Geo</th><th>KM Profile</th><th>Status</th><th>Score</th><th>Total</th><th>Unauth</th><th>Deny</th><th>Last Seen</th><th>Response</th></tr></thead>
                             <tbody>
                                 <tr v-for="ip in ips" :key="ip.ip" :class="ipClass(ip)" @dblclick="openActivityForIp(ip.ip)">
                                     <td><button class="link-btn" @click="selectIp(ip.ip)">{{ ip.ip }}</button></td>
+                                    <td><span class="class-pill" :style="{ '--cls': classColor(ip.classification) }" :title="(ip.classTags || []).join(', ')">{{ classLabel(ip.classification) }}</span></td>
                                     <td>{{ formatGeo(ip) }} <span class="muted">{{ ip.isp || ip.org || ip.asn || '' }}</span></td>
                                     <td><span :class="ip.profileName ? 'profile-pill' : 'attacker-pill'">{{ ip.profileName || 'Attacker' }}</span></td>
                                     <td>{{ ip.status }}</td><td>{{ Math.round(ip.score || 0) }}</td><td>{{ ip.total }}</td><td>{{ ip.unauth }}</td><td>{{ ip.deny }}</td>
@@ -273,7 +295,7 @@
                                         <button class="micro" :disabled="loading.action" @click="scanIp(ip.ip)">Scan</button>
                                     </td>
                                 </tr>
-                                <tr v-if="!ips.length"><td colspan="10" class="empty-cell">No IP records</td></tr>
+                                <tr v-if="!ips.length"><td colspan="11" class="empty-cell">No IP records</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -316,6 +338,66 @@
                     </div>
                 </section>
 
+                <section v-if="activeTab === 'fingerprint'" class="panel-body">
+                    <div v-if="loading.fingerprint && !fpStatus" class="loading-strip"><span class="spinner"></span>Loading fingerprinting status</div>
+                    <template v-if="fpStatus">
+                        <div class="fp-tiles">
+                            <div class="map-stat"><span>Engine</span><strong :class="fpStatus.running ? 'good-text' : 'bad-text'">{{ fpStatus.backfillRunning ? 'Backfilling' : fpStatus.running ? 'Running' : 'Stopped' }}</strong></div>
+                            <div class="map-stat"><span>Fingerprints</span><strong>{{ fmtNum(fpStatus.fingerprints) }}</strong></div>
+                            <div class="map-stat"><span>Signals folded</span><strong>{{ fmtNum(fpStatus.signalsFolded) }}</strong></div>
+                            <div class="map-stat"><span>Backlog</span><strong>{{ fmtNum(fpStatus.backlog) }}</strong></div>
+                            <div class="map-stat"><span>Datacenter ranges</span><strong>{{ fmtNum(fpStatus.intel?.datacenterRanges) }}</strong></div>
+                            <div class="map-stat"><span>Crawler ranges</span><strong>{{ fmtNum(fpStatus.intel?.crawlerRanges) }}</strong></div>
+                            <div class="map-stat"><span>Tor exits</span><strong>{{ fmtNum(fpStatus.intel?.torExits) }}</strong></div>
+                            <div class="map-stat"><span>Classified</span><strong>{{ fmtNum(fpStatus.classifications) }}</strong></div>
+                        </div>
+                        <div class="fp-columns">
+                            <div class="table-shell">
+                                <table>
+                                    <thead><tr><th>Class</th><th>IPs</th><th>Meaning</th></tr></thead>
+                                    <tbody>
+                                        <tr v-for="c in classInfo" :key="c.id">
+                                            <td><span class="class-pill" :style="{ '--cls': c.color }">{{ c.label }}</span></td>
+                                            <td>{{ fmtNum(fpStatus.classBreakdown?.[c.id]) }}</td>
+                                            <td class="muted">{{ c.description }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div v-if="fpSettings" class="fp-settings">
+                                <h3>Automatic actions</h3>
+                                <p class="fp-note">Off by default. When an IP is classified into one of these classes with at least the minimum confidence, OmniDefence applies the action. Profile-linked and Klives IPs are never touched.</p>
+                                <label v-for="cls in fpSettings.actionableClasses" :key="cls" class="fp-setting-row">
+                                    <span class="class-pill" :style="{ '--cls': classColor(cls) }">{{ classLabel(cls) }}</span>
+                                    <select v-model="fpSettings.autoActions[cls]">
+                                        <option v-for="a in fpSettings.allowedActions" :key="a" :value="a">{{ a }}</option>
+                                    </select>
+                                </label>
+                                <label class="fp-setting-row">
+                                    <span>Minimum confidence</span>
+                                    <input type="number" min="0.5" max="1" step="0.05" v-model.number="fpSettings.autoActionMinConfidence" />
+                                </label>
+                                <h3>Signals</h3>
+                                <label class="checkline"><input type="checkbox" v-model="fpSettings.enabled" /> Fingerprinting enabled</label>
+                                <label class="checkline"><input type="checkbox" v-model="fpSettings.classScoreDeltas" /> Raise threat score on hostile classification</label>
+                                <label class="checkline"><input type="checkbox" v-model="fpSettings.beaconEnabled" /> Browser beacon</label>
+                                <label class="checkline"><input type="checkbox" v-model="fpSettings.robotsTrapEnabled" /> robots.txt trap <span class="muted">{{ fpSettings.robotsTrapPath }}</span></label>
+                                <h3>Intel sources</h3>
+                                <label class="checkline"><input type="checkbox" v-model="fpSettings.intelReverseDns" /> Reverse DNS + crawler verification</label>
+                                <label class="checkline"><input type="checkbox" v-model="fpSettings.intelFeeds" /> Range feeds (Tor, clouds, crawlers)</label>
+                                <label class="checkline"><input type="checkbox" v-model="fpSettings.intelAbuseIpDb" /> AbuseIPDB <span :class="fpSettings.abuseIpDbKeySet ? 'good-text' : 'muted'">{{ fpSettings.abuseIpDbKeySet ? 'key set' : 'no key (OmniSetting AbuseIPDBKey)' }}</span></label>
+                                <label class="fp-setting-row"><span>AbuseIPDB daily budget</span><input type="number" min="0" max="1000" v-model.number="fpSettings.abuseIpDbDailyBudget" /></label>
+                                <label class="checkline"><input type="checkbox" v-model="fpSettings.intelGreyNoise" /> GreyNoise Community <span :class="fpSettings.greyNoiseKeySet ? 'good-text' : 'muted'">{{ fpSettings.greyNoiseKeySet ? 'key set' : 'no key (OmniSetting GreyNoiseKey)' }}</span></label>
+                                <label class="fp-setting-row"><span>GreyNoise daily budget</span><input type="number" min="0" max="1000" v-model.number="fpSettings.greyNoiseDailyBudget" /></label>
+                                <div class="detail-actions">
+                                    <button class="od-btn" :disabled="loading.action" @click="saveFingerprintSettings">Save settings</button>
+                                    <button class="od-btn ghost" :disabled="loading.action" @click="reclassifyAll">Reclassify all</button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </section>
+
                 <section v-if="activeTab === 'honeypot'" class="panel-body">
                     <div class="control-grid honey-controls">
                         <input v-model="newHoneypotRoute" placeholder="/wp-admin" />
@@ -340,6 +422,7 @@
                     <div class="detail-title">{{ selectedIp.ip }}</div>
                     <div class="detail-sub">{{ formatGeo(selectedIp) }} / {{ selectedIp.isp || selectedIp.org || selectedIp.asn || 'Unknown network' }}</div>
                     <div :class="selectedIp.profileName ? 'identity-chip profile' : 'identity-chip attacker'">{{ selectedIp.profileName ? 'KMProfile: ' + selectedIp.profileName : 'No KMProfile matched' }}</div>
+                    <div class="class-pill detail-class" :style="{ '--cls': classColor(selectedIp.classification) }">{{ classLabel(selectedIp.classification) }}<template v-if="selectedIp.classConfidence"> / {{ Math.round(selectedIp.classConfidence * 100) }}%</template></div>
                     <div class="score-ring"><span>{{ Math.round(selectedIp.score || 0) }}</span><small>{{ selectedIp.status }}</small></div>
                     <div class="detail-grid">
                         <div><span>Total</span><strong>{{ selectedIp.total }}</strong></div>
@@ -355,6 +438,10 @@
                         <button class="od-btn danger" :disabled="loading.action" @click="blockIp(selectedIp.ip)" v-if="selectedIp.status !== 'Blocked' && !selectedIp.isKlives">Block</button>
                         <button class="od-btn ghost" :disabled="loading.action" @click="scanIp(selectedIp.ip)">Scan</button>
                     </div>
+                </div>
+                <div class="detail-block" v-if="selectedIp">
+                    <OmniDefenceFingerprintPanel :ip="selectedIp.ip" :class-info="classInfo" :recent="selectedIpRecent" :tick="refreshTick"
+                        @select-ip="ip => selectIp(ip, false)" @changed="loadMapIps" />
                 </div>
                 <div class="detail-block" v-else>
                     <div class="detail-title">No IP selected</div>
@@ -492,6 +579,25 @@ import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIIn
 import { markRaw, nextTick } from 'vue';
 import Swal from 'sweetalert2';
 import 'leaflet/dist/leaflet.css';
+// Explicit import: the auto-registered name would be OmniDefenceFingerprintPanel (folder prefix).
+import OmniDefenceFingerprintPanel from '~/components/OmniDefence/FingerprintPanel.vue';
+
+// Mirrors /omnidefence/classes so the map colours correctly before that call returns.
+const DEFAULT_CLASSES = Object.freeze([
+    { id: 'Owner', label: 'Owner', color: '#5fd3ff', malicious: false, group: 'human', description: 'Linked to a Klives-rank profile.' },
+    { id: 'Human', label: 'Human', color: '#52ffb9', malicious: false, group: 'human', description: 'Real person in a real browser: trusted input events from the browser beacon.' },
+    { id: 'LikelyHuman', label: 'Likely human', color: '#a6f5a0', malicious: false, group: 'human', description: 'Browser-consistent headers and behaviour, no beacon proof yet.' },
+    { id: 'ApiClient', label: 'API client', color: '#7aa7ff', malicious: false, group: 'bot', description: 'Authenticated non-browser tool or integration.' },
+    { id: 'VerifiedCrawler', label: 'Verified crawler', color: '#4f8dff', malicious: false, group: 'bot', description: 'Search/AI crawler proven by forward-confirmed rDNS or published ranges.' },
+    { id: 'DeclaredBot', label: 'Declared bot', color: '#c79cff', malicious: false, group: 'bot', description: 'Self-identifying bot: link previews, uptime monitors, SEO crawlers.' },
+    { id: 'ResearchScanner', label: 'Research scanner', color: '#9aa7b0', malicious: false, group: 'bot', description: 'Internet-wide survey scanner (Censys, Shodan, Shadowserver...).' },
+    { id: 'Scraper', label: 'Scraper', color: '#ffc247', malicious: true, group: 'hostile', description: 'Automated harvesting: script clients, datacenter origin, machine timing.' },
+    { id: 'HeadlessAutomation', label: 'Headless automation', color: '#ff8a3d', malicious: true, group: 'hostile', description: 'Browser automation posing as a human (webdriver, spoofed UA, no real input).' },
+    { id: 'VulnScanner', label: 'Vuln scanner', color: '#ff6071', malicious: true, group: 'hostile', description: 'Exploit/probe traffic: sensitive paths, honeypots, 404 storms.' },
+    { id: 'CredentialAttacker', label: 'Credential attacker', color: '#ff4fd8', malicious: true, group: 'hostile', description: 'Brute-force or credential-stuffing login attempts.' },
+    { id: 'Unknown', label: 'Unknown', color: '#56636b', malicious: false, group: 'unknown', description: 'Not enough evidence yet.' },
+]);
+const CLASS_GROUP = Object.freeze(Object.fromEntries(DEFAULT_CLASSES.map(c => [c.id, c.group])));
 
 const COUNTRY_CENTERS = Object.freeze({
     AF: [33.94, 67.71], AL: [41.15, 20.17], DZ: [28.03, 1.66], AR: [-38.42, -63.62], AM: [40.07, 45.04], AU: [-25.27, 133.78], AT: [47.52, 14.55], AZ: [40.14, 47.58],
@@ -519,6 +625,7 @@ const HOUR = 3600;
 export default {
     name: 'omnidefence',
     layout: 'navbar',
+    components: { OmniDefenceFingerprintPanel },
     data() {
         return {
             activeTab: 'activity',
@@ -527,12 +634,20 @@ export default {
                 { id: 'ips', label: 'IP Control', code: 'IP' },
                 { id: 'auth', label: 'Auth Events', code: 'AUTH' },
                 { id: 'profiles', label: 'Profiles', code: 'KM' },
+                { id: 'fingerprint', label: 'Fingerprinting', code: 'FP' },
                 { id: 'honeypot', label: 'Honeypots', code: 'HP' },
             ],
             overview: null,
             requests: [], ips: [], mapIps: [], authEvents: [], profileActions: [], honeypotRoutes: [],
             selectedIp: null, selectedIpNote: '', selectedIpRecent: [], selectedIpEvents: [], lastScan: null,
             mapFilter: 'all',
+            mapColorBy: 'class',
+            mapTagFilter: '',
+            hiddenClasses: {},
+            classInfo: DEFAULT_CLASSES.map(c => ({ ...c })),
+            refreshTick: 0,
+            fpStatus: null,
+            fpSettings: null,
             hideApproximateMapPoints: false,
             timelineMode: 'overlap',        // 'overlap' | 'first' | 'last'
             timelineStart: null,            // Unix seconds, hour-snapped
@@ -550,7 +665,7 @@ export default {
             newHoneypotRoute: '', loadError: null, refreshTimer: null, lastUpdated: null,
             requestDetail: null,
             authDetail: null,
-            loading: { overview: false, requests: false, ips: false, map: false, auth: false, profile: false, honeypot: false, action: false, ipDetail: false, requestDetail: false },
+            loading: { overview: false, requests: false, ips: false, map: false, auth: false, profile: false, honeypot: false, action: false, ipDetail: false, requestDetail: false, fingerprint: false },
             filters: {
                 requests: { ip: '', profile: '', route: '', status: '', method: '', origin: '', denyOnly: false, limit: 250, offset: 0 },
                 ips: { query: '', status: '', limit: 300, offset: 0 },
@@ -600,7 +715,39 @@ export default {
             };
         },
         filteredMapPoints() {
+            const hidden = this.hiddenClasses;
+            return this.mapPointsBeforeClassFilter.filter(point => !hidden[point.classification || 'Unknown']);
+        },
+        classInfoById() { return Object.fromEntries(this.classInfo.map(c => [c.id, c])); },
+        classLegend() {
+            const counts = {};
+            for (const point of this.mapPointsBeforeClassFilter) {
+                const id = point.classification || 'Unknown';
+                counts[id] = (counts[id] || 0) + 1;
+            }
+            return this.classInfo.map(c => ({ ...c, count: counts[c.id] || 0 }));
+        },
+        mapGroupCounts() {
+            const counts = { human: 0, bot: 0, hostile: 0, unknown: 0 };
+            for (const point of this.filteredMapPoints) counts[CLASS_GROUP[point.classification] || 'unknown']++;
+            return counts;
+        },
+        mapTagOptions() {
+            const counts = {};
+            for (const point of this.mapPoints) {
+                for (const tag of point.classTags || []) {
+                    const key = tag.split(':')[0];
+                    counts[key] = (counts[key] || 0) + 1;
+                }
+            }
+            return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([tag, count]) => ({ tag, count }));
+        },
+        mapPointsBeforeClassFilter() {
             let points = this.hideApproximateMapPoints ? this.mapPoints.filter(point => !point.coordinatesApproximate) : this.mapPoints;
+            if (this.mapTagFilter) {
+                const wanted = this.mapTagFilter;
+                points = points.filter(point => (point.classTags || []).some(tag => tag === wanted || tag.startsWith(wanted + ':')));
+            }
             if (this.mapFilter === 'attackers') points = points.filter(point => !point.hasProfile);
             else if (this.mapFilter === 'profiled') points = points.filter(point => point.hasProfile);
             const domain = this.timelineDomain;
@@ -686,6 +833,7 @@ export default {
     },
     async mounted() {
         await this.initThreatMap();
+        this.loadClassInfo();
         await this.refreshActive(false);
         this.refreshTimer = setInterval(() => this.refreshActive(false), 5000);
     },
@@ -701,8 +849,12 @@ export default {
             if (tab === 'auth') this.loadAuthEvents();
             if (tab === 'profiles') this.loadProfileActions();
             if (tab === 'honeypot') this.loadHoneypotRoutes();
+            if (tab === 'fingerprint') this.loadFingerprintStatus(true);
         },
         mapFilter() { this.syncThreatMapPoints(); },
+        mapColorBy() { this.syncThreatMapPoints(); },
+        mapTagFilter() { this.syncThreatMapPoints(); },
+        hiddenClasses: { deep: true, handler() { this.syncThreatMapPoints(); } },
         hideApproximateMapPoints() { this.syncThreatMapPoints(); },
         timelineMode() { this.syncThreatMapPoints(); },
         timelineStart() { this.syncThreatMapPoints(); },
@@ -887,6 +1039,15 @@ export default {
                 profileName: row.associated_profile_name ?? row.AssociatedProfileName,
                 profileRank: row.associated_profile_rank ?? row.AssociatedProfileRank,
                 isKlives: Number(row.associated_profile_rank ?? row.AssociatedProfileRank ?? 0) >= 5,
+                classification: row.classification ?? row.Classification ?? 'Unknown',
+                classConfidence: this.toNumberOrNull(row.class_confidence ?? row.ClassConfidence),
+                classTags: String(row.class_tags ?? row.ClassTags ?? '').split(',').filter(Boolean),
+                isHosting: row.is_hosting ?? row.IsHosting ?? null,
+                isProxy: row.is_proxy ?? row.IsProxy ?? null,
+                isMobile: row.is_mobile ?? row.IsMobile ?? null,
+                reverseDns: row.reverse_dns ?? row.ReverseDns ?? null,
+                timezone: row.timezone ?? row.Timezone ?? null,
+                asName: row.as_name ?? row.AsName ?? null,
             };
         },
         normalizeAuth(row) { return { id: row.id, ts: row.utc_ts, ip: row.ip, type: row.type, profile: row.profile_name, profileId: row.profile_id, route: row.route, userAgent: row.user_agent, detail: row.detail }; },
@@ -907,8 +1068,10 @@ export default {
             if (this.activeTab === 'profiles') jobs.push(this.loadProfileActions());
             if (this.activeTab === 'honeypot') jobs.push(this.loadHoneypotRoutes());
             if (this.activeTab !== 'ips') jobs.push(this.loadIps());
+            if (this.activeTab === 'fingerprint') jobs.push(this.loadFingerprintStatus(false));
             if (this.selectedIp?.ip) jobs.push(this.selectIp(this.selectedIp.ip, false));
             await Promise.allSettled(jobs);
+            this.refreshTick = Date.now();
             this.lastUpdated = new Date();
             if (manual && process.client) console.log('OmniDefence refreshed');
         },
@@ -962,12 +1125,49 @@ export default {
             return this.ipFallbackCoordinates(ipRecord?.ip, index);
         },
         mapPointTitle(point) {
-            const identity = point.hasProfile ? `Profile: ${point.profileName || point.profileId || 'matched'}` : 'Attacker';
+            const identity = point.hasProfile ? `Profile: ${point.profileName || point.profileId || 'matched'}` : 'No profile';
             const location = this.formatGeo(point);
             const network = point.isp || point.org || point.asn || 'Unknown network';
             const recency = point.recent ? 'Recent' : 'Older';
             const accuracy = point.coordinatesApproximate ? 'Approximate' : 'Exact';
-            return `${point.ip} / ${identity} / ${location} / ${network} / ${recency} / ${accuracy}`;
+            const confidence = point.classConfidence ? ` ${Math.round(point.classConfidence * 100)}%` : '';
+            const tags = (point.classTags || []).slice(0, 3).join(', ');
+            const verdict = `${this.classLabel(point.classification)}${confidence}${tags ? ' [' + tags + ']' : ''}`;
+            return `${point.ip} / ${verdict} / ${identity} / ${location} / ${network} / ${point.status} / ${recency} / ${accuracy}`;
+        },
+        classLabel(id) { return this.classInfoById[id || 'Unknown']?.label || id || 'Unknown'; },
+        classColor(id) { return this.classInfoById[id || 'Unknown']?.color || '#56636b'; },
+        toggleMapClass(id) { this.hiddenClasses = { ...this.hiddenClasses, [id]: !this.hiddenClasses[id] }; },
+        async loadClassInfo() {
+            const data = await this.fetchJson('/omnidefence/classes');
+            if (!Array.isArray(data) || !data.length) return;
+            this.classInfo = data.map(c => ({ ...c, group: CLASS_GROUP[c.id] || (c.malicious ? 'hostile' : 'unknown') }));
+            this.syncThreatMapPoints();
+        },
+        async loadFingerprintStatus(showLoading = false) {
+            const data = await this.fetchJson('/omnidefence/fingerprint/status', showLoading ? 'fingerprint' : null);
+            if (!data) return;
+            this.fpStatus = data;
+            // Don't clobber an edit in progress on the 5s refresh.
+            if (!this.fpSettings || showLoading) this.fpSettings = JSON.parse(JSON.stringify(data.settings || {}));
+        },
+        async saveFingerprintSettings() {
+            if (!this.fpSettings) return;
+            this.loading.action = true;
+            try {
+                const body = { fingerprint: this.fpSettings };
+                const r = await RequestPOSTFromKliveAPI('/omnidefence/settings/update', JSON.stringify(body), false, true);
+                if (!r.ok) { this.loadError = await r.text(); return; }
+                await this.loadFingerprintStatus(true);
+                Swal.fire({ toast: true, position: 'bottom-end', icon: 'success', title: 'Fingerprinting settings saved', timer: 1600, showConfirmButton: false, background: '#0a1518', color: '#bcecff' });
+            } finally { this.loading.action = false; }
+        },
+        async reclassifyAll() {
+            this.loading.action = true;
+            try {
+                const r = await RequestPOSTFromKliveAPI('/omnidefence/ip/reclassify', JSON.stringify({ all: true }), false, true);
+                if (!r.ok) this.loadError = await r.text();
+            } finally { this.loading.action = false; }
         },
         formatGeo(ipRecord) {
             const parts = [ipRecord?.city, ipRecord?.region, ipRecord?.country].filter(Boolean);
@@ -995,6 +1195,12 @@ export default {
             if (this._threatMap.getZoom() < homeZoom) this._threatMap.setZoom(homeZoom, { animate: false });
         },
         mapPointVisual(point) {
+            if (this.mapColorBy === 'class') {
+                const color = this.classColor(point.classification);
+                const confidence = Number(point.classConfidence) || 0;
+                // Confidence reads as solidity: a tentative verdict is a faint dot.
+                return { fill: color, stroke: color, opacity: 0.4 + 0.55 * Math.min(1, confidence) };
+            }
             if (point.status === 'Blocked') return { fill: '#4a1a22', stroke: '#ff6071', opacity: 0.88 };
             if (point.status === 'Honeypot') return { fill: '#c79cff', stroke: '#f0ddff', opacity: 0.9 };
             if (point.status === 'Tarpit') return { fill: '#f0a23a', stroke: '#ffe066', opacity: 0.9 };
@@ -1033,20 +1239,39 @@ export default {
 
             L.control.zoom({ position: 'bottomright' }).addTo(map);
             L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                subdomains: 'abcd',
-                noWrap: true,
-                bounds,
-                detectRetina: true,
-                updateWhenIdle: true,
-                updateWhenZooming: false,
-                keepBuffer: 2,
-                maxNativeZoom: 20,
-                attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-            }).addTo(map);
+            // Self-hosted basemap: Natural Earth (public domain) geometry bundled with the site and drawn
+            // on canvas. No tile server, API key or quota, so it cannot be revoked like the CARTO tiles were.
+            map.createPane('basemap').style.zIndex = 250;
+            const labelPane = map.createPane('basemapLabels');
+            labelPane.style.zIndex = 350;
+            labelPane.style.pointerEvents = 'none';
 
             this._leaflet = L;
+            this._StatusGlyph = markRaw(L.CircleMarker.extend({
+                _updatePath() {
+                    const renderer = this._renderer;
+                    if (!renderer?._drawing || this._empty()) return;
+                    const ctx = renderer._ctx, p = this._point, r = this._radius;
+                    ctx.save();
+                    ctx.strokeStyle = this.options.color;
+                    ctx.lineWidth = this.options.weight;
+                    ctx.globalAlpha = this.options.opacity;
+                    ctx.beginPath();
+                    if (this.options.glyph === 'cross') {
+                        ctx.moveTo(p.x - r, p.y - r); ctx.lineTo(p.x + r, p.y + r);
+                        ctx.moveTo(p.x + r, p.y - r); ctx.lineTo(p.x - r, p.y + r);
+                    } else {
+                        ctx.moveTo(p.x - r - 3, p.y); ctx.lineTo(p.x + r + 3, p.y);
+                    }
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }));
             this._threatMap = markRaw(map);
+            this._basemapRenderer = markRaw(L.canvas({ pane: 'basemap', padding: 0.5 }));
+            this._basemapLayers = {};
+            this._basemapLabels = null;
+            this._basemapDetail = null;
             this._threatRenderer = markRaw(L.canvas({ padding: 0.3 }));
             this._regionLayer = markRaw(L.layerGroup().addTo(map));
             this._pointLayer = markRaw(L.layerGroup().addTo(map));
@@ -1061,8 +1286,10 @@ export default {
             };
             map.on(this._boxHandlers);
             map.on('zoomend moveend', () => { this.leafletZoom = Number(map.getZoom().toFixed(2)); });
+            map.on('zoomend', () => this.syncBasemap());
             map.setView([18, 0], this._threatMapHomeZoom);
             this.leafletZoom = Number(map.getZoom().toFixed(2));
+            this.syncBasemap();
             this.leafletReady = true;
             this.setThreatMapBoxMode(this.boxMode);
             this.syncThreatMap();
@@ -1080,6 +1307,10 @@ export default {
             this._threatMapHomeZoom = null;
             this._threatMapResizeObserver = null;
             this._threatRenderer = null;
+            this._basemapRenderer = null;
+            this._basemapLayers = null;
+            this._basemapLabels = null;
+            this._basemapDetail = null;
             this._pointLayer = null;
             this._regionLayer = null;
             this._selectionLayer = null;
@@ -1088,6 +1319,146 @@ export default {
             this._boxStartLatLng = null;
             this._boxStartPoint = null;
             this.leafletReady = false;
+        },
+        // 50m geometry for the world view; the ~3.6 MB 10m set is only fetched once someone zooms in.
+        async syncBasemap() {
+            const map = this._threatMap;
+            if (!map) return;
+            const detail = map.getZoom() >= 5 ? '10m' : '50m';
+            map.getContainer().dataset.labelTier = String(map.getZoom() >= 5.5 ? 3 : map.getZoom() >= 4.5 ? 2 : map.getZoom() >= 3.5 ? 1 : 0);
+            if (this._basemapDetail === detail) return;
+            this._basemapDetail = detail;
+            try {
+                if (!this._basemapLayers[detail]) {
+                    const layer = await this.buildBasemapLayer(detail);
+                    if (this._threatMap !== map) return;
+                    this._basemapLayers[detail] = layer;
+                }
+            } catch (err) {
+                console.error(`OmniDefence basemap (${detail}) failed to load`, err);
+                if (this._basemapDetail === detail) this._basemapDetail = null;
+                return;
+            }
+            if (this._basemapDetail !== detail) return; // zoom moved on while loading
+            for (const [key, layer] of Object.entries(this._basemapLayers)) {
+                if (key === detail) layer.addTo(map);
+                else layer.remove();
+            }
+        },
+        async buildBasemapLayer(detail) {
+            const L = this._leaflet;
+            const [{ feature, mesh }, topologyModule] = await Promise.all([
+                import('topojson-client'),
+                detail === '10m' ? import('world-atlas/countries-10m.json') : import('world-atlas/countries-50m.json')
+            ]);
+            const topology = topologyModule.default || topologyModule;
+            const countries = topology.objects.countries;
+            const countryFeatures = feature(topology, countries);
+            const shared = { renderer: this._basemapRenderer, pane: 'basemap', interactive: false };
+            const group = L.featureGroup();
+            L.geoJSON(this.unwrapAntimeridian(countryFeatures), {
+                ...shared,
+                attribution: 'Basemap: Natural Earth',
+                style: { stroke: false, fill: true, fillColor: '#0b2723', fillOpacity: 1 }
+            }).addTo(group);
+            L.geoJSON(this.unwrapAntimeridian(mesh(topology, countries, (a, b) => a !== b)), {
+                ...shared,
+                style: { color: '#2e7c6d', weight: 0.8, opacity: 0.6, fill: false, lineJoin: 'round' }
+            }).addTo(group);
+            L.geoJSON(this.unwrapAntimeridian(mesh(topology, countries, (a, b) => a === b)), {
+                ...shared,
+                style: { color: '#3fae93', weight: 1, opacity: 0.75, fill: false, lineJoin: 'round' }
+            }).addTo(group);
+            if (this._threatMap && !this._basemapLabels) {
+                this._basemapLabels = markRaw(this.buildBasemapLabels(countryFeatures).addTo(this._threatMap));
+            }
+            return markRaw(group);
+        },
+        // Shapes that cross the ±180° meridian (Fiji, Chukotka) jump from +180 to -180 and would draw a
+        // stroke across the whole map. Unwrap them into continuous longitudes and add a copy shifted by
+        // 360° so both halves land on the (non-wrapping) world.
+        unwrapAntimeridian(geojson) {
+            const unwrap = line => {
+                const out = [];
+                for (const [lon, lat] of line) {
+                    let x = lon;
+                    if (out.length) {
+                        const prev = out[out.length - 1][0];
+                        while (x - prev > 180) x -= 360;
+                        while (x - prev < -180) x += 360;
+                    }
+                    out.push([x, lat]);
+                }
+                return out;
+            };
+            // A ring that circles the pole (Antarctica) cannot be unwrapped into a closed shape; keep it as-is.
+            const unwrapRing = ring => {
+                const out = unwrap(ring);
+                return Math.abs(out[out.length - 1][0] - out[0][0]) > 1 ? ring : out;
+            };
+            const shift = (lines, by) => lines.map(line => line.map(([lon, lat]) => [lon + by, lat]));
+            const copies = lines => {
+                const lons = lines.flat().map(point => point[0]);
+                const out = [lines];
+                if (Math.max(...lons) > 180) out.push(shift(lines, -360));
+                if (Math.min(...lons) < -180) out.push(shift(lines, 360));
+                return out;
+            };
+            const fixGeometry = geometry => {
+                if (!geometry) return geometry;
+                switch (geometry.type) {
+                    case 'LineString': return { type: 'MultiLineString', coordinates: copies([unwrap(geometry.coordinates)]).flat() };
+                    case 'MultiLineString': return { type: 'MultiLineString', coordinates: geometry.coordinates.flatMap(line => copies([unwrap(line)]).flat()) };
+                    case 'Polygon': return { type: 'MultiPolygon', coordinates: copies(geometry.coordinates.map(unwrapRing)) };
+                    case 'MultiPolygon': return { type: 'MultiPolygon', coordinates: geometry.coordinates.flatMap(polygon => copies(polygon.map(unwrapRing))) };
+                    default: return geometry;
+                }
+            };
+            if (geojson.type === 'FeatureCollection') return { ...geojson, features: geojson.features.map(f => ({ ...f, geometry: fixGeometry(f.geometry) })) };
+            if (geojson.type === 'Feature') return { ...geojson, geometry: fixGeometry(geojson.geometry) };
+            return fixGeometry(geojson);
+        },
+        // Country names at the centroid of each country's largest polygon; bigger countries appear first.
+        buildBasemapLabels(collection) {
+            const L = this._leaflet;
+            const group = L.layerGroup();
+            const ringArea = ring => {
+                let area = 0;
+                for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) area += ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+                return area / 2;
+            };
+            for (const country of this.unwrapAntimeridian(collection).features) {
+                const name = country.properties?.name;
+                const geometry = country.geometry;
+                if (!name || !geometry || name === 'Antarctica') continue;
+                const polygons = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.type === 'MultiPolygon' ? geometry.coordinates : [];
+                let best = null;
+                let bestArea = 0;
+                for (const polygon of polygons) {
+                    const area = Math.abs(ringArea(polygon[0]));
+                    if (area > bestArea) { bestArea = area; best = polygon[0]; }
+                }
+                if (!best || bestArea < 0.4) continue;
+                let cx = 0, cy = 0, signed = 0;
+                for (let i = 0, j = best.length - 1; i < best.length; j = i++) {
+                    const cross = best[j][0] * best[i][1] - best[i][0] * best[j][1];
+                    signed += cross;
+                    cx += (best[j][0] + best[i][0]) * cross;
+                    cy += (best[j][1] + best[i][1]) * cross;
+                }
+                if (!signed) continue;
+                const tier = bestArea >= 250 ? 0 : bestArea >= 40 ? 1 : bestArea >= 6 ? 2 : 3;
+                const label = document.createElement('span');
+                label.textContent = name;
+                const lon = ((cx / (3 * signed) + 540) % 360) - 180;
+                L.marker([cy / (3 * signed), lon], {
+                    pane: 'basemapLabels',
+                    interactive: false,
+                    keyboard: false,
+                    icon: L.divIcon({ className: `basemap-label tier-${tier}`, html: label.outerHTML, iconSize: null })
+                }).addTo(group);
+            }
+            return group;
         },
         syncThreatMap() {
             this.syncThreatMapPoints();
@@ -1129,12 +1500,22 @@ export default {
                     interactive: !this.boxMode,
                     bubblingMouseEvents: false
                 }).addTo(this._pointLayer);
+                this.drawStatusGlyph(L, latLng, radius, point.status);
                 marker.bindTooltip(this.mapPointTitle(point), { sticky: true, direction: 'top', className: 'od-map-tooltip' });
                 marker.on('click', () => this.selectIp(point.ip, false));
                 marker.on('dblclick', event => {
                     L.DomEvent.stop(event);
                     this.openActivityForIp(point.ip);
                 });
+            }
+        },
+        drawStatusGlyph(L, latLng, radius, status) {
+            if (status === 'Honeypot') {
+                L.circleMarker(latLng, { renderer: this._threatRenderer, radius: radius + 3, color: '#c79cff', weight: 1.5, opacity: 0.95, dashArray: '2 2', fill: false, interactive: false }).addTo(this._pointLayer);
+            } else if ((status === 'Blocked' || status === 'Tarpit') && this._StatusGlyph) {
+                const glyph = status === 'Blocked' ? 'cross' : 'strike';
+                const color = status === 'Blocked' ? '#ffffff' : '#ffe066';
+                new this._StatusGlyph(latLng, { renderer: this._threatRenderer, radius: Math.max(3, radius - 1), color, weight: 1.6, opacity: 0.95, fill: false, interactive: false, glyph }).addTo(this._pointLayer);
             }
         },
         syncThreatMapRegions() {
@@ -1539,7 +1920,31 @@ export default {
 .od-map-panel { margin-bottom: 12px; border: 1px solid rgba(82,255,185,.16); border-radius: 6px; background: rgba(4, 8, 10, .86); box-shadow: inset 0 0 22px rgba(71, 255, 183, .04); overflow: hidden; }
 .map-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid rgba(82,255,185,.14); background: linear-gradient(90deg, rgba(14,50,52,.7), rgba(9,12,15,.45)); }
 .map-head h2 { margin: 0; font-size: 20px; color: #eafff9; }
-.map-actions { display: flex; align-items: center; gap: 10px; }
+.map-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 10px; }
+.map-tag-select { min-height: 36px; padding: 6px 8px; border: 1px solid rgba(116,255,198,.16); border-radius: 5px; background: #081013; color: #cfeee5; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.map-stat.hostile strong { color: #ff8d9a; } .map-stat.human strong { color: #7dffc5; } .map-stat.bot strong { color: #a9c2ff; }
+.class-legend { gap: 3px; }
+.legend-chip { display: flex; align-items: center; gap: 7px; width: 100%; padding: 3px 4px; border: 0; border-radius: 3px; background: transparent; color: #a9c8bf; font-size: 11px; font-weight: 700; text-align: left; cursor: pointer; }
+.legend-chip:hover { background: rgba(255,255,255,.05); }
+.legend-chip .legend-label { flex: 1; color: #a9c8bf; }
+.legend-chip strong { color: #eafff9; font-size: 11px; }
+.legend-chip.empty { opacity: .45; }
+.legend-chip.off { opacity: .35; }
+.legend-chip.off .legend-label { text-decoration: line-through; }
+.legend-status { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.06); }
+.legend-status > span { display: inline-flex; align-items: center; gap: 5px; color: #a9c8bf; font-size: 11px; font-weight: 700; }
+.class-pill { display: inline-block; padding: 2px 7px; border: 1px solid color-mix(in srgb, var(--cls) 45%, transparent); border-radius: 4px; background: color-mix(in srgb, var(--cls) 14%, transparent); color: color-mix(in srgb, var(--cls) 70%, #ffffff); font-size: 11px; font-weight: 800; white-space: nowrap; }
+.detail-class { display: block; width: fit-content; margin-top: 6px; }
+.fp-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.fp-columns { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, 1fr); gap: 12px; align-items: start; }
+.fp-settings { padding: 10px; border: 1px solid rgba(255,255,255,.07); border-radius: 5px; background: rgba(255,255,255,.025); }
+.fp-settings h3 { margin: 10px 0 6px; color: #7d948e; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
+.fp-settings h3:first-child { margin-top: 0; }
+.fp-note { margin: 0 0 8px; color: #86a39b; font-size: 11px; line-height: 1.4; }
+.fp-setting-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0; color: #cfeee5; font-size: 12px; }
+.fp-setting-row select, .fp-setting-row input { width: 120px; padding: 4px 6px; border: 1px solid rgba(82,255,185,.2); border-radius: 4px; background: #081013; color: #eafff9; font-size: 12px; }
+.fp-settings .checkline { display: flex; align-items: center; gap: 6px; padding: 3px 0; color: #cfeee5; font-size: 12px; }
+.good-text { color: #7dffc5; } .bad-text { color: #ff8d9a; }
 .map-filters { display: flex; gap: 4px; padding: 3px; border: 1px solid rgba(116,255,198,.16); border-radius: 5px; background: rgba(255,255,255,.035); }
 .map-filters button { min-height: 30px; padding: 6px 9px; border: 0; border-radius: 3px; background: transparent; color: #9fb8b1; font-size: 11px; font-weight: 800; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
 .map-filters button.active { color: #ecfffa; background: rgba(82,255,185,.16); box-shadow: inset 0 0 0 1px rgba(82,255,185,.2); }
@@ -1580,7 +1985,13 @@ export default {
 .leaflet-threat-map { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; background: #031512; }
 .leaflet-threat-map::after { content: ''; position: absolute; inset: 0; z-index: 450; pointer-events: none; background: linear-gradient(rgba(38,214,166,.08), rgba(4,15,16,.08)), repeating-linear-gradient(0deg, rgba(82,255,185,.038) 0 1px, transparent 1px 48px), repeating-linear-gradient(90deg, rgba(82,255,185,.03) 0 1px, transparent 1px 54px); mix-blend-mode: screen; opacity: .46; }
 .world-map-stage :deep(.leaflet-container) { background: #031512; color: #d9fff0; font: 700 11px ui-monospace, Consolas, monospace; }
-.world-map-stage :deep(.leaflet-tile-pane) { filter: sepia(.24) hue-rotate(104deg) saturate(1.55) brightness(1.28) contrast(.92); opacity: 1; }
+.world-map-stage :deep(.basemap-label) { width: 0; height: 0; background: none; border: 0; }
+.world-map-stage :deep(.basemap-label span) { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; color: rgba(150, 214, 196, .62); font: 700 10px ui-monospace, Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; text-shadow: 0 0 3px #031512, 0 0 6px #031512; }
+.world-map-stage :deep(.basemap-label.tier-0 span) { font-size: 11px; color: rgba(160, 226, 207, .7); }
+.world-map-stage :deep([data-label-tier="0"] .basemap-label:not(.tier-0)),
+.world-map-stage :deep([data-label-tier="1"] .basemap-label.tier-2),
+.world-map-stage :deep([data-label-tier="1"] .basemap-label.tier-3),
+.world-map-stage :deep([data-label-tier="2"] .basemap-label.tier-3) { display: none; }
 .world-map-stage :deep(.leaflet-control-zoom) { border: 1px solid rgba(95,211,255,.18); border-radius: 4px; overflow: hidden; background: rgba(5,13,16,.82); box-shadow: none; }
 .world-map-stage :deep(.leaflet-control-zoom a) { width: 28px; height: 28px; border: 0; border-bottom: 1px solid rgba(95,211,255,.14); background: rgba(8,17,22,.92); color: #bcecff; line-height: 28px; text-shadow: none; }
 .world-map-stage :deep(.leaflet-control-zoom a:hover) { background: rgba(31,92,110,.86); color: #fff; }
@@ -1716,6 +2127,7 @@ tr:hover td { background: rgba(78,255,182,.035); }
 .world-map-stage :deep(.od-block-cross::after) { animation-name: blockStrikeReverse; }
 @keyframes blockStrikeReverse { from { transform: rotate(-45deg) scaleX(0); } to { transform: rotate(-45deg) scaleX(1); } }
 @media (max-width: 1320px) { .od-grid { grid-template-columns: 210px 1fr; } .od-detail { grid-column: 1 / -1; } .activity-controls { grid-template-columns: repeat(3, 1fr); } .map-layout { grid-template-columns: 1fr; } .map-intel { grid-template-columns: repeat(4, minmax(0, 1fr)); } .map-legend, .map-selected { grid-column: auto; } }
+@media (max-width: 1100px) { .fp-columns { grid-template-columns: 1fr; } .fp-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 820px) { .od-header { align-items: flex-start; flex-direction: column; } .od-header-actions { width: 100%; flex-wrap: wrap; } .refresh-stamp { min-width: 0; text-align: left; } .map-head { align-items: flex-start; flex-direction: column; } .map-actions { width: 100%; align-items: flex-start; flex-direction: column; } .map-filters { width: 100%; flex-wrap: wrap; } .map-filters button, .map-toggle { flex: 1 1 130px; } .world-map-stage { height: 52vh; min-height: 340px; } .map-intel { grid-template-columns: repeat(2, minmax(0, 1fr)); } .map-legend, .map-selected { grid-column: 1 / -1; } .od-metrics { grid-template-columns: repeat(2, 1fr); } .od-grid { grid-template-columns: 1fr; } .activity-controls, .auth-controls, .profile-controls, .honey-controls, .ip-controls { grid-template-columns: 1fr; } }
 .od-modal-backdrop { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: flex-start; justify-content: center; padding: 5vh 16px; background: rgba(2, 6, 8, 0.78); backdrop-filter: blur(4px); animation: softFadeIn .14s ease-out both; }
 .od-modal { width: min(960px, 100%); max-height: 90vh; display: flex; flex-direction: column; border: 1px solid rgba(82,255,185,.32); border-radius: 6px; background: linear-gradient(180deg, rgba(7,18,20,.98), rgba(4,8,10,.98)); box-shadow: 0 24px 64px rgba(0,0,0,.55), 0 0 36px rgba(82,255,185,.08); color: #d9fff0; overflow: hidden; }

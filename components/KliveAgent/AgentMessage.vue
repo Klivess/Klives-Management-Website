@@ -16,6 +16,13 @@
       </div>
 
       <div v-if="message.content" class="msg-content" v-html="renderMarkdown(message.content)"></div>
+      <div v-if="attachments.length" class="msg-files">
+        <button v-for="file in attachments" :key="file.id || file.name" type="button" class="msg-file"
+          :disabled="!file.id" @click="downloadAttachment(file)">
+          {{ file.mimeType?.startsWith('image/') ? '▧' : file.mimeType?.startsWith('video/') ? '▶' : '▤' }}
+          {{ file.name }} <small>{{ formatSize(file.size) }}</small>
+        </button>
+      </div>
 
       <div v-if="message.pending && !message.content" class="msg-typing">
         <span></span><span></span><span></span>
@@ -39,6 +46,7 @@
 <script setup>
 import { computed } from 'vue';
 import { renderMarkdown } from '~/scripts/agentMarkdown';
+import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 
 const props = defineProps({
   // { role, content, scripts, pending?, timestamp, phase?, iteration?, promptTokens?, completionTokens?, activity? }
@@ -51,6 +59,19 @@ const isUser = computed(() => props.message.role === 'User');
 const roleLabel = computed(() => (isUser.value ? 'You' : 'KliveAgent'));
 
 const activity = computed(() => (Array.isArray(props.message.activity) ? props.message.activity : []));
+const attachments = computed(() => Array.isArray(props.message.attachments) ? props.message.attachments : []);
+function formatSize(size) { return size < 1024 * 1024 ? `${Math.ceil(size / 1024)} KB` : `${(size / 1024 / 1024).toFixed(1)} MB`; }
+async function downloadAttachment(file) {
+  const query = new URLSearchParams({ conversationId: file.conversationId, id: file.id });
+  const response = await RequestGETFromKliveAPI(`/kliveagent/attachments/download?${query}`, false, false);
+  if (!response.ok) return;
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = file.name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
 
 // Show the status strip while the turn is live, or afterwards if it carried transparency data.
 const showStatus = computed(() =>
@@ -82,6 +103,9 @@ const timeLabel = computed(() => {
 </script>
 
 <style scoped lang="scss">
+.msg-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.msg-file { background: #29292b; color: #ddd; border: 1px solid #444; border-radius: 7px; padding: 5px 8px; cursor: pointer; }
+.msg-file small { color: #aaa; margin-left: 4px; }
 .msg {
   display: flex;
   gap: 12px;

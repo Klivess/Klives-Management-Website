@@ -47,7 +47,9 @@
 
     <!-- ════════════════ CHAT VIEW ════════════════ -->
     <section v-show="view === 'chat'" class="view view-chat">
-      <div class="chat-panel">
+      <div class="chat-panel" @dragenter.prevent="onChatDragEnter" @dragover.prevent="onChatDragOver"
+        @dragleave.prevent="onChatDragLeave" @drop.prevent="onChatDrop">
+        <div v-if="draggingFiles" class="chat-drop-overlay">Drop files here to attach them</div>
         <div class="chat-messages" ref="chatMessages">
           <div v-if="messages.length === 0" class="chat-empty">
             <div class="chat-empty-glyph">◈</div>
@@ -83,6 +85,10 @@
         </div>
 
         <div class="chat-input-row">
+          <label class="chat-attach-btn" :class="{ disabled: !agentReady || loading || sending }" title="Attach files, images, or videos">
+            ＋ File
+            <input type="file" multiple :disabled="!agentReady || loading || sending" @change="chooseAttachments" hidden>
+          </label>
           <textarea
             ref="chatInput"
             v-model="inputMessage"
@@ -97,6 +103,13 @@
             {{ loading ? 'Steer' : 'Send' }}
           </button>
         </div>
+        <div v-if="pendingFiles.length" class="chat-attachments">
+          <span v-for="(file, index) in pendingFiles" :key="index" class="chat-attachment">
+            {{ file.name }} <small>{{ formatAttachmentSize(file.size) }}</small>
+            <button type="button" :disabled="sending" :aria-label="`Remove ${file.name}`" @click="pendingFiles.splice(index, 1)">×</button>
+          </span>
+        </div>
+        <div v-if="attachmentError" class="chat-attachment-error" role="alert">{{ attachmentError }}</div>
         <div v-if="pollConnectionLost" class="chat-reconnect">Connection interrupted — retrying without stopping KliveAgent.</div>
       </div>
 
@@ -263,6 +276,7 @@
 
     <!-- ════════════════ ANALYTICS VIEW ════════════════ -->
     <section v-show="view === 'analytics'" class="view view-analytics">
+      <AgentPromptCachePanel v-if="view === 'analytics'" />
       <div v-if="!analytics?.lifetime" class="view-loading">
         <p>Loading analytics…</p>
         <button @click="loadAnalytics" class="ghost-btn" type="button">Retry</button>
@@ -489,13 +503,14 @@
 
 <script setup>
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
-import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, RequestPUTFromKliveAPI } from '~/scripts/APIInterface';
 import { renderMarkdown } from '~/scripts/agentMarkdown';
 import AgentMessage from '~/components/KliveAgent/AgentMessage.vue';
 import LiveScreen from '~/components/KliveAgent/LiveScreen.vue';
 import ScriptResultCard from '~/components/KliveAgent/ScriptResultCard.vue';
 import AgentStatCard from '~/components/KliveAgent/AgentStatCard.vue';
 import AgentChartCard from '~/components/KliveAgent/AgentChartCard.vue';
+import AgentPromptCachePanel from '~/components/KliveAgent/PromptCachePanel.vue';
 import 'highlight.js/styles/github-dark.css';
 
 definePageMeta({ layout: 'navbar' });
@@ -527,6 +542,48 @@ function setView(v) {
 // ── Chat state ──
 const messages = ref([]);
 const inputMessage = ref('');
+const pendingFiles = ref([]);
+const draggingFiles = ref(false);
+const attachmentError = ref('');
+let dragDepth = 0;
+const maxAttachedFiles = 8;
+function formatAttachmentSize(size) { return size < 1024 * 1024 ? `${Math.ceil(size / 1024)} KB` : `${(size / 1024 / 1024).toFixed(1)} MB`; }
+function addAttachments(files) {
+  attachmentError.value = '';
+  if (!agentReady.value || loading.value || sending.value) {
+    attachmentError.value = 'Wait for the active run to finish before attaching files.';
+    return;
+  }
+  for (const file of files) {
+    if (pendingFiles.value.length >= maxAttachedFiles) { attachmentError.value = `Attach at most ${maxAttachedFiles} files per message.`; break; }
+    if (!file.size || file.size > 100 * 1024 * 1024) {
+      attachmentError.value = `${file.name} is empty or exceeds the 100 MB limit.`;
+      continue;
+    }
+    pendingFiles.value.push(file);
+  }
+}
+function chooseAttachments(event) {
+  addAttachments(Array.from(event.target.files || []));
+  event.target.value = '';
+}
+function isFileDrag(event) { return Array.from(event.dataTransfer?.types || []).includes('Files'); }
+function onChatDragEnter(event) {
+  if (!isFileDrag(event)) return;
+  dragDepth += 1;
+  draggingFiles.value = true;
+}
+function onChatDragOver(event) { if (isFileDrag(event) && event.dataTransfer) event.dataTransfer.dropEffect = 'copy'; }
+function onChatDragLeave() {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) draggingFiles.value = false;
+}
+function onChatDrop(event) {
+  dragDepth = 0;
+  draggingFiles.value = false;
+  const files = Array.from(event.dataTransfer?.files || []);
+  if (files.length) addAttachments(files);
+}
 
 // ── KliveAgent setup readiness (loading bar) ──
 // The backend gates chat until it finishes warming up; talking too early returned "Something went wrong."
@@ -782,7 +839,9 @@ const currentTurnScripts = computed(() => {
   return [];
 });
 
-const isSendDisabled = computed(() => sending.value || !agentReady.value || !inputMessage.value.trim());
+const isSendDisabled = computed(() => sending.value || !agentReady.value
+  || (!inputMessage.value.trim() && !pendingFiles.value.length)
+  || (loading.value && pendingFiles.value.length > 0));
 
 const sendButtonTitle = computed(() => {
   if (!agentReady.value) {
@@ -792,7 +851,7 @@ const sendButtonTitle = computed(() => {
   }
   if (sending.value) return 'Delivering your message…';
   if (loading.value) return 'Send guidance to the active run.';
-  return inputMessage.value.trim() ? 'Start a durable run' : 'Type a message to enable Send.';
+  return inputMessage.value.trim() || pendingFiles.value.length ? 'Start a durable run' : 'Type a message or attach a file to enable Send.';
 });
 
 function autoGrowInput() {
@@ -897,7 +956,8 @@ async function readAgentApiResponse(res) {
 
 async function sendMessage() {
   const msg = inputMessage.value.trim();
-  if (!msg || sending.value || !agentReady.value) return;
+  const selectedFiles = [...pendingFiles.value];
+  if ((!msg && !selectedFiles.length) || sending.value || !agentReady.value || (loading.value && selectedFiles.length)) return;
 
   // Sending is an explicit choice of the currently displayed conversation; invalidate any older
   // conversation-load request that is still in flight.
@@ -913,30 +973,41 @@ async function sendMessage() {
     clientMessageId,
     requestId: activeRequestId || null,
     role: 'User',
-    content: msg,
+    content: msg || 'Please inspect the attached files.',
+    attachments: selectedFiles.map((file) => ({ name: file.name, mimeType: file.type, size: file.size })),
     timestamp: new Date().toISOString(),
     deliveryStatus: 'sending',
   };
   messages.value.push(optimisticMessage);
-  inputMessage.value = '';
-  resetInputHeight();
   sending.value = true;
   liveDismissed.value = false; // allow the live view to auto-open if this run drives the computer
   scrollToBottom(true);
   const isStillSelected = () => conversationId.value === targetConversationId;
 
   try {
+    const uploaded = [];
+    for (const file of selectedFiles) {
+      const query = new URLSearchParams({ conversationId: targetConversationId, name: file.name,
+        contentType: file.type || 'application/octet-stream' });
+      const uploadResponse = await RequestPUTFromKliveAPI(`/kliveagent/attachments/upload?${query}`, file, false);
+      const { data: attachment, rawText: uploadError } = await readAgentApiResponse(uploadResponse);
+      if (!uploadResponse.ok || !attachment?.id) throw new Error(attachment?.error || uploadError || `Could not upload ${file.name}`);
+      uploaded.push(attachment);
+    }
+    optimisticMessage.attachments = uploaded;
     let path = activeRequestId ? '/kliveagent/chat/steer' : '/kliveagent/chat';
     let payload = activeRequestId
       ? { requestId: activeRequestId, message: msg, senderName: 'Website', clientMessageId }
-      : { message: msg, conversationId: targetConversationId, senderName: 'Website', clientMessageId };
+      : { message: msg, conversationId: targetConversationId, senderName: 'Website', clientMessageId,
+          attachmentIds: uploaded.map((file) => file.id) };
     let { response: res, data, rawText } = await postAgentJsonWithRetry(path, payload);
 
     // The run may seal in the instant between typing and POST. In that case the message becomes a
     // fresh turn with the same idempotency key, so steering guidance is never discarded.
     if (activeRequestId && res.status === 409) {
       path = '/kliveagent/chat';
-      payload = { message: msg, conversationId: targetConversationId, senderName: 'Website', clientMessageId };
+      payload = { message: msg, conversationId: targetConversationId, senderName: 'Website', clientMessageId,
+        attachmentIds: uploaded.map((file) => file.id) };
       ({ response: res, data, rawText } = await postAgentJsonWithRetry(path, payload));
     }
 
@@ -950,6 +1021,10 @@ async function sendMessage() {
     }
 
     optimisticMessage.deliveryStatus = 'accepted';
+    inputMessage.value = '';
+    resetInputHeight();
+    pendingFiles.value = [];
+    attachmentError.value = '';
     optimisticMessage.messageId = data.acceptedMessageId || data.messageId || optimisticMessage.messageId;
     optimisticMessage.requestId = data.pendingRequestId || data.requestId || activeRequestId || null;
     const acceptedConversationId = data.conversationId || targetConversationId;
@@ -1450,6 +1525,7 @@ async function loadConversation(convId) {
       requestId: m.requestId,
       role: m.role === 'User' ? 'User' : 'KliveAgent',
       content: m.content,
+      attachments: m.attachments || [],
       // Replay the scripts+outputs the agent ran on this turn (persisted server-side).
       scripts: m.scriptResults || (m.scriptResult ? [m.scriptResult] : []),
       timestamp: m.timestamp,
@@ -1759,6 +1835,14 @@ onUnmounted(() => {
 </script>
 
 <style scoped lang="scss">
+.chat-drop-overlay { position: absolute; inset: 0; z-index: 10; display: grid; place-items: center; pointer-events: none; border: 2px dashed #84bd70; border-radius: 14px; color: #e3f6d9; background: rgba(25, 40, 25, .89); font-size: 18px; font-weight: 700; }
+.chat-attachment-error { color: #f4a6a6; font-size: 12px; padding: 0 12px 8px; }
+.chat-attach-btn { align-self: center; white-space: nowrap; border: 1px solid #414141; border-radius: 7px; padding: 8px; color: #ddd; cursor: pointer; }
+.chat-attach-btn.disabled { opacity: .45; cursor: not-allowed; }
+.chat-attachments { display: flex; flex-wrap: wrap; gap: 6px; padding: 5px 12px 9px; }
+.chat-attachment { border: 1px solid #454545; border-radius: 7px; padding: 4px 7px; color: #eee; background: #262626; }
+.chat-attachment small { color: #aaa; margin-left: 5px; }
+.chat-attachment button { border: 0; background: none; color: #ddd; cursor: pointer; margin-left: 5px; }
 .ka {
   padding: 20px 24px;
   font-family: 'Segoe UI', sans-serif;
@@ -1948,6 +2032,7 @@ onUnmounted(() => {
 }
 
 .chat-panel {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;

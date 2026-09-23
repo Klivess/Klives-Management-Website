@@ -2,7 +2,7 @@
 import { useCookie } from '#imports';
 import Swal from 'sweetalert2';
 
-export { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, RequestPUTFromKliveAPI, RequestBatchFromKliveAPI, VerifyLogin, StartAuthSessionWatch, StopAuthSessionWatch, KMPermissions };
+export { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, RequestPUTFromKliveAPI, RequestBatchFromKliveAPI, PostTelemetryBeacon, VerifyLogin, StartAuthSessionWatch, StopAuthSessionWatch, KMPermissions };
 export type { KliveBatchItem };
 
 const KliveAPIUrl = "https://klive.dev";
@@ -205,6 +205,24 @@ async function RequestBatchFromKliveAPI(paths: string[], signal?: AbortSignal): 
         console.warn('Klive API batch parse failed:', error);
     }
     return map;
+}
+
+// Fire-and-forget telemetry report. Deliberately bypasses the auth-failure handling
+// above: a beacon must never alert, redirect or log anyone out. keepalive lets it
+// complete while the page unloads (sendBeacon can't carry the Authorization header).
+async function PostTelemetryBeacon(body: string) {
+    if (!process.client || !GetLocalPassword()) return;
+    try {
+        await fetch(`${KliveAPIUrl}/KliveAPI/telemetry/rum`, {
+            method: 'POST',
+            mode: 'cors',
+            keepalive: true,
+            body,
+            headers: BuildKliveHeaders(true),
+        });
+    } catch {
+        // Telemetry is best-effort.
+    }
 }
 
 function GetLocalPassword() {

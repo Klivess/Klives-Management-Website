@@ -110,6 +110,7 @@ const NAV_GROUPS = [
     items: [
       { to: '/botSchedule', label: 'Schedule', icon: '◷', minRank: 4 },
       { to: '/admin', label: 'Admin', icon: '★', minRank: 4 },
+      { to: '/administration/api-telemetry', label: 'API telemetry', icon: '⌇', klivesOnly: true },
     ],
   },
 ];

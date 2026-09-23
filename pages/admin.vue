@@ -179,6 +179,10 @@
                             <span class="u-val" :class="apiStats.lifetime.maxResponseMs > 1000 ? 'clr-danger' : apiStats.lifetime.maxResponseMs > 350 ? 'clr-warning' : 'clr-success'">{{ formatMilliseconds(apiStats.lifetime.maxResponseMs) }}</span>
                             <span class="u-lbl">Max Response</span>
                         </div>
+                        <NuxtLink to="/administration/api-telemetry" class="u-stat api-telemetry-link">
+                            <span class="u-val clr-accent">Open telemetry →</span>
+                            <span class="u-lbl">Percentiles, stages, per-route, client timing</span>
+                        </NuxtLink>
                     </div>
 
                     <div class="api-chart-grid">
@@ -232,7 +236,7 @@
                 <div class="api-route-list">
                     <div v-for="route in apiStats.topRoutes" :key="`top-${route.method}-${route.route}`" class="api-route-row">
                         <div class="api-route-copy">
-                            <span class="api-route-name">{{ route.method }} {{ route.route }}</span>
+                            <NuxtLink class="api-route-name" :to="{ path: '/administration/api-telemetry', query: { tab: 'routes', route: route.route, method: route.method } }">{{ route.method }} {{ route.route }}</NuxtLink>
                             <span class="api-route-meta">{{ route.requests.toLocaleString() }} requests · Avg {{ formatMilliseconds(route.avgResponseMs) }}</span>
                         </div>
                         <span class="api-route-chip">{{ route.successes.toLocaleString() }} ok</span>
@@ -245,7 +249,7 @@
                 <div class="api-route-list">
                     <div v-for="route in apiStats.slowestRoutes" :key="`slow-${route.method}-${route.route}`" class="api-route-row">
                         <div class="api-route-copy">
-                            <span class="api-route-name">{{ route.method }} {{ route.route }}</span>
+                            <NuxtLink class="api-route-name" :to="{ path: '/administration/api-telemetry', query: { tab: 'routes', route: route.route, method: route.method } }">{{ route.method }} {{ route.route }}</NuxtLink>
                             <span class="api-route-meta">Avg {{ formatMilliseconds(route.avgResponseMs) }} · Peak {{ formatMilliseconds(route.maxResponseMs) }}</span>
                         </div>
                         <span class="api-route-chip api-route-chip-danger">{{ route.requests.toLocaleString() }} hits</span>
@@ -1934,6 +1938,8 @@ export default {
 }
 
 /* KliveAPI Statistics */
+.api-telemetry-link { text-decoration: none; }
+.api-telemetry-link:hover .u-val { text-decoration: underline; }
 .api-stats-container {
     display: flex;
     flex-direction: column;

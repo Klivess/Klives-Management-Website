@@ -992,7 +992,18 @@ export default {
         async fetchJson(url, key = null) {
             if (key) this.loading[key] = true;
             try {
-                const r = await RequestGETFromKliveAPI(url, false, false);
+                const deadline = Date.now() + 15_000;
+                let delayMs = 200;
+                let r;
+                while (true) {
+                    r = await RequestGETFromKliveAPI(url, false, false);
+                    const pending = r.status === 202 ||
+                        (r.status === 503 && (await r.clone().json().catch(() => null))?.pending === true);
+                    if (!pending) break;
+                    if (Date.now() + delayMs >= deadline) throw new Error('Snapshot is still refreshing.');
+                    await new Promise(resolve => setTimeout(resolve, delayMs));
+                    delayMs = Math.min(1_000, delayMs * 2);
+                }
                 if (!r.ok) { this.loadError = `Request failed: ${url} (${r.status})`; return null; }
                 this.loadError = null;
                 return await r.json();

@@ -24,7 +24,16 @@ async function fetchJson(path: string): Promise<any> {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 15_000);
         try {
-            const res = await RequestGETFromKliveAPI(path, false, false, {}, controller.signal);
+            let res = await RequestGETFromKliveAPI(path, false, false, {}, controller.signal);
+            // A first custom query is materialized off the API request thread. The
+            // server answers 202 immediately; retry briefly until its snapshot is
+            // published instead of rendering the pending marker as chart data.
+            let pendingDelayMs = 200;
+            while (res.status === 202 && !controller.signal.aborted) {
+                await new Promise(resolve => setTimeout(resolve, pendingDelayMs));
+                pendingDelayMs = Math.min(1_000, pendingDelayMs * 2);
+                res = await RequestGETFromKliveAPI(path, false, false, {}, controller.signal);
+            }
             if (!res.ok) throw new Error(`${res.status} ${await res.text().catch(() => '')}`.trim());
             const data = await res.json();
             snapshots.set(path, { data, at: Date.now() });

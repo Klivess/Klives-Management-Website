@@ -65,8 +65,8 @@
     <div v-if="loading && !snapshot" class="state-card" role="status">
       <span class="loading-spinner" aria-hidden="true"></span>
       <div>
-        <strong>Reading the usage journals</strong>
-        <p>Collecting recorded input, cache-read and output tokens for every project in the window.</p>
+        <strong>Preparing the cost snapshot</strong>
+        <p>Collecting recorded input, cache-read and output tokens in the background.</p>
       </div>
     </div>
 
@@ -496,19 +496,40 @@ async function load(forceRefresh = false) {
   loading.value = true;
   error.value = '';
   try {
-    const response = await RequestGETFromKliveAPI(
-      `/projects/cost-simulator?${query}`,
-      false,
-      false,
-      forceRefresh ? { 'Cache-Control': 'no-cache' } : {},
-      controller.signal,
-    );
-    if (generation !== requestGeneration) return;
-    if (!response.ok) {
-      const detail = (await response.text().catch(() => '')).trim();
-      throw new Error(detail || `Request failed with HTTP ${response.status}.`);
+    let payload: Snapshot;
+    const deadline = Date.now() + 6 * 60_000;
+    for (;;) {
+      const response = await RequestGETFromKliveAPI(
+        `/projects/cost-simulator?${query}`,
+        false,
+        false,
+        forceRefresh || query.has('after') ? { 'Cache-Control': 'no-cache' } : {},
+        controller.signal,
+      );
+      if (generation !== requestGeneration) return;
+      if (response.status === 202) {
+        const pending = await response.json() as {
+          pending?: boolean; after?: string; from?: string; to?: string;
+        };
+        if (!pending.pending || !pending.after || Date.now() >= deadline)
+          throw new Error('The cost simulator is still preparing this range. Try again shortly.');
+        query.delete('fresh');
+        query.set('after', pending.after);
+        if (pending.from && pending.to) {
+          query.set('from', pending.from);
+          query.set('to', pending.to);
+        }
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        if (generation !== requestGeneration) return;
+        continue;
+      }
+      if (!response.ok) {
+        const detail = (await response.text().catch(() => '')).trim();
+        throw new Error(detail || `Request failed with HTTP ${response.status}.`);
+      }
+      payload = await response.json() as Snapshot;
+      break;
     }
-    const payload = await response.json() as Snapshot;
     if (generation !== requestGeneration) return;
     payload.projects = Array.isArray(payload.projects) ? payload.projects : [];
     payload.models = Array.isArray(payload.models) ? payload.models : [];

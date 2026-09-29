@@ -283,6 +283,7 @@
       </div>
 
       <template v-else>
+        <AgentPerformancePanel :performance="analytics.performance" />
         <div class="dash-header">
           <div>
             <h2 class="section-title">Usage &amp; Performance</h2>
@@ -511,6 +512,7 @@ import ScriptResultCard from '~/components/KliveAgent/ScriptResultCard.vue';
 import AgentStatCard from '~/components/KliveAgent/AgentStatCard.vue';
 import AgentChartCard from '~/components/KliveAgent/AgentChartCard.vue';
 import AgentPromptCachePanel from '~/components/KliveAgent/PromptCachePanel.vue';
+import AgentPerformancePanel from '~/components/KliveAgent/PerformancePanel.vue';
 import 'highlight.js/styles/github-dark.css';
 
 definePageMeta({ layout: 'navbar' });
@@ -1307,6 +1309,7 @@ function normalizeAnalytics(data) {
     weeklyHistory,
     monthlyHistory,
     topCapabilities: Array.isArray(data?.topCapabilities) ? data.topCapabilities : [],
+    performance: data?.performance && typeof data.performance === 'object' ? data.performance : null,
   };
 }
 

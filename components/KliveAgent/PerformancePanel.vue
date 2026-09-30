@@ -36,11 +36,13 @@
           <h4>Recent runs</h4>
           <div class="performance-table-wrap">
             <table class="performance-table">
-              <thead><tr><th>Started</th><th>Result</th><th>Time</th><th>Steps</th><th>Model</th><th>Tools</th></tr></thead>
+              <thead><tr><th>Started</th><th>Result</th><th>Time</th><th>First text</th><th>Steps</th><th>Model</th><th>Tools</th></tr></thead>
               <tbody>
                 <tr v-for="(run, i) in performance.recent.slice(0, 12)" :key="`${run.startedAtUtc}-${i}`">
                   <td>{{ new Date(run.startedAtUtc).toLocaleString() }}</td><td>{{ run.outcome }}</td>
-                  <td>{{ duration(run.durationMs) }}</td><td>{{ run.iterations }}</td>
+                  <td>{{ duration(run.durationMs) }}</td>
+                  <td>{{ run.stages?.firstVisibleText ? duration(run.stages.firstVisibleText.totalMs) : '—' }}</td>
+                  <td>{{ run.iterations }}</td>
                   <td>{{ duration(run.stages?.model?.totalMs) }} / {{ run.stages?.model?.count || 0 }}</td>
                   <td>{{ duration(toolMs(run)) }}</td>
                 </tr>
@@ -49,7 +51,7 @@
           </div>
         </div>
       </div>
-      <p class="performance-note">Preparation includes prompt building and attachments. First token is part of model time. Tool time may overlap model time when read-only calls start early.</p>
+      <p class="performance-note">First text measures run start to the first streamed text update on the server; network delivery adds time. First token measures each model request. Preparation includes prompt building and attachments. Stage times can overlap.</p>
     </template>
   </section>
 </template>
@@ -61,6 +63,7 @@ const labels = {
   preparation: 'Preparation', systemPrompt: 'System prompt', conversationPrompt: 'Conversation history',
   toolDefinitions: 'Tool definitions', attachments: 'Attachments', model: 'Model requests',
   firstToken: 'First token', modelError: 'Model errors', modelRetry: 'Model retries', retryBackoff: 'Retry wait',
+  firstVisibleText: 'Run start to first text',
   script: 'C# scripts', nativeTool: 'Native tools', computerTool: 'Computer control', waitTool: 'Explicit waits',
 };
 const stageLabel = (name) => labels[name] || name;

@@ -604,6 +604,7 @@ const chatInput = ref(null);
 const pollConnectionLost = ref(false);
 let componentActive = false;
 let pollGeneration = 0;
+let pendingPollAbort = null;
 let conversationLoadGeneration = 0;
 let sideDataHandle = null;
 
@@ -653,6 +654,8 @@ function rememberConversation(id) {
 function detachLocalRun() {
   // Invalidating the generation stops only this component's poll loop. The backend run continues.
   pollGeneration += 1;
+  pendingPollAbort?.abort();
+  pendingPollAbort = null;
   pendingRequestId.value = null;
   loading.value = false;
   pollConnectionLost.value = false;
@@ -753,6 +756,7 @@ function attachRun(run) {
   pendingRequestId.value = run.requestId;
   loading.value = true;
   pollConnectionLost.value = false;
+  pendingPollAbort?.abort();
   const generation = ++pollGeneration;
   void pollPendingResponse(run.requestId, generation);
 }
@@ -1111,6 +1115,8 @@ function waitForPendingPoll(ms) {
 
 async function pollPendingResponse(requestId, generation) {
   let failures = 0;
+  const controller = new AbortController();
+  pendingPollAbort = controller;
   const attachedConversationId = conversationId.value;
   const isStillAttached = () => componentActive
     && generation === pollGeneration
@@ -1118,7 +1124,11 @@ async function pollPendingResponse(requestId, generation) {
     && conversationId.value === attachedConversationId;
   while (componentActive && generation === pollGeneration && pendingRequestId.value === requestId) {
     try {
-      const res = await RequestGETFromKliveAPI(`/kliveagent/chat/pending?requestId=${encodeURIComponent(requestId)}&_t=${Date.now()}`);
+      const afterSequence = Number(findRunMessage(requestId)?.sequence) || 0;
+      const res = await RequestGETFromKliveAPI(
+        `/kliveagent/chat/pending?requestId=${encodeURIComponent(requestId)}&afterSequence=${afterSequence}&waitMs=15000&_t=${Date.now()}`,
+        true, true, {}, controller.signal,
+      );
       const { data, rawText } = await readAgentApiResponse(res);
       if (!isStillAttached()) return;
 
@@ -1135,7 +1145,9 @@ async function pollPendingResponse(requestId, generation) {
       if (data.status === 'Running') {
         message.pending = true;
         scrollToBottom();
-        await waitForPendingPoll(600);
+        // New servers wait for progress and return immediately when it arrives. Retain bounded
+        // polling during a rolling deployment against servers that do not support waiting yet.
+        if (res.headers.get('X-Klive-Pending-Wait') !== 'supported') await waitForPendingPoll(600);
         continue;
       }
 

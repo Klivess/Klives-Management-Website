@@ -20,7 +20,7 @@
                 />
                 <KMButton 
                     message="🔄 Refresh"
-                    @click="fetchAnalytics"
+                    @click="refreshAll"
                     :class="{ 'spinning': isLoading }"
                     style="flex: 1;"
                 />
@@ -46,6 +46,157 @@
 
         <!-- Main Content (hidden when loading initially) -->
         <div v-show="analytics !== null" class="main-content fade-in">
+        <!-- Scraper Health: live scheduler/provider status, manual scrapes and provider checks -->
+        <MemescraperOverviewSection
+            title="Scraper Health"
+            subtitle="Is the scraper actually working? Live status of the scheduler, providers and recent runs"
+        >
+            <div class="health-panel">
+                <div class="health-top">
+                    <div class="health-overall" :class="overallHealth.level">
+                        <span class="health-dot" :class="{ pulsing: isScraperBusy }"></span>
+                        <div>
+                            <div class="health-overall-title">{{ overallHealth.label }}</div>
+                            <div class="health-overall-detail">{{ overallHealth.detail }}</div>
+                        </div>
+                    </div>
+                    <div class="health-actions">
+                        <KMButton
+                            :message="scrapeAllLabel"
+                            @click="scrapeAllSources"
+                            :disabled="isRequestingScrape || !health"
+                        />
+                        <KMButton
+                            :message="isProviderCheckRunning ? '🩺 Checking…' : '🩺 Check Providers'"
+                            @click="startProviderCheck"
+                            :disabled="isProviderCheckRunning || isRequestingScrape || !health"
+                        />
+                    </div>
+                </div>
+
+                <div v-if="healthError && !health" class="health-unavailable">
+                    ⚠ Couldn't load scraper health: {{ healthError }}
+                </div>
+
+                <template v-if="health">
+                    <div class="health-facts">
+                        <div class="health-fact">
+                            <span class="fact-label">Scheduler</span>
+                            <span class="fact-value">{{ schedulerText }}</span>
+                        </div>
+                        <div class="health-fact">
+                            <span class="fact-label">Running now</span>
+                            <span class="fact-value">{{ health.CurrentScrape || 'Nothing' }}<template v-if="health.ScrapeQueued > 1"> · {{ health.ScrapeQueued - 1 }} more queued</template></span>
+                        </div>
+                        <div class="health-fact">
+                            <span class="fact-label">Interval</span>
+                            <span class="fact-value">Every {{ health.ScrapeIntervalHours || 24 }}h per source</span>
+                        </div>
+                        <div class="health-fact">
+                            <span class="fact-label">Scheduler tick</span>
+                            <span class="fact-value">{{ relativeTime(health.LastSchedulerTickUtc) }}</span>
+                        </div>
+                        <div class="health-fact">
+                            <span class="fact-label">Reels on disk</span>
+                            <span class="fact-value">{{ formatNumber(health.ReelsOnDisk || 0) }}</span>
+                        </div>
+                        <div class="health-fact">
+                            <span class="fact-label">Failing sources</span>
+                            <span class="fact-value" :class="{ 'text-bad': health.FailingSources > 0 }">{{ health.FailingSources }} / {{ health.Sources?.length || 0 }}</span>
+                        </div>
+                    </div>
+
+                    <div class="providers-grid">
+                        <div
+                            v-for="provider in health.Providers"
+                            :key="provider.Name"
+                            class="provider-card"
+                            :class="providerLevel(provider)"
+                        >
+                            <div class="provider-header">
+                                <div>
+                                    <h4 class="provider-name">{{ providerTitle(provider.Name) }}</h4>
+                                    <p class="provider-role">{{ providerRole(provider.Name) }}</p>
+                                </div>
+                                <span class="provider-badge" :class="providerLevel(provider)">{{ providerStatusText(provider) }}</span>
+                            </div>
+                            <div class="provider-stats">
+                                <div><span class="fact-label">Last success</span><span class="fact-value">{{ relativeTime(provider.LastSuccess) }}</span></div>
+                                <div><span class="fact-label">Last failure</span><span class="fact-value">{{ relativeTime(provider.LastFailure) }}</span></div>
+                                <div><span class="fact-label">Runs ok / failed</span><span class="fact-value">{{ provider.TotalSuccesses }} / {{ provider.TotalFailures }}</span></div>
+                            </div>
+                            <div v-if="isBenched(provider)" class="provider-note warn">
+                                Skipped until {{ relativeTime(provider.BenchedUntil) }} after {{ provider.ConsecutiveFailures }} failures in a row. A passing provider check re-enables it immediately.
+                            </div>
+                            <div v-if="provider.ConsecutiveFailures > 0 && provider.LastError" class="provider-note bad">
+                                {{ provider.LastError }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="health.ProviderCheck" class="provider-check">
+                        <div class="provider-check-header">
+                            <h4>
+                                Provider check on @{{ health.ProviderCheck.Username }}
+                                <span v-if="health.ProviderCheck.State !== 'complete'" class="inline-spinner"></span>
+                            </h4>
+                            <span class="provider-check-meta">
+                                {{ providerCheckStateText }} · by {{ health.ProviderCheck.RequestedBy }}
+                            </span>
+                        </div>
+                        <div v-if="!health.ProviderCheck.Results?.length" class="provider-check-empty">
+                            {{ health.ProviderCheck.State === 'queued' ? 'Waiting for the current scrape to finish…' : 'Testing inflact first, then Instagram (about a minute)…' }}
+                        </div>
+                        <div v-for="result in health.ProviderCheck.Results" :key="result.Provider" class="check-row" :class="result.Ok ? 'good' : 'bad'">
+                            <span class="check-icon">{{ result.Ok ? '✓' : '✗' }}</span>
+                            <div class="check-body">
+                                <div class="check-title">
+                                    {{ providerTitle(result.Provider) }}
+                                    <span class="check-detail">
+                                        {{ result.Listed }} listed · {{ result.Reels }} usable · {{ result.Pages }} page(s) · {{ (result.DurationMs / 1000).toFixed(1) }}s
+                                    </span>
+                                </div>
+                                <div v-if="result.DownloadOk !== null && result.DownloadOk !== undefined" class="check-detail">
+                                    Test download:
+                                    <template v-if="result.DownloadOk">{{ formatBytes(result.DownloadBytes) }} from {{ result.DownloadHost }}</template>
+                                    <template v-else>failed — {{ result.DownloadError }}</template>
+                                </div>
+                                <div v-if="result.Note" class="check-detail">{{ result.Note }}</div>
+                                <div v-if="result.Error" class="check-error">{{ result.Error }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="recent-scrapes">
+                        <h4>Recent scrapes</h4>
+                        <div v-if="!health.RecentScrapes?.length" class="no-content">
+                            <p>No scrapes since the server last started.</p>
+                        </div>
+                        <div v-else class="scrape-table">
+                            <div class="scrape-row scrape-head">
+                                <span>When</span><span>Source</span><span>Trigger</span><span>Seen</span><span>New</span><span>Saved</span><span>Result</span>
+                            </div>
+                            <div
+                                v-for="report in health.RecentScrapes.slice(0, 12)"
+                                :key="report.Username + report.StartedUtc"
+                                class="scrape-row"
+                                :class="report.Error ? 'bad' : (report.DownloadFailures > 0 ? 'warn' : 'good')"
+                                :title="report.ProviderSummary || ''"
+                            >
+                                <span>{{ relativeTime(report.FinishedUtc || report.StartedUtc) }}</span>
+                                <span>@{{ report.Username }}</span>
+                                <span>{{ formatTrigger(report.Trigger) }}</span>
+                                <span>{{ report.ReelsFound }}</span>
+                                <span>{{ report.NewReels }}</span>
+                                <span>{{ report.Downloaded }}<template v-if="report.DownloadFailures"> ({{ report.DownloadFailures }} failed)</template></span>
+                                <span class="scrape-result">{{ report.Error ? '✗ ' + report.Error : '✓ ' + (report.ProviderSummary || 'ok') }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </MemescraperOverviewSection>
+
         <!-- Key Metrics Overview -->
         <MemescraperOverviewSection 
             title="Key Metrics"
@@ -202,7 +353,16 @@
                                 </span>
                             </div>
                             <div class="source-actions">
-                                <button 
+                                <button
+                                    class="scrape-button"
+                                    :class="{ busy: isSourceScraping(source) }"
+                                    @click="scrapeSource(source)"
+                                    :disabled="isSourceScraping(source) || isRequestingScrape"
+                                    :title="isSourceScraping(source) ? 'Scraping now…' : 'Scrape this source now'"
+                                >
+                                    {{ isSourceScraping(source) ? '⏳' : '▶' }}
+                                </button>
+                                <button
                                     class="delete-button"
                                     @click="showDeleteConfirmation(source)"
                                     title="Delete source"
@@ -261,6 +421,33 @@
                             <div class="date-item">
                                 <span class="date-label">Last Scraped</span>
                                 <span class="date-value">{{ formatDate(source.LastScraped) }}</span>
+                            </div>
+                        </div>
+
+                        <div class="source-health" :class="sourceLevel(liveSource(source))">
+                            <div class="source-health-grid">
+                                <div class="date-item">
+                                    <span class="date-label">Next Scrape</span>
+                                    <span class="date-value">{{ isSourceScraping(source) ? 'Running now' : relativeTime(liveSource(source).NextScrapeDueUtc) }}</span>
+                                </div>
+                                <div class="date-item">
+                                    <span class="date-label">Last Run</span>
+                                    <span class="date-value">
+                                        <template v-if="liveSource(source).LastScrapeAttemptUtc">
+                                            {{ liveSource(source).LastScrapeReelsDownloaded ?? 0 }} new of {{ liveSource(source).LastScrapeReelsFound ?? 0 }} seen
+                                        </template>
+                                        <template v-else>Not yet</template>
+                                    </span>
+                                </div>
+                            </div>
+                            <div v-if="(liveSource(source).ConsecutiveScrapeFailures ?? 0) > 0" class="source-health-msg bad">
+                                ✗ {{ liveSource(source).ConsecutiveScrapeFailures }} failed scrape{{ liveSource(source).ConsecutiveScrapeFailures === 1 ? '' : 's' }} in a row — {{ liveSource(source).LastScrapeError }}
+                            </div>
+                            <div v-else-if="liveSource(source).LastScrapeError" class="source-health-msg warn">
+                                ⚠ {{ liveSource(source).LastScrapeError }}
+                            </div>
+                            <div v-if="liveSource(source).LastScrapeSummary" class="source-health-summary">
+                                {{ liveSource(source).LastScrapeSummary }}
                             </div>
                         </div>
 
@@ -470,7 +657,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, nextTick } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import KMButton from '~/components/KMButton.vue';
@@ -511,6 +698,84 @@ interface InstagramSource {
     LastScraped: string;
     LastUpdated: string;
     Niches: Niche[];
+    // Scrape health (UTC), written by the scraper after every run
+    NextScrapeDueUtc?: string | null;
+    LastScrapeAttemptUtc?: string | null;
+    LastSuccessfulScrapeUtc?: string | null;
+    ConsecutiveScrapeFailures?: number;
+    LastScrapeError?: string | null;
+    LastScrapeSummary?: string | null;
+    LastScrapeReelsFound?: number;
+    LastScrapeReelsDownloaded?: number;
+    LastScrapeDownloadFailures?: number;
+    TotalReelsDownloaded?: number;
+}
+
+interface ProviderHealth {
+    Name: string;
+    ConsecutiveFailures: number;
+    TotalSuccesses: number;
+    TotalFailures: number;
+    LastSuccess: string | null;
+    LastFailure: string | null;
+    LastError: string | null;
+    BenchedUntil: string | null;
+}
+
+interface ScrapeReport {
+    Username: string;
+    Trigger: string;
+    StartedUtc: string;
+    FinishedUtc: string | null;
+    ProviderSummary: string | null;
+    ReelsFound: number;
+    NewReels: number;
+    Downloaded: number;
+    DownloadFailures: number;
+    Error: string | null;
+    Notes: string[];
+}
+
+interface ProviderCheckResult {
+    Provider: string;
+    Ok: boolean;
+    Listed: number;
+    Reels: number;
+    Pages: number;
+    DurationMs: number;
+    Error: string | null;
+    Note: string | null;
+    DownloadOk: boolean | null;
+    DownloadBytes: number;
+    DownloadHost: string | null;
+    DownloadError: string | null;
+}
+
+interface ProviderCheckRun {
+    Username: string;
+    RequestedBy: string;
+    State: 'queued' | 'running' | 'complete';
+    QueuedUtc: string;
+    StartedUtc: string | null;
+    FinishedUtc: string | null;
+    Results: ProviderCheckResult[];
+}
+
+interface ScraperHealth {
+    GeneratedUtc: string;
+    OnServer: boolean;
+    SchedulerState: string;
+    LastSchedulerTickUtc: string | null;
+    NextScrapeDueUtc: string | null;
+    CurrentScrape: string | null;
+    ReelsOnDisk: number;
+    Providers: ProviderHealth[];
+    FailingSources: number;
+    Sources: (Partial<InstagramSource> & { AccountID: string; Username: string })[];
+    RecentScrapes: ScrapeReport[];
+    ProviderCheck: ProviderCheckRun | null;
+    ScrapeIntervalHours: number;
+    ScrapeQueued: number;
 }
 
 interface InstagramReel {
@@ -681,6 +946,9 @@ const submitNewSource = async (): Promise<void> => {
             setTimeout(async () => {
                 await fetchAnalytics();
             }, 500);
+            // The lookup runs in the background on the server; health shows the new source once it lands.
+            wasBusy = true;
+            scheduleHealthPoll();
         } else {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.message || 'Failed to add Instagram source');
@@ -700,20 +968,301 @@ const submitNewSource = async (): Promise<void> => {
     }
 };
 
+// ───────────── Scraper health, manual scrapes, provider checks ─────────────
+
+const swalTheme = { confirmButtonColor: '#4d9e39', background: '#161516', color: '#ffffff' };
+
+const health = ref<ScraperHealth | null>(null);
+const healthError = ref<string>('');
+const isRequestingScrape = ref<boolean>(false);
+const now = ref<number>(Date.now());
+let healthTimer: ReturnType<typeof setTimeout> | null = null;
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+let wasBusy = false;
+let unmounted = false;
+
+const isProviderCheckRunning = computed((): boolean =>
+    !!health.value?.ProviderCheck && health.value.ProviderCheck.State !== 'complete');
+
+const isScraperBusy = computed((): boolean =>
+    !!health.value && (!!health.value.CurrentScrape || (health.value.ScrapeQueued || 0) > 0 || isProviderCheckRunning.value));
+
+const fetchHealth = async (): Promise<void> => {
+    try {
+        const response = await RequestGETFromKliveAPI('/memescraper/scraperHealth', false, false);
+        if (response.ok) {
+            health.value = await response.json();
+            healthError.value = '';
+            now.value = Date.now(); // keep relative times consistent with the snapshot just received
+        } else {
+            healthError.value = response.status === 404
+                ? 'the server is running a MemeScraper build without health reporting'
+                : `HTTP ${response.status}`;
+        }
+    } catch (error) {
+        healthError.value = error instanceof Error ? error.message : String(error);
+    }
+};
+
+// Poll fast while something is running (so results appear live), slowly otherwise.
+const scheduleHealthPoll = (): void => {
+    if (unmounted) return;
+    if (healthTimer) clearTimeout(healthTimer);
+    healthTimer = setTimeout(async () => {
+        await fetchHealth();
+        const busy = isScraperBusy.value;
+        if (wasBusy && !busy) {
+            // A scrape just finished: pull in the reels it downloaded.
+            fetchAnalytics(true);
+        }
+        wasBusy = busy;
+        scheduleHealthPoll();
+    }, isScraperBusy.value ? 4000 : 30000);
+};
+
+const refreshAll = (): void => {
+    fetchAnalytics();
+    fetchHealth();
+};
+
+// Health's per-source records are fresher than analytics' (they change every run); overlay them.
+const healthByAccount = computed(() => {
+    const map = new Map<string, Partial<InstagramSource>>();
+    health.value?.Sources?.forEach(s => map.set(s.AccountID, s));
+    return map;
+});
+
+const liveSource = (source: InstagramSource): InstagramSource =>
+    ({ ...source, ...(healthByAccount.value.get(source.AccountID) || {}) }) as InstagramSource;
+
+const isSourceScraping = (source: InstagramSource): boolean =>
+    !!health.value?.CurrentScrape?.startsWith(`@${source.Username} (`);
+
+const scrapeAllLabel = computed((): string => {
+    if (isRequestingScrape.value) return 'Queuing…';
+    const queued = health.value?.ScrapeQueued || 0;
+    return queued > 0 ? `▶ Scrape All (${queued} pending)` : '▶ Scrape All Now';
+});
+
+const requestScrape = async (query: string, successText: string): Promise<void> => {
+    isRequestingScrape.value = true;
+    try {
+        const response = await RequestPOSTFromKliveAPI(query, '', false);
+        if (response.status === 202) {
+            Swal.fire({ ...swalTheme, toast: true, position: 'top-end', icon: 'success', title: successText, showConfirmButton: false, timer: 2500 });
+            wasBusy = true;
+            await fetchHealth();
+            scheduleHealthPoll();
+        } else if (response.status !== 401 && response.status !== 403) { // auth failures are already reported by APIInterface
+            const body = await response.json().catch(() => ({}));
+            throw new Error(body.error || `Request failed (HTTP ${response.status})`);
+        }
+    } catch (error) {
+        Swal.fire({ ...swalTheme, icon: 'error', title: 'Scrape not started', text: error instanceof Error ? error.message : String(error) });
+    } finally {
+        isRequestingScrape.value = false;
+    }
+};
+
+const scrapeAllSources = async (): Promise<void> => {
+    const count = analytics.value?.InstagramSources?.filter(s => s.DownloadReels).length || 0;
+    const confirmation = await Swal.fire({
+        ...swalTheme,
+        icon: 'question',
+        title: 'Scrape every source now?',
+        text: `Queues ${count} reel source${count === 1 ? '' : 's'}. They run one at a time, so this can take a while; progress shows in Scraper Health.`,
+        showCancelButton: true,
+        confirmButtonText: 'Scrape all',
+        cancelButtonColor: '#3a3a3a'
+    });
+    if (!confirmation.isConfirmed) return;
+    await requestScrape('/memescraper/scrapeNow', `Queued ${count} source${count === 1 ? '' : 's'} for scraping`);
+};
+
+const scrapeSource = async (source: InstagramSource): Promise<void> => {
+    await requestScrape(`/memescraper/scrapeNow?sourceAccountID=${encodeURIComponent(source.AccountID)}`, `Scraping @${source.Username}…`);
+};
+
+const defaultCheckUsername = computed((): string => {
+    const sources = (analytics.value?.InstagramSources || []).map(liveSource).filter(s => s.DownloadReels);
+    sources.sort((a, b) => (parseUtc(b.LastSuccessfulScrapeUtc)?.getTime() || 0) - (parseUtc(a.LastSuccessfulScrapeUtc)?.getTime() || 0));
+    return sources[0]?.Username || '';
+});
+
+const startProviderCheck = async (): Promise<void> => {
+    const input = await Swal.fire({
+        ...swalTheme,
+        title: 'Check providers',
+        text: 'Runs inflact and Instagram separately against one account and test-downloads a reel from each, so you can see exactly which one is broken. Takes about a minute.',
+        input: 'text',
+        inputValue: defaultCheckUsername.value,
+        inputPlaceholder: 'Instagram username with reels',
+        showCancelButton: true,
+        confirmButtonText: 'Run check',
+        cancelButtonColor: '#3a3a3a',
+        inputValidator: (value: string) => (!value || !value.trim() ? 'Enter a username' : undefined)
+    });
+    if (!input.isConfirmed) return;
+    const username = String(input.value).trim().replace(/^@/, '');
+    isRequestingScrape.value = true;
+    try {
+        const response = await RequestPOSTFromKliveAPI(`/memescraper/diagnoseProviders?username=${encodeURIComponent(username)}`, '', false);
+        if (response.status === 202 || response.status === 409) {
+            if (response.status === 409) {
+                Swal.fire({ ...swalTheme, toast: true, position: 'top-end', icon: 'info', title: 'A provider check is already running', showConfirmButton: false, timer: 2500 });
+            }
+            await fetchHealth();
+            scheduleHealthPoll();
+        } else if (response.status !== 401 && response.status !== 403) {
+            const body = await response.json().catch(() => ({}));
+            throw new Error(body.error || `Request failed (HTTP ${response.status})`);
+        }
+    } catch (error) {
+        Swal.fire({ ...swalTheme, icon: 'error', title: 'Check not started', text: error instanceof Error ? error.message : String(error) });
+    } finally {
+        isRequestingScrape.value = false;
+    }
+};
+
+const overallHealth = computed((): { level: string; label: string; detail: string } => {
+    const h = health.value;
+    if (!h) {
+        return { level: 'unknown', label: healthError.value ? 'Health unavailable' : 'Loading health…', detail: healthError.value };
+    }
+    const providers = h.Providers || [];
+    const failingProviders = providers.filter(p => p.ConsecutiveFailures > 0);
+    const totalSources = h.Sources?.length || 0;
+    if (h.SchedulerState?.startsWith('failed') || h.SchedulerState?.startsWith('tick failed')) {
+        return { level: 'bad', label: 'Scheduler broken', detail: h.SchedulerState };
+    }
+    if (providers.length > 0 && failingProviders.length === providers.length) {
+        return { level: 'bad', label: 'Scraping is failing', detail: `Every provider is failing: ${failingProviders[0].LastError || 'see below'}` };
+    }
+    if (h.FailingSources > 0) {
+        const all = h.FailingSources >= totalSources;
+        return {
+            level: all ? 'bad' : 'warn',
+            label: all ? 'Scraping is failing' : 'Degraded',
+            detail: `${h.FailingSources} of ${totalSources} source${totalSources === 1 ? '' : 's'} failed their last scrape`
+        };
+    }
+    if (failingProviders.length > 0) {
+        return { level: 'warn', label: 'Degraded', detail: `${failingProviders.map(p => providerTitle(p.Name)).join(', ')} failing; scrapes are using the other provider` };
+    }
+    if (h.CurrentScrape) {
+        return { level: 'good', label: 'Scraping', detail: h.CurrentScrape };
+    }
+    if (h.SchedulerState?.startsWith('paused')) {
+        return { level: 'warn', label: 'Paused', detail: h.SchedulerState };
+    }
+    if (!h.OnServer) {
+        return { level: 'idle', label: 'Not scheduling here', detail: 'Scheduled scrapes only run on the server. Manual scrapes and provider checks still work.' };
+    }
+    const lastOk = providers.map(p => parseUtc(p.LastSuccess)).filter((d): d is Date => !!d).sort((a, b) => a.getTime() - b.getTime()).pop();
+    return { level: 'good', label: 'Healthy', detail: lastOk ? `Last successful scrape ${relativeTime(lastOk.toISOString())}` : 'No scrapes yet since the server started' };
+});
+
+const schedulerText = computed((): string => {
+    const state = health.value?.SchedulerState || '';
+    if (!state) return '—';
+    if (state === 'idle' || state.startsWith('idle,')) {
+        return health.value?.NextScrapeDueUtc ? `Idle · next scrape ${relativeTime(health.value.NextScrapeDueUtc)}` : 'Idle';
+    }
+    return state.charAt(0).toUpperCase() + state.slice(1);
+});
+
+const providerTitle = (name: string): string =>
+    ({ inflact: 'inflact.com', instagram: 'Instagram (direct)' } as Record<string, string>)[name] || name;
+
+const providerRole = (name: string): string =>
+    ({
+        inflact: 'Primary · full reel history through inflact’s API',
+        instagram: 'Fallback · newest ~12 reels straight from Instagram; also refreshes expired video links'
+    } as Record<string, string>)[name] || '';
+
+const isBenched = (provider: ProviderHealth): boolean => {
+    const until = parseUtc(provider.BenchedUntil);
+    return !!until && until.getTime() > now.value;
+};
+
+const providerLevel = (provider: ProviderHealth): string => {
+    if (isBenched(provider)) return 'bad';
+    if (provider.ConsecutiveFailures > 0) return 'warn';
+    if (provider.TotalSuccesses > 0) return 'good';
+    return 'idle';
+};
+
+const providerStatusText = (provider: ProviderHealth): string => {
+    if (isBenched(provider)) return 'Benched';
+    if (provider.ConsecutiveFailures > 0) return `Failing ×${provider.ConsecutiveFailures}`;
+    if (provider.TotalSuccesses > 0) return 'Working';
+    return 'Not used yet';
+};
+
+const sourceLevel = (source: InstagramSource): string => {
+    const failures = source.ConsecutiveScrapeFailures || 0;
+    if (failures >= 3) return 'bad';
+    if (failures > 0 || source.LastScrapeError) return 'warn';
+    if (source.LastSuccessfulScrapeUtc) return 'good';
+    return 'idle';
+};
+
+const providerCheckStateText = computed((): string => {
+    const check = health.value?.ProviderCheck;
+    if (!check) return '';
+    if (check.State === 'queued') return 'Queued';
+    if (check.State === 'running') return 'Running';
+    return `Finished ${relativeTime(check.FinishedUtc)}`;
+});
+
+// The server stamps these in UTC; tolerate a missing zone suffix and .NET's DateTime.MinValue.
+const parseUtc = (value?: string | null): Date | null => {
+    if (!value || value.startsWith('0001-01-01')) return null;
+    const date = new Date(/([zZ]|[+-]\d\d:\d\d)$/.test(value) ? value : value + 'Z');
+    return isNaN(date.getTime()) ? null : date;
+};
+
+const relativeTime = (value?: string | null): string => {
+    const date = parseUtc(value);
+    if (!date) return 'Never';
+    const diff = date.getTime() - now.value;
+    const abs = Math.abs(diff);
+    if (abs < 45_000) return diff > 0 ? 'any moment' : 'just now';
+    const minutes = Math.round(abs / 60_000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    const text = days > 0 ? `${days}d ${hours % 24}h` : hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
+    return diff > 0 ? `in ${text}` : `${text} ago`;
+};
+
+const formatBytes = (bytes: number): string => {
+    if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    if (bytes >= 1024) return Math.round(bytes / 1024) + ' KB';
+    return bytes + ' B';
+};
+
+const formatTrigger = (trigger: string): string => {
+    if (trigger === 'schedule') return 'Scheduled';
+    if (trigger?.startsWith('manual:')) return `Manual (${trigger.substring(7)})`;
+    if (trigger === 'legacy-call') return 'Legacy call';
+    return trigger || '—';
+};
+
 // API functions
-const fetchAnalytics = async (): Promise<void> => {
-    isLoading.value = true;
-    
+const fetchAnalytics = async (quiet: boolean = false): Promise<void> => {
+    // quiet: background refresh after a scrape finishes — no overlay, no error popups.
+    if (!quiet) isLoading.value = true;
+
     // Ensure minimum loading time for better UX
     const startTime = Date.now();
-    const minLoadingTime = 800; // 800ms minimum
-    
+    const minLoadingTime = quiet ? 0 : 800; // 800ms minimum
+
     try {
         const response = await RequestGETFromKliveAPI('/memescraper/memeScraperAnalytics');
         if (response.ok) {
             const data: MemeScraperAnalytics = await response.json();
             analytics.value = data;
-            
+
             // Update chart after data is loaded
             await nextTick();
             updateDownloadChart();
@@ -722,20 +1271,24 @@ const fetchAnalytics = async (): Promise<void> => {
         }
     } catch (error) {
         console.error('Error fetching analytics:', error);
-        Swal.fire({
-            icon: 'error',
-            title: 'Error',
-            text: 'Failed to fetch analytics data. Please try again.',
-            confirmButtonColor: '#4d9e39',
-            background: '#161516',
-            color: '#ffffff'
-        });
+        if (!quiet) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'Failed to fetch analytics data. Please try again.',
+                confirmButtonColor: '#4d9e39',
+                background: '#161516',
+                color: '#ffffff'
+            });
+        }
     } finally {
         // Ensure minimum loading time has passed
         const elapsedTime = Date.now() - startTime;
         const remainingTime = Math.max(0, minLoadingTime - elapsedTime);
-        
-        if (remainingTime > 0) {
+
+        if (quiet) {
+            // never touched the overlay
+        } else if (remainingTime > 0) {
             setTimeout(() => {
                 isLoading.value = false;
             }, remainingTime);
@@ -920,6 +1473,7 @@ const confirmDeleteSource = async (): Promise<void> => {
             
             // Refresh analytics data
             await fetchAnalytics();
+            fetchHealth();
         } else {
             throw new Error('Failed to delete source');
         }
@@ -941,6 +1495,14 @@ const confirmDeleteSource = async (): Promise<void> => {
 // Lifecycle hooks
 onMounted(() => {
     fetchAnalytics();
+    fetchHealth().then(scheduleHealthPoll);
+    clockTimer = setInterval(() => { now.value = Date.now(); }, 30_000);
+});
+
+onBeforeUnmount(() => {
+    unmounted = true;
+    if (healthTimer) clearTimeout(healthTimer);
+    if (clockTimer) clearInterval(clockTimer);
 });
 </script>
 
@@ -1190,10 +1752,13 @@ onMounted(() => {
     border-radius: 50%;
     object-fit: cover;
     border: 2px solid #4d9e39;
+    flex-shrink: 0;
 }
 
 .source-info {
     flex: 1;
+    min-width: 0; /* let long usernames wrap instead of pushing the action buttons off the card */
+    overflow-wrap: anywhere;
 }
 
 .username {
@@ -1224,6 +1789,7 @@ onMounted(() => {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
 }
 
 .delete-button {
@@ -1881,11 +2447,409 @@ onMounted(() => {
     cursor: not-allowed;
 }
 
+/* ───────────── Scraper Health ───────────── */
+.health-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    --good: #28a745;
+    --warn: #f0ad4e;
+    --bad: #dc3545;
+    --idle: #8a8f98;
+}
+
+.health-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.health-overall {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 18px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    flex: 1;
+    min-width: 260px;
+}
+
+.health-overall.good { border-color: rgba(40, 167, 69, 0.45); }
+.health-overall.warn { border-color: rgba(240, 173, 78, 0.5); }
+.health-overall.bad { border-color: rgba(220, 53, 69, 0.55); background: rgba(220, 53, 69, 0.08); }
+
+.health-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--idle);
+}
+
+.health-overall.good .health-dot { background: var(--good); box-shadow: 0 0 10px rgba(40, 167, 69, 0.6); }
+.health-overall.warn .health-dot { background: var(--warn); box-shadow: 0 0 10px rgba(240, 173, 78, 0.6); }
+.health-overall.bad .health-dot { background: var(--bad); box-shadow: 0 0 10px rgba(220, 53, 69, 0.6); }
+.health-dot.pulsing { animation: health-pulse 1.4s ease-in-out infinite; }
+
+@keyframes health-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(0.8); }
+}
+
+.health-overall-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+
+.health-overall-detail {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.7);
+    margin-top: 2px;
+}
+
+.health-actions {
+    display: flex;
+    gap: 10px;
+    height: 46px;
+    width: 520px;
+    max-width: 100%;
+}
+
+.health-actions > * {
+    flex: 1;
+}
+
+.health-unavailable {
+    padding: 12px 16px;
+    border-radius: 10px;
+    background: rgba(240, 173, 78, 0.12);
+    border: 1px solid rgba(240, 173, 78, 0.35);
+    color: #f0ad4e;
+    font-size: 0.9rem;
+}
+
+.health-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+}
+
+.health-fact,
+.provider-stats > div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.health-fact {
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.fact-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.fact-value {
+    font-size: 0.92rem;
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.text-bad { color: var(--bad); }
+
+.providers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+}
+
+.provider-card {
+    padding: 18px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-left: 4px solid var(--idle);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.provider-card.good { border-left-color: var(--good); }
+.provider-card.warn { border-left-color: var(--warn); }
+.provider-card.bad { border-left-color: var(--bad); }
+
+.provider-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.provider-name {
+    margin: 0;
+    font-size: 1.05rem;
+}
+
+.provider-role {
+    margin: 4px 0 0;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.provider-badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+    background: rgba(138, 143, 152, 0.2);
+    color: var(--idle);
+}
+
+.provider-badge.good { background: rgba(40, 167, 69, 0.2); color: var(--good); }
+.provider-badge.warn { background: rgba(240, 173, 78, 0.2); color: var(--warn); }
+.provider-badge.bad { background: rgba(220, 53, 69, 0.2); color: var(--bad); }
+
+.provider-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+.provider-note {
+    font-size: 0.82rem;
+    padding: 8px 10px;
+    border-radius: 8px;
+    word-break: break-word;
+}
+
+.provider-note.warn { background: rgba(240, 173, 78, 0.1); color: #f5c27a; }
+.provider-note.bad { background: rgba(220, 53, 69, 0.1); color: #f08a94; }
+
+.provider-check {
+    padding: 18px;
+    border-radius: 14px;
+    background: rgba(77, 158, 57, 0.06);
+    border: 1px solid rgba(77, 158, 57, 0.3);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.provider-check-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.provider-check-header h4 {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.provider-check-meta,
+.provider-check-empty {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.65);
+}
+
+.inline-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(77, 158, 57, 0.3);
+    border-top-color: #4d9e39;
+    border-radius: 50%;
+    animation: health-spin 0.9s linear infinite;
+    display: inline-block;
+}
+
+@keyframes health-spin {
+    to { transform: rotate(360deg); }
+}
+
+.check-row {
+    display: flex;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.check-icon {
+    font-size: 1.2rem;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+.check-row.good .check-icon { color: var(--good); }
+.check-row.bad .check-icon { color: var(--bad); }
+
+.check-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.check-title {
+    font-weight: 600;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: baseline;
+}
+
+.check-detail {
+    font-size: 0.82rem;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.65);
+    word-break: break-word;
+}
+
+.check-error {
+    font-size: 0.82rem;
+    color: #f08a94;
+    word-break: break-word;
+}
+
+.recent-scrapes h4 {
+    margin: 0 0 10px;
+}
+
+.scrape-table {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-x: auto;
+}
+
+.scrape-row {
+    display: grid;
+    grid-template-columns: 90px 150px 130px 55px 50px 110px minmax(220px, 1fr);
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.84rem;
+    background: rgba(255, 255, 255, 0.04);
+    border-left: 3px solid transparent;
+    align-items: center;
+    min-width: 860px;
+}
+
+.scrape-row > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.scrape-row.scrape-head {
+    background: none;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.scrape-row.good { border-left-color: var(--good); }
+.scrape-row.warn { border-left-color: var(--warn); }
+.scrape-row.bad { border-left-color: var(--bad); }
+.scrape-row.bad .scrape-result { color: #f08a94; }
+
+/* Per-source health on source cards */
+.scrape-button {
+    background: rgba(77, 158, 57, 0.2);
+    border: 1px solid rgba(77, 158, 57, 0.4);
+    color: #4d9e39;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+}
+
+.scrape-button:hover:not(:disabled) {
+    background: rgba(77, 158, 57, 0.3);
+    transform: scale(1.05);
+}
+
+.scrape-button:disabled {
+    cursor: default;
+    opacity: 0.6;
+}
+
+.scrape-button.busy {
+    opacity: 1;
+    animation: health-pulse 1.4s ease-in-out infinite;
+}
+
+.source-health {
+    margin: 16px 0;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border-left: 3px solid #8a8f98;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.source-health.good { border-left-color: #28a745; }
+.source-health.warn { border-left-color: #f0ad4e; }
+.source-health.bad { border-left-color: #dc3545; background: rgba(220, 53, 69, 0.06); }
+
+.source-health-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.source-health-msg {
+    font-size: 0.82rem;
+    word-break: break-word;
+}
+
+.source-health-msg.bad { color: #f08a94; }
+.source-health-msg.warn { color: #f5c27a; }
+
+.source-health-summary {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.5);
+    word-break: break-word;
+}
+
 @media (max-width: 768px) {
     .page-header {
         flex-direction: column;
         gap: 16px;
         text-align: center;
+    }
+
+    .health-actions {
+        width: 100%;
+        flex-direction: column;
+        height: auto;
+    }
+
+    .health-actions > * {
+        min-height: 44px;
+    }
+
+    .provider-stats {
+        grid-template-columns: 1fr 1fr;
     }
     
     .performance-grid {

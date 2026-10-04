@@ -17,21 +17,21 @@
                         <span class="card-badge badge-active">Active</span>
                     </div>
                     <h2 class="card-title">CS2 Arbitrage Bot</h2>
-                    <p class="card-desc">Scans CS2 marketplace listings to find and exploit price discrepancies between Steam and CSFloat for profit.</p>
+                    <p class="card-desc">Watches every new CSFloat listing and buys underpriced items to resell on CSFloat or the Steam market after trade protection.</p>
                     
                     <!-- Analytics Section -->
                     <div v-if="!cs2Stats.loading" class="omnigram-stats">
                         <div class="stat-item">
-                            <span class="stat-label">Success Rate</span>
-                            <span class="stat-value">{{ cs2Stats.successRate }}%</span>
+                            <span class="stat-label">Valued</span>
+                            <span class="stat-value">{{ cs2Stats.valued.toLocaleString() }}</span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label">Scanned</span>
-                            <span class="stat-value">{{ cs2Stats.itemsScanned.toLocaleString() }}</span>
+                            <span class="stat-label">Opportunities</span>
+                            <span class="stat-value">{{ cs2Stats.opportunities.toLocaleString() }}</span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label">Best Find</span>
-                            <span class="stat-value">{{ cs2Stats.bestFind }}%</span>
+                            <span class="stat-label">Bought</span>
+                            <span class="stat-value">{{ cs2Stats.purchases.toLocaleString() }}</span>
                         </div>
                     </div>
                     <div v-else class="omnigram-stats">
@@ -39,7 +39,7 @@
                     </div>
                     
                     <div class="card-footer">
-                        <span class="card-action">View Analytics →</span>
+                        <span class="card-action">Open Engine →</span>
                     </div>
                 </div>
             </div>
@@ -253,7 +253,7 @@ definePageMeta({ layout: 'navbar' });
 
 const omnigramStats = ref({ accounts: 0, followers: 0, postsThisWeek: 0, loading: true });
 const omnitumblrStats = ref({ accounts: 0, followers: 0, postsThisWeek: 0, loading: true });
-const cs2Stats = ref({ successRate: 0, itemsScanned: 0, bestFind: 0, loading: true });
+const cs2Stats = ref({ valued: 0, opportunities: 0, purchases: 0, loading: true });
 const memescraperStats = ref({ totalSources: 0, totalMemes: 0, todayDownloads: 0, loading: true });
 const omnitraderStats = ref({ paperCount: 0, liveCount: 0, liveArmed: 0, paperPnL: 0, backtestCount: 0, krakenOn: false, loading: true });
 
@@ -303,9 +303,9 @@ const fetchCS2Stats = async () => {
         if (response.ok) {
             const data = await response.json();
             cs2Stats.value = {
-                successRate: Math.round((data.PercentageChanceOfFindingPositiveGainListing || 0) * 100) / 100,
-                itemsScanned: data.TotalListingsScanned || 0,
-                bestFind: Math.round(((data.HighestPredictedGainFoundSoFar - 1) * 100 || 0) * 100) / 100,
+                valued: data.TotalListingsScanned || 0,
+                opportunities: data.QualifiedOpportunities || 0,
+                purchases: data.Purchases ?? (data.AllPurchasedItems?.length || 0),
                 loading: false
             };
         } else {

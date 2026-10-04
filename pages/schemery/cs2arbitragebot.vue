@@ -1,2053 +1,1024 @@
 <template>
-    <div class="cs2-analytics-container">
-        <!-- Modern Header -->
-        <div class="page-header">
-            <div class="header-left">
-                <NuxtLink to="/schemes" class="back-button">
-                    <div class="back-button-wrapper">
-                        <KMButton message="← Back to Schemes" textColor="#4d9e39" style="width: 400px;" />
-                    </div>
-                </NuxtLink>
-            </div>
-            <div class="header-center">
-                <h1 class="page-title">CS2 Arbitrage Analytics</h1>
-                <p class="page-subtitle">Real-time market analysis and profit opportunities</p>
-            </div>
-            <div class="header-right">
-                <div class="refresh-button" style="width: 200px;" @click="fetchData">
-                    <KMButton 
-                        :message="isLoading ? '⏳ Loading...' : 'Refresh'"
-                        :textColor="isLoading ? '#969696' : '#4d9e39'"
-                    />
-                </div>
-            </div>
+  <div class="cs2-shell">
+    <!-- Command bar -->
+    <header class="cs2-commandbar">
+      <div class="cs2-identity">
+        <NuxtLink to="/schemes" class="cs2-back" aria-label="Back to schemes">←</NuxtLink>
+        <span class="cs2-wordmark">CS2 Arbitrage</span>
+        <span class="cs2-health" :class="`is-${health.tone}`">
+          <span class="cs2-health__dot" aria-hidden="true" />
+          {{ health.label }}
+        </span>
+        <span v-if="status?.settings" class="cs2-chip" :class="status.settings.PurchasingEnabled ? 'is-good' : 'is-muted'">
+          {{ status.settings.PurchasingEnabled ? 'Auto-buy on' : 'Alerts only' }}
+        </span>
+        <span class="cs2-freshness" aria-live="polite">{{ freshness }}</span>
+      </div>
+      <div class="cs2-actions">
+        <DashboardAction v-if="isKlives" label="Settings" icon="⚙" @click="settingsOpen = true" />
+        <DashboardAction label="Scan now" icon="⌕" :disabled="scanPending" tone="primary" @click="runScan" />
+        <DashboardAction :label="loadingFast || loadingSlow ? 'Refreshing' : 'Refresh'" icon="↻" :disabled="loadingFast || loadingSlow" @click="refreshAll" />
+      </div>
+    </header>
+
+    <!-- Attention -->
+    <section class="cs2-attention" aria-labelledby="cs2-attention-title">
+      <div class="cs2-attention__label">
+        <span id="cs2-attention-title">Attention</span>
+        <strong v-if="attention.length">{{ attention.length }}</strong>
+      </div>
+      <div v-if="attention.length" class="cs2-attention__items">
+        <component
+          :is="item.href ? 'a' : 'div'"
+          v-for="item in attention"
+          :key="item.key"
+          class="cs2-attention__item"
+          :class="`is-${item.tone}`"
+          :href="item.href"
+          :target="item.href ? '_blank' : undefined"
+          :rel="item.href ? 'noopener' : undefined"
+        >
+          <strong>{{ item.title }}</strong>
+          <span>{{ item.detail }}</span>
+        </component>
+      </div>
+      <div v-else class="cs2-attention__clear">Nothing needs you right now.</div>
+    </section>
+
+    <!-- KPIs -->
+    <section class="cs2-kpis" aria-label="Key figures">
+      <DashboardKpi label="CSFloat balance" :value="fmtCents(csfloatUsdCents)" :detail="fmtGbp(status?.balances?.csfloatGbp)" tone="info" />
+      <DashboardKpi label="Steam wallet" :value="fmtGbp(status?.balances?.steamGbp ?? latestBalance?.SteamUsableBalanceInPounds)" detail="converts back via plan" />
+      <DashboardKpi label="Conversion k" :value="fmtNumber(status?.conversion?.coefficient, 3)" :detail="conversionAge" :tone="kTone" />
+      <DashboardKpi label="Listings seen" :value="fmtCount(engine?.ListingsSeen)" :detail="engine ? `${fmtNumber(engine.ObservedListingsPerMinute, 0)}/min in window` : ''" />
+      <DashboardKpi label="Valued" :value="fmtCount(engine?.Evaluated)" :detail="prefilterShare" />
+      <DashboardKpi label="Opportunities" :value="fmtCount(engine?.Opportunities)" :detail="`${fmtCount(analytics?.QualifiedOpportunities)} all-time`" :tone="(engine?.Opportunities ?? 0) > 0 ? 'good' : 'neutral'" />
+      <DashboardKpi label="Purchases" :value="fmtCount(analytics?.Purchases ?? purchases.length)" :detail="`${fmtCount(analytics?.PurchaseAttempts)} attempts`" />
+      <DashboardKpi label="Open positions" :value="fmtCount(openPurchases.length)" :detail="actionCount ? `${actionCount} need you` : 'none waiting on you'" :tone="actionCount ? 'warning' : 'neutral'" />
+    </section>
+
+    <div class="cs2-grid">
+      <!-- Pipeline -->
+      <DashboardPanel
+        class="span-4"
+        title="Live pipeline"
+        :subtitle="engine?.State ? `Engine ${engine.State}` : 'Engine status'"
+        :status="engine?.State === 'running' ? 'live' : ''"
+        :loading="loadingFast && !status"
+        :error="zoneError(paths.status)"
+      >
+        <div v-if="engine" class="cs2-pipeline">
+          <div class="cs2-stage-row">
+            <span class="cs2-stage-row__name">Listing feed</span>
+            <span class="cs2-stage-row__value">{{ fmtAgo(engine.LastFeedPollUtc, now) }}</span>
+            <span class="cs2-stage-row__detail">every {{ fmtNumber(engine.CurrentFeedIntervalSeconds, 0) }}s · {{ fmtCount(engine.FeedPolls) }} polls · {{ engine.FeedCoverageGaps }} gaps</span>
+          </div>
+          <div class="cs2-stage-row">
+            <span class="cs2-stage-row__name">Discount sweeps</span>
+            <span class="cs2-stage-row__value">{{ fmtAgo(engine.LastSweepUtc, now) }}</span>
+            <span class="cs2-stage-row__detail">price cuts on older listings</span>
+          </div>
+          <div class="cs2-stage-row">
+            <span class="cs2-stage-row__name">Whole-market scan</span>
+            <span class="cs2-stage-row__value">{{ fmtAgo(engine.LastStructuralScanUtc, now) }}</span>
+            <span class="cs2-stage-row__detail" :title="engine.LastStructuralSummary">{{ engine.LastStructuralSummary || 'hourly' }}</span>
+          </div>
+          <div class="cs2-stage-row">
+            <span class="cs2-stage-row__name">Conversion model</span>
+            <span class="cs2-stage-row__value">{{ fmtAgo(engine.LastConversionModelUtc ?? status?.conversion?.computedAtUtc, now) }}</span>
+            <span class="cs2-stage-row__detail">every 3h</span>
+          </div>
+
+          <h3 class="cs2-subhead">Request budgets</h3>
+          <div v-for="bucket in budgets" :key="bucket.Name" class="cs2-meter">
+            <span class="cs2-meter__name">CSFloat {{ bucket.Name }}</span>
+            <span class="cs2-meter__bar"><span :style="{ width: `${bucket.pct}%` }" :class="bucket.tone" /></span>
+            <span class="cs2-meter__value">{{ bucket.Remaining }}/{{ bucket.Limit }}</span>
+          </div>
+          <div v-if="status?.steam" class="cs2-meter">
+            <span class="cs2-meter__name">Steam order books</span>
+            <span class="cs2-meter__bar"><span :style="{ width: `${steamHealthPct}%` }" :class="steamHealthPct > 90 ? 'good' : steamHealthPct > 60 ? 'warning' : 'danger'" /></span>
+            <span class="cs2-meter__value">{{ fmtCount(status.steam.Successes) }} ok</span>
+          </div>
+          <p class="cs2-footnote">
+            {{ fmtCount(status?.steam?.cachedBooks) }} Steam books cached · {{ fmtNumber(status?.steam?.pacerIntervalMs, 0) }}ms spacing ·
+            {{ fmtCount(status?.bulkSteamPrices?.Count) }} bulk prices
+          </p>
         </div>
+        <div v-else class="cs2-empty">{{ status?.startupState ? `Bot is ${status.startupState}.` : 'No engine data yet.' }}</div>
+      </DashboardPanel>
 
-        <!-- Balance Overview Section -->
-        <CS2OverviewSection 
-            title="💰 Balance Overview"
-            subtitle="Current balance status and history"
-        >
-            <KMInfoGrid columns="2" rows="1" rowHeight="360">
-                <!-- Left side: Balance metrics -->
-                <KMInfoBox caption="Balance Overview">
-                    <div class="balance-metrics-container" v-if="balanceHistory.length > 0">
-                        <!-- Main Balance -->
-                        <div class="balance-metric main-balance">
-                            <div class="metric-label">Total Balance</div>
-                            <div class="metric-value total">£{{ (latestBalance.SteamTotalBalanceInPounds + latestBalance.CSFloatTotalBalanceInPounds).toFixed(2) }}</div>
-                            <div class="metric-subtitle">Combined Steam & CSFloat</div>
-                        </div>
-                        
-                        <!-- Available Balances -->
-                        <div class="balance-grid">
-                            <div class="balance-metric">
-                                <div class="metric-label">Current Steam Balance</div>
-                                <div class="metric-value steam">£{{ latestBalance.SteamUsableBalanceInPounds.toFixed(2) }}</div>
-                                <div class="metric-subtitle">Available for spending</div>
-                            </div>
-                            
-                            <div class="balance-metric">
-                                <div class="metric-label">Current CSFloat Balance</div>
-                                <div class="metric-value csfloat">£{{ latestBalance.CSFloatUsableBalanceInPounds.toFixed(2) }}</div>
-                                <div class="metric-subtitle">Available for spending</div>
-                            </div>
-                        </div>
-                        
-                        <!-- Pending Balances -->
-                        <div class="balance-grid" v-if="hasPendingBalances">
-                            <div class="pending-balances-title">Pending Balances</div>
-                            <div class="balance-metric">
-                                <div class="metric-label">Pending Steam Balance</div>
-                                <div class="metric-value pending">£{{ latestBalance.SteamPendingBalanceInPounds.toFixed(2) }}</div>
-                                <div class="metric-subtitle">In trade holds or market listings</div>
-                            </div>
-                            
-                            <div class="balance-metric">
-                                <div class="metric-label">Pending CSFloat Balance</div>
-                                <div class="metric-value pending">£{{ latestBalance.CSFloatPendingBalanceInPounds.toFixed(2) }}</div>
-                                <div class="metric-subtitle">In trade holds or pending transfers</div>
-                            </div>
-                            
-                            <div class="balance-metric pending-total-metric">
-                                <div class="metric-label">Total Pending Balance</div>
-                                <div class="metric-value pending-total">£{{ (latestBalance.SteamPendingBalanceInPounds + latestBalance.CSFloatPendingBalanceInPounds).toFixed(2) }}</div>
-                                <div class="metric-subtitle">Across all platforms</div>
-                            </div>
-                        </div>
-                        
-                        <div class="balance-update-time">
-                            Last updated: {{ formatDateTime(latestBalance.DateTimeOfBalanceRecord) }}
-                        </div>
-                    </div>
-                    
-                    <div class="no-data-message" v-else>
-                        No balance data available
-                    </div>
-                </KMInfoBox>
-                
-                <!-- Right side: Balance history chart -->
-                <KMInfoBox caption="Balance History">
-                    <div class="chart-container">
-                        <canvas ref="balanceChartCanvas" id="balanceHistoryChart"></canvas>
-                    </div>
-                </KMInfoBox>
-            </KMInfoGrid>
-        </CS2OverviewSection>
+      <!-- Opportunities -->
+      <DashboardPanel
+        class="span-8"
+        title="Opportunities"
+        subtitle="Listings within 10 points of a buy bar, newest first"
+        :loading="loadingFast && !opportunities.length"
+        :error="zoneError(paths.opportunities)"
+      >
+        <template #actions>
+          <div class="cs2-segment" role="tablist" aria-label="Filter opportunities">
+            <button v-for="f in oppFilters" :key="f.id" type="button" role="tab" :aria-selected="oppFilter === f.id" :class="{ active: oppFilter === f.id }" @click="oppFilter = f.id">
+              {{ f.label }} <span>{{ f.count }}</span>
+            </button>
+          </div>
+        </template>
+        <div v-if="filteredOpportunities.length" class="cs2-table-wrap">
+          <table class="cs2-table">
+            <thead>
+              <tr>
+                <th>Seen</th>
+                <th>Item</th>
+                <th class="num">Price</th>
+                <th class="num">Steam bid / ask</th>
+                <th>Best exit</th>
+                <th class="num">Return</th>
+                <th class="num">Profit</th>
+                <th>Verdict</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="o in filteredOpportunities" :key="o.ListingId + o.EvaluatedAtUtc" :class="{ 'is-buy': o.ShouldBuy }">
+                <td class="muted">{{ fmtAgo(o.EvaluatedAtUtc, now) }}</td>
+                <td class="item">
+                  <a :href="csfloatListingUrl(o.ListingId)" target="_blank" rel="noopener">{{ o.MarketHashName }}</a>
+                  <span v-if="o.FloatValue != null" class="muted"> · {{ fmtNumber(o.FloatValue, 4) }}</span>
+                  <span class="muted"> · {{ o.Source }}</span>
+                </td>
+                <td class="num">{{ fmtCents(o.PriceCents) }}</td>
+                <td class="num muted">
+                  <a v-if="o.SteamHighestBuyOrderPence" :href="steamListingUrl(o.MarketHashName)" target="_blank" rel="noopener">{{ fmtPence(o.SteamHighestBuyOrderPence) }} / {{ fmtPence(o.SteamLowestSellOrderPence) }}</a>
+                  <span v-else>—</span>
+                </td>
+                <td>{{ routeName(o.BestRoute) }}</td>
+                <td class="num" :class="`tone-${roiTone(o.BestRoi)}`">{{ fmtRoi(o.BestRoi) }}</td>
+                <td class="num">{{ fmtPence(o.BestProfitPence) }}</td>
+                <td class="verdict" :title="o.Reason">
+                  <span class="cs2-pill" :class="o.ShouldBuy ? 'is-good' : 'is-muted'">{{ o.ShouldBuy ? 'Buy' : 'Skip' }}</span>
+                  {{ shortReason(o) }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else class="cs2-empty">
+          {{ opportunities.length ? 'Nothing in this filter.' : 'No near-misses yet. Real deals are rare and short-lived — the feed is watching every new listing.' }}
+        </div>
+      </DashboardPanel>
 
-        <!-- Purchased Items Section -->
-        <CS2OverviewSection 
-            title="💼 Purchased Items"
-            subtitle="Recently purchased items and detailed information"
-        >
-            <KMInfoGrid columns="2" rows="1" rowHeight="500" style="padding-bottom: 30px; padding-top: 10px;">
-                <!-- Left side: List of purchased items -->
-                <KMInfoBox caption="Recent Purchases">
-                    <div class="purchased-items-list">
-                        <div 
-                            v-for="(item, index) in sortedPurchasedItems" 
-                            :key="item.CSFloatListingID"
-                            :class="['purchase-item', { 'active': selectedItem?.CSFloatListingID === item.CSFloatListingID }]"
-                            @click="selectItem(item)"
-                        >
-                            <div class="item-header">
-                                <img :src="item.comparison?.CSFloatListing?.ImageURL" :alt="item.ItemMarketHashName" class="item-image" />
-                                <div class="item-info">
-                                    <div class="item-name">{{ item.ItemMarketHashName }}</div>
-                                    <div class="item-profit" :class="getStrategyStatusClass(item.CurrentStrategicStage)">
-                                        {{ getStrategyStatusText(item.CurrentStrategicStage) }}
-                                    </div>
-                                </div>
-                                <div class="item-financial">
-                                    <div class="financial-row">
-                                        <span class="financial-label">Expected Profit:</span>
-                                        <span class="financial-value profit">+£{{ item.ExpectedAbsoluteProfitInPounds?.toFixed(2) }}</span>
-                                    </div>
-                                    <div class="financial-row">
-                                        <span class="financial-label">Purchase Price:</span>
-                                        <span class="financial-value">{{ item.comparison?.CSFloatListing?.PriceText }}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </KMInfoBox>
+      <!-- Positions -->
+      <DashboardPanel
+        class="span-7"
+        title="Positions"
+        :subtitle="`${openPurchases.length} open · ${purchases.length} total`"
+        :loading="loadingSlow && !analytics"
+        :error="zoneError(paths.analytics)"
+      >
+        <template #actions>
+          <div class="cs2-segment" role="tablist" aria-label="Filter positions">
+            <button type="button" role="tab" :aria-selected="showAllPositions === false" :class="{ active: !showAllPositions }" @click="showAllPositions = false">Open <span>{{ openPurchases.length }}</span></button>
+            <button type="button" role="tab" :aria-selected="showAllPositions" :class="{ active: showAllPositions }" @click="showAllPositions = true">All <span>{{ purchases.length }}</span></button>
+          </div>
+        </template>
+        <div v-if="visiblePurchases.length" class="cs2-positions">
+          <button
+            v-for="p in visiblePurchases"
+            :key="p.CSFloatListingID"
+            type="button"
+            class="cs2-position"
+            :class="{ active: selected?.CSFloatListingID === p.CSFloatListingID }"
+            @click="selectedId = p.CSFloatListingID"
+          >
+            <img v-if="p.comparison?.CSFloatListing?.ImageURL" :src="p.comparison.CSFloatListing.ImageURL" alt="" class="cs2-position__img" loading="lazy">
+            <span v-else class="cs2-position__img cs2-position__img--empty" aria-hidden="true" />
+            <span class="cs2-position__main">
+              <span class="cs2-position__name">{{ p.ItemMarketHashName }}</span>
+              <span class="cs2-position__meta">
+                <span class="cs2-pill" :class="`is-${stageMeta(p.CurrentStrategicStage).tone}`">{{ stageMeta(p.CurrentStrategicStage).short }}</span>
+                {{ exitLabel(p) }} · bought {{ fmtAgo(p.TimeOfPurchase, now) }}
+              </span>
+            </span>
+            <span class="cs2-position__track"><CS2StageTrack :stage="p.CurrentStrategicStage" :planned-exit="p.PlannedExit" compact /></span>
+            <span class="cs2-position__money">
+              <strong>{{ positionCost(p) }}</strong>
+              <span :class="`tone-${profitTone(p)}`">{{ positionProfit(p) }}</span>
+            </span>
+          </button>
+        </div>
+        <div v-else class="cs2-empty">{{ purchases.length ? 'No open positions.' : 'No purchases yet.' }}</div>
+      </DashboardPanel>
 
-                <!-- Right side: Detailed item information -->
-                <KMInfoBox caption="Item Details">
-                    <div v-if="selectedItem" class="item-detail-panel">
-                        <!-- Item Header with Image -->
-                        <div class="detail-header">
-                            <img :src="selectedItem.comparison?.CSFloatListing?.ImageURL" :alt="selectedItem.ItemMarketHashName" class="detail-item-image" />
-                            <div class="detail-item-info">
-                                <h3 class="detail-item-name">{{ selectedItem.ItemMarketHashName }}</h3>
-                                <div class="detail-item-status" :class="getStrategyStatusClass(selectedItem.CurrentStrategicStage)">
-                                    {{ getStrategyStatusText(selectedItem.CurrentStrategicStage) }}
-                                </div>
-                            </div>
-                        </div>
+      <!-- Position detail -->
+      <DashboardPanel class="span-5" title="Position detail" :subtitle="selected ? selected.CSFloatListingID : 'Select a position'">
+        <div v-if="selected" class="cs2-detail">
+          <div class="cs2-detail__head">
+            <img v-if="selected.comparison?.CSFloatListing?.ImageURL" :src="selected.comparison.CSFloatListing.ImageURL" alt="" class="cs2-detail__img">
+            <div class="cs2-detail__title">
+              <strong>{{ selected.ItemMarketHashName }}</strong>
+              <span :class="`tone-${stageMeta(selected.CurrentStrategicStage).tone}`">{{ stageMeta(selected.CurrentStrategicStage).label }}</span>
+            </div>
+          </div>
+          <CS2StageTrack :stage="selected.CurrentStrategicStage" :planned-exit="selected.PlannedExit" />
 
-                        <!-- Financial Information -->
-                        <div class="detail-section">
-                            <h4 class="section-title">💰 Financial Details</h4>
-                            <div class="detail-grid">
-                                <div class="detail-item-row">
-                                    <span class="label">Purchase Price:</span>
-                                    <span class="value">{{ selectedItem.comparison?.CSFloatListing?.PriceText }}</span>
-                                </div>
-                                <div class="detail-item-row">
-                                    <span class="label">Expected Steam Price:</span>
-                                    <span class="value">{{ selectedItem.comparison?.SteamListing?.PriceText }}</span>
-                                </div>
-                                <div class="detail-item-row">
-                                    <span class="label">Expected Profit:</span>
-                                    <span class="value profit">+£{{ selectedItem.ExpectedAbsoluteProfitInPounds?.toFixed(2) }} ({{ selectedItem.ExpectedProfitPercentage?.toFixed(1) }}%)</span>
-                                </div>
-                                <div class="detail-item-row">
-                                    <span class="label">Actual Profit:</span>
-                                    <span class="value" :class="selectedItem.ActualAbsoluteProfitInPounds > 0 ? 'profit' : 'neutral'">
-                                        {{ selectedItem.ActualAbsoluteProfitInPounds > 0 ? '+' : '' }}£{{ selectedItem.ActualAbsoluteProfitInPounds?.toFixed(2) }}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
+          <a v-if="selected.CurrentStrategicStage === 2 && selected.CSFloatToSteamTradeOfferLink" :href="selected.CSFloatToSteamTradeOfferLink" target="_blank" rel="noopener" class="cs2-cta">
+            Accept the trade offer in Steam →
+          </a>
 
-                        <!-- Item Properties -->
-                        <div class="detail-section">
-                            <h4 class="section-title">🔍 Item Properties</h4>
-                            <div class="detail-grid">
-                                <div class="detail-item-row">
-                                    <span class="label">Float Value:</span>
-                                    <span class="value">{{ selectedItem.ItemFloatValue?.toFixed(6) }}</span>
-                                </div>
-                                <div class="detail-item-row">
-                                    <span class="label">CS Float ID:</span>
-                                    <span class="value">{{ selectedItem.CSFloatListingID }}</span>
-                                </div>
-                            </div>
-                        </div>
+          <dl class="cs2-facts">
+            <div><dt>Paid</dt><dd>{{ positionCost(selected) }}<span v-if="selected.PurchasePriceCents" class="muted"> ({{ fmtCents(selected.PurchasePriceCents) }})</span></dd></div>
+            <div><dt>Planned exit</dt><dd>{{ exitLabel(selected) }}</dd></div>
+            <div><dt>Expected cash back</dt><dd>{{ selected.ExpectedNetCashPence ? fmtPence(selected.ExpectedNetCashPence) : '—' }}</dd></div>
+            <div><dt>Expected profit</dt><dd class="tone-good">{{ fmtGbp(selected.ExpectedAbsoluteProfitInPounds) }} <span class="muted">({{ fmtNumber(selected.ExpectedProfitPercentage, 1) }}%)</span></dd></div>
+            <div v-if="selected.CurrentStrategicStage === 7"><dt>Actual profit</dt><dd :class="(selected.ActualAbsoluteProfitInPounds ?? 0) >= 0 ? 'tone-good' : 'tone-danger'">{{ fmtGbp(selected.ActualAbsoluteProfitInPounds) }} <span class="muted">({{ fmtNumber(selected.ActualProfitPercentage, 1) }}%)</span></dd></div>
+            <div v-if="selected.CSFloatResalePriceCents"><dt>Relisted at</dt><dd>{{ fmtCents(selected.CSFloatResalePriceCents) }}</dd></div>
+            <div v-if="selected.ActualSalePriceOnSteam"><dt>Steam sale</dt><dd>{{ fmtGbp(selected.ActualSalePriceOnSteam) }}</dd></div>
+            <div><dt>Float</dt><dd>{{ fmtNumber(selected.ItemFloatValue, 6) }}</dd></div>
+            <div v-if="selected.ConversionCoefficientAtPurchase"><dt>k at purchase</dt><dd>{{ fmtNumber(selected.ConversionCoefficientAtPurchase, 3) }}</dd></div>
+            <div v-if="selected.LastTradeState"><dt>CSFloat trade</dt><dd>{{ selected.LastTradeState }}</dd></div>
+          </dl>
 
-                        <!-- Timeline Information -->
-                        <div class="detail-section">
-                            <h4 class="section-title">⏱️ Timeline</h4>
-                            <div class="detail-grid">
-                                <div class="detail-item-row">
-                                    <span class="label">Purchased:</span>
-                                    <span class="value">{{ formatDateTime(selectedItem.TimeOfPurchase) }}</span>
-                                </div>
-                                <div class="detail-item-row" v-if="selectedItem.TimeOfSellerToAcceptSale && selectedItem.TimeOfSellerToAcceptSale !== '0001-01-01T00:00:00'">
-                                    <span class="label">Seller Accepted:</span>
-                                    <span class="value">{{ formatDateTime(selectedItem.TimeOfSellerToAcceptSale) }}</span>
-                                </div>
-                                <div class="detail-item-row" v-if="selectedItem.TimeOfItemRetrieval && selectedItem.TimeOfItemRetrieval !== '0001-01-01T00:00:00'">
-                                    <span class="label">Item Retrieved:</span>
-                                    <span class="value">{{ formatDateTime(selectedItem.TimeOfItemRetrieval) }}</span>
-                                </div>
-                                <div class="detail-item-row">
-                                    <span class="label">Predicted Resale:</span>
-                                    <span class="value">{{ formatDateTime(selectedItem.PredictedTimeToBeResoldOnSteam) }}</span>
-                                </div>
-                            </div>
-                        </div>
+          <h3 class="cs2-subhead">Timeline</h3>
+          <ul class="cs2-timeline">
+            <li v-for="event in timeline(selected)" :key="event.label" :class="{ future: event.future }">
+              <span>{{ event.label }}</span><span>{{ fmtDateTime(event.at) }}</span>
+            </li>
+          </ul>
 
-                        <!-- Action Links -->
-                        <div class="detail-section" v-if="selectedItem.comparison">
-                            <h4 class="section-title">🔗 Quick Actions</h4>
-                            <div class="action-links">
-                                <a :href="selectedItem.comparison.CSFloatURL" target="_blank" class="action-link csfloat">
-                                    View on CSFloat
-                                </a>
-                                <a :href="selectedItem.comparison.SteamListingURL" target="_blank" class="action-link steam">
-                                    View on Steam Market
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                    <div v-else class="no-selection">
-                        <div class="no-selection-icon">📦</div>
-                        <div class="no-selection-text">Select a purchased item to view details</div>
-                    </div>
-                </KMInfoBox>
-            </KMInfoGrid>
-        </CS2OverviewSection>
+          <p v-if="selected.Notes" class="cs2-notes">{{ selected.Notes }}</p>
 
-        <!-- Key Performance Indicators -->
-        <CS2OverviewSection 
-            title="🎯 Key Performance Indicators"
-            subtitle="Key metrics from the bot"
-        >
-            <KMInfoGrid columns="4" rows="1" rowHeight="240" style="padding-bottom: 60px; padding-top: 10px; padding-right: 30px;">
-                <CS2MetricCard
-                    :value="analyticsData.PercentageChanceOfFindingPositiveGainListing"
-                    label="Success Rate"
-                    format="percentage"
-                    variant="success"
-                    icon="📈"
-                    :highlight="analyticsData.PercentageChanceOfFindingPositiveGainListing > 5"
-                />
-                <CS2MetricCard
-                    :value="analyticsData.TotalListingsScanned"
-                    label="Items Scanned"
-                    format="count"
-                    variant="info"
-                    icon="🔍"
-                />
-                <CS2MetricCard
-                    :value="analyticsData.MeanGainOfProfitableListings"
-                    label="Avg Profit Margin"
-                    format="gain-percentage"
-                    variant="success"
-                    icon="💰"
-                />
-                <CS2MetricCard
-                    :value="analyticsData.CurrentExpectedReturnCoefficientOfSteamToCSFloat"
-                    label="Current Expected Return Coefficient of Steam To CSFloat"
-                    format="number"
-                    variant="warning"
-                    icon="🏆"
-                    :highlight="true"
-                />
-            </KMInfoGrid>
-        </CS2OverviewSection>
+          <div class="cs2-links">
+            <a :href="selected.comparison?.CSFloatURL || csfloatListingUrl(selected.CSFloatListingID)" target="_blank" rel="noopener">CSFloat listing</a>
+            <a :href="steamListingUrl(selected.ItemMarketHashName)" target="_blank" rel="noopener">Steam market</a>
+            <a v-if="selected.CSFloatResaleListingID" :href="csfloatListingUrl(selected.CSFloatResaleListingID)" target="_blank" rel="noopener">Resale listing</a>
+          </div>
+        </div>
+        <div v-else class="cs2-empty">Pick a position to see its exits, timeline and links.</div>
+      </DashboardPanel>
 
-        <!-- Market Analysis -->
-        <CS2OverviewSection 
-            title="📊 Market Analysis"
-            subtitle="Profitable vs unprofitable listing comparison"
-        >
-            <KMInfoGrid columns="3" rows="1" rowHeight="280">
-                <KMInfoBox caption="💎 Best Opportunity">
-                    <div class="best-find-card">
-                        <div class="item-name">{{ analyticsData.NameOfItemWithHighestPredictedGain || 'No item found' }}</div>
-                        <div class="profit-gain">+{{ ((analyticsData.HighestPredictedGainFoundSoFar - 1) * 100)?.toFixed(2) }}%</div>
-                        <div class="find-subtitle">Highest profit potential</div>
-                    </div>
-                </KMInfoBox>
-                
-                <KMInfoBox caption="✅ Profitable Listings">
-                    <div class="comparison-stats">
-                        <CS2MetricCard
-                            :value="analyticsData.CountListingsWithPositiveGain"
-                            label="Count"
-                            format="count"
-                            variant="success"
-                        />
-                        <div class="stats-grid">
-                            <div class="stat-item">
-                                <span class="stat-label">Avg Price:</span>
-                                <span class="stat-value">£{{ analyticsData.MeanPriceOfProfitableListings?.toFixed(2) }}</span>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-label">Avg Float:</span>
-                                <span class="stat-value">{{ analyticsData.MeanFloatValueOfProfitableListings?.toFixed(4) }}</span>
-                            </div>
-                        </div>
-                    </div>
-                </KMInfoBox>
-                
-                <KMInfoBox caption="❌ Unprofitable Listings">
-                    <div class="comparison-stats">
-                        <CS2MetricCard
-                            :value="analyticsData.CountListingsWithNegativeGain"
-                            label="Count"
-                            format="count"
-                            variant="danger"
-                        />
-                        <div class="stats-grid">
-                            <div class="stat-item">
-                                <span class="stat-label">Avg Price:</span>
-                                <span class="stat-value">£{{ analyticsData.MeanPriceOfUnprofitableListings?.toFixed(2) }}</span>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-label">Avg Float:</span>
-                                <span class="stat-value">{{ analyticsData.MeanFloatValueOfUnprofitableListings?.toFixed(4) }}</span>
-                            </div>
-                        </div>
-                    </div>
-                </KMInfoBox>
-            </KMInfoGrid>
-        </CS2OverviewSection>
+      <!-- Market read -->
+      <DashboardPanel
+        class="span-6"
+        title="What the market offers"
+        :subtitle="analytics ? `${fmtCount(analytics.TotalListingsScanned)} listings valued since ${fmtDateTime(analytics.FirstListingDateRecorded)}` : 'Valuation history'"
+        :loading="loadingSlow && !analytics"
+        :error="zoneError(paths.analytics)"
+      >
+        <div v-if="analytics" class="cs2-market">
+          <div class="cs2-dist">
+            <div v-for="b in roiBuckets" :key="b.label" class="cs2-dist__row">
+              <span class="cs2-dist__label">{{ b.label }}</span>
+              <span class="cs2-dist__bar"><span :style="{ width: `${b.pct}%` }" :class="b.tone" /></span>
+              <span class="cs2-dist__value">{{ fmtCount(b.count) }} <span class="muted">{{ b.pct.toFixed(b.pct < 1 ? 2 : 1) }}%</span></span>
+            </div>
+          </div>
+          <div class="cs2-best">
+            <span class="muted">Best ever</span>
+            <strong>{{ analytics.NameOfItemWithHighestPredictedGain || '—' }}</strong>
+            <span class="tone-good">{{ analytics.HighestPredictedGainFoundSoFar ? fmtRoi(analytics.HighestPredictedGainFoundSoFar - 1) : '—' }}</span>
+          </div>
+          <h3 class="cs2-subhead">Last 14 days</h3>
+          <div class="cs2-days" role="img" :aria-label="dailySummary">
+            <div v-for="d in daily" :key="d.day" class="cs2-days__col" :title="`${d.day}: ${d.evaluated} valued, ${d.qualified} qualified, ${d.purchased} bought`">
+              <span class="cs2-days__bar" :style="{ height: `${d.height}%` }">
+                <span v-if="d.qualified" class="cs2-days__mark" />
+              </span>
+              <span class="cs2-days__label">{{ d.label }}</span>
+            </div>
+          </div>
+          <p class="cs2-footnote">Bar height = listings valued that day; green marker = a qualifying opportunity.</p>
+        </div>
+        <div v-else class="cs2-empty">No valuation history yet.</div>
+      </DashboardPanel>
 
-        <!-- Gain Distribution -->
-        <CS2OverviewSection 
-            title="📈 Profit Distribution Analysis"
-            subtitle="How listings are distributed across profit margins"
-        >
-            <KMInfoGrid columns="1" rows="1" rowHeight="600">
-                <KMInfoBox caption="Gain Distribution by Percentage">
-                    <div class="distribution-container">
-                        <CS2GainDistributionBar
-                            label="< 0% (Loss)"
-                            :count="analyticsData.NumberOfListingsBelow0PercentGain"
-                            :meanPrice="analyticsData.MeanPriceOfListingsBelow0PercentGain"
-                            :total="analyticsData.TotalListingsScanned"
-                            gainType="negative"
-                        />
-                        <CS2GainDistributionBar
-                            label="0-5% (Low Profit)"
-                            :count="analyticsData.NumberOfListingsBetween0And5PercentGain"
-                            :meanPrice="analyticsData.MeanPriceOfListingsBetween0And5PercentGain"
-                            :total="analyticsData.TotalListingsScanned"
-                            gainType="low"
-                        />
-                        <CS2GainDistributionBar
-                            label="5-10% (Medium Profit)"
-                            :count="analyticsData.NumberOfListingsBetween5And10PercentGain"
-                            :meanPrice="analyticsData.MeanPriceOfListingsBetween5And10PercentGain"
-                            :total="analyticsData.TotalListingsScanned"
-                            gainType="medium"
-                        />
-                        <CS2GainDistributionBar
-                            label="10-20% (High Profit)"
-                            :count="analyticsData.NumberOfListingsBetween10And20PercentGain"
-                            :meanPrice="analyticsData.MeanPriceOfListingsBetween10And20PercentGain"
-                            :total="analyticsData.TotalListingsScanned"
-                            gainType="high"
-                        />
-                        <CS2GainDistributionBar
-                            label="> 20% (Excellent Profit)"
-                            :count="analyticsData.NumberOfListingsAbove20PercentGain"
-                            :meanPrice="analyticsData.MeanPriceOfListingsAbove20PercentGain"
-                            :total="analyticsData.TotalListingsScanned"
-                            gainType="excellent"
-                        />
-                    </div>
-                </KMInfoBox>
-            </KMInfoGrid>
-        </CS2OverviewSection>
+      <!-- Balances -->
+      <DashboardPanel
+        class="span-6"
+        title="Balances"
+        :subtitle="latestBalance ? `Recorded ${fmtDateTime(latestBalance.DateTimeOfBalanceRecord)}` : 'Daily balance record'"
+        :loading="loadingSlow && !balances.length"
+        :error="zoneError(paths.balances)"
+      >
+        <div v-if="latestBalance" class="cs2-balances">
+          <div class="cs2-balances__kpis">
+            <DashboardKpi label="Total" :value="fmtGbp(latestBalance.CSFloatTotalBalanceInPounds + latestBalance.SteamTotalBalanceInPounds)" :detail="balanceChange" />
+            <DashboardKpi label="CSFloat" :value="fmtGbp(latestBalance.CSFloatTotalBalanceInPounds)" :detail="`${fmtGbp(latestBalance.CSFloatPendingBalanceInPounds)} pending`" tone="info" />
+            <DashboardKpi label="Steam" :value="fmtGbp(latestBalance.SteamTotalBalanceInPounds)" :detail="latestBalance.SteamBalanceCarriedForward ? 'carried forward' : `${fmtGbp(latestBalance.SteamPendingBalanceInPounds)} pending`" />
+          </div>
+          <div class="cs2-chart"><canvas ref="balanceCanvas" aria-label="Balance history chart" role="img" /></div>
+        </div>
+        <div v-else class="cs2-empty">No balance records yet — the bot records balances daily at noon.</div>
+      </DashboardPanel>
 
-        <!-- Daily Purchase Activity Chart -->
-        <CS2OverviewSection 
-            title="📈 Daily Purchase Activity"
-            subtitle="Number of purchased listings per day"
-        >
-            <KMInfoGrid columns="1" rows="1" rowHeight="500">
-                <KMInfoBox caption="Daily Purchased Listings">
-                    <div class="chart-container">
-                        <canvas ref="chartCanvas" id="dailyPurchaseChart"></canvas>
-                    </div>
-                </KMInfoBox>
-            </KMInfoGrid>
-        </CS2OverviewSection>
+      <!-- Conversion -->
+      <DashboardPanel
+        class="span-7"
+        title="Converting Steam wallet back to CSFloat"
+        :subtitle="status?.conversion?.basis || plan?.ConversionBasis || 'Conversion plan'"
+        :loading="loadingSlow && !plan"
+        :error="zoneError(paths.plan)"
+      >
+        <div class="cs2-conversion">
+          <div class="cs2-conversion__k">
+            <strong :class="`tone-${kTone}`">{{ fmtNumber(status?.conversion?.coefficient ?? plan?.ConversionCoefficientUsed, 3) }}</strong>
+            <span>CSFloat £ recovered per Steam £ — the Steam exit only pays when the Steam bid beats CSFloat by
+              {{ breakEvenPremium }}× after fees.</span>
+          </div>
+          <div v-if="converters.length" class="cs2-table-wrap">
+            <table class="cs2-table">
+              <thead>
+                <tr>
+                  <th>Buy on Steam</th>
+                  <th class="num">At most</th>
+                  <th class="num">Sells on CSFloat</th>
+                  <th class="num">Return</th>
+                  <th class="num">Sales / wk</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="c in converters" :key="c.name">
+                  <td class="item"><a :href="steamListingUrl(c.name)" target="_blank" rel="noopener">{{ c.name }}</a></td>
+                  <td class="num">{{ fmtGbp(c.buyAt) }}</td>
+                  <td class="num">{{ fmtGbp(c.sellsFor) }}</td>
+                  <td class="num" :class="`tone-${(c.k ?? 0) >= 0.85 ? 'good' : 'neutral'}`">{{ c.k != null ? `${(c.k * 100).toFixed(0)}%` : '—' }}</td>
+                  <td class="num muted">{{ c.sales != null ? fmtCount(c.sales) : '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="cs2-empty">The conversion model hasn't produced a plan yet (runs every 3 hours).</div>
+        </div>
+      </DashboardPanel>
 
-        <!-- Liquidity Plan -->
-        <CS2OverviewSection 
-            title="💹 Liquidity Plan"
-            subtitle="View optimal purchase strategies and market opportunities"
-        >
-            <LiquidityPlanSection />
-        </CS2OverviewSection>
+      <!-- Scan cycles -->
+      <DashboardPanel
+        class="span-5"
+        title="Recent scans"
+        :subtitle="`${cycles.length} cycles · ${coverageGaps} with coverage gaps`"
+        :loading="loadingSlow && !cycles.length"
+        :error="zoneError(paths.cycles)"
+      >
+        <div v-if="recentCycles.length" class="cs2-table-wrap cs2-table-wrap--tall">
+          <table class="cs2-table">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Scan</th>
+                <th class="num">New</th>
+                <th class="num">Valued</th>
+                <th class="num">Steam</th>
+                <th class="num">Best</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="c in recentCycles" :key="c.StartedUtc + c.Strategy" :class="{ 'is-buy': c.Opportunities > 0 }">
+                <td class="muted">{{ fmtAgo(c.StartedUtc, now) }}</td>
+                <td :title="c.Note || ''">{{ scanName(c.Strategy) }}<span v-if="c.CoverageGap" class="tone-warning" title="More listings arrived than one page holds"> ⚠</span></td>
+                <td class="num">{{ c.NewListings }}</td>
+                <td class="num">{{ c.Evaluated }}</td>
+                <td class="num muted">{{ c.SteamLookups }}</td>
+                <td class="num" :class="`tone-${roiTone(c.BestRoi)}`" :title="c.BestItem || ''">{{ c.Evaluated ? fmtRoi(c.BestRoi) : '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else class="cs2-empty">No scan cycles recorded yet.</div>
+      </DashboardPanel>
 
-        <!-- System Information -->
-        <CS2OverviewSection 
-            title="ℹ️ System Information"
-            subtitle="Analytics generation and data timeline"
-        >
-            <KMInfoGrid columns="2" rows="1" rowHeight="320" style="padding-bottom: 50px; padding-top: 10px;">
-                <CS2MetricCard
-                    :value="analyticsData.AnalyticsGeneratedAt"
-                    label="Last Updated"
-                    :subtitle="getTimeAgo(analyticsData.AnalyticsGeneratedAt)"
-                    format="date"
-                    variant="info"
-                    icon="🕒"
-                />
-                <CS2MetricCard
-                    :value="analyticsData.FirstListingDateRecorded"
-                    label="Data Since"
-                    :subtitle="getDaysAgo(analyticsData.FirstListingDateRecorded)"
-                    format="date"
-                    variant="info"
-                    icon="📅"
-                />
-            </KMInfoGrid>
-        </CS2OverviewSection>
+      <!-- Issues -->
+      <DashboardPanel v-if="issues.length" class="span-12" title="Recent issues" :subtitle="`${issues.length} from the engine, Steam and CSFloat`">
+        <ul class="cs2-issues">
+          <li v-for="(issue, i) in issues" :key="i">{{ issue }}</li>
+        </ul>
+        <p v-if="status?.legacyFilesOnDisk > 0" class="cs2-footnote">
+          {{ fmtCount(status.legacyFilesOnDisk) }} legacy per-listing files from the old scanner are still on disk (no longer read; safe to archive).
+        </p>
+      </DashboardPanel>
     </div>
+
+    <CS2SettingsDrawer :open="settingsOpen" @close="settingsOpen = false" @saved="refreshFast" />
+  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, computed, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Chart, registerables } from 'chart.js';
-import KMInfoGrid from '~/components/KMInfoGrid.vue';
-import KMInfoBox from '~/components/KMInfoBox.vue';
-import KMButton from '~/components/KMButton.vue';
-import CS2MetricCard from '~/components/CS2MetricCard.vue';
-import CS2OverviewSection from '~/components/CS2OverviewSection.vue';
-import CS2GainDistributionBar from '~/components/CS2GainDistributionBar.vue';
-import LiquidityPlanSection from '~/components/LiquidityPlanSection.vue';
-import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 import Swal from 'sweetalert2';
+import DashboardPanel from '~/components/Dashboard/DashboardPanel.vue';
+import DashboardKpi from '~/components/Dashboard/DashboardKpi.vue';
+import DashboardAction from '~/components/Dashboard/DashboardAction.vue';
+import CS2StageTrack from '~/components/CS2/StageTrack.vue';
+import CS2SettingsDrawer from '~/components/CS2/SettingsDrawer.vue';
+import { useCurrentProfile } from '~/composables/useCurrentProfile';
+import { useCs2Arbitrage } from '~/composables/useCs2Arbitrage';
+import {
+  stageMeta, isOpenPurchase, routeName, roiTone,
+  fmtGbp, fmtPence, fmtCents, fmtRoi, fmtCount, fmtNumber, fmtAgo, fmtDateTime, isRealDate,
+  steamListingUrl, csfloatListingUrl,
+  type Cs2Evaluation, type Cs2Purchase, type Cs2Tone,
+} from '~/scripts/cs2Arbitrage';
 
-// Register Chart.js components
 Chart.register(...registerables);
-
 definePageMeta({ layout: 'navbar' });
+useHead({ title: 'KM: CS2 Arbitrage' });
 
-// Define the structure of the analytics data based on the C# class
-interface CSFloatListing {
-    ItemListingID: string;
-    ItemName: string;
-    ItemMarketHashName: string;
-    PriceText: string;
-    PriceInCents: number;
-    PriceInPence: number;
-    PriceInPounds: number;
-    ListingURL: string;
-    ImageURL: string;
-    AppraisalBasePriceInPence: number;
-    AppraisalBasePriceInPounds: number;
-    AppraisalPriceText: string;
-    AssetID: string;
-    FloatValue: number;
-    ItemID64: string;
-    DateTimeListingCreated: string;
-}
+const {
+  status, opportunities, analytics, cycles, plan, balances,
+  loadingFast, loadingSlow, now, lastLoadedAt,
+  refreshAll, refreshFast, scanNow, zoneError, paths,
+} = useCs2Arbitrage();
 
-interface SteamListing {
-    Name: string;
-    CheapestSellOrderPriceInPence: number;
-    CheapestSellOrderPriceInPounds: number;
-    HighestBuyOrderPriceInPence: number;
-    HighestBuyOrderPriceInPounds: number;
-    BuyAndSellOrders: any;
-    SellListings: string;
-    PriceText: string;
-    ImageURL: string;
-    floatType: number;
-    NameColor: string;
-    ListingURL: string;
-}
+const profile = useCurrentProfile();
+const isKlives = computed(() => profile.isKlives.value);
+const settingsOpen = ref(false);
+const scanPending = ref(false);
 
-interface ComparisonData {
-    ItemMarketHashName: string;
-    PriceTextCSFloat: string;
-    PriceTextSteamMarket: string;
-    RawArbitrageGain: number;
-    ArbitrageGainAfterSteamTax: number;
-    PredictedOverallArbitrageGain: number;
-    CSFloatURL: string;
-    SteamListingURL: string;
-    CSFloatListing: CSFloatListing;
-    SteamListing: SteamListing;
-    LastUpdate: string;
-}
+const engine = computed(() => status.value?.engine ?? null);
 
-interface PurchasedItem {
-    comparison?: ComparisonData;
-    CSFloatListingID: string;
-    ExpectedAbsoluteProfitInPence: number;
-    ExpectedAbsoluteProfitInPounds: number;
-    ExpectedProfitPercentage: number;
-    ActualProfitPercentage: number;
-    ActualAbsoluteProfitInPounds: number;
-    ActualAbsoluteProfitInPence: number;
-    TimeOfPurchase: string;
-    TimeOfSellerToAcceptSale: string;
-    TimeOfSellerToSendTradeOffer: string;
-    TimeOfItemRetrieval: string;
-    PredictedTimeToBeResoldOnSteam: string;
-    ActualTimeResoldOnSteam: string;
-    TimeOfConvertToRealFunds: string;
-    TimeOfCollectedRevenue: string;
-    CSFloatToSteamTradeOfferLink: string;
-    ItemFloatValue: number;
-    ItemMarketHashName: string;
-    ActualSalePriceOnSteam: number;
-    CurrentStrategicStage: number;
-}
+// ── Header ──────────────────────────────────────────────────────────────────
 
-interface AnalyticsData {
-    NumberOfListingsBelow0PercentGain: number;
-    MeanPriceOfListingsBelow0PercentGain: number;
-    NumberOfListingsBetween0And5PercentGain: number;
-    MeanPriceOfListingsBetween0And5PercentGain: number;
-    NumberOfListingsBetween5And10PercentGain: number;
-    MeanPriceOfListingsBetween5And10PercentGain: number;
-    NumberOfListingsBetween10And20PercentGain: number;
-    MeanPriceOfListingsBetween10And20PercentGain: number;
-    NumberOfListingsAbove20PercentGain: number;
-    MeanPriceOfListingsAbove20PercentGain: number;
-    TotalListingsScanned: number;
-    HighestPredictedGainFoundSoFar: number;
-    NameOfItemWithHighestPredictedGain: string;
-    CountListingsWithPositiveGain: number;
-    CountListingsWithNegativeGain: number;
-    PercentageChanceOfFindingPositiveGainListing: number;
-    MeanFloatValueOfProfitableListings: number;
-    MeanPriceOfProfitableListings: number;
-    MeanPriceOfUnprofitableListings: number;
-    MeanFloatValueOfUnprofitableListings: number;
-    MeanGainOfProfitableListings: number;
-    TotalExpectedProfitPercent: number;
-    FirstListingDateRecorded: string;
-    AnalyticsGeneratedAt: string;
-    AllPurchasedItems: PurchasedItem[];
-    CurrentExpectedReturnCoefficientOfSteamToCSFloat: number;
-}
-
-const analyticsData = ref<AnalyticsData>({
-    NumberOfListingsBelow0PercentGain: 0,
-    MeanPriceOfListingsBelow0PercentGain: 0,
-    NumberOfListingsBetween0And5PercentGain: 0,
-    MeanPriceOfListingsBetween0And5PercentGain: 0,
-    NumberOfListingsBetween5And10PercentGain: 0,
-    MeanPriceOfListingsBetween5And10PercentGain: 0,
-    NumberOfListingsBetween10And20PercentGain: 0,
-    MeanPriceOfListingsBetween10And20PercentGain: 0,
-    NumberOfListingsAbove20PercentGain: 0,
-    MeanPriceOfListingsAbove20PercentGain: 0,
-    TotalListingsScanned: 0,
-    HighestPredictedGainFoundSoFar: 0,
-    NameOfItemWithHighestPredictedGain: '',
-    CountListingsWithPositiveGain: 0,
-    CountListingsWithNegativeGain: 0,
-    PercentageChanceOfFindingPositiveGainListing: 0,
-    MeanFloatValueOfProfitableListings: 0,
-    MeanPriceOfProfitableListings: 0,
-    MeanPriceOfUnprofitableListings: 0,
-    MeanFloatValueOfUnprofitableListings: 0,
-    MeanGainOfProfitableListings: 0,
-    TotalExpectedProfitPercent: 0,
-    FirstListingDateRecorded: new Date().toISOString(),
-    AnalyticsGeneratedAt: new Date().toISOString(),
-    AllPurchasedItems: [],
-    CurrentExpectedReturnCoefficientOfSteamToCSFloat: 0,
+const health = computed<{ label: string; tone: 'good' | 'warning' | 'critical' | 'muted' }>(() => {
+  const s = status.value;
+  if (!s) return zoneError(paths.status) ? { label: 'Unreachable', tone: 'critical' } : { label: 'Connecting', tone: 'muted' };
+  if (!s.automationEnabled) return { label: 'Automation off', tone: 'muted' };
+  const state = String(s.engine?.State ?? s.startupState ?? '').toLowerCase();
+  if (state.includes('fail')) return { label: 'Failed', tone: 'critical' };
+  if (state.startsWith('running')) return { label: 'Running', tone: 'good' };
+  if (state.includes('paused')) return { label: 'Paused', tone: 'warning' };
+  if (state.includes('waiting')) return { label: 'Waiting', tone: 'warning' };
+  return { label: state ? state[0].toUpperCase() + state.slice(1) : 'Starting', tone: 'warning' };
 });
 
-const isLoading = ref(false);
-const chartCanvas = ref<HTMLCanvasElement | null>(null);
-let dailyPurchaseChart: Chart | null = null;
+const freshness = computed(() => (lastLoadedAt.value ? `Updated ${fmtAgo(new Date(lastLoadedAt.value).toISOString(), now.value)}` : 'Loading…'));
 
-// Reactive data for purchased items
-const selectedItem = ref<PurchasedItem | null>(null);
-
-// Computed property for sorted purchased items (most recent first)
-const sortedPurchasedItems = computed(() => {
-    return [...analyticsData.value.AllPurchasedItems].sort((a, b) => {
-        const dateA = new Date(a.TimeOfPurchase).getTime();
-        const dateB = new Date(b.TimeOfPurchase).getTime();
-        return dateB - dateA; // Most recent first
-    });
-});
-
-// Functions for purchased items
-const selectItem = (item: PurchasedItem) => {
-    selectedItem.value = item;
+const runScan = async () => {
+  scanPending.value = true;
+  try {
+    const message = await scanNow();
+    Swal.fire({ toast: true, position: 'top-end', timer: 3500, showConfirmButton: false, icon: message.includes('queued') ? 'success' : 'warning', title: message, background: '#161616', color: '#ededed' });
+  } finally {
+    scanPending.value = false;
+  }
 };
 
-const getStrategyStatusText = (stage: number): string => {
-    const stages = {
-        0: 'Waiting for Seller to Accept Sale',
-        1: 'Waiting for Trade to be Sent',
-        2: 'Waiting for Trade to be Accepted',
-        3: 'Just Retrieved',
-        4: 'Waiting for Market Sale on Steam',
-        5: 'Waiting for Conversion Items to Purchase',
-        6: 'Waiting for Conversion Items to Sell',
-        7: 'Strategy Completed'
+// ── Purchases ───────────────────────────────────────────────────────────────
+
+const purchases = computed<Cs2Purchase[]>(() =>
+  [...(analytics.value?.AllPurchasedItems ?? [])].sort((a, b) => new Date(b.TimeOfPurchase ?? 0).getTime() - new Date(a.TimeOfPurchase ?? 0).getTime()));
+const openPurchases = computed(() => purchases.value.filter(isOpenPurchase));
+const actionCount = computed(() => purchases.value.filter((p) => p.CurrentStrategicStage === 2 || String(p.LastTradeState ?? '').startsWith('resale:pending') || String(p.LastTradeState ?? '').startsWith('resale:queued')).length);
+const showAllPositions = ref(false);
+const visiblePurchases = computed(() => (showAllPositions.value ? purchases.value : openPurchases.value));
+const selectedId = ref<string | null>(null);
+const selected = computed(() => purchases.value.find((p) => p.CSFloatListingID === selectedId.value) ?? visiblePurchases.value[0] ?? null);
+
+const exitLabel = (p: Cs2Purchase) => (p.PlannedExit === 'CSFloatRelist' ? 'Relist on CSFloat' : 'Sell on Steam');
+const positionCost = (p: Cs2Purchase) => (p.PurchaseCostPence ? fmtPence(p.PurchaseCostPence) : p.comparison?.CSFloatListing?.PriceText ?? '—');
+const positionProfit = (p: Cs2Purchase) => {
+  if (p.CurrentStrategicStage === 7) return `${fmtGbp(p.ActualAbsoluteProfitInPounds)} realised`;
+  if (p.CurrentStrategicStage === 8) return 'refunded';
+  return `${fmtGbp(p.ExpectedAbsoluteProfitInPounds)} expected`;
+};
+const profitTone = (p: Cs2Purchase): Cs2Tone => {
+  if (p.CurrentStrategicStage === 8) return 'neutral';
+  const value = p.CurrentStrategicStage === 7 ? p.ActualAbsoluteProfitInPounds : p.ExpectedAbsoluteProfitInPounds;
+  return (value ?? 0) >= 0 ? 'good' : 'danger';
+};
+
+const timeline = (p: Cs2Purchase) => {
+  const events: { label: string; at?: string; future?: boolean }[] = [
+    { label: 'Bought', at: p.TimeOfPurchase },
+    { label: 'Seller accepted', at: p.TimeOfSellerToAcceptSale },
+    { label: 'Trade offer sent', at: p.TimeOfSellerToSendTradeOffer },
+    { label: 'Item received', at: p.TimeOfItemRetrieval },
+    { label: p.PlannedExit === 'CSFloatRelist' ? 'Relist due' : 'Steam sale due', at: p.PredictedTimeToBeResoldOnSteam, future: true },
+    { label: 'Sold on Steam', at: p.ActualTimeResoldOnSteam },
+    { label: 'Revenue collected', at: p.TimeOfCollectedRevenue },
+  ];
+  return events
+    .filter((e) => isRealDate(e.at))
+    .map((e) => ({ ...e, future: e.future && new Date(e.at as string).getTime() > now.value }));
+};
+
+// ── Opportunities ───────────────────────────────────────────────────────────
+
+type OppFilter = 'all' | 'buy' | 'near';
+const oppFilter = ref<OppFilter>('all');
+const oppFilters = computed(() => [
+  { id: 'all' as const, label: 'All', count: opportunities.value.length },
+  { id: 'buy' as const, label: 'Qualified', count: opportunities.value.filter((o) => o.ShouldBuy).length },
+  { id: 'near' as const, label: 'Near misses', count: opportunities.value.filter((o) => !o.ShouldBuy).length },
+]);
+const filteredOpportunities = computed(() => opportunities.value.filter((o) =>
+  oppFilter.value === 'all' || (oppFilter.value === 'buy' ? o.ShouldBuy : !o.ShouldBuy)));
+
+/** The server's reason, trimmed to the part that explains the verdict. */
+const shortReason = (o: Cs2Evaluation) => {
+  const reason = o.Reason ?? '';
+  if (o.ShouldBuy) return reason;
+  const rejected = reason.match(/rejected: (.*)$/);
+  if (rejected) return rejected[1];
+  const bar = reason.match(/below the bar \((.*)\)$/);
+  if (bar) return `under bar (${bar[1]})`;
+  return reason;
+};
+
+// ── Market read ─────────────────────────────────────────────────────────────
+
+const roiBuckets = computed(() => {
+  const a = analytics.value;
+  if (!a) return [];
+  const total = Math.max(1, a.TotalListingsScanned);
+  const rows = [
+    { label: '< 0%', count: a.NumberOfListingsBelow0PercentGain, tone: 'muted' },
+    { label: '0–5%', count: a.NumberOfListingsBetween0And5PercentGain, tone: 'muted' },
+    { label: '5–10%', count: a.NumberOfListingsBetween5And10PercentGain, tone: 'warning' },
+    { label: '10–20%', count: a.NumberOfListingsBetween10And20PercentGain, tone: 'good' },
+    { label: '> 20%', count: a.NumberOfListingsAbove20PercentGain, tone: 'good' },
+  ];
+  return rows.map((r) => ({ ...r, pct: (r.count / total) * 100 }));
+});
+
+const daily = computed(() => {
+  const map = analytics.value?.Daily ?? {};
+  const days = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(now.value - (13 - i) * 86_400_000);
+    return d.toISOString().slice(0, 10);
+  });
+  const rows = days.map((day) => ({
+    day,
+    label: day.slice(8, 10),
+    evaluated: map[day]?.Evaluated ?? 0,
+    qualified: map[day]?.Qualified ?? 0,
+    purchased: map[day]?.Purchased ?? 0,
+  }));
+  const max = Math.max(1, ...rows.map((r) => r.evaluated));
+  return rows.map((r) => ({ ...r, height: r.evaluated ? Math.max(4, (r.evaluated / max) * 100) : 0 }));
+});
+const dailySummary = computed(() => `${daily.value.reduce((s, d) => s + d.evaluated, 0)} listings valued and ${daily.value.reduce((s, d) => s + d.qualified, 0)} qualifying opportunities in the last 14 days`);
+
+// ── Pipeline ────────────────────────────────────────────────────────────────
+
+const budgets = computed(() => (status.value?.csfloatRateLimits ?? [])
+  .filter((b: any) => b.Limit > 0 && ['listings', 'trades', 'history', 'inventory'].includes(b.Name))
+  .map((b: any) => {
+    const pct = Math.max(0, Math.min(100, (b.Remaining / b.Limit) * 100));
+    return { ...b, pct, tone: pct > 40 ? 'good' : pct > 10 ? 'warning' : 'danger' };
+  }));
+
+const steamHealthPct = computed(() => {
+  const s = status.value?.steam;
+  if (!s) return 0;
+  const total = (s.Successes ?? 0) + (s.Failures ?? 0);
+  return total ? (s.Successes / total) * 100 : 100;
+});
+
+const prefilterShare = computed(() => {
+  const e = engine.value;
+  if (!e?.Evaluated) return 'no Steam call needed for —';
+  return `${Math.round((e.Prefiltered / e.Evaluated) * 100)}% without a Steam call`;
+});
+
+const csfloatUsdCents = computed(() => {
+  const usd = status.value?.balances?.csfloatUsd;
+  return typeof usd === 'number' ? Math.round(usd * 100) : null;
+});
+
+// ── Conversion ──────────────────────────────────────────────────────────────
+
+const kTone = computed<Cs2Tone>(() => {
+  const k = status.value?.conversion?.coefficient;
+  if (typeof k !== 'number') return 'neutral';
+  return k >= 0.85 ? 'good' : k >= 0.7 ? 'neutral' : 'warning';
+});
+const conversionAge = computed(() => {
+  const at = status.value?.conversion?.computedAtUtc;
+  return at ? `model ${fmtAgo(at, now.value)}` : 'default (no model yet)';
+});
+/** Steam bid / CSFloat price needed to break even on the Steam exit: 1.15 fee ÷ k. */
+const breakEvenPremium = computed(() => {
+  const k = status.value?.conversion?.coefficient ?? plan.value?.ConversionCoefficientUsed;
+  return typeof k === 'number' && k > 0 ? (1.15 / k).toFixed(2) : '—';
+});
+
+const converters = computed(() => {
+  const verified = new Map<string, any>((status.value?.conversion?.topConverters ?? []).map((c: any) => [c.MarketHashName, c]));
+  const rows = (plan.value?.Top10Gaps ?? []).map((g) => {
+    const name = g.csfloatContainer?.MarketHashName ?? g.steamListing?.Name ?? '';
+    const v = verified.get(name);
+    return {
+      name,
+      buyAt: g.IdealPriceToPurchaseOnSteamInPounds ?? g.steamListing?.CheapestSellOrderPriceInPounds,
+      sellsFor: g.csfloatContainer?.PriceInPounds,
+      k: v?.Coefficient ?? g.ReturnCoefficientFromSteamToCSFloatTaxIncluded ?? null,
+      sales: v?.CSFloatSales7d ?? null,
     };
-    return stages[stage as keyof typeof stages] || 'Unknown Status';
-};
-
-const getStrategyStatusClass = (stage: number): string => {
-    const classes = {
-        0: 'status-waiting',
-        1: 'status-waiting',
-        2: 'status-waiting',
-        3: 'status-retrieved',
-        4: 'status-selling',
-        5: 'status-converting',
-        6: 'status-converting',
-        7: 'status-completed'
-    };
-    return classes[stage as keyof typeof classes] || 'status-unknown';
-};
-
-const formatDateTime = (dateString: string): string => {
-    if (!dateString || dateString === '0001-01-01T00:00:00') return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleString();
-};
-
-// Utility functions for time calculations
-const getTimeAgo = (dateString: string): string => {
-    if (!dateString) return '';
-    const now = new Date();
-    const past = new Date(dateString);
-    const diffMs = now.getTime() - past.getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    
-    if (diffHours > 0) {
-        return `${diffHours}h ${diffMinutes}m ago`;
-    } else {
-        return `${diffMinutes}m ago`;
-    }
-};
-
-const getDaysAgo = (dateString: string): string => {
-    if (!dateString) return '';
-    const now = new Date();
-    const past = new Date(dateString);
-    const diffMs = now.getTime() - past.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    
-    return `${diffDays} days of data`;
-};
-
-// Generate daily purchase data for chart from real purchase data
-const generateDailyPurchaseData = (purchasedItems: PurchasedItem[]) => {
-    const dailyData: { date: string, purchases: number }[] = [];
-    
-    // Create a map to count purchases per day
-    const purchaseCountByDate = new Map<string, number>();
-    
-    // Find the earliest and latest purchase dates from actual data
-    let earliestDate: Date | null = null;
-    let latestDate: Date | null = null;
-    
-    // Count actual purchases by date and find date range
-    purchasedItems.forEach(item => {
-        if (item.TimeOfPurchase && item.TimeOfPurchase !== "0001-01-01T00:00:00") {
-            const purchaseDate = new Date(item.TimeOfPurchase);
-            const dateStr = purchaseDate.toISOString().split('T')[0];
-            purchaseCountByDate.set(dateStr, (purchaseCountByDate.get(dateStr) || 0) + 1);
-            
-            // Track earliest and latest dates
-            if (!earliestDate || purchaseDate < earliestDate) {
-                earliestDate = purchaseDate;
-            }
-            if (!latestDate || purchaseDate > latestDate) {
-                latestDate = purchaseDate;
-            }
-        }
-    });
-    
-    // If no purchase data, return empty array
-    if (!earliestDate || !latestDate) {
-        return [];
-    }
-    
-    // Generate data for each day from earliest to latest purchase date
-    const currentDate = new Date((earliestDate as Date).getTime());
-    while (currentDate.getTime() <= (latestDate as Date).getTime()) {
-        const dateStr = currentDate.toISOString().split('T')[0];
-        const purchases = purchaseCountByDate.get(dateStr) || 0;
-        
-        dailyData.push({
-            date: dateStr,
-            purchases: purchases
-        });
-        
-        currentDate.setDate(currentDate.getDate() + 1);
-    }
-    
-    return dailyData;
-};
-
-// Create the daily purchase chart
-// Create the balance history chart
-const createBalanceHistoryChart = async () => {
-    await nextTick();
-    
-    if (!balanceChartCanvas.value) {
-        console.error('Balance chart canvas not found');
-        return;
-    }
-    
-    // Destroy existing chart if it exists
-    if (balanceHistoryChart) {
-        balanceHistoryChart.destroy();
-    }
-    
-    const ctx = balanceChartCanvas.value.getContext('2d');
-    if (!ctx) return;
-    
-    // Format the data for the chart
-    const labels = balanceHistory.value.map(record => {
-        const date = new Date(record.DateTimeOfBalanceRecord);
-        return date.toLocaleDateString('en-GB', {
-            month: 'short',
-            day: 'numeric'
-        });
-    });
-    
-    const steamBalanceData = balanceHistory.value.map(record => record.SteamTotalBalanceInPounds);
-    const csFloatBalanceData = balanceHistory.value.map(record => record.CSFloatTotalBalanceInPounds);
-    
-    balanceHistoryChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [
-                {
-                    label: 'Steam Balance',
-                    data: steamBalanceData,
-                    borderColor: 'rgba(59, 130, 246, 1)',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.2,
-                    pointBackgroundColor: 'rgba(59, 130, 246, 1)',
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 1,
-                    pointRadius: 4,
-                    pointHoverRadius: 6,
-                },
-                {
-                    label: 'CSFloat Balance',
-                    data: csFloatBalanceData,
-                    borderColor: 'rgba(245, 158, 11, 1)',
-                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.2,
-                    pointBackgroundColor: 'rgba(245, 158, 11, 1)',
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 1,
-                    pointRadius: 4,
-                    pointHoverRadius: 6,
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            layout: {
-                padding: {
-                    left: 5,
-                    right: 30,
-                    top: 5,
-                    bottom: 25
-                }
-            },
-            plugins: {
-                title: {
-                    display: true,
-                    text: 'Balance History',
-                    color: '#ffffff',
-                    font: {
-                        size: 16,
-                        weight: 'bold'
-                    },
-                    padding: {
-                        top: 5,
-                        bottom: 15
-                    }
-                },
-                legend: {
-                    position: 'top',
-                    align: 'center',
-                    labels: {
-                        color: '#ffffff',
-                        usePointStyle: true,
-                        pointStyle: 'circle',
-                        padding: 10,
-                        boxWidth: 10,
-                        boxHeight: 10,
-                        font: {
-                            size: 11
-                        }
-                    }
-                },
-                tooltip: {
-                    backgroundColor: 'rgba(22, 22, 22, 0.9)',
-                    titleColor: '#ffffff',
-                    bodyColor: '#ffffff',
-                    borderColor: '#4d9e39',
-                    borderWidth: 1,
-                    padding: 12,
-                    displayColors: true,
-                    callbacks: {
-                        title: function(context) {
-                            const dataIndex = context[0].dataIndex;
-                            const fullDate = new Date(balanceHistory.value[dataIndex].DateTimeOfBalanceRecord);
-                            return fullDate.toLocaleDateString('en-GB', {
-                                weekday: 'long',
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric'
-                            });
-                        },
-                        label: function(context) {
-                            const value = context.raw as number;
-                            return `${context.dataset.label}: £${value.toFixed(2)}`;
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    grid: {
-                        color: 'rgba(255, 255, 255, 0.05)',
-                    },
-                    ticks: {
-                        color: '#969696',
-                        maxRotation: 0,
-                        autoSkip: true,
-                        maxTicksLimit: 7,
-                        padding: 8
-                    },
-                    border: {
-                        display: false
-                    }
-                },
-                y: {
-                    title: {
-                        display: true,
-                        text: 'Balance (£)',
-                        color: '#969696',
-                        font: {
-                            size: 12
-                        },
-                        padding: {
-                            bottom: 10
-                        }
-                    },
-                    grid: {
-                        color: 'rgba(255, 255, 255, 0.05)',
-                    },
-                    ticks: {
-                        color: '#969696',
-                        padding: 8,
-                        callback: function(value) {
-                            return '£' + value;
-                        },
-                        count: 6
-                    },
-                    border: {
-                        display: false
-                    },
-                    beginAtZero: true,
-                    // Add padding at the top of the scale
-                    suggestedMax: Math.max(...steamBalanceData, ...csFloatBalanceData) * 1.2
-                }
-            },
-            interaction: {
-                intersect: false,
-                mode: 'index'
-            }
-        }
-    });
-};
-
-const createDailyPurchaseChart = async () => {
-    await nextTick();
-    
-    if (!chartCanvas.value) {
-        console.error('Chart canvas not found');
-        return;
-    }
-    
-    // Destroy existing chart if it exists
-    if (dailyPurchaseChart) {
-        dailyPurchaseChart.destroy();
-    }
-    
-    const dailyData = generateDailyPurchaseData(
-        analyticsData.value.AllPurchasedItems || []
-    );
-    
-    const ctx = chartCanvas.value.getContext('2d');
-    if (!ctx) return;
-    
-    dailyPurchaseChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: dailyData.map(d => {
-                const date = new Date(d.date);
-                return date.toLocaleDateString('en-GB', { 
-                    month: 'short', 
-                    day: 'numeric'
-                });
-            }),
-            datasets: [{
-                label: 'Purchased Listings',
-                data: dailyData.map(d => d.purchases),
-                backgroundColor: 'rgba(77, 158, 57, 0.8)',
-                borderColor: 'rgba(77, 158, 57, 1)',
-                borderWidth: 1,
-                borderRadius: 4,
-                borderSkipped: false,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                },
-                tooltip: {
-                    backgroundColor: 'rgba(22, 22, 22, 0.9)',
-                    titleColor: '#ffffff',
-                    bodyColor: '#ffffff',
-                    borderColor: 'rgba(77, 158, 57, 0.8)',
-                    borderWidth: 1,
-                    callbacks: {
-                        title: function(context) {
-                            const dataIndex = context[0].dataIndex;
-                            const fullDate = new Date(dailyData[dataIndex].date);
-                            return fullDate.toLocaleDateString('en-GB', {
-                                weekday: 'long',
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric'
-                            });
-                        },
-                        label: function(context) {
-                            const purchases = context.parsed.y;
-                            if (purchases === 0) {
-                                return 'No purchases made';
-                            } else if (purchases === 1) {
-                                return '1 item purchased';
-                            } else {
-                                return `${purchases} items purchased`;
-                            }
-                        },
-                        afterLabel: function(context) {
-                            const dataIndex = context.dataIndex;
-                            const date = dailyData[dataIndex].date;
-                            const purchases = context.parsed.y;
-                            
-                            if (purchases > 0) {
-                                // Find items purchased on this date
-                                const itemsOnDate = analyticsData.value.AllPurchasedItems?.filter(item => {
-                                    if (item.TimeOfPurchase && item.TimeOfPurchase !== "0001-01-01T00:00:00") {
-                                        const purchaseDate = new Date(item.TimeOfPurchase);
-                                        return purchaseDate.toISOString().split('T')[0] === date;
-                                    }
-                                    return false;
-                                }) || [];
-                                
-                                if (itemsOnDate.length > 0) {
-                                    const totalProfit = itemsOnDate.reduce((sum, item) => sum + item.ExpectedAbsoluteProfitInPounds, 0);
-                                    const details = [`Expected total profit: £${totalProfit.toFixed(2)}`, ''];
-                                    
-                                    // Add each item with its purchase time
-                                    itemsOnDate.forEach((item, index) => {
-                                        const purchaseTime = new Date(item.TimeOfPurchase);
-                                        const timeStr = purchaseTime.toLocaleTimeString('en-GB', { 
-                                            hour: '2-digit', 
-                                            minute: '2-digit',
-                                            hour12: false
-                                        });
-                                        const itemName = item.ItemMarketHashName || 'Unknown Item';
-                                        const profit = item.ExpectedAbsoluteProfitInPounds;
-                                        
-                                        details.push(`${timeStr} - ${itemName}`);
-                                        details.push(`  Expected profit: £${profit.toFixed(2)}`);
-                                        
-                                        // Add a separator between items (except for the last one)
-                                        if (index < itemsOnDate.length - 1) {
-                                            details.push('');
-                                        }
-                                    });
-                                    
-                                    return details;
-                                }
-                            }
-                            return '';
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    grid: {
-                        color: 'rgba(77, 158, 57, 0.1)',
-                        display: true
-                    },
-                    ticks: {
-                        color: '#969696',
-                        maxTicksLimit: 15,
-                        callback: function(value, index, ticks) {
-                            // Show every nth label to avoid overcrowding
-                            const totalTicks = ticks.length;
-                            const step = Math.ceil(totalTicks / 10);
-                            return index % step === 0 ? this.getLabelForValue(value as number) : '';
-                        }
-                    },
-                    title: {
-                        display: true,
-                        text: 'Date',
-                        color: '#ffffff',
-                        font: {
-                            size: 12,
-                            weight: 'bold'
-                        }
-                    }
-                },
-                y: {
-                    beginAtZero: true,
-                    grid: {
-                        color: 'rgba(77, 158, 57, 0.1)',
-                        display: true
-                    },
-                    ticks: {
-                        color: '#969696',
-                        stepSize: 1
-                    },
-                    title: {
-                        display: true,
-                        text: 'Number of Purchases',
-                        color: '#ffffff',
-                        font: {
-                            size: 12,
-                            weight: 'bold'
-                        }
-                    }
-                }
-            },
-            interaction: {
-                intersect: false,
-                mode: 'index'
-            },
-            elements: {
-                bar: {
-                    borderRadius: 4
-                }
-            }
-        }
-    });
-};
-
-// Fetch data function
-// Define balance history data structure
-interface BalanceHistoryRecord {
-    CSFloatFee: number;
-    CSFloatWithdrawFee: number;
-    CSFloatUsableBalanceInPounds: number;
-    CSFloatTotalBalanceInPounds: number;
-    CSFloatPendingBalanceInPounds: number;
-    SteamUsableBalanceInPounds: number;
-    SteamPendingBalanceInPounds: number;
-    SteamTotalBalanceInPounds: number;
-    DateTimeOfBalanceRecord: string;
-    CSFloatProfileStatistics: {
-        TotalSales: number;
-        TotalPurchases: number;
-        MedianTradeTime: number;
-        TotalAvoidedTrades: number;
-        TotalFailedTrades: number;
-        TotalVerifiedTrades: number;
-        TotalTrades: number;
-    };
-}
-
-const balanceHistory = ref<BalanceHistoryRecord[]>([]);
-const balanceChartCanvas = ref<HTMLCanvasElement | null>(null);
-let balanceHistoryChart: Chart | null = null;
-
-// Computed property to get the most recent balance record
-const latestBalance = computed<BalanceHistoryRecord>(() => {
-    if (balanceHistory.value.length === 0) {
-        // Return a default empty object if no balance records
-        return {
-            CSFloatFee: 0,
-            CSFloatWithdrawFee: 0,
-            CSFloatUsableBalanceInPounds: 0,
-            CSFloatTotalBalanceInPounds: 0,
-            CSFloatPendingBalanceInPounds: 0,
-            SteamUsableBalanceInPounds: 0,
-            SteamPendingBalanceInPounds: 0,
-            SteamTotalBalanceInPounds: 0,
-            DateTimeOfBalanceRecord: new Date().toISOString(),
-            CSFloatProfileStatistics: {
-                TotalSales: 0,
-                TotalPurchases: 0,
-                MedianTradeTime: 0,
-                TotalAvoidedTrades: 0,
-                TotalFailedTrades: 0,
-                TotalVerifiedTrades: 0,
-                TotalTrades: 0
-            }
-        };
-    }
-    
-    // Sort by date (newest first) and return the most recent record
-    return [...balanceHistory.value].sort((a, b) => {
-        return new Date(b.DateTimeOfBalanceRecord).getTime() - new Date(a.DateTimeOfBalanceRecord).getTime();
-    })[0];
+  });
+  return rows.filter((r) => r.name).sort((a, b) => (b.k ?? 0) - (a.k ?? 0)).slice(0, 8);
 });
 
-// Computed property to check if there are any pending balances
-const hasPendingBalances = computed(() => {
-    if (!latestBalance.value) return false;
-    
-    const steamPending = latestBalance.value.SteamPendingBalanceInPounds || 0;
-    const csFloatPending = latestBalance.value.CSFloatPendingBalanceInPounds || 0;
-    
-    // Show the pending balances section if either value is greater than zero or explicitly set to zero
-    return steamPending > 0 || csFloatPending > 0;
+// ── Scan cycles & issues ────────────────────────────────────────────────────
+
+const recentCycles = computed(() => [...cycles.value].reverse().slice(0, 30));
+const coverageGaps = computed(() => cycles.value.filter((c) => c.CoverageGap).length);
+const scanName = (strategy: string) => ({
+  feed: 'Feed',
+  structural: 'Whole market',
+  'sweep:highest_discount': 'Sweep · discount',
+  'sweep:best_deal': 'Sweep · best deal',
+} as Record<string, string>)[strategy] ?? strategy;
+
+const issues = computed(() => {
+  const list: string[] = [...(engine.value?.RecentErrors ?? [])];
+  if (status.value?.steam?.LastError) list.push(`Steam: ${status.value.steam.LastError}`);
+  if (status.value?.trades?.lastError) list.push(`CSFloat trades: ${status.value.trades.lastError}`);
+  if (status.value?.bulkSteamPrices?.LastError) list.push(`Bulk Steam prices: ${status.value.bulkSteamPrices.LastError}`);
+  return list.slice(0, 12);
 });
 
-const fetchData = async () => {
-    isLoading.value = true;
-    try {
-        // Fetch analytics data
-        const response = await RequestGETFromKliveAPI("/cs2arbitragebot/getscanalytics");
-        if (response.status === 200) {
-            const data = await response.json();
-            analyticsData.value = data;
-            console.log('Analytics data loaded successfully:', data);
-            
-            // Create chart after data is loaded
-            setTimeout(() => {
-                createDailyPurchaseChart();
-            }, 100);
-            
-            // Auto-select the first (most recent) purchased item
-            if (data.AllPurchasedItems && data.AllPurchasedItems.length > 0) {
-                const sortedItems = [...data.AllPurchasedItems].sort((a, b) => {
-                    const dateA = new Date(a.TimeOfPurchase).getTime();
-                    const dateB = new Date(b.TimeOfPurchase).getTime();
-                    return dateB - dateA; // Most recent first
-                });
-                selectedItem.value = sortedItems[0];
-            }
-            
-            // Fetch balance history data
-            const balanceResponse = await RequestGETFromKliveAPI("/cs2arbitragebot/balanceHistory");
-            if (balanceResponse.status === 200) {
-                balanceHistory.value = await balanceResponse.json();
-                console.log('Balance history data loaded successfully:', balanceHistory.value);
-                
-                // Create balance history chart
-                setTimeout(() => {
-                    createBalanceHistoryChart();
-                }, 150);
-            }
-        } else {
-            Swal.fire({
-                icon: 'error',
-                title: 'Data Fetch Failed',
-                text: 'Failed to fetch analytics data.',
-                confirmButtonColor: '#4d9e39',
-                background: '#161516',
-                color: '#ffffff',
-                customClass: {
-                    popup: 'swal-dark-theme'
-                }
-            });
-            window.location.replace("/schemes");
-        }
-    } catch (error) {
-        console.error('Error fetching analytics data:', error);
-        Swal.fire({
-            icon: 'error',
-            title: 'Loading Error',
-            text: 'Error loading analytics data.',
-            confirmButtonColor: '#4d9e39',
-            background: '#161516',
-            color: '#ffffff',
-            customClass: {
-                popup: 'swal-dark-theme'
-            }
-        });
-    } finally {
-        isLoading.value = false;
-    }
+// ── Attention ───────────────────────────────────────────────────────────────
+
+const attention = computed(() => {
+  const items: { key: string; title: string; detail: string; tone: 'warning' | 'danger' | 'info'; href?: string }[] = [];
+  const statusError = zoneError(paths.status);
+  if (statusError && !status.value) items.push({ key: 'status', title: 'Bot unreachable', detail: statusError, tone: 'danger' });
+
+  for (const p of purchases.value.filter((x) => x.CurrentStrategicStage === 2)) {
+    items.push({ key: `accept-${p.CSFloatListingID}`, title: 'Accept trade offer', detail: p.ItemMarketHashName, tone: 'warning', href: p.CSFloatToSteamTradeOfferLink || undefined });
+  }
+  for (const p of purchases.value.filter((x) => /^resale:(pending|queued)/.test(x.LastTradeState ?? ''))) {
+    items.push({ key: `send-${p.CSFloatListingID}`, title: 'Send CSFloat trade', detail: `${p.ItemMarketHashName} sold — send it from CSFloat's Trades page`, tone: 'warning' });
+  }
+
+  const s = status.value;
+  const e = engine.value;
+  if (s?.steam && s.steam.ConsecutiveFailures >= 10) items.push({ key: 'steam', title: 'Steam prices failing', detail: s.steam.LastError || `${s.steam.ConsecutiveFailures} failures in a row`, tone: 'danger' });
+  if (e?.CSFloatPausedUntilUtc) items.push({ key: 'csfloat-pause', title: 'CSFloat rate-limited', detail: `Paused until ${fmtDateTime(e.CSFloatPausedUntilUtc)}`, tone: 'warning' });
+  if (e?.State === 'running' && isRealDate(e.LastFeedPollUtc) && now.value - new Date(e.LastFeedPollUtc).getTime() > 5 * 60_000) {
+    items.push({ key: 'feed', title: 'Feed stalled', detail: `Last poll ${fmtAgo(e.LastFeedPollUtc, now.value)}`, tone: 'danger' });
+  }
+  if (s && !s.automationEnabled) items.push({ key: 'automation', title: 'Automation off', detail: 'This instance is not the server', tone: 'info' });
+  if (s?.settings && !s.settings.ScanningEnabled) items.push({ key: 'scanning', title: 'Scanning is off', detail: 'Enable "Scan the market" in settings', tone: 'warning' });
+  if (s?.settings && !s.settings.PurchasingEnabled) items.push({ key: 'buying', title: 'Auto-buy is off', detail: 'Qualifying deals are alerted, not bought', tone: 'info' });
+  return items;
+});
+
+// ── Balance chart ───────────────────────────────────────────────────────────
+
+const sortedBalances = computed(() => [...balances.value].sort((a, b) => new Date(a.DateTimeOfBalanceRecord).getTime() - new Date(b.DateTimeOfBalanceRecord).getTime()));
+const latestBalance = computed(() => sortedBalances.value[sortedBalances.value.length - 1] ?? null);
+const balanceChange = computed(() => {
+  const list = sortedBalances.value;
+  if (list.length < 2) return 'first record';
+  const total = (b: typeof list[number]) => b.CSFloatTotalBalanceInPounds + b.SteamTotalBalanceInPounds;
+  const weekAgo = Date.now() - 7 * 86_400_000;
+  const baseline = [...list].reverse().find((b) => new Date(b.DateTimeOfBalanceRecord).getTime() <= weekAgo) ?? list[0];
+  const delta = total(list[list.length - 1]) - total(baseline);
+  return `${delta >= 0 ? '+' : '−'}£${Math.abs(delta).toFixed(2)} vs ${fmtDateTime(baseline.DateTimeOfBalanceRecord)}`;
+});
+
+const balanceCanvas = ref<HTMLCanvasElement | null>(null);
+let balanceChart: Chart | null = null;
+
+const renderBalanceChart = async () => {
+  await nextTick();
+  if (!balanceCanvas.value || !sortedBalances.value.length) return;
+  const labels = sortedBalances.value.map((b) => new Date(b.DateTimeOfBalanceRecord).toLocaleDateString(undefined, { day: '2-digit', month: 'short' }));
+  const csfloat = sortedBalances.value.map((b) => b.CSFloatTotalBalanceInPounds);
+  const steam = sortedBalances.value.map((b) => b.SteamTotalBalanceInPounds);
+  if (balanceChart) {
+    balanceChart.data.labels = labels;
+    balanceChart.data.datasets[0].data = csfloat;
+    balanceChart.data.datasets[1].data = steam;
+    balanceChart.update('none');
+    return;
+  }
+  balanceChart = new Chart(balanceCanvas.value, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'CSFloat', data: csfloat, borderColor: '#62ce47', backgroundColor: 'rgba(98, 206, 71, 0.18)', fill: 'origin', tension: 0.25, pointRadius: 0, borderWidth: 1.5, stack: 'total' },
+        { label: 'Steam', data: steam, borderColor: '#6aa9ff', backgroundColor: 'rgba(106, 169, 255, 0.15)', fill: '-1', tension: 0.25, pointRadius: 0, borderWidth: 1.5, stack: 'total' },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#a8a8a8', boxWidth: 10, font: { size: 11 } } },
+        tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: £${Number(ctx.parsed.y).toFixed(2)}` } },
+      },
+      scales: {
+        x: { ticks: { color: '#707070', maxTicksLimit: 8, font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { stacked: true, ticks: { color: '#707070', font: { size: 10 }, callback: (v) => `£${v}` }, grid: { color: 'rgba(255,255,255,0.05)' } },
+      },
+    },
+  });
 };
 
-// Lifecycle hook to fetch data when the component is mounted
-onMounted(() => {
-    fetchData();
-});
-
-// Watch for changes in sortedPurchasedItems and auto-select first item if none selected
-watch(sortedPurchasedItems, (newItems) => {
-    if (newItems.length > 0 && !selectedItem.value) {
-        selectedItem.value = newItems[0];
-    }
-}, { immediate: true });
-
+watch(sortedBalances, renderBalanceChart);
+onMounted(() => { profile.ensureLoaded?.(); renderBalanceChart(); });
+onBeforeUnmount(() => { balanceChart?.destroy(); balanceChart = null; });
 </script>
 
 <style scoped>
-.cs2-analytics-container {
+.cs2-shell,
+.cs2-shell * { color: inherit; font-family: inherit; }
+
+.cs2-shell {
+  display: grid;
+  min-width: 0;
   min-height: 100vh;
-  background-color: #201f20;
-  padding: 2rem 1rem;
+  align-content: start;
+  gap: 8px;
+  padding: 10px;
+  background: #201f20;
+  color: #ededed;
+  font-family: 'Roboto', sans-serif;
 }
 
-.cs2-header {
-  background-color: #161616;
-  border-radius: 20px;
-  padding: 2rem;
-  margin-bottom: 2rem;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(77, 158, 57, 0.2);
-  text-align: center;
+/* On narrow screens the navbar layout overlays its 56px rail on the page; keep clear of it. */
+.vnav-root.is-overlay .cs2-shell { padding-left: 66px; }
+
+.cs2-shell a { color: #8de279; text-decoration: none; }
+.cs2-shell a:hover { text-decoration: underline; }
+.muted { color: #858585; }
+.tone-good { color: #8de279; }
+.tone-warning { color: #f0c35b; }
+.tone-danger { color: #ff8f8f; }
+.tone-info { color: #8fbfff; }
+.tone-neutral { color: inherit; }
+
+/* Command bar */
+.cs2-commandbar {
+  display: flex;
+  min-height: 42px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 6px;
+  background: #161616;
 }
 
-.cs2-title {
-  font-size: 3rem;
-  font-weight: 700;
-  margin-bottom: 0.5rem;
-  color: #4d9e39;
+.cs2-identity { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 10px; }
+.cs2-back {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  color: #bdbdbd !important;
+  text-decoration: none !important;
 }
+.cs2-back:hover { border-color: rgba(98, 206, 71, 0.4); color: #8de279 !important; }
+.cs2-wordmark { color: #f4f4f4; font-size: 15px; font-weight: 750; letter-spacing: 0.02em; }
 
-.cs2-subtitle {
-  font-size: 1.2rem;
-  color: #969696;
-  margin-bottom: 1.5rem;
-  font-weight: 500;
-}
+.cs2-health { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+.cs2-health__dot { width: 7px; height: 7px; border-radius: 50%; background: #707070; }
+.cs2-health.is-good { color: #8de279; }
+.cs2-health.is-good .cs2-health__dot { background: #62ce47; box-shadow: 0 0 0 3px rgba(98, 206, 71, 0.12); }
+.cs2-health.is-warning { color: #f0c35b; }
+.cs2-health.is-warning .cs2-health__dot { background: #e3b341; box-shadow: 0 0 0 3px rgba(227, 179, 65, 0.12); }
+.cs2-health.is-critical { color: #ff8f8f; }
+.cs2-health.is-critical .cs2-health__dot { background: #ef6464; box-shadow: 0 0 0 3px rgba(239, 100, 100, 0.12); }
+.cs2-health.is-muted { color: #969696; }
 
-.cs2-status {
+.cs2-chip,
+.cs2-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  background: linear-gradient(135deg, #4d9e39, #62ce47);
-  color: white;
-  border-radius: 50px;
-  font-weight: 600;
-  box-shadow: 0 4px 15px rgba(77, 158, 57, 0.3);
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  background: #ffffff;
-  border-radius: 50%;
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-.cs2-content {
-  display: grid;
-  gap: 2rem;
-}
-
-/* Page Header Styling */
-.page-header {
-  display: grid;
-  grid-template-columns: 1fr 2fr 1fr;
-  align-items: center;
-  background-color: #161616;
-  border-radius: 20px;
-  padding: 2rem;
-  margin-bottom: 2rem;
-  border: 1px solid rgba(77, 158, 57, 0.2);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-}
-
-.header-left {
-  justify-self: start;
-}
-
-.header-center {
-  text-align: center;
-}
-
-.header-right {
-  justify-self: end;
-}
-
-.page-title {
-  font-size: 2.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 10px;
   font-weight: 700;
-  color: #4d9e39;
-  margin: 0 0 0.5rem 0;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
+.cs2-pill { padding: 0 6px; font-size: 9.5px; }
+.is-good.cs2-chip, .is-good.cs2-pill { border-color: rgba(98, 206, 71, 0.3); background: rgba(77, 158, 57, 0.12); color: #8de279; }
+.is-warning.cs2-pill { border-color: rgba(240, 195, 91, 0.35); background: rgba(240, 195, 91, 0.1); color: #f0c35b; }
+.is-danger.cs2-pill { border-color: rgba(239, 100, 100, 0.35); background: rgba(239, 100, 100, 0.1); color: #ff8f8f; }
+.is-info.cs2-pill { border-color: rgba(106, 169, 255, 0.3); background: rgba(106, 169, 255, 0.08); color: #8fbfff; }
+.is-muted.cs2-chip, .is-muted.cs2-pill, .is-neutral.cs2-pill { color: #a8a8a8; }
 
-.page-subtitle {
-  font-size: 1rem;
-  color: #969696;
-  margin: 0;
-}
+.cs2-freshness { color: #707070; font-size: 10px; }
+.cs2-actions { display: flex; flex-wrap: wrap; gap: 5px; }
 
-.back-button-wrapper,
-.refresh-button {
-  display: inline-block;
-}
-
-.refresh-button {
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.refresh-button:hover {
-  transform: translateY(-2px);
-}
-
-/* Stats styling for market analysis */
-.best-find-card {
-  text-align: center;
-  padding: 1rem;
-}
-
-.item-name {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: #ffffff;
-  margin-bottom: 0.5rem;
-  word-break: break-word;
-}
-
-.profit-gain {
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: #4d9e39;
-  margin-bottom: 0.5rem;
-}
-
-.find-subtitle {
-  font-size: 0.9rem;
-  color: #969696;
-}
-
-.comparison-stats {
+/* Attention */
+.cs2-attention {
   display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 6px;
+  background: #161616;
+}
+.cs2-attention__label { display: flex; width: 92px; flex: 0 0 auto; align-items: center; gap: 6px; color: #969696; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.cs2-attention__label strong { border-radius: 999px; padding: 0 6px; background: rgba(240, 195, 91, 0.15); color: #f0c35b; font-size: 10px; }
+.cs2-attention__items { display: grid; min-width: 0; flex: 1; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 5px; }
+.cs2-attention__item {
+  display: flex;
+  min-width: 0;
   flex-direction: column;
-  gap: 1rem;
-  height: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-left-width: 2px;
+  border-radius: 5px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.02);
+  text-decoration: none !important;
 }
+.cs2-attention__item strong { font-size: 12px; }
+.cs2-attention__item span { overflow: hidden; color: #969696; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.cs2-attention__item.is-warning { border-left-color: #e3b341; }
+.cs2-attention__item.is-warning strong { color: #f0c35b; }
+.cs2-attention__item.is-danger { border-left-color: #ef6464; }
+.cs2-attention__item.is-danger strong { color: #ff8f8f; }
+.cs2-attention__item.is-info { border-left-color: #6aa9ff; }
+.cs2-attention__item.is-info strong { color: #8fbfff; }
+a.cs2-attention__item:hover { background: rgba(255, 255, 255, 0.045); }
+.cs2-attention__clear { color: #707070; font-size: 12px; }
 
-.stats-grid {
-  display: grid;
-  gap: 0.5rem;
-  flex: 1;
-}
+/* KPIs */
+.cs2-kpis { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; }
 
-.stat-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.5rem;
-  background-color: rgba(77, 158, 57, 0.1);
-  border-radius: 8px;
-}
+/* Grid */
+.cs2-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 8px; align-items: stretch; }
+.span-4 { grid-column: span 4; }
+.span-5 { grid-column: span 5; }
+.span-6 { grid-column: span 6; }
+.span-7 { grid-column: span 7; }
+.span-8 { grid-column: span 8; }
+.span-12 { grid-column: 1 / -1; }
 
-.stat-label {
-  color: #969696;
-  font-size: 0.9rem;
-}
+.cs2-empty { padding: 14px 4px; color: #707070; font-size: 12px; line-height: 1.4; }
+.cs2-footnote { margin-top: 6px; color: #6f6f6f; font-size: 10.5px; line-height: 1.35; }
+.cs2-subhead { margin: 10px 0 5px; color: #8de279; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
 
-.stat-value {
-  color: #ffffff;
-  font-weight: 600;
-  font-size: 0.9rem;
-}
+/* Pipeline */
+.cs2-stage-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 8px; padding: 5px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.045); }
+.cs2-stage-row__name { font-size: 12px; font-weight: 600; }
+.cs2-stage-row__value { color: #f4f4f4; font-size: 12px; text-align: right; }
+.cs2-stage-row__detail { grid-column: 1 / -1; overflow: hidden; color: #858585; font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
 
-.distribution-container {
-  padding: 1rem;
-}
+.cs2-meter { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 3px 0; font-size: 11px; }
+.cs2-meter__name { overflow: hidden; color: #a8a8a8; text-overflow: ellipsis; white-space: nowrap; }
+.cs2-meter__bar { height: 5px; overflow: hidden; border-radius: 3px; background: rgba(255, 255, 255, 0.06); }
+.cs2-meter__bar span { display: block; height: 100%; border-radius: 3px; }
+.cs2-meter__bar .good { background: #4d9e39; }
+.cs2-meter__bar .warning { background: #e3b341; }
+.cs2-meter__bar .danger { background: #ef6464; }
+.cs2-meter__value { color: #d0d0d0; font-variant-numeric: tabular-nums; }
 
-.chart-container {
-  height: 300px;
-  width: calc(100% - 10px);
-  padding: 1rem 2rem 2rem 1rem;
-  margin: 5px;
-  background-color: rgba(22, 22, 22, 0.5);
-  border-radius: 12px;
-  border: 1px solid rgba(77, 158, 57, 0.2);
-  position: relative;
-  box-sizing: border-box;
-}
-
-.chart-container canvas {
-  background-color: transparent !important;
-  width: 100% !important;
-  height: 100% !important;
-}
-
-/* Balance Overview styles */
-.balance-metrics-container {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  padding: 10px;
-  height: 100%;
-  overflow-y: auto;
-}
-
-.balance-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 15px;
-  width: 100%;
-}
-
-.balance-metric {
-  background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
-  border-radius: 12px;
-  padding: 15px;
-  border: 1px solid rgba(77, 158, 57, 0.2);
-  transition: all 0.3s ease;
-}
-
-.balance-metric:hover {
-  border-color: rgba(77, 158, 57, 0.5);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(77, 158, 57, 0.1);
-}
-
-.main-balance {
-  margin-bottom: 15px;
-  background: linear-gradient(135deg, #1a2a1a 0%, #2a3a2a 100%);
-  border: 1px solid rgba(77, 158, 57, 0.4);
-  padding: 20px;
-}
-
-.metric-label {
-  color: #969696;
-  font-size: 0.9rem;
-  margin-bottom: 5px;
-}
-
-.metric-value {
-  font-size: 1.8rem;
-  font-weight: 600;
-  margin-bottom: 5px;
-}
-
-.metric-value.total {
-  color: #4d9e39;
-  font-size: 2.8rem;
-}
-
-.metric-value.steam {
-  color: rgba(59, 130, 246, 1);
-}
-
-.metric-value.csfloat {
-  color: rgba(245, 158, 11, 1);
-}
-
-.metric-value.pending {
-  color: rgba(168, 85, 247, 0.9);
-}
-
-.metric-value.pending-total {
-  color: rgba(168, 85, 247, 1);
-  font-size: 1.4rem;
-}
-
-.metric-subtitle {
-  color: #969696;
-  font-size: 0.8rem;
-  font-style: italic;
-}
-
-.pending-balances-title {
-  grid-column: 1 / -1;
-  color: #969696;
-  font-size: 1rem;
-  margin-top: 10px;
-  margin-bottom: 5px;
-  padding-bottom: 5px;
-  border-bottom: 1px solid rgba(77, 158, 57, 0.2);
-}
-
-.pending-total-metric {
-  grid-column: 1 / -1;
-  background: linear-gradient(135deg, #1e1a24 0%, #2a2430 100%);
-}
-
-.balance-update-time {
-  text-align: right;
-  color: #969696;
-  font-size: 0.8rem;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  .balance-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.no-data-message {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: #969696;
-  font-size: 1.2rem;
-  font-style: italic;
-}
-
-/* Balance History Chart styles */
-.balance-history-legend {
-  display: flex;
-  justify-content: center;
-  gap: 20px;
-  margin-bottom: 15px;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.legend-color {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-}
-
-.steam-color {
-  background-color: rgba(59, 130, 246, 1);
-}
-
-.csfloat-color {
-  background-color: rgba(245, 158, 11, 1);
-}
-
-.legend-label {
-  font-size: 0.9rem;
-  color: #ffffff;
-}
-
-/* Chart tooltip customization */
-.chart-tooltip {
-  background-color: rgba(22, 22, 22, 0.95) !important;
-  border: 1px solid #4d9e39 !important;
-  border-radius: 8px !important;
-  padding: 10px !important;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3) !important;
-}
-
-.overview-section {
-  background-color: #161616;
-  border-radius: 20px;
-  padding: 2rem;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(77, 158, 57, 0.2);
-}
-
-.market-analysis-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.profit-distribution-section {
-  background-color: #161616;
-  border-radius: 20px;
-  padding: 2rem;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(77, 158, 57, 0.2);
-}
-
-.section-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #ffffff;
-  margin-bottom: 1.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.section-title::before {
-  content: '';
-  width: 4px;
+/* Segmented filter */
+.cs2-segment { display: inline-flex; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 5px; }
+.cs2-segment button {
   height: 24px;
-  background: linear-gradient(135deg, #4d9e39, #62ce47);
-  border-radius: 2px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #969696;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
 }
+.cs2-segment button span { margin-left: 3px; color: #6f6f6f; }
+.cs2-segment button.active { background: rgba(77, 158, 57, 0.15); color: #8de279; }
 
-.distribution-grid {
-  display: grid;
-  gap: 1rem;
-}
-
-.system-info-section {
-  background-color: #161616;
-  border-radius: 20px;
-  padding: 2rem;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(77, 158, 57, 0.2);
-}
-
-.system-metrics {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
-}
-
-.refresh-section {
-  text-align: center;
-  margin-top: 2rem;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-/* Loading overlay */
-.loading-overlay {
-  position: fixed;
+/* Tables */
+.cs2-table-wrap { max-height: 360px; overflow: auto; }
+.cs2-table-wrap--tall { max-height: 420px; }
+.cs2-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.cs2-table th {
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(32, 31, 32, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  font-size: 1.2rem;
-  font-weight: 600;
-  color: #4d9e39;
-}
-
-/* Responsive design */
-@media (max-width: 768px) {
-  .cs2-analytics-container {
-    padding: 1rem 0.5rem;
-  }
-  
-  .page-header {
-    grid-template-columns: 1fr;
-    gap: 1rem;
-    padding: 1.5rem;
-    text-align: center;
-  }
-  
-  .header-left,
-  .header-right {
-    justify-self: center;
-  }
-  
-  .page-title {
-    font-size: 2rem;
-  }
-  
-  .cs2-header {
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
-  }
-  
-  .cs2-title {
-    font-size: 2rem;
-  }
-  
-  .cs2-subtitle {
-    font-size: 1rem;
-  }
-  
-  .market-analysis-grid {
-    grid-template-columns: 1fr;
-    gap: 1rem;
-  }
-  
-  .system-metrics {
-    grid-template-columns: 1fr;
-    gap: 1rem;
-  }
-  
-  .overview-section,
-  .profit-distribution-section,
-  .system-info-section {
-    padding: 1.5rem;
-  }
-}
-
-@media (max-width: 480px) {
-  .page-header {
-    padding: 1rem;
-  }
-  
-  .page-title {
-    font-size: 1.5rem;
-  }
-  
-  .cs2-header {
-    padding: 1rem;
-  }
-  
-  .cs2-title {
-    font-size: 1.5rem;
-  }
-  
-  .overview-section,
-  .profit-distribution-section,
-  .system-info-section {
-    padding: 1rem;
-  }
-}
-
-/* Smooth transitions for all interactive elements */
-* {
-  transition: all 0.3s ease;
-}
-
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: rgba(77, 158, 57, 0.1);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: linear-gradient(135deg, #4d9e39, #62ce47);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(135deg, #62ce47, #4d9e39);
-}
-
-/* Purchased Items Styles */
-.purchased-items-list {
-  height: 420px;
-  overflow-y: auto;
-  padding-right: 10px;
-}
-
-.purchase-item {
-  background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
-  border: 1px solid rgba(77, 158, 57, 0.2);
-  border-radius: 12px;
-  padding: 15px;
-  margin-bottom: 12px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.purchase-item:hover {
-  border-color: rgba(77, 158, 57, 0.5);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(77, 158, 57, 0.1);
-}
-
-.purchase-item.active {
-  border-color: #4d9e39;
-  background: linear-gradient(135deg, #1a2a1a 0%, #2a3a2a 100%);
-  box-shadow: 0 0 0 2px rgba(77, 158, 57, 0.3);
-}
-
-.item-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 0;
-}
-
-.item-image {
-  width: 48px;
-  height: 36px;
-  border-radius: 6px;
-  object-fit: cover;
-  border: 1px solid rgba(77, 158, 57, 0.3);
-}
-
-.item-info {
-  flex: 1;
-}
-
-.item-name {
-  color: #ffffff;
-  font-weight: 600;
-  font-size: 0.9rem;
-  line-height: 1.2;
-  margin-bottom: 4px;
-}
-
-.item-profit {
-  font-size: 0.8rem;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-weight: 500;
-  display: inline-block;
-}
-
-.item-financial {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 160px;
-  text-align: right;
-}
-
-.financial-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 0.8rem;
-}
-
-.financial-label {
-  color: #969696;
-  font-size: 0.75rem;
+  z-index: 1;
+  padding: 5px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: #161616;
+  color: #858585;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-align: left;
+  text-transform: uppercase;
   white-space: nowrap;
 }
+.cs2-table td { padding: 5px 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.04); vertical-align: middle; white-space: nowrap; }
+.cs2-table .num { font-variant-numeric: tabular-nums; text-align: right; }
+.cs2-table .item { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+.cs2-table .verdict { max-width: 260px; overflow: hidden; color: #969696; text-overflow: ellipsis; }
+.cs2-table tbody tr:hover { background: rgba(255, 255, 255, 0.025); }
+.cs2-table tr.is-buy { background: rgba(77, 158, 57, 0.08); }
 
-.financial-value {
-  color: #ffffff;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.financial-value.profit {
-  color: #4d9e39;
-  font-weight: 600;
-}
-
-/* Item Detail Panel Styles */
-.item-detail-panel {
-  height: 420px;
-  overflow-y: auto;
-  padding-right: 10px;
-}
-
-.detail-header {
-  display: flex;
+/* Positions */
+.cs2-positions { display: flex; max-height: 420px; flex-direction: column; gap: 4px; overflow-y: auto; }
+.cs2-position {
+  display: grid;
+  width: 100%;
+  min-height: 52px;
+  grid-template-columns: 44px minmax(0, 1fr) minmax(110px, 160px) auto;
   align-items: center;
-  gap: 15px;
-  margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid rgba(77, 158, 57, 0.2);
+  gap: 10px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.018);
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
 }
+.cs2-position:hover { border-color: rgba(255, 255, 255, 0.12); }
+.cs2-position.active { border-color: rgba(98, 206, 71, 0.45); background: rgba(77, 158, 57, 0.07); }
+.cs2-position__img { width: 44px; height: 33px; object-fit: contain; }
+.cs2-position__img--empty { border-radius: 4px; background: rgba(255, 255, 255, 0.04); }
+.cs2-position__main { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.cs2-position__name { overflow: hidden; color: #f4f4f4; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.cs2-position__meta { display: flex; align-items: center; gap: 6px; overflow: hidden; color: #858585; font-size: 10.5px; white-space: nowrap; }
+.cs2-position__money { display: flex; flex-direction: column; align-items: flex-end; font-size: 11px; white-space: nowrap; }
+.cs2-position__money strong { color: #f4f4f4; font-size: 12px; }
 
-.detail-item-image {
-  width: 80px;
-  height: 60px;
-  border-radius: 8px;
-  object-fit: cover;
-  border: 2px solid rgba(77, 158, 57, 0.3);
-}
-
-.detail-item-info {
-  flex: 1;
-}
-
-.detail-item-name {
-  color: #ffffff;
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin: 0 0 8px 0;
-  line-height: 1.3;
-}
-
-.detail-item-status {
-  padding: 4px 12px;
-  border-radius: 16px;
-  font-size: 0.8rem;
-  font-weight: 500;
-  display: inline-block;
-}
-
-.detail-section {
-  margin-bottom: 20px;
-}
-
-.section-title {
-  color: #ffffff;
-  font-size: 0.95rem;
-  font-weight: 600;
-  margin: 0 0 12px 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.detail-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.detail-item-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.detail-item-row:last-child {
-  border-bottom: none;
-}
-
-.label {
-  color: #969696;
-  font-size: 0.85rem;
-}
-
-.value {
-  color: #ffffff;
-  font-size: 0.85rem;
-  font-weight: 500;
-  text-align: right;
-  max-width: 60%;
-  word-break: break-all;
-}
-
-.value.profit {
-  color: #4d9e39;
-  font-weight: 600;
-}
-
-.value.neutral {
-  color: #969696;
-}
-
-.action-links {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.action-link {
+/* Detail */
+.cs2-detail { display: flex; flex-direction: column; gap: 8px; }
+.cs2-detail__head { display: flex; align-items: center; gap: 10px; }
+.cs2-detail__img { width: 72px; height: 54px; object-fit: contain; }
+.cs2-detail__title { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.cs2-detail__title strong { color: #f4f4f4; font-size: 13px; }
+.cs2-detail__title span { font-size: 11.5px; }
+.cs2-cta {
   display: block;
-  padding: 8px 12px;
-  border-radius: 6px;
-  text-decoration: none;
-  font-size: 0.85rem;
-  font-weight: 500;
-  text-align: center;
-  transition: all 0.3s ease;
+  border: 1px solid rgba(240, 195, 91, 0.45);
+  border-radius: 5px;
+  padding: 6px 10px;
+  background: rgba(240, 195, 91, 0.1);
+  color: #f0c35b !important;
+  font-size: 12px;
+  font-weight: 700;
+}
+.cs2-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 10px; margin: 0; }
+.cs2-facts div { display: flex; min-width: 0; flex-direction: column; padding: 3px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04); }
+.cs2-facts dt { color: #858585; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; }
+.cs2-facts dd { margin: 0; overflow: hidden; color: #f4f4f4; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.cs2-timeline { margin: 0; padding: 0; list-style: none; }
+.cs2-timeline li { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dashed rgba(255, 255, 255, 0.05); font-size: 11.5px; }
+.cs2-timeline li span:last-child { color: #a8a8a8; }
+.cs2-timeline li.future span { color: #8fbfff; }
+.cs2-notes { border-left: 2px solid rgba(255, 255, 255, 0.15); padding: 4px 8px; color: #a8a8a8; font-size: 11px; white-space: pre-line; }
+.cs2-links { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11.5px; }
+
+/* Market read */
+.cs2-dist__row { display: grid; grid-template-columns: 52px minmax(0, 1fr) 110px; align-items: center; gap: 8px; padding: 4px 0; font-size: 11.5px; }
+.cs2-dist__label { color: #a8a8a8; }
+.cs2-dist__bar { height: 8px; overflow: hidden; border-radius: 3px; background: rgba(255, 255, 255, 0.05); }
+.cs2-dist__bar span { display: block; height: 100%; min-width: 1px; border-radius: 3px; background: #4a4a4a; }
+.cs2-dist__bar .warning { background: #e3b341; }
+.cs2-dist__bar .good { background: #4d9e39; }
+.cs2-dist__value { font-variant-numeric: tabular-nums; text-align: right; }
+.cs2-best { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 8px; margin-top: 8px; padding: 6px 8px; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 5px; font-size: 12px; }
+.cs2-best strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs2-days { display: grid; height: 90px; grid-template-columns: repeat(14, minmax(0, 1fr)); align-items: end; gap: 3px; }
+.cs2-days__col { display: flex; height: 100%; flex-direction: column; justify-content: flex-end; align-items: center; gap: 3px; }
+.cs2-days__bar { position: relative; width: 100%; border-radius: 2px 2px 0 0; background: rgba(106, 169, 255, 0.45); }
+.cs2-days__mark { position: absolute; top: -6px; left: 50%; width: 6px; height: 6px; border-radius: 50%; background: #62ce47; transform: translateX(-50%); }
+.cs2-days__label { color: #6f6f6f; font-size: 9px; }
+
+/* Balances */
+.cs2-balances__kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.cs2-chart { position: relative; height: 230px; margin-top: 8px; }
+
+/* Conversion */
+.cs2-conversion__k { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.cs2-conversion__k strong { font-size: 26px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.cs2-conversion__k span { color: #969696; font-size: 11.5px; line-height: 1.35; }
+
+/* Issues */
+.cs2-issues { margin: 0; padding: 0; list-style: none; }
+.cs2-issues li { padding: 4px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04); color: #e0a0a0; font-family: ui-monospace, Consolas, monospace !important; font-size: 11px; word-break: break-word; }
+
+@media (max-width: 1400px) {
+  .cs2-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .span-4, .span-8 { grid-column: span 6; }
+  .span-5, .span-7 { grid-column: span 6; }
 }
 
-.action-link.csfloat {
-  background: linear-gradient(135deg, #ff6b35, #f7931e);
-  color: white;
-}
-
-.action-link.csfloat:hover {
-  background: linear-gradient(135deg, #f7931e, #ff6b35);
-  transform: translateY(-1px);
-}
-
-.action-link.steam {
-  background: linear-gradient(135deg, #171a21, #2a475e);
-  color: white;
-}
-
-.action-link.steam:hover {
-  background: linear-gradient(135deg, #2a475e, #171a21);
-  transform: translateY(-1px);
-}
-
-.no-selection {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: #969696;
-  text-align: center;
-}
-
-.no-selection-icon {
-  font-size: 3rem;
-  margin-bottom: 15px;
-  opacity: 0.5;
-}
-
-.no-selection-text {
-  font-size: 1rem;
-  opacity: 0.7;
-}
-
-/* Strategy Status Classes */
-.status-waiting {
-  background: rgba(251, 191, 36, 0.2);
-  color: #fbbf24;
-}
-
-.status-retrieved {
-  background: rgba(59, 130, 246, 0.2);
-  color: #3b82f6;
-}
-
-.status-selling {
-  background: rgba(168, 85, 247, 0.2);
-  color: #a855f7;
-}
-
-.status-converting {
-  background: rgba(34, 197, 94, 0.2);
-  color: #22c55e;
-}
-
-.status-completed {
-  background: rgba(34, 197, 94, 0.2);
-  color: #22c55e;
-}
-
-.status-unknown {
-  background: rgba(156, 163, 175, 0.2);
-  color: #9ca3af;
+@media (max-width: 1000px) {
+  .cs2-grid > * { grid-column: 1 / -1; }
+  .cs2-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cs2-attention { flex-direction: column; align-items: stretch; }
+  .cs2-position { grid-template-columns: 40px minmax(0, 1fr) auto; }
+  .cs2-position__track { display: none; }
+  .cs2-facts { grid-template-columns: minmax(0, 1fr); }
 }
 </style>

@@ -152,9 +152,14 @@ const firmOverview = {
   })),
 };
 
-function responseForPath(pathWithQuery: string, role: DashboardRole): unknown {
+/** Per-test responses, keyed by path with query (exact) or by path alone. */
+export type ApiOverrides = Record<string, unknown>;
+
+function responseForPath(pathWithQuery: string, role: DashboardRole, overrides: ApiOverrides = {}): unknown {
   const url = new URL(pathWithQuery, 'https://klive.dev');
   const path = url.pathname;
+  if (pathWithQuery in overrides) return overrides[pathWithQuery];
+  if (path in overrides) return overrides[path];
 
   switch (path) {
     case '/KMProfiles/GetCurrentProfile':
@@ -380,7 +385,7 @@ async function fulfilJson(route: Route, payload: unknown, status = 200) {
  * `/batch`, because role tests need to inspect the paths inside the batch request,
  * not merely the single outer POST.
  */
-export async function installDashboardApiMock(page: Page, role: DashboardRole): Promise<DashboardApiMock> {
+export async function installDashboardApiMock(page: Page, role: DashboardRole, overrides: ApiOverrides = {}): Promise<DashboardApiMock> {
   const state: DashboardApiMock = { requestedPaths: [], mutations: [], batchCalls: 0 };
 
   // Keep the authentication/session and Projects event sockets connected without
@@ -416,7 +421,7 @@ export async function installDashboardApiMock(page: Page, role: DashboardRole): 
             status: 200,
             ok: true,
             contentType: 'application/json; charset=utf-8',
-            body: responseForPath(path, role),
+            body: responseForPath(path, role, overrides),
           };
         });
 
@@ -458,7 +463,7 @@ export async function installDashboardApiMock(page: Page, role: DashboardRole): 
       return;
     }
 
-    await fulfilJson(route, responseForPath(pathWithQuery, role));
+    await fulfilJson(route, responseForPath(pathWithQuery, role, overrides));
   });
 
   return state;

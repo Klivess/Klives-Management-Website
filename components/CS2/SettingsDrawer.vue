@@ -74,7 +74,7 @@ interface OmniSetting {
 interface SettingMeta {
   label: string;
   help: string;
-  group: 'Engine' | 'Buying thresholds' | 'Risk limits' | 'Pacing & model';
+  group: 'Engine' | 'Buying thresholds' | 'Exit model' | 'Risk limits' | 'Pacing & model';
   order: number;
   prefix?: string;
   suffix?: string;
@@ -91,15 +91,21 @@ const KNOWN: Record<string, SettingMeta> = {
   PurchaseCSFloatArbitrageOpportunities: { group: 'Engine', order: 2, label: 'Buy automatically', help: 'Off = find and alert only. On = buy qualifying listings immediately.' },
   CS2ArbitrageAllowCSFloatRelistExit: { group: 'Engine', order: 3, label: 'Allow CSFloat relist exit', help: 'Consider reselling on CSFloat after trade protection (no Steam fee, no wallet conversion).' },
   CS2ArbitrageAlertOnUnboughtOpportunities: { group: 'Engine', order: 4, label: 'Alert on unbought deals', help: 'Discord message when a qualifying listing is skipped (caps, balance, rejected purchase).' },
-  CS2ArbitrageMinimumRelistROIPercent: { group: 'Buying thresholds', order: 1, label: 'Relist exit: minimum return', suffix: '%', min: 0, help: 'Return after the 2% fee, a 3% undercut and a 2% safety haircut.' },
-  CS2ArbitrageMinimumSteamROIPercent: { group: 'Buying thresholds', order: 2, label: 'Steam exit: minimum return', suffix: '%', min: 0, help: 'Return after Steam fees and converting the wallet back to CSFloat cash.' },
+  CS2ArbitrageMinimumRelistROIPercent: { group: 'Buying thresholds', order: 1, label: 'Relist exit: minimum return', suffix: '%', min: 0, help: "Risk-adjusted: after CSFloat's fee, how long it takes to sell, the 7-day trade lock before and the buyer's protection after." },
+  CS2ArbitrageMinimumSteamROIPercent: { group: 'Buying thresholds', order: 2, label: 'Steam exit: minimum return', suffix: '%', min: 0, help: "Risk-adjusted: after Steam fees, the conversion and the converters' 7-day hold before the cash is back on CSFloat." },
   CS2ArbitrageMinimumProfitPence: { group: 'Buying thresholds', order: 3, label: 'Minimum profit per trade', suffix: 'p', min: 0, help: 'Each trade needs a manual Steam accept — skip ones not worth it.' },
   CS2ArbitrageMinimumListingPriceCents: { group: 'Buying thresholds', order: 4, label: 'Ignore listings under', suffix: '¢ (USD)', min: 3, help: 'Feed price floor. Lower = more listings but the feed may not keep up.' },
   CS2ArbitrageMaximumListingPriceDollars: { group: 'Buying thresholds', order: 5, label: 'Ignore listings over', prefix: '$', min: 0, help: '0 = no absolute cap (the per-item balance share still applies).' },
   CS2ArbitrageMaxSpendPerItemPercent: { group: 'Risk limits', order: 1, label: 'Max spend per item', suffix: '% of balance', min: 1, help: 'Largest share of the CSFloat balance one listing may cost.' },
   CS2ArbitrageMaxUnitsPerItem: { group: 'Risk limits', order: 2, label: 'Max units of one item', min: 1, help: 'Held at once (bought, in trade, in protection or relisted).' },
   CS2ArbitrageDailySpendLimitPounds: { group: 'Risk limits', order: 3, label: 'Daily spend limit', prefix: '£', min: 0, help: '0 = unlimited.' },
-  CS2ArbitrageSteamPriceHaircutPercent: { group: 'Risk limits', order: 4, label: 'Steam price safety haircut', suffix: '%', min: 0, help: 'Allowance for Steam price drift during the 7-day hold.' },
+  CS2ArbitrageSteamPriceHaircutPercent: { group: 'Risk limits', order: 4, label: 'Steam price safety haircut', suffix: '%', min: 0, help: "Used by the quick screen only; the exit model forecasts the 7-day lock's drift and risk itself." },
+  CS2ArbitrageAutoManageRelists: { group: 'Exit model', order: 1, label: 'Manage relists automatically', help: "Re-price an unsold CSFloat relist, or switch it to Steam, when the evidence says so. Off = Discord advice only." },
+  CS2ArbitrageCapitalCostBasisPointsPerDay: { group: 'Exit model', order: 2, label: 'Cost of tied-up money', suffix: 'bp/day', min: 0, help: '20 = 0.2% a day. What waiting costs: every trade lock, hold and slow sale is charged at this rate.' },
+  CS2ArbitrageRiskAversionTenths: { group: 'Exit model', order: 3, label: 'Risk aversion', suffix: '÷10', min: 0, help: '20 = 2.0. Higher prefers certain exits over uncertain ones (e.g. Steam now over a slow relist). 0 = risk-neutral.' },
+  CS2ArbitrageRelistHorizonDays: { group: 'Exit model', order: 4, label: 'Relist patience', suffix: 'days', min: 3, help: "How long a relist is given before the model assumes its fallback (Steam, or a clearing price)." },
+  CS2ArbitrageSteamConfirmHours: { group: 'Exit model', order: 5, label: 'Steam confirmation delay', suffix: 'h', min: 0, help: "How long confirming a Steam Market listing in the app usually takes; part of the Steam exit's time to cash." },
+  CS2ArbitrageSteamWalletCapDollars: { group: 'Exit model', order: 6, label: 'Steam wallet cap', prefix: '$', min: 0, help: 'Steam refuses a Market listing that would take the wallet past this (about $2,000-equivalent).' },
   CS2ArbitrageMinimumSteamBuyOrders: { group: 'Risk limits', order: 5, label: 'Minimum Steam buy orders', min: 0, help: 'An item needs at least this many buy orders to count as sellable on Steam.' },
   CS2ArbitrageDefaultConversionPercent: { group: 'Pacing & model', order: 1, label: 'Fallback conversion rate', suffix: '%', min: 40, help: 'Used until the conversion model has verified converters (cases convert at ~68%).' },
   CS2ArbitrageFeedMinIntervalSeconds: { group: 'Pacing & model', order: 2, label: 'Fastest feed poll', suffix: 's', min: 5, help: 'The 200/hour CSFloat key usually sets ~19 s anyway.' },
@@ -108,7 +114,7 @@ const KNOWN: Record<string, SettingMeta> = {
 
 /** Credentials are managed on the admin settings page, never here. */
 const HIDDEN = new Set(['CSFloatAPIKey', 'CS2ArbitrageBotSteamLoginUsername', 'CS2ArbitrageBotSteamLoginPassword']);
-const GROUP_ORDER: SettingMeta['group'][] = ['Engine', 'Buying thresholds', 'Risk limits', 'Pacing & model'];
+const GROUP_ORDER: SettingMeta['group'][] = ['Engine', 'Buying thresholds', 'Exit model', 'Risk limits', 'Pacing & model'];
 
 const settings = ref<OmniSetting[]>([]);
 const drafts = reactive<Record<string, any>>({});
@@ -137,7 +143,7 @@ const load = async () => {
   error.value = '';
   message.value = '';
   try {
-    const response = await RequestGETFromKliveAPI('/OmniGlobalSettings/List?revealSensitive=false', false, false);
+    const response = await RequestGETFromKliveAPI('/OmniGlobalSettings/List', false, false);
     if (!response.ok) {
       error.value = response.status === 403 ? 'Only Klives can change bot settings.' : `Couldn't load settings (HTTP ${response.status}).`;
       return;

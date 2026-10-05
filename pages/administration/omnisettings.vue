@@ -42,12 +42,7 @@
                     />
                 </div>
                 
-                <div class="checkbox-group">
-                    <KMCheckBox
-                        v-model:boxChecked="showSensitiveValues"
-                        message="Show Sensitive Values"
-                    />
-                </div>
+                <p class="sensitive-notice">Saved secrets stay hidden. Enter a new value to replace one.</p>
             </div>
 
             <!-- Settings List -->
@@ -89,9 +84,23 @@
                                     </div>
                                 </div>
                                 
-                                <div class="setting-editor" :class="{ 'setting-editor--list': setting.Type === 4 }">
+                                <div class="setting-editor" :class="{ 'setting-editor--list': setting.Type === 4 || setting.Sensitive }">
                                     <div class="editor-input-wrapper">
-                                        <div v-if="setting.Type === 0" class="editor-input">
+                                        <div v-if="setting.Sensitive" class="editor-secret">
+                                            <p class="secret-status">{{ setting.HasValue ? 'Secret saved' : 'No secret saved' }}</p>
+                                            <input
+                                                v-model="editingValues[getSettingKey(setting)]"
+                                                class="kinput"
+                                                type="password"
+                                                :aria-label="`Replacement value for ${setting.Name}`"
+                                                :placeholder="getSensitivePlaceholder(setting)"
+                                                autocomplete="new-password"
+                                                autocapitalize="none"
+                                                :spellcheck="false"
+                                                :disabled="savingSettings.has(getSettingKey(setting)) || deletingSettings.has(getSettingKey(setting))"
+                                            />
+                                        </div>
+                                        <div v-else-if="setting.Type === 0" class="editor-input">
                                             <KMInputBox
                                                 v-model:value="editingValues[`${setting.ParentServiceId}-${setting.Name}`]"
                                                 :placeholder="`Enter ${setting.Name}...`"
@@ -146,6 +155,7 @@
                                         <KMButton
                                             v-if="isSettingModified(setting)"
                                             :message="savingSettings.has(`${setting.ParentServiceId}-${setting.Name}`) ? 'Saving...' : 'Save'"
+                                            :disabled="savingSettings.has(getSettingKey(setting)) || deletingSettings.has(getSettingKey(setting))"
                                             :onclick="() => saveSetting(setting)"
                                             style="width: 100px; height: 100%;"
                                         />
@@ -188,9 +198,23 @@
                                     </div>
                                 </div>
 
-                                <div class="setting-editor" :class="{ 'setting-editor--list': setting.Type === 4 }">
+                                <div class="setting-editor" :class="{ 'setting-editor--list': setting.Type === 4 || setting.Sensitive }">
                                     <div class="editor-input-wrapper">
-                                        <div v-if="setting.Type === 0" class="editor-input">
+                                        <div v-if="setting.Sensitive" class="editor-secret">
+                                            <p class="secret-status">{{ setting.HasValue ? 'Secret saved' : 'No secret saved' }}</p>
+                                            <input
+                                                v-model="editingValues[getSettingKey(setting)]"
+                                                class="kinput"
+                                                type="password"
+                                                :aria-label="`Replacement value for ${setting.Name}`"
+                                                :placeholder="getSensitivePlaceholder(setting)"
+                                                autocomplete="new-password"
+                                                autocapitalize="none"
+                                                :spellcheck="false"
+                                                :disabled="savingSettings.has(getSettingKey(setting)) || deletingSettings.has(getSettingKey(setting))"
+                                            />
+                                        </div>
+                                        <div v-else-if="setting.Type === 0" class="editor-input">
                                             <KMInputBox
                                                 v-model:value="editingValues[getSettingKey(setting)]"
                                                 :placeholder="`Enter ${setting.Name}...`"
@@ -245,6 +269,7 @@
                                         <KMButton
                                             v-if="isSettingModified(setting)"
                                             :message="savingSettings.has(getSettingKey(setting)) ? 'Saving...' : 'Save'"
+                                            :disabled="savingSettings.has(getSettingKey(setting)) || deletingSettings.has(getSettingKey(setting))"
                                             :onclick="() => saveSetting(setting)"
                                             style="width: 100px; height: 100%;"
                                         />
@@ -269,7 +294,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import KMButton from '~/components/KMButton.vue';
 import KMInputBox from '~/components/KMInputBox.vue';
 import KMSelectBox from '~/components/KMSelectBox.vue';
@@ -284,6 +309,7 @@ interface OmniSetting {
     Name: string;
     Type: number; // 0 = String, 1 = Bool, 2 = Int, 3 = Dropdown, 4 = StringList
     Sensitive: boolean;
+    HasValue: boolean;
     ParentServiceId: string;
     ParentServiceName: string;
     Value: string;
@@ -297,7 +323,6 @@ const loading = ref(true);
 const error = ref('');
 const searchQuery = ref('');
 const filterType = ref('All Types');
-const showSensitiveValues = ref(false);
 const editingValues = ref<Record<string, string>>({});
 const boolValues = ref<Record<string, boolean>>({});
 const listValues = ref<Record<string, string[]>>({});
@@ -305,11 +330,6 @@ const savingSettings = ref(new Set<string>());
 const deletingSettings = ref(new Set<string>());
 const collapsedGroups = ref<Record<string, boolean>>({});
 const inactiveCollapsed = ref(true);
-
-// Watchers
-watch(showSensitiveValues, () => {
-    loadSettings();
-});
 
 // Computed
 const filteredSettings = computed(() => {
@@ -413,6 +433,16 @@ const removeListEntry = (setting: OmniSetting, index: number) => {
 
 const getSettingKey = (setting: OmniSetting): string => `${setting.ParentServiceId}-${setting.Name}`;
 
+const getSensitivePlaceholder = (setting: OmniSetting): string => {
+    switch (setting.Type) {
+        case 1: return 'Replacement: true or false';
+        case 2: return 'Replacement whole number';
+        case 3: return 'Replacement dropdown value';
+        case 4: return 'Replacement JSON array of strings';
+        default: return 'Enter replacement secret...';
+    }
+};
+
 const isGroupCollapsed = (groupName: string): boolean => collapsedGroups.value[groupName] ?? true;
 
 const toggleGroup = (groupName: string) => {
@@ -440,6 +470,10 @@ const syncGroupCollapseState = (loadedSettings: OmniSetting[]) => {
 };
 
 const getDropdownOptions = (setting: OmniSetting): string[] => {
+    if (setting.Sensitive) {
+        return [];
+    }
+
     if (setting.DropdownOptions && setting.DropdownOptions.length > 0) {
         return setting.DropdownOptions;
     }
@@ -464,22 +498,28 @@ const loadSettings = async () => {
     error.value = '';
     
     try {
-        const revealSensitive = showSensitiveValues.value ? 'true' : 'false';
         const response = await RequestGETFromKliveAPI(
-            `/OmniGlobalSettings/List?revealSensitive=${revealSensitive}`,
+            '/OmniGlobalSettings/List',
             false,
             true
         );
 
         if (response.ok) {
             const data = await response.json();
-            settings.value = data;
-            syncGroupCollapseState(data);
+            settings.value = data.map((setting: OmniSetting) => setting.Sensitive
+                ? { ...setting, Value: '********', DropdownOptions: [] }
+                : setting);
+            syncGroupCollapseState(settings.value);
 
-            // Initialize editing values
+            // A refresh drops old drafts, including any unsaved replacement secrets.
+            editingValues.value = {};
+            boolValues.value = {};
+            listValues.value = {};
             settings.value.forEach((setting) => {
                 const key = getSettingKey(setting);
-                if (setting.Type === 1) {
+                if (setting.Sensitive) {
+                    editingValues.value[key] = '';
+                } else if (setting.Type === 1) {
                     // Bool
                     boolValues.value[key] = setting.Value === 'true' || setting.Value === 'True';
                 } else if (setting.Type === 4) {
@@ -494,9 +534,8 @@ const loadSettings = async () => {
         } else {
             error.value = `Failed to load settings (HTTP ${response.status})`;
         }
-    } catch (e: any) {
-        error.value = `Error loading settings. Check console for details.`;
-        console.error('Error loading OmniSettings:', e);
+    } catch {
+        error.value = 'Error loading settings. Please try again.';
     } finally {
         loading.value = false;
     }
@@ -504,6 +543,10 @@ const loadSettings = async () => {
 
 const isSettingModified = (setting: OmniSetting): boolean => {
     const key = getSettingKey(setting);
+    if (setting.Sensitive) {
+        const replacement = editingValues.value[key] || '';
+        return replacement.length > 0 && replacement !== '********';
+    }
     if (setting.Type === 1) {
         return boolValues.value[key] !== (setting.Value === 'true' || setting.Value === 'True');
     } else if (setting.Type === 4) {
@@ -518,11 +561,16 @@ const isSettingModified = (setting: OmniSetting): boolean => {
 
 const saveSetting = async (setting: OmniSetting) => {
     const key = getSettingKey(setting);
+    if (savingSettings.value.has(key) || deletingSettings.value.has(key) || !isSettingModified(setting)) {
+        return;
+    }
     savingSettings.value.add(key);
 
     try {
         let newValue: string;
-        if (setting.Type === 1) {
+        if (setting.Sensitive) {
+            newValue = editingValues.value[key];
+        } else if (setting.Type === 1) {
             newValue = boolValues.value[key] ? 'true' : 'false';
         } else if (setting.Type === 4) {
             newValue = serializeList(listValues.value[key] || []);
@@ -537,6 +585,7 @@ const saveSetting = async (setting: OmniSetting) => {
             value: newValue,
             parentServiceId: setting.ParentServiceId,
             parentServiceName: setting.ParentServiceName,
+            ...(setting.Sensitive ? { sensitive: true } : {}),
         };
 
         const response = await RequestPOSTFromKliveAPI(
@@ -547,8 +596,9 @@ const saveSetting = async (setting: OmniSetting) => {
         );
 
         if (response.ok) {
-            setting.Value = newValue;
-            if (setting.Type === 4) {
+            setting.HasValue = newValue.length > 0;
+            setting.Value = setting.Sensitive ? '********' : newValue;
+            if (!setting.Sensitive && setting.Type === 4) {
                 // Reflect normalization (trimmed/dropped-empty entries) back into the editor.
                 listValues.value = { ...listValues.value, [key]: parseList(newValue) };
             }
@@ -565,20 +615,21 @@ const saveSetting = async (setting: OmniSetting) => {
                 color: '#ffffff'
             });
         } else {
-            const errorText = await response.text();
-            throw new Error(`HTTP ${response.status}: ${errorText}`);
+            throw new Error(`Could not save this setting (HTTP ${response.status}).`);
         }
-    } catch (e: any) {
-        console.error('Error saving OmniSetting:', e);
+    } catch {
         Swal.fire({
             icon: 'error',
             title: 'Failed to save',
-            text: e.message || 'An unknown error occurred.',
+            text: 'The setting could not be saved. Please check the replacement value and try again.',
             background: '#161516',
             color: '#ffffff',
             confirmButtonColor: '#4d9e39'
         });
     } finally {
+        if (setting.Sensitive) {
+            editingValues.value[key] = '';
+        }
         savingSettings.value.delete(key);
     }
 };
@@ -604,7 +655,7 @@ const removeSettingFromState = (setting: OmniSetting) => {
 
 const deleteSetting = async (setting: OmniSetting) => {
     const key = getSettingKey(setting);
-    if (deletingSettings.value.has(key)) {
+    if (deletingSettings.value.has(key) || savingSettings.value.has(key)) {
         return;
     }
 
@@ -625,6 +676,9 @@ const deleteSetting = async (setting: OmniSetting) => {
     }
 
     deletingSettings.value.add(key);
+    if (setting.Sensitive) {
+        editingValues.value[key] = '';
+    }
 
     try {
         const response = await RequestPOSTFromKliveAPI(
@@ -638,8 +692,7 @@ const deleteSetting = async (setting: OmniSetting) => {
         );
 
         if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`HTTP ${response.status}: ${errorText}`);
+            throw new Error(`Could not delete this setting (HTTP ${response.status}).`);
         }
 
         removeSettingFromState(setting);
@@ -653,12 +706,11 @@ const deleteSetting = async (setting: OmniSetting) => {
             background: '#161516',
             color: '#ffffff'
         });
-    } catch (e: any) {
-        console.error('Error deleting OmniSetting:', e);
+    } catch {
         Swal.fire({
             icon: 'error',
             title: 'Failed to delete',
-            text: e.message || 'An unknown error occurred.',
+            text: 'The setting could not be deleted. Please try again.',
             background: '#161516',
             color: '#ffffff',
             confirmButtonColor: '#4d9e39'
@@ -670,6 +722,10 @@ const deleteSetting = async (setting: OmniSetting) => {
 
 onMounted(() => {
     loadSettings();
+});
+
+onUnmounted(() => {
+    editingValues.value = {};
 });
 </script>
 
@@ -765,10 +821,10 @@ onMounted(() => {
     min-width: 200px;
 }
 
-.checkbox-group {
-    display: flex;
-    align-items: center;
-    padding-left: 10px;
+.sensitive-notice {
+    margin: 0;
+    color: #b0b0b0;
+    font-size: 0.9rem;
 }
 
 /* Settings Grid */
@@ -1045,6 +1101,23 @@ onMounted(() => {
     flex-direction: column;
     gap: 8px;
     width: 100%;
+}
+
+.editor-secret {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.editor-secret .kinput {
+    width: 100%;
+    height: 45px;
+}
+
+.secret-status {
+    margin: 0;
+    color: #b0b0b0;
+    font-size: 0.9rem;
 }
 
 .list-entry {

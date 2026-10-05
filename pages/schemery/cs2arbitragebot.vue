@@ -150,8 +150,17 @@
                   <a v-if="o.SteamHighestBuyOrderPence" :href="steamListingUrl(o.MarketHashName)" target="_blank" rel="noopener">{{ fmtPence(o.SteamHighestBuyOrderPence) }} / {{ fmtPence(o.SteamLowestSellOrderPence) }}</a>
                   <span v-else>—</span>
                 </td>
-                <td>{{ routeName(o.BestRoute) }}</td>
-                <td class="num" :class="`tone-${roiTone(o.BestRoi)}`">{{ fmtRoi(o.BestRoi) }}</td>
+                <td>
+                  {{ routeName(o.BestRoute) }}
+                  <span v-if="o.ExitModelChecked && routeName(o.BestRoute) === 'CSFloat relist'" class="muted"> · ~{{ fmtDays(o.ExpectedDaysToSell) }}, {{ fmtProbability(o.SellProbability) }}</span>
+                </td>
+                <td
+                  class="num"
+                  :class="`tone-${roiTone(o.BestRoi)}`"
+                  :title="o.ExitModelChecked ? `The quick screen said ${fmtRoi(o.ScreenBestRoi)}; this is the exit model's value after fees, trade locks, the time to sell and risk.` : 'Quick screen estimate (no live evidence yet).'"
+                >
+                  {{ fmtRoi(o.BestRoi) }}<span v-if="o.ExitModelChecked" class="cs2-tag">model</span>
+                </td>
                 <td class="num">{{ fmtPence(o.BestProfitPence) }}</td>
                 <td class="verdict" :title="o.Reason">
                   <span class="cs2-pill" :class="o.ShouldBuy ? 'is-good' : 'is-muted'">{{ o.ShouldBuy ? 'Buy' : 'Skip' }}</span>
@@ -195,7 +204,7 @@
               <span class="cs2-position__name">{{ p.ItemMarketHashName }}</span>
               <span class="cs2-position__meta">
                 <span class="cs2-pill" :class="`is-${stageMeta(p.CurrentStrategicStage).tone}`">{{ stageMeta(p.CurrentStrategicStage).short }}</span>
-                {{ exitLabel(p) }} · bought {{ fmtAgo(p.TimeOfPurchase, now) }}
+                {{ positionLine(p) }}
               </span>
             </span>
             <span class="cs2-position__track"><CS2StageTrack :stage="p.CurrentStrategicStage" :planned-exit="p.PlannedExit" compact /></span>
@@ -224,9 +233,13 @@
             Accept the trade offer in Steam →
           </a>
 
+          <p v-if="lockNote(selected)" class="cs2-lock" :class="`is-${lockNote(selected)!.tone}`" data-testid="cs2-lock-note">
+            <strong>{{ lockNote(selected)!.title }}</strong> {{ lockNote(selected)!.detail }}
+          </p>
+
           <dl class="cs2-facts">
             <div><dt>Paid</dt><dd>{{ positionCost(selected) }}<span v-if="selected.PurchasePriceCents" class="muted"> ({{ fmtCents(selected.PurchasePriceCents) }})</span></dd></div>
-            <div><dt>Planned exit</dt><dd>{{ exitLabel(selected) }}</dd></div>
+            <div><dt>{{ selected.CurrentStrategicStage >= 4 && selected.CurrentStrategicStage !== 8 ? 'Exit' : 'Planned exit' }}</dt><dd>{{ exitLabel(selected) }}</dd></div>
             <div><dt>Expected cash back</dt><dd>{{ selected.ExpectedNetCashPence ? fmtPence(selected.ExpectedNetCashPence) : '—' }}</dd></div>
             <div><dt>Expected profit</dt><dd class="tone-good">{{ fmtGbp(selected.ExpectedAbsoluteProfitInPounds) }} <span class="muted">({{ fmtNumber(selected.ExpectedProfitPercentage, 1) }}%)</span></dd></div>
             <div v-if="selected.CurrentStrategicStage === 7"><dt>Actual profit</dt><dd :class="(selected.ActualAbsoluteProfitInPounds ?? 0) >= 0 ? 'tone-good' : 'tone-danger'">{{ fmtGbp(selected.ActualAbsoluteProfitInPounds) }} <span class="muted">({{ fmtNumber(selected.ActualProfitPercentage, 1) }}%)</span></dd></div>
@@ -235,6 +248,44 @@
             <div><dt>Float</dt><dd>{{ fmtNumber(selected.ItemFloatValue, 6) }}</dd></div>
             <div v-if="selected.ConversionCoefficientAtPurchase"><dt>k at purchase</dt><dd>{{ fmtNumber(selected.ConversionCoefficientAtPurchase, 3) }}</dd></div>
             <div v-if="selected.LastTradeState"><dt>CSFloat trade</dt><dd>{{ selected.LastTradeState }}</dd></div>
+          </dl>
+
+          <template v-if="selectedDecision">
+            <h3 class="cs2-subhead">
+              Exit decision <span class="cs2-subhead__note">{{ decisionLabel(selectedDecision) }} · {{ fmtAgo(selectedDecision.AtUtc, now) }}</span>
+            </h3>
+            <div class="cs2-decision" data-testid="cs2-exit-decision">
+              <div class="cs2-decision__route">
+                <span class="cs2-pill" :class="selectedDecision.Route === 'CSFloatRelist' ? 'is-info' : 'is-neutral'">{{ routeName(selectedDecision.Route) }}</span>
+                <strong>{{ fmtDecisionPrice(selectedDecision) }}</strong>
+                <span v-if="selectedDecision.Route === 'CSFloatRelist'" class="muted">
+                  ~{{ fmtDays(selectedDecision.ExpectedDaysToSell) }} to sell · {{ fmtProbability(selectedDecision.SellProbability) }} within the horizon
+                </span>
+              </div>
+              <dl class="cs2-facts cs2-facts--tight">
+                <div><dt>Worth now</dt><dd>{{ fmtPence(selectedDecision.CertaintyEquivalentPence) }}</dd></div>
+                <div><dt>Steam exit</dt><dd>{{ selectedDecision.SteamCertaintyEquivalentPence ? fmtPence(selectedDecision.SteamCertaintyEquivalentPence) : 'n/a' }}</dd></div>
+                <div><dt>Relist exit</dt><dd>{{ selectedDecision.RelistCertaintyEquivalentPence ? fmtPence(selectedDecision.RelistCertaintyEquivalentPence) : 'n/a' }}</dd></div>
+                <div v-if="selectedDecision.SalesPerDay"><dt>CSFloat demand</dt><dd :title="selectedDecision.SalesRateBasis">{{ fmtNumber(selectedDecision.SalesPerDay, 2) }} sales/day</dd></div>
+                <div v-if="selectedDecision.MedianValueRatio"><dt>Buyers pay</dt><dd>~{{ Math.round(selectedDecision.MedianValueRatio * 100) }}% of value</dd></div>
+                <div v-if="selectedDecision.DemandMultiplier < 0.95"><dt>Demand marked down</dt><dd class="tone-warning">to {{ Math.round(selectedDecision.DemandMultiplier * 100) }}%</dd></div>
+              </dl>
+              <p class="cs2-decision__why">{{ selectedDecision.Rationale }}</p>
+              <p class="cs2-footnote">Values are what each exit is worth today: after fees, the conversion, every trade lock and hold until the cash is spendable, and risk.</p>
+            </div>
+          </template>
+
+          <dl v-if="selected.CurrentStrategicStage === 9" class="cs2-facts" data-testid="cs2-relist-state">
+            <div><dt>Listed</dt><dd>{{ fmtAgo(selected.ListedOnCSFloatAtUtc, now) }}</dd></div>
+            <div><dt>Re-priced</dt><dd>{{ selected.RelistRepriceCount ?? 0 }}×</dd></div>
+            <div><dt>Expected to sell in</dt><dd>{{ fmtDays(selected.RelistBaseDaysToSell) }}</dd></div>
+            <div>
+              <dt>Unsold evidence</dt>
+              <dd :class="(selected.RelistTotalExposure ?? 0) >= RELIST_OVERDUE_EXPECTED_SALES ? 'tone-danger' : ''">
+                {{ fmtNumber(selected.RelistTotalExposure, 1) }} expected sales passed
+              </dd>
+            </div>
+            <div v-if="isRealDate(selected.NextExitReviewUtc)"><dt>Next review</dt><dd>{{ fmtAgo(selected.NextExitReviewUtc, now) }}</dd></div>
           </dl>
 
           <h3 class="cs2-subhead">Timeline</h3>
@@ -253,6 +304,75 @@
           </div>
         </div>
         <div v-else class="cs2-empty">Pick a position to see its exits, timeline and links.</div>
+      </DashboardPanel>
+
+      <!-- Exit model & trade locks -->
+      <DashboardPanel
+        class="span-12"
+        title="Exit model & trade locks"
+        :subtitle="exitModelSubtitle"
+        :loading="loadingFast && !status"
+        :error="zoneError(paths.status)"
+      >
+        <div v-if="locks" class="cs2-exitmodel" data-testid="cs2-exit-model">
+          <section>
+            <h3 class="cs2-subhead">Trade locks</h3>
+            <div class="cs2-kv"><span>Valve trade protection</span><strong>7 days, lifts {{ pad2(locks.timeline.protectionEndsAtUtcHour) }}:00 UTC</strong></div>
+            <div class="cs2-kv"><span>A purchase now is sellable</span><strong>{{ unlockIfBoughtNow.inDays }} · {{ unlockIfBoughtNow.at }}</strong></div>
+            <div class="cs2-kv"><span>Relist sale → spendable cash</span><strong>{{ fmtDays(locks.timeline.csfloatSaleToCashDays) }}</strong></div>
+            <div class="cs2-kv"><span>Steam sale → CSFloat cash</span><strong>{{ fmtDays(locks.timeline.steamSaleToCashDays) }}</strong></div>
+            <div class="cs2-kv">
+              <span>Converters' Steam hold</span>
+              <strong>{{ fmtDays(locks.timeline.converterHoldDays) }} · {{ fmtSignedPct(locks.converterHoldGrowth - 1) }} drift · σ {{ fmtPct(locks.converterHoldSigma) }}</strong>
+            </div>
+            <p class="cs2-footnote">
+              Measured from this account's last {{ fmtCount(locks.timeline.purchasesObserved) }} purchases and {{ fmtCount(locks.timeline.salesObserved) }} sales:
+              sellers hand over in {{ fmtHours(locks.timeline.handoverHours) }}, CSFloat pays out {{ fmtHours(locks.timeline.verificationLagHours) }} after protection lifts,
+              {{ fmtPct(locks.timeline.purchaseCancelRate) }} of purchases fell through.
+            </p>
+          </section>
+          <section>
+            <h3 class="cs2-subhead">Account limits</h3>
+            <div class="cs2-kv"><span>CSFloat selling</span><strong :class="locks.csfloatSellingPaused ? 'tone-warning' : 'tone-good'">{{ locks.csfloatSellingPaused ? 'Paused (away)' : 'Active' }}</strong></div>
+            <div class="cs2-kv"><span>Steam wallet room</span><strong :class="walletTone">{{ locks.steamWalletHeadroomGbp != null ? fmtGbp(locks.steamWalletHeadroomGbp) : 'unknown' }}</strong></div>
+            <h3 class="cs2-subhead">Economics</h3>
+            <div class="cs2-kv"><span>Cost of tied-up money</span><strong>{{ exitModel?.settings ? `${(exitModel.settings.CapitalCostPerDay * 100).toFixed(2)}%/day` : '—' }}</strong></div>
+            <div class="cs2-kv"><span>Risk aversion γ</span><strong>{{ fmtNumber(exitModel?.settings?.RiskAversion, 1) }}</strong></div>
+            <div class="cs2-kv"><span>Relist horizon</span><strong>{{ exitModel?.settings ? `${exitModel.settings.RelistHorizonDays} days` : '—' }}</strong></div>
+            <div class="cs2-kv"><span>Live relists</span><strong>{{ exitModel?.autoManageRelists === false ? 'Advice only' : 'Managed automatically' }}</strong></div>
+          </section>
+          <section>
+            <h3 class="cs2-subhead">Market drift <span class="cs2-subhead__note">per 30 days</span></h3>
+            <div v-for="row in driftRows" :key="row.category" class="cs2-kv">
+              <span>{{ row.label }}</span>
+              <strong :class="row.tone">{{ row.value }}</strong>
+              <em class="muted">{{ row.observations }} obs</em>
+            </div>
+            <p class="cs2-footnote">
+              {{ fmtCount(exitModel?.market?.forecastChecks) }} live forecast checks · {{ exitModel?.market?.coverageWithinOneSigma != null ? fmtPct(exitModel.market.coverageWithinOneSigma) : '—' }}
+              within ±1σ (68% is honest) · uncertainty scaled ×{{ fmtNumber(exitModel?.market?.volatilityScale, 2) }}
+            </p>
+          </section>
+          <section>
+            <h3 class="cs2-subhead">Track record</h3>
+            <div class="cs2-kv">
+              <span>Relist time vs prediction</span>
+              <strong>×{{ fmtNumber(exitModel?.calibration?.RelistTimeMultiplier, 2) }}</strong>
+              <em class="muted">{{ exitModel?.calibration?.RelistSales ?? 0 }}/{{ exitModel?.calibration?.RelistEpisodes ?? 0 }} sold</em>
+            </div>
+            <div class="cs2-kv">
+              <span>Purchase forecasts vs sale</span>
+              <strong>Steam {{ fmtSignedPct(Math.exp(exitModel?.calibration?.SteamForecastBiasLog ?? 0) - 1) }} · CSFloat {{ fmtSignedPct(Math.exp(exitModel?.calibration?.CSFloatForecastBiasLog ?? 0) - 1) }}</strong>
+            </div>
+            <div class="cs2-kv">
+              <span>Realised ÷ expected cash</span>
+              <strong>{{ exitModel?.calibration?.RealisedVsExpected != null ? fmtPct(exitModel.calibration.RealisedVsExpected) : '—' }}</strong>
+              <em class="muted">{{ exitModel?.calibration?.CompletedPositions ?? 0 }} finished</em>
+            </div>
+            <p class="cs2-footnote">Each figure starts at "the model was right" and moves as the bot's own trades come in.</p>
+          </section>
+        </div>
+        <div v-else class="cs2-empty">{{ status ? 'This bot build does not report the exit model yet.' : 'No engine data yet.' }}</div>
       </DashboardPanel>
 
       <!-- Market read -->
@@ -414,7 +534,9 @@ import {
   stageMeta, isOpenPurchase, routeName, roiTone,
   fmtGbp, fmtPence, fmtCents, fmtRoi, fmtCount, fmtNumber, fmtAgo, fmtDateTime, isRealDate,
   steamListingUrl, csfloatListingUrl,
-  type Cs2Evaluation, type Cs2Purchase, type Cs2Tone,
+  fmtDays, fmtProbability, fmtCountdown, protectionEndsAt, latestDecision, currentRoute, fmtDecisionPrice,
+  RELIST_OVERDUE_EXPECTED_SALES, CATEGORY_LABELS,
+  type Cs2Evaluation, type Cs2ExitDecision, type Cs2ExitModelStatus, type Cs2Purchase, type Cs2Tone,
 } from '~/scripts/cs2Arbitrage';
 
 Chart.register(...registerables);
@@ -471,7 +593,55 @@ const visiblePurchases = computed(() => (showAllPositions.value ? purchases.valu
 const selectedId = ref<string | null>(null);
 const selected = computed(() => purchases.value.find((p) => p.CSFloatListingID === selectedId.value) ?? visiblePurchases.value[0] ?? null);
 
-const exitLabel = (p: Cs2Purchase) => (p.PlannedExit === 'CSFloatRelist' ? 'Relist on CSFloat' : 'Sell on Steam');
+const exitLabel = (p: Cs2Purchase) => (currentRoute(p) === 'CSFloatRelist' ? 'Relist on CSFloat' : 'Sell on Steam');
+
+/** One line per position that says where it is in its locks and exit. */
+const positionLine = (p: Cs2Purchase) => {
+  const stage = p.CurrentStrategicStage;
+  if (stage === 3) {
+    const lifts = protectionEndsAt(p);
+    if (lifts && new Date(lifts).getTime() > now.value) return `Trade-locked · sellable in ${fmtCountdown(lifts, now.value)}`;
+    if (isRealDate(p.SaleDeferredUntilUtc) && new Date(p.SaleDeferredUntilUtc as string).getTime() > now.value) return `Unlocked · exit waits (retry ${fmtAgo(p.SaleDeferredUntilUtc, now.value)})`;
+    return 'Unlocked · deciding the exit';
+  }
+  if (stage === 9) {
+    const parts = [`Relisted ${fmtCents(p.CSFloatResalePriceCents)}`];
+    if (p.RelistBaseDaysToSell) parts.push(`~${fmtDays(p.RelistBaseDaysToSell)} to sell`);
+    if (p.RelistRepriceCount) parts.push(`${p.RelistRepriceCount}× re-priced`);
+    return parts.join(' · ');
+  }
+  if (stage === 4) return `Listed on Steam ${fmtGbp(p.ActualSalePriceOnSteam)}`;
+  return `${exitLabel(p)} · bought ${fmtAgo(p.TimeOfPurchase, now.value)}`;
+};
+
+/** What lock or hold the position is in right now, if any. */
+const lockNote = (p: Cs2Purchase): { title: string; detail: string; tone: Cs2Tone } | null => {
+  const stage = p.CurrentStrategicStage;
+  const lifts = protectionEndsAt(p);
+  if (stage <= 2) {
+    return { title: 'Not yet received.', detail: "Once the trade lands, Valve's 7-day trade protection starts: no selling or re-trading until it lifts (on the next 07:00 UTC boundary).", tone: 'info' };
+  }
+  if (stage === 3 && lifts) {
+    const ms = new Date(lifts).getTime() - now.value;
+    if (ms > 0) return { title: `Trade-locked for ${fmtCountdown(lifts, now.value)}.`, detail: `Valve's protection lifts ${fmtDateTime(lifts)}; the exit is decided an hour later with fresh prices.`, tone: 'neutral' };
+    if (ms < -86_400_000) return { title: 'Still not sold a day after unlocking.', detail: 'If CSFloat still shows it as not tradable, something else is locking it (a reversal or a Steam restriction).', tone: 'danger' };
+    return { title: 'Unlocked.', detail: 'Protection has lifted; the bot decides the exit on its next pass.', tone: 'good' };
+  }
+  if (stage === 9) {
+    if (isRealDate(p.ResaleSoldAtUtc)) return { title: 'Sold — waiting on the buyer\'s protection.', detail: "CSFloat pays out when the buyer's 7-day protection lifts.", tone: 'info' };
+    return { title: 'Listed on CSFloat.', detail: "When it sells, the money stays pending through the buyer's 7-day trade protection.", tone: 'info' };
+  }
+  if (stage === 4) return { title: 'Listed on the Steam market.', detail: "The wallet comes back through converter items, which Steam holds for 7 days before they can be sold on CSFloat.", tone: 'info' };
+  return null;
+};
+
+const selectedDecision = computed<Cs2ExitDecision | null>(() => (selected.value ? latestDecision(selected.value) : null));
+
+const decisionLabel = (d: Cs2ExitDecision) => ({
+  purchase: 'planned at purchase',
+  sale: 'when protection lifted',
+  review: d.Action === 'keep' ? 'last review: kept' : `last review: ${d.Action}`,
+} as Record<string, string>)[d.Stage] ?? d.Stage;
 const positionCost = (p: Cs2Purchase) => (p.PurchaseCostPence ? fmtPence(p.PurchaseCostPence) : p.comparison?.CSFloatListing?.PriceText ?? '—');
 const positionProfit = (p: Cs2Purchase) => {
   if (p.CurrentStrategicStage === 7) return `${fmtGbp(p.ActualAbsoluteProfitInPounds)} realised`;
@@ -485,18 +655,25 @@ const profitTone = (p: Cs2Purchase): Cs2Tone => {
 };
 
 const timeline = (p: Cs2Purchase) => {
-  const events: { label: string; at?: string; future?: boolean }[] = [
+  const events: { label: string; at?: string | null; future?: boolean }[] = [
     { label: 'Bought', at: p.TimeOfPurchase },
     { label: 'Seller accepted', at: p.TimeOfSellerToAcceptSale },
     { label: 'Trade offer sent', at: p.TimeOfSellerToSendTradeOffer },
-    { label: 'Item received', at: p.TimeOfItemRetrieval },
-    { label: p.PlannedExit === 'CSFloatRelist' ? 'Relist due' : 'Steam sale due', at: p.PredictedTimeToBeResoldOnSteam, future: true },
+    { label: 'Item received (protection starts)', at: p.TimeOfItemRetrieval },
+    { label: 'Trade protection lifts', at: protectionEndsAt(p), future: true },
+    { label: 'Exit decided', at: p.ExitHistory?.find((d) => d.Stage === 'sale')?.AtUtc },
+    { label: 'Listed on CSFloat', at: p.ListedOnCSFloatAtUtc },
     { label: 'Sold on Steam', at: p.ActualTimeResoldOnSteam },
+    { label: 'Bought on CSFloat (payout after their protection)', at: p.ResaleSoldAtUtc },
     { label: 'Revenue collected', at: p.TimeOfCollectedRevenue },
   ];
+  if (p.CurrentStrategicStage === 9 && !isRealDate(p.ResaleSoldAtUtc)) events.push({ label: 'Next relist review', at: p.NextExitReviewUtc, future: true });
+  if (p.CurrentStrategicStage === 3) events.push({ label: 'Exit retry', at: p.SaleDeferredUntilUtc, future: true });
   return events
     .filter((e) => isRealDate(e.at))
-    .map((e) => ({ ...e, future: e.future && new Date(e.at as string).getTime() > now.value }));
+    .map((e) => ({ ...e, future: e.future && new Date(e.at as string).getTime() > now.value }))
+    .filter((e) => !(e.label === 'Exit retry' && !e.future))
+    .sort((a, b) => new Date(a.at as string).getTime() - new Date(b.at as string).getTime());
 };
 
 // ── Opportunities ───────────────────────────────────────────────────────────
@@ -511,10 +688,12 @@ const oppFilters = computed(() => [
 const filteredOpportunities = computed(() => opportunities.value.filter((o) =>
   oppFilter.value === 'all' || (oppFilter.value === 'buy' ? o.ShouldBuy : !o.ShouldBuy)));
 
-/** The server's reason, trimmed to the part that explains the verdict. */
+/** The server's reason, trimmed to the part that explains the verdict (the full text is the cell's tooltip). */
 const shortReason = (o: Cs2Evaluation) => {
   const reason = o.Reason ?? '';
-  if (o.ShouldBuy) return reason;
+  const model = reason.match(/^exit model: best exit worth (\S+) \((\S+)\) after time, risk and fees/);
+  if (model) return `exit model: worth ${model[1]} (${model[2]}) after locks, time & risk`;
+  if (o.ShouldBuy) return reason.replace(/^exit model: /, '');
   const rejected = reason.match(/rejected: (.*)$/);
   if (rejected) return rejected[1];
   const bar = reason.match(/below the bar \((.*)\)$/);
@@ -583,6 +762,62 @@ const csfloatUsdCents = computed(() => {
   return typeof usd === 'number' ? Math.round(usd * 100) : null;
 });
 
+// ── Exit model & trade locks ────────────────────────────────────────────────
+
+const exitModel = computed<Cs2ExitModelStatus | null>(() => status.value?.exitModel ?? null);
+const locks = computed(() => exitModel.value?.locks ?? null);
+
+const exitModelSubtitle = computed(() => {
+  const measured = locks.value?.timeline.measuredUtc;
+  return isRealDate(measured)
+    ? `Every exit is valued after fees, trade locks and holds, the time to sell, and risk · locks measured ${fmtAgo(measured, now.value)}`
+    : 'Every exit is valued after fees, trade locks and holds, the time to sell, and risk';
+});
+
+/**
+ * When an item bought right now could first be sold: handover, then Valve's 7 days, rounded up to the daily
+ * boundary the protection lifts on, plus the bot's hour of buffer — the same rule the bot plans with.
+ */
+const unlockIfBoughtNow = computed(() => {
+  const t = locks.value?.timeline;
+  if (!t) return { inDays: '—', at: '—' };
+  const delivered = now.value + t.handoverHours * 3_600_000;
+  const earliest = new Date(delivered + 7 * 86_400_000);
+  const boundary = Date.UTC(earliest.getUTCFullYear(), earliest.getUTCMonth(), earliest.getUTCDate(), t.protectionEndsAtUtcHour);
+  const lifts = boundary >= earliest.getTime() ? boundary : boundary + 86_400_000;
+  const sellable = lifts + 3_600_000;
+  return { inDays: fmtDays((sellable - now.value) / 86_400_000), at: fmtDateTime(new Date(sellable).toISOString()) };
+});
+
+const walletTone = computed(() => {
+  const room = locks.value?.steamWalletHeadroomGbp;
+  if (room == null) return '';
+  return room < 25 ? 'tone-danger' : room < 100 ? 'tone-warning' : '';
+});
+
+const driftRows = computed(() => {
+  const market = exitModel.value?.market;
+  if (!market) return [];
+  return Object.entries(market.driftPerDay as Record<string, number>).map(([category, perDay]) => {
+    const monthly = Math.exp(Number(perDay) * 30) - 1;
+    return {
+      category,
+      label: CATEGORY_LABELS[category] ?? category,
+      value: fmtSignedPct(monthly),
+      tone: monthly <= -0.03 ? 'tone-danger' : monthly < -0.005 ? 'tone-warning' : '',
+      observations: market.observations?.[category] ?? 0,
+    };
+  });
+});
+
+const pad2 = (n?: number | null) => (typeof n === 'number' ? String(n).padStart(2, '0') : '—');
+const fmtPct = (fraction?: number | null, digits = 1) => (typeof fraction === 'number' && Number.isFinite(fraction) ? `${(fraction * 100).toFixed(digits)}%` : '—');
+const fmtSignedPct = (fraction?: number | null) => (typeof fraction === 'number' && Number.isFinite(fraction) ? `${fraction >= 0 ? '+' : '−'}${Math.abs(fraction * 100).toFixed(1)}%` : '—');
+const fmtHours = (hours?: number | null) => {
+  if (typeof hours !== 'number' || !Number.isFinite(hours)) return '—';
+  return hours < 1 ? `${Math.max(1, Math.round(hours * 60))} min` : `${hours.toFixed(1)} h`;
+};
+
 // ── Conversion ──────────────────────────────────────────────────────────────
 
 const kTone = computed<Cs2Tone>(() => {
@@ -646,7 +881,28 @@ const attention = computed(() => {
     items.push({ key: `accept-${p.CSFloatListingID}`, title: 'Accept trade offer', detail: p.ItemMarketHashName, tone: 'warning', href: p.CSFloatToSteamTradeOfferLink || undefined });
   }
   for (const p of purchases.value.filter((x) => /^resale:(pending|queued)/.test(x.LastTradeState ?? ''))) {
-    items.push({ key: `send-${p.CSFloatListingID}`, title: 'Send CSFloat trade', detail: `${p.ItemMarketHashName} sold — send it from CSFloat's Trades page`, tone: 'warning' });
+    items.push({ key: `send-${p.CSFloatListingID}`, title: 'Send CSFloat trade', detail: `${p.ItemMarketHashName} sold — send it from CSFloat's Trades page (2-hour deadline)`, tone: 'warning' });
+  }
+  for (const p of purchases.value.filter((x) => x.CurrentStrategicStage === 9 && !isRealDate(x.ResaleSoldAtUtc) && (x.RelistTotalExposure ?? 0) >= RELIST_OVERDUE_EXPECTED_SALES)) {
+    items.push({
+      key: `overdue-${p.CSFloatListingID}`,
+      title: 'Relist overdue',
+      detail: `${p.ItemMarketHashName} should have sold ~${Math.round(p.RelistTotalExposure ?? 0)}× by now — check the listing is live`,
+      tone: 'warning',
+      href: p.CSFloatResaleListingID ? csfloatListingUrl(p.CSFloatResaleListingID) : undefined,
+    });
+  }
+  for (const p of purchases.value.filter((x) => x.CurrentStrategicStage === 3)) {
+    const lifts = protectionEndsAt(p);
+    if (lifts && now.value - new Date(lifts).getTime() > 86_400_000) {
+      items.push({ key: `locked-${p.CSFloatListingID}`, title: 'Still trade-locked?', detail: `${p.ItemMarketHashName} unlocked ${fmtAgo(lifts, now.value)} but hasn't been sold`, tone: 'danger' });
+    }
+  }
+  if (locks.value?.csfloatSellingPaused && purchases.value.some((x) => x.CurrentStrategicStage === 3 || x.CurrentStrategicStage === 9)) {
+    items.push({ key: 'away', title: 'CSFloat set to away', detail: 'Relists are hidden and sales that would relist are waiting', tone: 'warning' });
+  }
+  if (locks.value?.steamWalletHeadroomGbp != null && locks.value.steamWalletHeadroomGbp < 25) {
+    items.push({ key: 'wallet-cap', title: 'Steam wallet near its cap', detail: `${fmtGbp(Math.max(0, locks.value.steamWalletHeadroomGbp))} of room — convert some back before the Steam exit is refused`, tone: 'warning' });
   }
 
   const s = status.value;
@@ -978,6 +1234,28 @@ a.cs2-attention__item:hover { background: rgba(255, 255, 255, 0.045); }
 .cs2-notes { border-left: 2px solid rgba(255, 255, 255, 0.15); padding: 4px 8px; color: #a8a8a8; font-size: 11px; white-space: pre-line; }
 .cs2-links { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11.5px; }
 
+/* Locks & exit decisions */
+.cs2-subhead__note { margin-left: 4px; color: #6f6f6f; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.cs2-lock { margin: 0; padding: 6px 8px; border: 1px solid rgba(255, 255, 255, 0.07); border-left-width: 2px; border-radius: 5px; color: #a8a8a8; font-size: 11.5px; line-height: 1.4; }
+.cs2-lock strong { color: #f4f4f4; }
+.cs2-lock.is-info { border-left-color: #6aa9ff; }
+.cs2-lock.is-good { border-left-color: #4d9e39; }
+.cs2-lock.is-neutral { border-left-color: #7a7a7a; }
+.cs2-lock.is-danger { border-left-color: #ef6464; }
+.cs2-decision { display: flex; flex-direction: column; gap: 6px; }
+.cs2-decision__route { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 12px; }
+.cs2-decision__route strong { color: #f4f4f4; font-size: 13px; font-variant-numeric: tabular-nums; }
+.cs2-decision__why { margin: 0; color: #a8a8a8; font-size: 11px; line-height: 1.4; }
+.cs2-facts--tight { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cs2-tag { margin-left: 4px; padding: 0 4px; border: 1px solid rgba(106, 169, 255, 0.35); border-radius: 3px; color: #8fbfff; font-size: 8.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; vertical-align: 1px; }
+.cs2-exitmodel { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px 22px; }
+.cs2-exitmodel section { min-width: 0; }
+.cs2-exitmodel .cs2-subhead:first-child { margin-top: 2px; }
+.cs2-kv { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: baseline; gap: 8px; padding: 3px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04); font-size: 11.5px; }
+.cs2-kv span { overflow: hidden; color: #a8a8a8; text-overflow: ellipsis; white-space: nowrap; }
+.cs2-kv strong { color: #f4f4f4; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.cs2-kv em { font-size: 10.5px; font-style: normal; }
+
 /* Market read */
 .cs2-dist__row { display: grid; grid-template-columns: 52px minmax(0, 1fr) 110px; align-items: center; gap: 8px; padding: 4px 0; font-size: 11.5px; }
 .cs2-dist__label { color: #a8a8a8; }
@@ -1011,6 +1289,7 @@ a.cs2-attention__item:hover { background: rgba(255, 255, 255, 0.045); }
   .cs2-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .span-4, .span-8 { grid-column: span 6; }
   .span-5, .span-7 { grid-column: span 6; }
+  .cs2-exitmodel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 1000px) {
@@ -1020,5 +1299,6 @@ a.cs2-attention__item:hover { background: rgba(255, 255, 255, 0.045); }
   .cs2-position { grid-template-columns: 40px minmax(0, 1fr) auto; }
   .cs2-position__track { display: none; }
   .cs2-facts { grid-template-columns: minmax(0, 1fr); }
+  .cs2-exitmodel { grid-template-columns: minmax(0, 1fr); }
 }
 </style>

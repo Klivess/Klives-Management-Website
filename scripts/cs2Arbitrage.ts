@@ -38,7 +38,82 @@ export interface Cs2Evaluation {
   BestProfitPence: number;
   ShouldBuy: boolean;
   Reason: string;
-  TrendFactor?: number;
+  /** Set once the exit model valued the listing with live evidence before buying (BestRoi is then the model's). */
+  ExitModelChecked?: boolean;
+  ScreenBestRoi?: number;
+  ExpectedDaysToSell?: number;
+  SellProbability?: number;
+  PlannedPrice?: number;
+  CSFloatSalesPerDay?: number;
+  ExitModelSummary?: string | null;
+  MissingSignals?: string[] | null;
+}
+
+/** One exit decision recorded on a position (server `ExitDecision`). */
+export interface Cs2ExitDecision {
+  AtUtc: string;
+  /** "purchase", "sale" or "review". */
+  Stage: string;
+  /** "buy", "steam", "relist", "reprice", "keep", "delist+steam", "capped", … */
+  Action: string;
+  /** "SteamMarket", "CSFloatRelist" or "None". */
+  Route: string;
+  /** Steam: buy-order price in GBP pence. CSFloat: listing price in USD cents. */
+  Price: number;
+  ExpectedDaysToSell: number;
+  SellProbability: number;
+  CertaintyEquivalentPence: number;
+  SteamCertaintyEquivalentPence: number;
+  RelistCertaintyEquivalentPence: number;
+  SalesPerDay: number;
+  SalesRateBasis: string;
+  MedianValueRatio: number;
+  DemandMultiplier: number;
+  DaysUntilTradable?: number;
+  Rationale: string;
+}
+
+/** `/status` → `exitModel` (server field names). */
+export interface Cs2ExitModelStatus {
+  settings?: { CapitalCostPerDay: number; RiskAversion: number; RelistHorizonDays: number; ConversionSigma: number };
+  autoManageRelists?: boolean;
+  locks?: {
+    timeline: {
+      protectionEndsAtUtcHour: number;
+      handoverHours: number;
+      verificationLagHours: number;
+      ownSendHours: number;
+      saleCancelRate: number;
+      purchaseCancelRate: number;
+      csfloatSaleToCashDays: number;
+      steamSaleToCashDays: number;
+      converterHoldDays: number;
+      purchasesObserved: number;
+      salesObserved: number;
+      measuredUtc?: string | null;
+    };
+    converterHoldGrowth: number;
+    converterHoldSigma: number;
+    steamWalletHeadroomGbp?: number | null;
+    csfloatSellingPaused: boolean;
+  };
+  market?: {
+    driftPerDay: Record<string, number>;
+    observations: Record<string, number>;
+    volatilityScale: number;
+    forecastChecks: number;
+    coverageWithinOneSigma?: number | null;
+  };
+  calibration?: {
+    RelistTimeMultiplier: number;
+    RelistEpisodes: number;
+    RelistSales: number;
+    SteamForecastBiasLog: number;
+    CSFloatForecastBiasLog: number;
+    ForecastChecks: number;
+    RealisedVsExpected?: number | null;
+    CompletedPositions: number;
+  };
 }
 
 export interface Cs2Cycle {
@@ -88,6 +163,19 @@ export interface Cs2Purchase {
   CSFloatResalePriceCents?: number;
   CSFloatToSteamTradeOfferLink?: string;
   Notes?: string;
+  // Exit model (absent on older records)
+  PurchasePlan?: Cs2ExitDecision | null;
+  ExitHistory?: Cs2ExitDecision[];
+  ListedOnCSFloatAtUtc?: string;
+  RelistBaseDaysToSell?: number;
+  RelistModelExposure?: number;
+  RelistTotalExposure?: number;
+  RelistRepriceCount?: number;
+  ResaleSoldAtUtc?: string;
+  NextExitReviewUtc?: string;
+  SaleDeferrals?: number;
+  SaleDeferredUntilUtc?: string;
+  LastSaleAttemptUtc?: string;
   comparison?: {
     CSFloatURL?: string;
     SteamListingURL?: string;
@@ -226,3 +314,55 @@ export const roiTone = (roi?: number | null, bar = 0.1): Cs2Tone => {
 
 export const steamListingUrl = (name: string) => `https://steamcommunity.com/market/listings/730/${encodeURIComponent(name)}`;
 export const csfloatListingUrl = (id: string) => `https://csfloat.com/item/${id}`;
+
+// ── Exit model & trade locks ────────────────────────────────────────────────
+
+/** "17h", "1.9d", "never" (a wait of a year or more). */
+export const fmtDays = (days?: number | null) => {
+  if (!hasValue(days)) return '—';
+  if (days >= 365) return 'never';
+  if (days < 1) return `${Math.max(1, Math.round(days * 24))}h`;
+  return `${days.toFixed(days < 10 ? 1 : 0)}d`;
+};
+
+export const fmtProbability = (p?: number | null) => (hasValue(p) ? `${Math.round(p * 100)}%` : '—');
+
+/** Time until (or since) a moment as "3d 4h" / "5h 12m" / "12m". */
+export const fmtCountdown = (iso?: string | null, now = Date.now()) => {
+  if (!isRealDate(iso)) return '—';
+  const totalMinutes = Math.round(Math.abs(new Date(iso as string).getTime() - now) / 60_000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+};
+
+/** The bot sells an hour after Valve's trade protection lifts; this is when the protection itself ends. */
+export const protectionEndsAt = (p: Cs2Purchase): string | null => {
+  if (!isRealDate(p.PredictedTimeToBeResoldOnSteam)) return null;
+  return new Date(new Date(p.PredictedTimeToBeResoldOnSteam as string).getTime() - 3_600_000).toISOString();
+};
+
+/** The most recent exit decision on a position (sale, review), else the plan made at purchase. */
+export const latestDecision = (p: Cs2Purchase): Cs2ExitDecision | null =>
+  (p.ExitHistory?.length ? p.ExitHistory[p.ExitHistory.length - 1] : null) ?? p.PurchasePlan ?? null;
+
+/** The exit the position is on now: the sale decision once made, else the purchase-time plan. */
+export const currentRoute = (p: Cs2Purchase): 'SteamMarket' | 'CSFloatRelist' => {
+  if (p.CurrentStrategicStage === 9) return 'CSFloatRelist';
+  if (p.CurrentStrategicStage === 4) return 'SteamMarket';
+  const sale = [...(p.ExitHistory ?? [])].reverse().find((d) => d.Route === 'SteamMarket' || d.Route === 'CSFloatRelist');
+  return (sale?.Route as 'SteamMarket' | 'CSFloatRelist' | undefined) ?? (p.PlannedExit === 'CSFloatRelist' ? 'CSFloatRelist' : 'SteamMarket');
+};
+
+/** Price of a decision in its venue's currency. */
+export const fmtDecisionPrice = (d: Cs2ExitDecision) => (d.Route === 'SteamMarket' ? fmtPence(d.Price) : fmtCents(d.Price));
+
+/** A relist that has sat through this many expected sales without one raises an alert (server: OverdueExpectedSales). */
+export const RELIST_OVERDUE_EXPECTED_SALES = 8;
+
+export const CATEGORY_LABELS: Record<string, string> = {
+  Skin: 'Skins', Sticker: 'Stickers', Container: 'Cases', Charm: 'Charms', Patch: 'Patches', Other: 'Other',
+};

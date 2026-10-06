@@ -123,7 +123,10 @@
           :status-note="liveStatusNote"
           :iteration="liveIteration"
           :approval="liveApproval"
+          :container-id="liveContainerId"
+          :asleep="computerAsleep"
           @approve="submitApproval"
+          @resolve-takeover="resolveTakeover"
           @close="dismissLive"
         />
       </transition>
@@ -230,7 +233,10 @@
                 <div class="rail-block">
                   <div class="rail-head">
                     <span class="rail-title">Results <span v-if="unreadNotificationCount" class="rail-count">{{ unreadNotificationCount }}</span></span>
-                    <button class="rail-refresh" type="button" @click="loadNotifications" title="Refresh results">⟳</button>
+                    <div class="rail-head-actions">
+                      <button v-if="unreadNotificationCount" class="rail-refresh" type="button" @click="markAllNotificationsRead" title="Mark all results read">✓</button>
+                      <button class="rail-refresh" type="button" @click="loadNotifications" title="Refresh results">⟳</button>
+                    </div>
                   </div>
                   <div v-if="notifications.length === 0" class="rail-empty">No completed work yet.</div>
                   <button
@@ -517,6 +523,9 @@ import 'highlight.js/styles/github-dark.css';
 
 definePageMeta({ layout: 'navbar' });
 
+// Links from Discord and notifications name the conversation (and a pending takeover) explicitly.
+const route = useRoute();
+
 // ── View switching ──
 const views = [
   { id: 'chat', label: 'Chat' },
@@ -617,6 +626,33 @@ const liveApproval = ref(null);     // pending approval card (or null)
 const livePhase = ref('');
 const liveStatusNote = ref('');
 const liveIteration = ref(0);
+// KliveAgent's own desktop (container) when that is its computer — streamed and controllable in place.
+const liveContainerId = ref(null);
+const computerInfo = ref(null);
+// Idle desktops are stopped to free memory; streaming one would just spin. Shown as asleep instead,
+// until a run starts using it again (which wakes it).
+const computerAsleep = computed(() => !pendingRequestId.value && !!computerInfo.value?.suspended
+  && computerInfo.value?.containerId === liveContainerId.value);
+
+async function loadComputerInfo() {
+  try {
+    const res = await RequestGETFromKliveAPI(`/kliveagent/computer?_t=${Date.now()}`, false, false);
+    const { data } = await readAgentApiResponse(res);
+    if (!res.ok || !data) return;
+    computerInfo.value = data.computer || null;
+    // A run's own report wins; this only fills the view before (or between) runs.
+    if (!pendingRequestId.value && data.computer?.target === 'container' && data.computer.containerId)
+      liveContainerId.value = data.computer.containerId;
+  } catch {}
+}
+
+// Hand KliveAgent's desktop back after a takeover ("done"), or tell it you can't help ("cancel").
+async function resolveTakeover({ approvalId, outcome }) {
+  if (!approvalId) return;
+  try {
+    await RequestPOSTFromKliveAPI('/kliveagent/chat/handoff/resolve', JSON.stringify({ approvalId, outcome }), true, true);
+  } catch {}
+}
 
 // Slide the live view away (user pressed ✕). Stays closed until the next message starts a run.
 function dismissLive() {
@@ -701,7 +737,12 @@ function applyPendingFields(msg, data) {
   msg.promptTokens = data.promptTokens;
   msg.completionTokens = data.completionTokens;
   msg.statusNote = data.statusNote;
+  if (data.status) msg.status = data.status;
+  if (data.stopReason !== undefined) msg.stopReason = data.stopReason;
   if (Array.isArray(data.activity)) msg.activity = data.activity;
+  if (data.computerContainerId) liveContainerId.value = data.computerContainerId;
+  // A takeover names its desktop itself — it can arrive before the run has reported one.
+  if (data.pendingApproval?.containerId) liveContainerId.value = data.pendingApproval.containerId;
   // Computer-use: drive the dedicated LiveScreen panel (video stream + approval gate), not the bubble.
   // A new frame slides the live view out automatically (unless the user dismissed it this run); a pending
   // approval always forces it open since it needs a decision.
@@ -750,6 +791,21 @@ async function fetchRuns(targetConversationId = null, includeCompleted = false) 
 
 function attachRun(run) {
   if (!run?.requestId || run.status !== 'Running') return;
+  // A run the server started itself (the automatic continuation after a restart) has no request
+  // bubble on this page yet; show what it was asked so the new reply has its context.
+  if (run.senderName === 'System' && run.userMessage
+    && !messages.value.some((m) => m.role === 'User' && m.requestId === run.requestId)) {
+    messages.value.push({
+      messageId: `sys_${run.requestId}`,
+      requestId: run.requestId,
+      role: 'User',
+      senderName: 'System',
+      content: run.userMessage,
+      attachments: [],
+      scripts: [],
+      timestamp: run.createdAt || new Date().toISOString(),
+    });
+  }
   const message = ensureRunMessage(run);
   applyPendingFields(message, run);
   message.pending = true;
@@ -786,8 +842,13 @@ async function reconcileActiveRun(targetConversationId = conversationId.value) {
 // cleared, the global run list still discovers work and opens its conversation.
 async function restoreDurableSession() {
   let preferredConversation = null;
+  const linkedConversation = typeof route.query.conversation === 'string' ? route.query.conversation : null;
+  if (route.query.takeover === '1') {
+    liveOpen.value = true;
+    liveDismissed.value = false;
+  }
   try {
-    preferredConversation = localStorage.getItem(LAST_CONVERSATION_KEY);
+    preferredConversation = linkedConversation || localStorage.getItem(LAST_CONVERSATION_KEY);
     if (!preferredConversation) {
       const legacy = JSON.parse(localStorage.getItem(LEGACY_ACTIVE_RUN_KEY) || 'null');
       preferredConversation = legacy?.conversationId || null;
@@ -1154,7 +1215,11 @@ async function pollPendingResponse(requestId, generation) {
       const finalResponse = data.finalResponse;
       message.pending = false;
       message.phase = 'final';
+      message.status = data.status;
+      message.stopReason = data.stopReason || null;
       message.timestamp = data.completedAt || new Date().toISOString();
+      // This page watched the run finish, so its "finished" result is not unread news.
+      void markRunNotificationRead(requestId);
 
       if (finalResponse) {
         conversationId.value = finalResponse.conversationId || data.conversationId || conversationId.value;
@@ -1469,6 +1534,24 @@ async function loadNotifications() {
   } catch {}
 }
 
+async function markRunNotificationRead(requestId) {
+  if (!requestId) return;
+  const id = 'run' + requestId;
+  const known = notifications.value.find((note) => note.notificationId === id);
+  if (known?.readAt) return;
+  try {
+    await RequestPOSTFromKliveAPI('/kliveagent/notifications/read', JSON.stringify({ notificationId: id }), false, true);
+    if (known) known.readAt = new Date().toISOString();
+  } catch {}
+}
+
+async function markAllNotificationsRead() {
+  try {
+    const res = await RequestPOSTFromKliveAPI('/kliveagent/notifications/read-all', '{}', true, true);
+    if (res.ok) notifications.value.forEach((note) => { if (!note.readAt) note.readAt = new Date().toISOString(); });
+  } catch {}
+}
+
 async function openNotification(note) {
   if (!note.readAt) {
     note.readAt = new Date().toISOString();
@@ -1535,20 +1618,40 @@ async function loadConversation(convId) {
 
   conversationId.value = data.conversationId || convId;
   rememberConversation(conversationId.value);
-  messages.value = (Array.isArray(data.messages) ? data.messages : []).map((m) => ({
+  const recentRuns = Array.isArray(data.recentRuns) ? data.recentRuns : [];
+  const finishedRuns = new Map(recentRuns.filter((run) => run?.requestId && run.status !== 'Running')
+    .map((run) => [run.requestId, run]));
+  messages.value = (Array.isArray(data.messages) ? data.messages : []).map((m) => {
+    const role = m.role === 'User' ? 'User' : 'KliveAgent';
+    const message = {
       messageId: m.messageId,
       requestId: m.requestId,
-      role: m.role === 'User' ? 'User' : 'KliveAgent',
+      role,
+      senderName: m.senderName,
       content: m.content,
       attachments: m.attachments || [],
       // Replay the scripts+outputs the agent ran on this turn (persisted server-side).
       scripts: m.scriptResults || (m.scriptResult ? [m.scriptResult] : []),
       timestamp: m.timestamp,
       deliveryStatus: m.deliveryStatus,
-    }));
+    };
+    // A reload used to drop everything but the final text. The run record still has the activity
+    // timeline, token counts and how the turn actually ended, so restore them.
+    const run = role === 'KliveAgent' ? finishedRuns.get(m.requestId) : null;
+    if (run) {
+      message.activity = Array.isArray(run.activity) ? run.activity : [];
+      message.status = run.status;
+      message.stopReason = run.stopReason || null;
+      message.promptTokens = run.promptTokens;
+      message.completionTokens = run.completionTokens;
+      message.iteration = run.iteration;
+      message.phase = 'final';
+    }
+    return message;
+  });
   view.value = 'chat';
 
-  const running = (Array.isArray(data.recentRuns) ? data.recentRuns : [])
+  const running = recentRuns
     .filter((run) => run?.status === 'Running')
     .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))[0];
   if (running) attachRun(running);
@@ -1818,7 +1921,7 @@ async function pollAgentStatus() {
 }
 
 async function refreshDurableSideData() {
-  await Promise.allSettled([loadTasks(), loadConversations(), loadJobs(), loadNotifications()]);
+  await Promise.allSettled([loadTasks(), loadConversations(), loadJobs(), loadNotifications(), loadComputerInfo()]);
   if (componentActive && conversationId.value && !pendingRequestId.value) {
     try { await reconcileActiveRun(conversationId.value); } catch {}
   }

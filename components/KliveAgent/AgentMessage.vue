@@ -9,11 +9,13 @@
 
       <!-- Live transparency strip: phase, step, running token counts, and a Stop control. -->
       <div v-if="showStatus" class="msg-status">
-        <span class="msg-phase" :class="'phase-' + (message.phase || 'thinking')">{{ phaseLabel }}</span>
+        <span class="msg-phase" :class="'phase-' + phaseClass">{{ phaseLabel }}</span>
         <span v-if="message.iteration" class="msg-chip">step {{ message.iteration }}</span>
         <span v-if="tokenLabel" class="msg-chip msg-tokens">{{ tokenLabel }}</span>
         <button v-if="message.pending" class="msg-stop" type="button" @click="$emit('stop')">■ Stop</button>
       </div>
+      <!-- What the run is doing right now, e.g. "waiting for an AIRouter slot (3/3 busy) · 1m 05s". -->
+      <div v-if="message.pending && liveNote" class="msg-live-note" :title="liveNote">{{ liveNote }}</div>
 
       <div v-if="message.content" class="msg-content" v-html="renderMarkdown(message.content)"></div>
       <div v-if="attachments.length" class="msg-files">
@@ -56,7 +58,9 @@ const props = defineProps({
 defineEmits(['stop']);
 
 const isUser = computed(() => props.message.role === 'User');
-const roleLabel = computed(() => (isUser.value ? 'You' : 'KliveAgent'));
+// An automatic continuation after a restart is written by the system, not by Klives.
+const isSystem = computed(() => isUser.value && props.message.senderName === 'System');
+const roleLabel = computed(() => (isSystem.value ? 'System · auto-continue' : isUser.value ? 'You' : 'KliveAgent'));
 
 const activity = computed(() => (Array.isArray(props.message.activity) ? props.message.activity : []));
 const attachments = computed(() => Array.isArray(props.message.attachments) ? props.message.attachments : []);
@@ -73,18 +77,50 @@ async function downloadAttachment(file) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-// Show the status strip while the turn is live, or afterwards if it carried transparency data.
+// How a finished turn actually ended: the live run status first, then the persisted delivery status.
+// A run that was stopped, failed or was interrupted must never be labelled "Done".
+const outcome = computed(() => {
+  if (props.message.pending) return 'running';
+  const status = String(props.message.status || props.message.deliveryStatus || 'completed').toLowerCase();
+  if (status === 'cancelled') return props.message.stopReason === 'user' ? 'stopped-by-you' : 'stopped';
+  if (status === 'failed' || status === 'interrupted') return status;
+  return 'completed';
+});
+
+// Show the status strip while the turn is live, afterwards if it carried transparency data, and
+// always when it ended in anything other than a normal completion.
 const showStatus = computed(() =>
-  !isUser.value && (props.message.pending || props.message.phase || tokenLabel.value)
+  !isUser.value && (props.message.pending || props.message.phase || tokenLabel.value || outcome.value !== 'completed')
 );
 
 const PHASE_LABELS = {
+  preparing: 'Preparing',
+  queued: 'Queued',
   thinking: 'Thinking',
   running: 'Running',
   observing: 'Observing',
-  final: 'Done',
+  waiting: 'Waiting',
+  retrying: 'Retrying',
+  steering: 'Steering',
 };
-const phaseLabel = computed(() => PHASE_LABELS[props.message.phase] || (props.message.pending ? 'Working' : 'Done'));
+const OUTCOME_LABELS = {
+  completed: 'Done',
+  'stopped-by-you': 'Stopped',
+  stopped: 'Stopped',
+  failed: 'Failed',
+  interrupted: 'Interrupted',
+};
+const phaseLabel = computed(() => props.message.pending
+  ? (PHASE_LABELS[props.message.phase] || 'Working')
+  : (OUTCOME_LABELS[outcome.value] || 'Done'));
+const phaseClass = computed(() => props.message.pending
+  ? (props.message.phase || 'thinking')
+  : 'outcome-' + outcome.value);
+
+const liveNote = computed(() => {
+  const note = String(props.message.statusNote || '').replace(/^[_\s…]+|[_\s]+$/g, '').trim();
+  return note.length > 180 ? note.slice(0, 180) + '…' : note;
+});
 
 const tokenLabel = computed(() => {
   const p = props.message.promptTokens || 0;
@@ -229,10 +265,28 @@ const timeLabel = computed(() => {
   background: rgba(255, 255, 255, 0.06);
   color: #bdbdbd;
 }
-.msg-phase.phase-thinking { background: rgba($secondary, 0.18); color: $secondary; }
-.msg-phase.phase-running { background: rgba(255, 196, 0, 0.16); color: #ffc400; }
+.msg-phase.phase-thinking,
+.msg-phase.phase-preparing { background: rgba($secondary, 0.18); color: $secondary; }
+.msg-phase.phase-running,
+.msg-phase.phase-steering { background: rgba(255, 196, 0, 0.16); color: #ffc400; }
 .msg-phase.phase-observing { background: rgba(0, 170, 255, 0.16); color: #4cc2ff; }
-.msg-phase.phase-final { background: rgba(0, 200, 120, 0.16); color: #2ecf86; }
+.msg-phase.phase-queued,
+.msg-phase.phase-waiting,
+.msg-phase.phase-retrying { background: rgba(160, 120, 255, 0.16); color: #b89cff; }
+.msg-phase.phase-outcome-completed { background: rgba(0, 200, 120, 0.16); color: #2ecf86; }
+.msg-phase.phase-outcome-stopped-by-you { background: rgba(255, 255, 255, 0.08); color: #bdbdbd; }
+.msg-phase.phase-outcome-stopped,
+.msg-phase.phase-outcome-interrupted { background: rgba(255, 160, 0, 0.16); color: #ffb347; }
+.msg-phase.phase-outcome-failed { background: rgba(255, 80, 80, 0.16); color: #ff6b6b; }
+
+.msg-live-note {
+  font-size: 11px;
+  color: #8f8f8f;
+  margin: -2px 0 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .msg-chip {
   font-size: 10px;

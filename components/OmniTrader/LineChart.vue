@@ -167,7 +167,9 @@ const bounds = computed(() => {
     if (props.zeroBased) min = Math.min(0, min);
     if (max === min) { max = min + 1; }
     const pad = (max - min) * 0.08;
-    return { min: min - pad, max: max + pad, xMin: Math.min(...xs), xMax: Math.max(...xs) };
+    // A zero-based axis over non-negative data starts at zero, not at a padded negative.
+    const floor = props.zeroBased && min === 0 ? 0 : min - pad;
+    return { min: floor, max: max + pad, xMin: Math.min(...xs), xMax: Math.max(...xs) };
 });
 
 const plotWidth = computed(() => width.value - margin.left - margin.right);

@@ -730,10 +730,12 @@ export function useDashboardOverview() {
         tone: numberValue(data.gram?.PendingCount) ? 'warning' : 'success',
       },
       {
+        // Scheduled posts are normal in v2; only items needing a decision colour the row.
         id: 'tumblr', label: 'OmniTumblr', href: '/schemery/omnitumblr',
-        primary: `${numberValue(data.tumblr?.ActiveAccounts)}/${tumblrTotal} active`,
-        secondary: `${numberValue(data.tumblr?.PendingCount)} pending`, tertiary: `${numberValue(data.tumblr?.SuccessRate).toFixed(1)}% success`,
-        tone: numberValue(data.tumblr?.PendingCount) ? 'warning' : 'success',
+        primary: `${numberValue(data.tumblr?.AutopilotBlogs ?? data.tumblr?.ActiveAccounts)}/${tumblrTotal} on autopilot`,
+        secondary: `${numberValue(data.tumblr?.PostsThisWeek)} posts in 7 d`,
+        tertiary: numberValue(data.tumblr?.AttentionCount) ? `${numberValue(data.tumblr?.AttentionCount)} need attention` : `${numberValue(data.tumblr?.PendingCount)} queued`,
+        tone: numberValue(data.tumblr?.AttentionCount) ? 'warning' : tumblrTotal ? 'success' : 'neutral',
       },
     ];
     return rows.filter(row => {

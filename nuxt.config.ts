@@ -15,6 +15,8 @@ export default defineNuxtConfig({
     '/profilepage': {ssr: false}, // Disable SSR for profilepage
     '/omnidefence': {ssr: false}, // Live security console is client-driven
     '/klivetech': {ssr: false}, // Telemetry needs WebSocket, object URLs and ResizeObserver
+    '/schemery/omnitumblr': {ssr: false}, // Authenticated blob previews, popups and local-time rendering
+    '/schemery/omnitumblr/**': {ssr: false},
     '/*': {cors: true},
   },
   vite: {

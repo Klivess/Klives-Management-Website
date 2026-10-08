@@ -324,7 +324,7 @@ function responseForPath(pathWithQuery: string, role: DashboardRole, overrides: 
     case '/omnigram/dashboard-stats':
       return { TotalAccounts: 3, ActiveAccounts: 2, TotalPosts: 50, PostedCount: 45, PendingCount: 5, SuccessRate: 96 };
     case '/omnitumblr/dashboard-stats':
-      return { TotalAccounts: 2, ActiveAccounts: 2, TotalPosts: 30, PostedCount: 27, PendingCount: 3, SuccessRate: 93 };
+      return { TotalAccounts: 2, ActiveAccounts: 2, AutopilotBlogs: 2, PendingCount: 3, FailedCount: 0, SuccessRate: 93, TotalFollowers: 1200, FollowerGain7d: 14, PostsThisWeek: 4, PostsToday: 1, AvgNotes30d: 18.5, NextPostUtc: null, NextPostBlog: null, AttentionCount: 0 };
     case '/KliveCloud/GetDriveInfo':
       return {
         TotalSpaceGB: 1000,

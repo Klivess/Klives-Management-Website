@@ -122,13 +122,13 @@
                         <span class="card-badge badge-active">Active</span>
                     </div>
                     <h2 class="card-title">OmniTumblr</h2>
-                    <p class="card-desc">Manages Tumblr blogs with scheduled posting, content folder automation, and engagement analytics via OAuth.</p>
+                    <p class="card-desc">Runs Tumblr blogs on autopilot: weekly schedules, MemeScraper videos with AI captions that look at the clip, and follower, notes and best-time analytics.</p>
                     
                     <!-- Analytics Section -->
                     <div v-if="!omnitumblrStats.loading" class="omnigram-stats">
                         <div class="stat-item">
-                            <span class="stat-label">Blogs</span>
-                            <span class="stat-value tumblr-val">{{ omnitumblrStats.accounts }}</span>
+                            <span class="stat-label">On autopilot</span>
+                            <span class="stat-value tumblr-val">{{ omnitumblrStats.autopilot }}/{{ omnitumblrStats.accounts }}</span>
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Followers</span>
@@ -252,7 +252,7 @@ import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 definePageMeta({ layout: 'navbar' });
 
 const omnigramStats = ref({ accounts: 0, followers: 0, postsThisWeek: 0, loading: true });
-const omnitumblrStats = ref({ accounts: 0, followers: 0, postsThisWeek: 0, loading: true });
+const omnitumblrStats = ref({ accounts: 0, autopilot: 0, followers: 0, postsThisWeek: 0, loading: true });
 const cs2Stats = ref({ valued: 0, opportunities: 0, purchases: 0, loading: true });
 const memescraperStats = ref({ totalSources: 0, totalMemes: 0, todayDownloads: 0, loading: true });
 const omnitraderStats = ref({ paperCount: 0, liveCount: 0, liveArmed: 0, paperPnL: 0, backtestCount: 0, krakenOn: false, loading: true });
@@ -283,7 +283,8 @@ const fetchOmniTumblrStats = async () => {
         if (response.ok) {
             const data = await response.json();
             omnitumblrStats.value = {
-                accounts: data.ActiveAccounts ?? 0,
+                accounts: data.TotalAccounts ?? 0,
+                autopilot: data.AutopilotBlogs ?? 0,
                 followers: data.TotalFollowers ?? 0,
                 postsThisWeek: data.PostsThisWeek ?? 0,
                 loading: false

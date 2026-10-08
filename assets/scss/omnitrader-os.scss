@@ -717,7 +717,8 @@ table.ot-table.pinned tbody tr:hover td:first-child { background: var(--ot-surfa
 /* ── forms ────────────────────────────────────────────────────────────────── */
 
 .ot-field { display: flex; flex-direction: column; gap: var(--ot-space-1); min-width: 0; }
-.ot-field > label {
+/* Field captions only: a checkbox row (.ot-check) inside a field keeps body text. */
+.ot-field > label:not(.ot-check) {
     font-size: 11px;
     letter-spacing: 0.7px;
     text-transform: uppercase;

@@ -49,7 +49,9 @@
       </div>
     </aside>
 
-    <main class="vnav-main" :style="{ marginLeft: overlay ? '0' : railWidth }">
+    <!-- On phones the collapsed rail stays on screen, so content starts beside it; only the
+         expanded menu overlays the page. -->
+    <main class="vnav-main" :style="{ marginLeft: overlay ? '56px' : railWidth }">
       <slot />
     </main>
   </div>

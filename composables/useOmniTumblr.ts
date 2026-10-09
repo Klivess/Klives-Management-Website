@@ -70,6 +70,8 @@ export interface PostSummary {
     Attempts: number;
     TumblrUrl: string | null;
     TumblrPostId: string | null;
+    /** Tumblr is still transcoding the video; the link is a placeholder until it goes live. */
+    TumblrIdPending?: boolean;
     Notes: number;
     Likes: number | null;
     Reblogs: number | null;

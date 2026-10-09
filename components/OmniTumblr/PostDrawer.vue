@@ -90,7 +90,8 @@
                     <dt v-if="p!.PublishedUtc">Published</dt><dd v-if="p!.PublishedUtc">{{ fmtWhen(p!.PublishedUtc) }}</dd>
                     <dt>Posts as</dt><dd>{{ p!.TumblrState }}</dd>
                     <dt v-if="p!.TumblrUrl">On Tumblr</dt>
-                    <dd v-if="p!.TumblrUrl"><a :href="p!.TumblrUrl" target="_blank" rel="noopener noreferrer" class="link">{{ p!.TumblrUrl }}</a></dd>
+                    <dd v-if="p!.TumblrUrl && p!.TumblrIdPending">Tumblr is processing the video; the link appears once it is live</dd>
+                    <dd v-else-if="p!.TumblrUrl"><a :href="p!.TumblrUrl" target="_blank" rel="noopener noreferrer" class="link">{{ p!.TumblrUrl }}</a></dd>
                     <dt v-if="detail.Content">Content</dt>
                     <dd v-if="detail.Content">{{ detail.Content.Kind }} · {{ detail.Content.Key }}{{ detail.Content.Views ? ` · ${fmtCount(detail.Content.Views)} views at source` : '' }}</dd>
                     <dt v-if="detail.Slug">Slug</dt><dd v-if="detail.Slug">{{ detail.Slug }}</dd>
@@ -125,7 +126,7 @@
                 <button v-if="editable" class="ot-btn danger" :disabled="busy" @click="act('cancel')">Cancel post</button>
                 <button v-if="p!.Status === 'Published'" class="ot-btn danger" :disabled="busy" @click="act('delete-remote')">Delete from Tumblr</button>
             </template>
-            <a v-if="p?.TumblrUrl && p.Status === 'Published'" :href="p.TumblrUrl" target="_blank" rel="noopener noreferrer" class="ot-btn ghost">Open on Tumblr ↗</a>
+            <a v-if="p?.TumblrUrl && p.Status === 'Published' && !p.TumblrIdPending" :href="p.TumblrUrl" target="_blank" rel="noopener noreferrer" class="ot-btn ghost">Open on Tumblr ↗</a>
         </template>
     </OmniTraderDrawer>
 </template>

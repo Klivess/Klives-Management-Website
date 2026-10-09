@@ -1,16 +1,27 @@
+import { ExchangeLegacyCredential, IsProtectedRoute, VerifyLogin } from '~/scripts/APIInterface';
+import { useCurrentProfile } from '~/composables/useCurrentProfile';
 
-import { VerifyLogin, RequestGETFromKliveAPI } from '~/scripts/APIInterface';
+/**
+ * Before a protected page: with no credential at all, go to the login page (and come back
+ * afterwards); a password left by the previous site is traded for a session token; the
+ * profile — and so what this person may open — starts loading alongside the page.
+ *
+ * Whether the page may be shown is decided by <AccessPageGuard> (it re-decides live when
+ * access changes); a credential that has stopped working is caught by the first 401.
+ */
+export default defineNuxtRouteMiddleware(async (to) => {
+  if (!import.meta.client || !IsProtectedRoute(to.path)) return;
 
-//Make this async to use await inside
-export default defineNuxtRouteMiddleware((to, from) => {
-  // Allow shared access
-  if (to.path.toString().includes('/shared/')) return;
-  if (to.path === '/klivechat' || to.path.startsWith('/klivechat/')) return;
-  //if not at login page, verify login - only run on client side
-  if (to.path !== '/') {
-    // Use process.client to ensure this only runs on client-side
-    if (process.client) {
-      VerifyLogin();
-    }
+  if (!(await VerifyLogin(to.path))) {
+    return navigateTo({ path: '/', query: { next: to.fullPath } }, { replace: true });
   }
-})
+
+  await ExchangeLegacyCredential();
+
+  const profile = useCurrentProfile();
+  const loading = profile.ensureLoaded();
+  // During hydration the server-rendered state must be kept as-is; the guard picks the
+  // profile up once mounted. Otherwise wait briefly, so the page rarely flashes a loader.
+  if (useNuxtApp().isHydrating) return;
+  await Promise.race([loading, new Promise(resolve => setTimeout(resolve, 2_500))]);
+});

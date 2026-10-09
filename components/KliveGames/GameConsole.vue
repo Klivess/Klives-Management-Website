@@ -27,7 +27,7 @@
 </template>
 
 <script>
-import { KliveAPIUrl } from '~/scripts/APIInterface';
+import { KliveAPIUrl, BuildKliveWsUrl } from '~/scripts/APIInterface';
 import { useCookie } from '#imports';
 
 export default {
@@ -55,10 +55,7 @@ export default {
   methods: {
     connect() {
       if (!process.client) return;
-      let pw = '';
-      try { pw = useCookie('password').value || ''; } catch (e) {}
-      const wsBase = KliveAPIUrl.replace('https', 'wss').replace('http', 'ws');
-      const url = `${wsBase}/klivegames/servers/console?id=${encodeURIComponent(this.id)}&authorization=${encodeURIComponent(pw)}`;
+      const url = BuildKliveWsUrl('/klivegames/servers/console', { id: this.id });
       const socket = new WebSocket(url);
       this._socket = socket;
 

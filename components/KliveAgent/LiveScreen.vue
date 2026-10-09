@@ -81,6 +81,7 @@
 </template>
 
 <script setup>
+import { GetAuthToken } from '~/scripts/APIInterface';
 import { computed, onMounted, watch } from 'vue';
 import { useScreenStream } from '~/composables/useScreenStream';
 import ContainerRemoteDesktop from '~/components/Projects/ContainerRemoteDesktop.vue';
@@ -116,16 +117,10 @@ const { streamSrc, connected, connect, disconnect } = useScreenStream();
 // The display falls back to the last annotated poll frame until the live stream is connected.
 const displaySrc = computed(() => streamSrc.value || (props.frame ? 'data:image/jpeg;base64,' + props.frame : null));
 
-function getPassword() {
-  if (typeof document === 'undefined') return '';
-  const m = document.cookie.match(/(?:^|; )password=([^;]*)/);
-  return m ? decodeURIComponent(m[1]) : '';
-}
-
 function syncHostStream() {
   if (props.containerId) { disconnect(); return; }
-  const pw = getPassword();
-  if (pw) connect(`authorization=${encodeURIComponent(pw)}`); // not logged in → just show fallback frames
+  const credential = GetAuthToken();
+  if (credential) connect(`authorization=${encodeURIComponent(credential)}`); // not signed in → just show fallback frames
 }
 
 onMounted(syncHostStream);

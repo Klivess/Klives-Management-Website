@@ -15,8 +15,8 @@
         <span class="cs2-freshness" aria-live="polite">{{ freshness }}</span>
       </div>
       <div class="cs2-actions">
-        <DashboardAction v-if="isKlives" label="Settings" icon="⚙" @click="settingsOpen = true" />
-        <DashboardAction label="Scan now" icon="⌕" :disabled="scanPending" tone="primary" @click="runScan" />
+        <DashboardAction v-if="can('system.settings.write')" label="Settings" icon="⚙" @click="settingsOpen = true" />
+        <DashboardAction v-if="can('cs2.scans.run')" label="Scan now" icon="⌕" :disabled="scanPending" tone="primary" @click="runScan" />
         <DashboardAction :label="loadingFast || loadingSlow ? 'Refreshing' : 'Refresh'" icon="↻" :disabled="loadingFast || loadingSlow" @click="refreshAll" />
       </div>
     </header>
@@ -528,7 +528,7 @@ import DashboardKpi from '~/components/Dashboard/DashboardKpi.vue';
 import DashboardAction from '~/components/Dashboard/DashboardAction.vue';
 import CS2StageTrack from '~/components/CS2/StageTrack.vue';
 import CS2SettingsDrawer from '~/components/CS2/SettingsDrawer.vue';
-import { useCurrentProfile } from '~/composables/useCurrentProfile';
+import { useAccess } from '~/composables/useAccess';
 import { useCs2Arbitrage } from '~/composables/useCs2Arbitrage';
 import {
   stageMeta, isOpenPurchase, routeName, roiTone,
@@ -549,8 +549,8 @@ const {
   refreshAll, refreshFast, scanNow, zoneError, paths,
 } = useCs2Arbitrage();
 
-const profile = useCurrentProfile();
-const isKlives = computed(() => profile.isKlives.value);
+// Settings are OmniSettings (system.settings.*); scanning is cs2.scans.run.
+const { can } = useAccess();
 const settingsOpen = ref(false);
 const scanPending = ref(false);
 
@@ -975,7 +975,7 @@ const renderBalanceChart = async () => {
 };
 
 watch(sortedBalances, renderBalanceChart);
-onMounted(() => { profile.ensureLoaded?.(); renderBalanceChart(); });
+onMounted(() => { renderBalanceChart(); });
 onBeforeUnmount(() => { balanceChart?.destroy(); balanceChart = null; });
 </script>
 

@@ -42,11 +42,11 @@
         <p v-if="blog.State !== 'ok'" class="reason" :class="blogStateTone(blog.State)">{{ blog.StateReason }}</p>
 
         <footer>
-            <label class="ot-check" :title="isAdmin ? '' : 'Admins only'">
-                <input type="checkbox" :checked="blog.Autopilot" :disabled="!isAdmin || busy" @change="toggleAutopilot" />
+            <label class="ot-check" :title="canManage ? '' : 'Needs “Manage blogs”'">
+                <input type="checkbox" :checked="blog.Autopilot" :disabled="!canManage || busy" @change="toggleAutopilot" />
                 Autopilot
             </label>
-            <button v-if="isAdmin" class="ot-btn sm ghost" :disabled="busy" @click="togglePause">{{ blog.Paused ? 'Resume' : 'Pause' }}</button>
+            <button v-if="canManage" class="ot-btn sm ghost" :disabled="busy" @click="togglePause">{{ blog.Paused ? 'Resume' : 'Pause' }}</button>
             <NuxtLink class="ot-btn sm" :to="link">Open</NuxtLink>
         </footer>
     </article>
@@ -54,14 +54,15 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { useCurrentProfile } from '~/composables/useCurrentProfile';
+import { useAccess } from '~/composables/useAccess';
 import {
     blogStateTone, confirmAction, fmtCount, fmtRelative, fmtSignedCount, fmtWhen, notify, postThumbPath, tumblrPost, useNow, type BlogSummary,
 } from '~/composables/useOmniTumblr';
 
 const props = defineProps<{ blog: BlogSummary }>();
 const emit = defineEmits<{ changed: [] }>();
-const { isAdmin } = useCurrentProfile();
+const { can } = useAccess();
+const canManage = computed(() => can('omnitumblr.blogs.manage'));
 const now = useNow();
 const busy = ref(false);
 

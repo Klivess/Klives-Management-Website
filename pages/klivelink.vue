@@ -325,7 +325,7 @@ definePageMeta({ layout: 'navbar' });
 
 <script>
 import KMButton from '~/components/KMButton.vue';
-import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, KliveAPIUrl } from '~/scripts/APIInterface';
+import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, KliveAPIUrl, GetAuthToken } from '~/scripts/APIInterface';
 import Swal from 'sweetalert2';
 import { useCookie } from '#imports';
 
@@ -767,7 +767,7 @@ export default {
         },
 
         connectScreenWebSocket() {
-            const pass = useCookie('password').value || '';
+            const pass = GetAuthToken();
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws/screencapture?agentId=${encodeURIComponent(this.selectedAgentId)}&authorization=${encodeURIComponent(pass)}`;
 

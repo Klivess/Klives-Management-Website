@@ -1,4 +1,5 @@
 import type { Page, Route } from '@playwright/test';
+import { catalogPayload, mePayload } from './permissions';
 
 export type DashboardRole = 'Guest' | 'Admin' | 'Klives';
 
@@ -162,6 +163,19 @@ function responseForPath(pathWithQuery: string, role: DashboardRole, overrides: 
   if (path in overrides) return overrides[path];
 
   switch (path) {
+    // The site signs in with a session and reads its permissions from /KMProfiles/me: each role
+    // holds exactly what its retired rank migrated to (Klives is the owner).
+    case '/KMProfiles/Login':
+      return {
+        token: `kms_e2e-${role.toLowerCase()}`,
+        sessionId: `session-${role.toLowerCase()}`,
+        expiresUtc: '2026-09-10T10:00:00Z',
+        me: mePayload({ rank: roleRank[role], userId: `e2e-${role.toLowerCase()}`, name: `${role} Fixture` }),
+      };
+    case '/KMProfiles/me':
+      return mePayload({ rank: roleRank[role], userId: `e2e-${role.toLowerCase()}`, name: `${role} Fixture` });
+    case '/KMProfiles/permissions/catalog':
+      return catalogPayload(role === 'Klives');
     case '/KMProfiles/GetCurrentProfile':
       return {
         UserID: `e2e-${role.toLowerCase()}`,

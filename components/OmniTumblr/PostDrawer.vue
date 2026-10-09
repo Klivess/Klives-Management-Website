@@ -119,12 +119,12 @@
         <template #footer>
             <template v-if="detail && canEdit">
                 <button v-if="p!.Status === 'AwaitingApproval'" class="ot-btn primary" :disabled="busy" @click="act('approve')">Approve</button>
-                <button v-if="canPublishNow" class="ot-btn" :disabled="busy" @click="act('publish-now')">Publish now</button>
+                <button v-if="canPublishNow && canPublish" class="ot-btn" :disabled="busy" @click="act('publish-now')">Publish now</button>
                 <button v-if="p!.Status === 'Failed'" class="ot-btn" :disabled="busy" @click="act('retry')">Retry</button>
                 <button v-if="editable && p!.Origin === 'Autopilot'" class="ot-btn ghost" :disabled="busy" @click="act('swap-content')">Swap content</button>
                 <button v-if="editable && p!.Origin === 'Autopilot'" class="ot-btn ghost" :disabled="busy" @click="act('skip')">Skip slot</button>
                 <button v-if="editable" class="ot-btn danger" :disabled="busy" @click="act('cancel')">Cancel post</button>
-                <button v-if="p!.Status === 'Published'" class="ot-btn danger" :disabled="busy" @click="act('delete-remote')">Delete from Tumblr</button>
+                <button v-if="p!.Status === 'Published' && canPublish" class="ot-btn danger" :disabled="busy" @click="act('delete-remote')">Delete from Tumblr</button>
             </template>
             <a v-if="p?.TumblrUrl && p.Status === 'Published' && !p.TumblrIdPending" :href="p.TumblrUrl" target="_blank" rel="noopener noreferrer" class="ot-btn ghost">Open on Tumblr ↗</a>
         </template>
@@ -133,7 +133,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { useCurrentProfile } from '~/composables/useCurrentProfile';
+import { useAccess } from '~/composables/useAccess';
 import {
     STATUS_LABEL, confirmAction, fmtBytes, fmtCount, fmtClipLength, fmtRelative, fmtWhen, forgetMedia, fromLocalInput, loadMediaUrl, notify,
     postMediaPath, postThumbPath, q, toLocalInput, tumblrGet, tumblrPost, type PostDetail, type PostSummary,
@@ -141,8 +141,10 @@ import {
 
 const props = defineProps<{ open: boolean; postId: string | null }>();
 const emit = defineEmits<{ close: []; changed: [post: PostSummary | null] }>();
-const { isAdmin } = useCurrentProfile();
-const canEdit = computed(() => isAdmin.value);
+const { can } = useAccess();
+const canEdit = computed(() => can('omnitumblr.posts.act'));
+// Publishing straight to Tumblr (and deleting from it) is a step above editing.
+const canPublish = computed(() => can('omnitumblr.posts.publish'));
 
 const detail = ref<PostDetail | null>(null);
 const loading = ref(false);

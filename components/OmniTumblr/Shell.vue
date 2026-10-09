@@ -31,8 +31,8 @@
         <nav class="ot-nav" aria-label="OmniTumblr sections">
             <div class="ot-nav-group">
                 <NuxtLink to="/schemery/omnitumblr" :class="{ active: route.path === '/schemery/omnitumblr' }">Overview</NuxtLink>
-                <NuxtLink to="/schemery/omnitumblr/compose" :class="{ active: route.path.startsWith('/schemery/omnitumblr/compose') }">Compose</NuxtLink>
-                <NuxtLink to="/schemery/omnitumblr/settings" :class="{ active: route.path.startsWith('/schemery/omnitumblr/settings') }">
+                <NuxtLink v-if="can('omnitumblr.posts.act')" to="/schemery/omnitumblr/compose" :class="{ active: route.path.startsWith('/schemery/omnitumblr/compose') }">Compose</NuxtLink>
+                <NuxtLink v-if="can('omnitumblr.settings.view')" to="/schemery/omnitumblr/settings" :class="{ active: route.path.startsWith('/schemery/omnitumblr/settings') }">
                     Settings
                     <span v-if="settingsBadge" class="ot-badge warn" :title="`${settingsBadge} item(s) need attention`">{{ settingsBadge }}</span>
                 </NuxtLink>
@@ -68,9 +68,11 @@
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { fmtRelative, useNow, usePoll, useTumblrOverview, type BlogSummary } from '~/composables/useOmniTumblr';
+import { useAccess } from '~/composables/useAccess';
 
 const emit = defineEmits<{ refresh: [] }>();
 const route = useRoute();
+const { can } = useAccess();
 const now = useNow();
 const { overview, error, loading, loadedAt, refresh } = useTumblrOverview();
 

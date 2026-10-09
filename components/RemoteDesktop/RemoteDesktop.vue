@@ -69,7 +69,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
-import { KliveAPIUrl } from '~/scripts/APIInterface';
+import { KliveAPIUrl, GetAuthToken } from '~/scripts/APIInterface';
 import { useScreenStream } from '~/composables/useScreenStream';
 
 const props = defineProps({
@@ -93,15 +93,12 @@ const resolved = ref(false);
 // ── Video (reused composable) ──
 const { streamSrc, connected: streamConnected, connect: connectStream, disconnect: disconnectStream } = useScreenStream();
 
-function getPassword() {
-  if (typeof document === 'undefined') return '';
-  const m = document.cookie.match(/(?:^|; )password=([^;]*)/);
-  return m ? decodeURIComponent(m[1]) : '';
-}
+/** This browser's sign-in (a revocable session token): WebSockets carry it as `authorization=`. */
+function authCredential() { return GetAuthToken(); }
 function authPart() {
   return props.authMode === 'token'
     ? `token=${encodeURIComponent(props.token)}`
-    : `authorization=${encodeURIComponent(getPassword())}`;
+    : `authorization=${encodeURIComponent(authCredential())}`;
 }
 function wsBase() {
   return KliveAPIUrl.replace('https', 'wss').replace('http', 'ws');

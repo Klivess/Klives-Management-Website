@@ -1,5 +1,5 @@
 import { ref, onUnmounted, type Ref } from 'vue';
-import { KliveAPIUrl } from '~/scripts/APIInterface';
+import { KliveAPIUrl, GetAuthToken } from '~/scripts/APIInterface';
 
 /**
  * Phase 3 server-push client for the Projects event log. Connects to /projects/events/stream over a
@@ -9,7 +9,7 @@ import { KliveAPIUrl } from '~/scripts/APIInterface';
  *     resumes without a gap.
  *   - fleet firehose: omit `projectID`; `onFleet(projectID, type)` fires on any project's event so a
  *     dashboard can refresh live.
- * Mirrors useScreenStream's auth (the `password` cookie as `authorization=`) and auto-reconnect.
+ * Mirrors useScreenStream's auth (the session token as `authorization=`) and auto-reconnect.
  *
  * The per-project socket also carries live agent activity — who is generating tokens right now and
  * what — which is ephemeral (no sequence, never replayed): `onActivity` receives a whole snapshot
@@ -31,15 +31,10 @@ export function useEventStream(opts: {
   function wsBase() {
     return KliveAPIUrl.replace('https', 'wss').replace('http', 'ws');
   }
-  function getPassword() {
-    if (typeof document === 'undefined') return '';
-    const m = document.cookie.match(/(?:^|; )password=([^;]*)/);
-    return m ? decodeURIComponent(m[1]) : '';
-  }
 
   function open() {
     if (stopped || typeof window === 'undefined') return;
-    const parts = [`authorization=${encodeURIComponent(getPassword())}`];
+    const parts = [`authorization=${encodeURIComponent(GetAuthToken())}`];
     if (opts.projectId) parts.push(`projectID=${encodeURIComponent(opts.projectId)}`);
     if (opts.projectId && opts.sinceRef) parts.push(`since=${opts.sinceRef.value ?? 0}`);
     try {

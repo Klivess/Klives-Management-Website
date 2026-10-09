@@ -19,7 +19,7 @@
                         </div>
                         <div class="metric-card">
                             <span>ACCESS</span>
-                            <strong>{{ isHighRank ? 'ADMIN' : 'STANDARD' }}</strong>
+                            <strong>{{ canDeleteAnyRoom ? 'MODERATOR' : currentName ? 'MEMBER' : 'GUEST' }}</strong>
                         </div>
                         <div class="metric-card">
                             <span>ACTIVE</span>
@@ -77,7 +77,7 @@
                         <div class="room-actions">
                             <button class="primary-button" type="button" @click="joinRoom(room.roomId)">JOIN ROOM</button>
                             <button
-                                v-if="room.createdBy === currentName || isHighRank"
+                                v-if="(currentName && room.createdBy === currentName) || canDeleteAnyRoom"
                                 class="danger-button"
                                 type="button"
                                 @click="deleteRoom(room.roomId)"
@@ -108,7 +108,8 @@ const router = useRouter();
 const newRoomName = ref('');
 const activeRooms = ref([]);
 const currentName = ref('');
-const isHighRank = ref(false);
+// Deleting other people's rooms is its own permission (klivechat.rooms.delete-any).
+const canDeleteAnyRoom = ref(false);
 
 let refreshTimer = null;
 
@@ -222,7 +223,7 @@ async function fetchMe() {
         if (response && response.ok) {
             const data = await response.json();
             currentName.value = data?.name || '';
-            isHighRank.value = Number(data?.rank ?? 0) >= 4;
+            canDeleteAnyRoom.value = data?.canDeleteAnyRoom === true;
             return;
         }
     } catch (error) {
@@ -230,7 +231,7 @@ async function fetchMe() {
     }
 
     currentName.value = '';
-    isHighRank.value = false;
+    canDeleteAnyRoom.value = false;
 }
 
 onMounted(() => {

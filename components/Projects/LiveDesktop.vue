@@ -14,7 +14,7 @@
 
 <script setup lang="ts">
 import { ref, watch, onBeforeUnmount } from 'vue';
-import { KliveAPIUrl } from '~/scripts/APIInterface';
+import { KliveAPIUrl, GetAuthToken } from '~/scripts/APIInterface';
 
 const props = defineProps<{ containerId: string; fps?: number; label?: string; clickable?: boolean }>();
 defineEmits<{ (e: 'maximize'): void }>();
@@ -26,11 +26,8 @@ let lastUrl = '';
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let stopped = false;
 
-function getPassword() {
-  if (typeof document === 'undefined') return '';
-  const m = document.cookie.match(/(?:^|; )password=([^;]*)/);
-  return m ? decodeURIComponent(m[1]) : '';
-}
+/** This browser's sign-in (a revocable session token): WebSockets carry it as `authorization=`. */
+function authCredential() { return GetAuthToken(); }
 function wsBase() { return KliveAPIUrl.replace('https', 'wss').replace('http', 'ws'); }
 
 function connect() {
@@ -38,7 +35,7 @@ function connect() {
   stopped = false;
   if (!props.containerId || typeof window === 'undefined') return;
   const fps = props.fps ?? 4;
-  const url = `${wsBase()}/projects/containers/screen/stream?containerID=${encodeURIComponent(props.containerId)}&fps=${fps}&authorization=${encodeURIComponent(getPassword())}`;
+  const url = `${wsBase()}/projects/containers/screen/stream?containerID=${encodeURIComponent(props.containerId)}&fps=${fps}&authorization=${encodeURIComponent(authCredential())}`;
   try {
     ws = new WebSocket(url);
     ws.binaryType = 'blob';

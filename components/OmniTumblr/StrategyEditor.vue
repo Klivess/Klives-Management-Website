@@ -276,7 +276,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, useId, watch } from 'vue';
-import { useCurrentProfile } from '~/composables/useCurrentProfile';
+import { useAccess } from '~/composables/useAccess';
 import {
     cloneDeep, contentThumbPath, notify, tumblrGet, tumblrPost, type CaptionMode, type CatalogOptions, type ContentPreview,
     type ContentSourceKind, type Strategy,
@@ -284,8 +284,8 @@ import {
 
 const props = defineProps<{ blogId: string; strategy: Strategy; requireApproval: boolean }>();
 const emit = defineEmits<{ saved: [] }>();
-const { isAdmin } = useCurrentProfile();
-const canEdit = isAdmin;
+const { can } = useAccess();
+const canEdit = computed(() => can('omnitumblr.blogs.manage'));
 const uid = useId();
 const fid = (key: string) => `${uid}-${key}`;
 

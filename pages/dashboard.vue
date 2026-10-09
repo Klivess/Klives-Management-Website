@@ -19,7 +19,7 @@
 
       <div class="dashboard-actions" aria-label="Dashboard quick actions">
         <DashboardAction
-          v-if="isKlives"
+          v-if="caps.askAgent"
           data-testid="action-ask-agent"
           label="Ask Agent"
           icon="AI"
@@ -27,7 +27,7 @@
           tone="primary"
         />
         <DashboardAction
-          v-if="isKlives"
+          v-if="caps.newProject"
           data-testid="action-new-project"
           label="New Project"
           icon="+"
@@ -35,6 +35,7 @@
           tone="primary"
         />
         <DashboardAction
+          v-if="caps.upload"
           data-testid="action-upload"
           label="Upload"
           icon="↑"
@@ -53,18 +54,18 @@
           @change="handleFilesSelected"
         >
         <DashboardAction
-          v-if="isKlives"
+          v-if="caps.mail"
           data-testid="action-mail"
           label="Mail"
           icon="@"
           to="/klivemail"
           :badge="mailUnread || null"
         />
-        <DashboardAction v-else label="Cloud" icon="C" to="/klivecloud" />
-        <DashboardAction v-if="!isKlives" label="Chat" icon="#" to="/klivechat" />
-        <DashboardAction v-if="!isKlives" label="Schemes" icon="S" to="/schemes" />
+        <DashboardAction v-else-if="caps.cloud" label="Cloud" icon="C" to="/klivecloud" />
+        <DashboardAction v-if="!caps.operator" label="Chat" icon="#" to="/klivechat" />
+        <DashboardAction v-if="!caps.operator && caps.schemes" label="Schemes" icon="S" to="/schemes" />
 
-        <details v-if="isKlives" ref="protectMenu" class="dashboard-protect">
+        <details v-if="caps.restart || caps.halt || caps.safeMode" ref="protectMenu" class="dashboard-protect">
           <summary
             data-testid="protective-menu"
             class="dashboard-protect__summary"
@@ -75,6 +76,7 @@
           </summary>
           <div class="dashboard-protect__menu" role="menu">
             <button
+              v-if="caps.restart"
               type="button"
               role="menuitem"
               :disabled="!offlineServices.length || actionPending.restart"
@@ -84,6 +86,7 @@
               <span>{{ offlineServices.length ? `${offlineServices.length} offline` : 'All services online' }}</span>
             </button>
             <button
+              v-if="caps.halt"
               type="button"
               role="menuitem"
               :disabled="!activeProjectCount || actionPending.halt"
@@ -93,6 +96,7 @@
               <span>{{ activeProjectCount }} available to halt</span>
             </button>
             <button
+              v-if="caps.safeMode"
               type="button"
               role="menuitem"
               :disabled="firmSafeMode || actionPending.safeMode"
@@ -177,7 +181,7 @@
         <DashboardPanel
           title="Reliability"
           :subtitle="data.frontpage ? (data.frontpage.NextTaskScheduledSummary || 'No upcoming task reported') : 'Schedule unavailable'"
-          :status="isAdmin ? (errors24h == null ? 'Errors unavailable' : `${errors24h} errors / 24h`) : 'Core telemetry'"
+          :status="caps.logs ? (errors24h == null ? 'Errors unavailable' : `${errors24h} errors / 24h`) : 'Core telemetry'"
           :loading="initialLoading.fast && !data.api"
         >
           <div class="dashboard-kpi-grid dashboard-kpi-grid--two dashboard-kpi-grid--compact">
@@ -199,7 +203,7 @@
                 type="button"
                 :disabled="actionPending.restart"
                 :title="`${service.Name} is offline`"
-                @click="isKlives ? confirmRestartService(service.Name) : servicesDialogOpen = true"
+                @click="caps.restart ? confirmRestartService(service.Name) : servicesDialogOpen = true"
               >
                 <span aria-hidden="true" />{{ service.Name }}
               </button>
@@ -227,8 +231,8 @@
         </DashboardPanel>
       </section>
 
-      <section v-if="isAdmin" class="dashboard-column dashboard-column--work" data-testid="panel-work">
-        <template v-if="isKlives">
+      <section v-if="caps.work" class="dashboard-column dashboard-column--work" data-testid="panel-work">
+        <template v-if="caps.operator">
           <DashboardPanel
             title="Active work"
             :subtitle="activeWorkSubtitle"
@@ -331,7 +335,7 @@
         </DashboardPanel>
 
         <DashboardPanel
-          v-if="isKlives"
+          v-if="caps.projects"
           title="Projects analytics"
           subtitle="Seven-day autonomous work"
           :status="data.projectAnalytics?.HistoricalLoading
@@ -402,7 +406,7 @@
         <div v-for="service in services" :key="service.Name" class="dashboard-service-dialog__row">
           <span class="dashboard-service-dialog__state" :class="service.IsActive ? 'is-online' : 'is-offline'" aria-hidden="true" />
           <span><strong>{{ service.Name }}</strong><small>{{ service.IsActive ? service.UptimeHumanized : 'Inactive' }}</small></span>
-          <button v-if="isKlives && !service.IsActive" type="button" :disabled="actionPending.restart" @click="confirmRestartService(service.Name)">Restart</button>
+          <button v-if="caps.restart && !service.IsActive" type="button" :disabled="actionPending.restart" @click="confirmRestartService(service.Name)">Restart</button>
         </div>
       </div>
     </DashboardDetailDialog>
@@ -432,8 +436,7 @@ const dashboard = useDashboardOverview();
 const {
   currentProfile,
   data,
-  isAdmin,
-  isKlives,
+  caps,
   initialLoading,
   inFlight,
   fastStale,
@@ -520,7 +523,7 @@ const serviceTotal = computed(() => number(data.frontpage?.TotalServicesRegister
 const apiAvailability = computed(() => number(apiLifetime.value?.availabilityPct, 100));
 const apiLatency = computed(() => number(apiLifetime.value?.avgResponseMs));
 const errors24h = computed<number | null>(() => {
-  if (!isAdmin.value) return null;
+  if (!caps.value.logs) return null;
   const value = data.logs?.ErrorsLast24Hours ?? data.logs?.errorsLast24Hours;
   return value == null ? null : number(value);
 });
@@ -564,10 +567,12 @@ const overallHealthLabel = computed(() => {
   if (fastStale.value || slowStale.value) return 'Data stale';
   return overallHealthTone.value === 'is-warning' ? 'Watch' : 'Healthy';
 });
+// The three layouts follow what the profile can see: the full operator view, the
+// reliability view, or the overview alone.
 const workspaceClass = computed(() => ({
-  'dashboard-workspace--klives': isKlives.value,
-  'dashboard-workspace--admin': isAdmin.value && !isKlives.value,
-  'dashboard-workspace--public': !isAdmin.value,
+  'dashboard-workspace--klives': caps.value.operator,
+  'dashboard-workspace--admin': caps.value.work && !caps.value.operator,
+  'dashboard-workspace--public': !caps.value.work,
 }));
 
 const componentTone = (tone: DashboardTone) => tone === 'success' ? 'good' : tone;

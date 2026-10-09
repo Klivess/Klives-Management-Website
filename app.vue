@@ -1,7 +1,5 @@
 
 <script setup lang="ts">
-import { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
-
 const route = useRoute();
 
 const pageTitle = computed(() => {
@@ -39,8 +37,14 @@ useHead(() => ({
   <NuxtLoadingIndicator />
     <NuxtLayout>
       <AuthenticationManager />
-      <NuxtPage/>
+      <AccessReadOnlyBanner />
+      <!-- A page the profile can't open renders "no access" here instead, inside the layout. -->
+      <AccessPageGuard>
+        <NuxtPage/>
+      </AccessPageGuard>
     </NuxtLayout>
+    <AccessToastHost />
+    <AccessSuspendedOverlay />
 </template>
 
 <style>

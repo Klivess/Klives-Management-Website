@@ -67,7 +67,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
-import { KliveAPIUrl } from '~/scripts/APIInterface';
+import { KliveAPIUrl, GetAuthToken } from '~/scripts/APIInterface';
 
 const props = withDefaults(defineProps<{
   containerId: string;
@@ -85,11 +85,8 @@ const img = ref<HTMLImageElement | null>(null);
 const control = ref(props.startControl);
 const isFullscreen = ref(false);
 
-function getPassword() {
-  if (typeof document === 'undefined') return '';
-  const m = document.cookie.match(/(?:^|; )password=([^;]*)/);
-  return m ? decodeURIComponent(m[1]) : '';
-}
+/** This browser's sign-in (a revocable session token): WebSockets carry it as `authorization=`. */
+function authCredential() { return GetAuthToken(); }
 function wsBase() { return KliveAPIUrl.replace('https', 'wss').replace('http', 'ws'); }
 
 // ── Video stream (same endpoint as LiveDesktop, higher fps/quality for interaction) ──
@@ -102,7 +99,7 @@ let stopped = false;
 
 function openStream() {
   if (stopped || !props.containerId || typeof window === 'undefined') return;
-  const url = `${wsBase()}/projects/containers/screen/stream?containerID=${encodeURIComponent(props.containerId)}&fps=${props.fps}&quality=${props.quality}&maxWidth=${props.maxWidth}&authorization=${encodeURIComponent(getPassword())}`;
+  const url = `${wsBase()}/projects/containers/screen/stream?containerID=${encodeURIComponent(props.containerId)}&fps=${props.fps}&quality=${props.quality}&maxWidth=${props.maxWidth}&authorization=${encodeURIComponent(authCredential())}`;
   try {
     streamWs = new WebSocket(url);
     streamWs.binaryType = 'blob';
@@ -130,7 +127,7 @@ let inputReconnect: ReturnType<typeof setTimeout> | null = null;
 function openInput() {
   if (stopped || !props.containerId || typeof window === 'undefined') return;
   try {
-    inputWs = new WebSocket(`${wsBase()}/projects/containers/remote/input?containerID=${encodeURIComponent(props.containerId)}&authorization=${encodeURIComponent(getPassword())}`);
+    inputWs = new WebSocket(`${wsBase()}/projects/containers/remote/input?containerID=${encodeURIComponent(props.containerId)}&authorization=${encodeURIComponent(authCredential())}`);
     inputWs.onopen = () => { inputConnected.value = true; };
     inputWs.onclose = () => { inputConnected.value = false; if (!stopped) scheduleInputReconnect(); };
     inputWs.onerror = () => { try { inputWs && inputWs.close(); } catch { /* ignore */ } };

@@ -21,7 +21,7 @@
                     </div>
                     <span class="ot-chip" :class="blogStateTone(summary!.State)" :title="summary!.StateReason">{{ stateLabel }}</span>
                 </div>
-                <div v-if="isAdmin" class="ot-actions">
+                <div v-if="can('omnitumblr.blogs.manage')" class="ot-actions">
                     <label class="ot-check switch" :title="autopilotHelp">
                         <input type="checkbox" :checked="blog!.Autopilot" :disabled="busy" @change="toggleAutopilot" />
                         Autopilot
@@ -37,7 +37,7 @@
             <div v-if="detail.Connection?.Health === 'NeedsReauth'" class="ot-banner" role="alert">
                 <span class="glyph">⚠</span>
                 <div><strong>Tumblr no longer accepts this account's authorization</strong>{{ detail.Connection.HealthDetail }}. Nothing is posted until it is reconnected.</div>
-                <div v-if="isAdmin" class="actions"><button class="ot-btn sm" @click="wizardOpen = true">Reconnect @{{ detail.Connection.UserName }}</button></div>
+                <div v-if="can('omnitumblr.settings.manage')" class="actions"><button class="ot-btn sm" @click="wizardOpen = true">Reconnect @{{ detail.Connection.UserName }}</button></div>
             </div>
             <div v-else-if="summary!.State !== 'ok' && summary!.State !== 'idle'" class="ot-banner" :class="summary!.State === 'error' ? '' : 'warn'">
                 <span class="glyph">{{ summary!.State === 'paused' ? '⏸' : '!' }}</span>
@@ -139,7 +139,7 @@
 
             <!-- ── Queue ── -->
             <template v-else-if="tab === 'queue'">
-                <div v-if="summary!.AwaitingApproval && isAdmin" class="ot-banner info">
+                <div v-if="summary!.AwaitingApproval && can('omnitumblr.posts.act')" class="ot-banner info">
                     <span class="glyph">ℹ</span>
                     <div><strong>{{ summary!.AwaitingApproval }} post(s) are waiting for approval.</strong> Open one to edit it, or approve them all.</div>
                     <div class="actions"><button class="ot-btn sm primary" :disabled="busy" @click="approveAll">Approve all</button></div>
@@ -261,7 +261,7 @@
             <!-- ── Strategy ── -->
             <template v-else-if="tab === 'strategy'">
                 <OmniTumblrStrategyEditor :blog-id="blogId" :strategy="blog!.Strategy" :require-approval="blog!.RequireApproval" @saved="loadDetail" />
-                <OmniTraderCard v-if="isAdmin" title="Notes" subtitle="Private notes about this blog" class="tb-section">
+                <OmniTraderCard v-if="can('omnitumblr.blogs.manage')" title="Notes" subtitle="Private notes about this blog" class="tb-section">
                     <textarea v-model="notesDraft" class="ot-input" rows="3" maxlength="4000" aria-label="Private notes about this blog"></textarea>
                     <div class="savebar"><button class="ot-btn sm" :disabled="busy || notesDraft === (blog!.Notes ?? '')" @click="saveNotes">Save notes</button></div>
                 </OmniTraderCard>
@@ -289,7 +289,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useCurrentProfile } from '~/composables/useCurrentProfile';
+import { useAccess } from '~/composables/useAccess';
 import {
     DAY_SHORT, STATUS_LABEL, WEEK_ORDER, blogStateTone, confirmAction, contentThumbPath, fmtCount, fmtDate, fmtClipLength, fmtRelative,
     fmtSignedCount, fmtWhen, minuteToHHMM, notify, postThumbPath, q, statusTone, tumblrGet, tumblrPost, useNow, usePoll, useTumblrOverview,
@@ -300,7 +300,7 @@ definePageMeta({ layout: 'navbar' });
 
 const route = useRoute();
 const router = useRouter();
-const { isAdmin } = useCurrentProfile();
+const { can } = useAccess();
 const { overview, refresh: refreshOverview } = useTumblrOverview();
 const now = useNow();
 

@@ -13,6 +13,7 @@ export default defineNuxtConfig({
     '/administration/**': {ssr: false}, // Disable SSR for admin routes
     '/dashboard': {ssr: false}, // Disable SSR for dashboard to avoid hydration issues
     '/profilepage': {ssr: false}, // Disable SSR for profilepage
+    '/account': {ssr: false}, // Your sessions and permissions: client-driven, never cached HTML
     '/omnidefence': {ssr: false}, // Live security console is client-driven
     '/klivetech': {ssr: false}, // Telemetry needs WebSocket, object URLs and ResizeObserver
     '/schemery/omnitumblr': {ssr: false}, // Authenticated blob previews, popups and local-time rendering
@@ -48,6 +49,10 @@ export default defineNuxtConfig({
     '~/assets/scss/navbar.scss',
     '~/assets/scss/klivetech-os.scss',
     '~/assets/scss/omniscience.scss',
-    '~/assets/scss/omnitrader-os.scss'],
-  modules: []
+    '~/assets/scss/omnitrader-os.scss',
+    '~/assets/scss/access-ui.scss'],
+  modules: [],
+  // Playwright writes videos, traces and screenshots into the project while tests run; without
+  // this, every new artifact makes the dev server regenerate its templates mid-test.
+  ignore: ['test-results/**', 'playwright-report/**'],
 })

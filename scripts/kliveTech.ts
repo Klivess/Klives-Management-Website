@@ -12,7 +12,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
 import {
     RequestGETFromKliveAPI,
     RequestPOSTFromKliveAPI,
-    KliveAPIUrl,
+    KliveAPIUrl, GetAuthToken
 } from '~/scripts/APIInterface';
 
 /* ------------------------------------------------------------------ wire types --- */
@@ -156,13 +156,15 @@ async function describeFailure(response: Response): Promise<string> {
     let supplied = '';
     try {
         const body = await response.clone().json();
-        if (body && typeof body.error === 'string') supplied = body.error;
+        // An access denial says which permission is missing in `message`; `error` is just its kind.
+        if (body && body.error === 'AccessDenied' && typeof body.message === 'string') supplied = body.message;
+        else if (body && typeof body.error === 'string') supplied = body.error;
     } catch { /* not every failure has a JSON body */ }
     if (supplied) return supplied;
 
     switch (response.status) {
         case 400: return 'The request was rejected as invalid';
-        case 401: case 403: return 'This needs Klives clearance';
+        case 401: case 403: return "Your profile doesn't have permission for this";
         case 404: return 'Not found';
         case 409: return 'That conflicts with something already running';
         case 503: return 'The gadget is unavailable';
@@ -210,12 +212,10 @@ export function wsBase(): string {
     return KliveAPIUrl.replace('https', 'wss').replace('http', 'ws');
 }
 
-/** A browser cannot set an Authorization header on a WebSocket, so the password rides
- *  in the query string and the route authorizes it in-handler. */
+/** A browser cannot set an Authorization header on a WebSocket, so the session token rides
+ *  in the query string (`authorization=`) and the API gate checks it like a header. */
 export function ktPassword(): string {
-    if (typeof document === 'undefined') return '';
-    const match = document.cookie.match(/(?:^|; )password=([^;]*)/);
-    return match ? decodeURIComponent(match[1]) : '';
+    return GetAuthToken();
 }
 
 /* ------------------------------------------------------------------- polling ---- */

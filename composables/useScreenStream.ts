@@ -4,7 +4,7 @@ import { KliveAPIUrl } from '~/scripts/APIInterface';
 /**
  * Shared live screen-video client. Connects to the backend's /kliveagent/screen/stream WebSocket and
  * exposes the latest JPEG frame as an object URL. The auth + fps/quality are supplied by the caller as a
- * query string (`authorization=<pw>` for the Admin remote desktop, or `token=<token>&fps=…&quality=…` for a
+ * query string (`authorization=<session token>` for the Admin remote desktop, or `token=<token>&fps=…&quality=…` for a
  * captcha-solve session). Reused by both LiveScreen (view-only) and RemoteDesktop (interactive).
  */
 export function useScreenStream() {

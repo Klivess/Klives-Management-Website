@@ -1,7 +1,7 @@
 <template>
     <div class="tb-library">
         <div class="drop" :class="{ over: dragging }" @dragover.prevent="dragging = true" @dragleave.prevent="dragging = false" @drop.prevent="onDrop">
-            <p>Drop videos or images here, or <button type="button" class="linkish" :disabled="!canEdit" @click="picker?.click()">choose files</button>.
+            <p>Drop videos or images here, or <button type="button" class="linkish" :disabled="!canUpload" :title="canUpload ? '' : 'Needs “Work on posts”'" @click="picker?.click()">choose files</button>.
                 Autopilot posts them oldest first, each once.</p>
             <input ref="picker" type="file" multiple accept="video/mp4,video/quicktime,.m4v,image/jpeg,image/png,image/gif,image/webp" hidden @change="onPick" />
         </div>
@@ -25,7 +25,7 @@
                     <td class="num">{{ fmtBytes(f.Bytes) }}</td>
                     <td>{{ fmtDate(f.AddedUtc) }}</td>
                     <td><span class="ot-chip" :class="f.Used ? '' : 'ok'">{{ f.Used ? 'used' : 'waiting' }}</span></td>
-                    <td><button v-if="canEdit" class="ot-btn sm ghost" @click="remove(f.FileName)">Delete</button></td>
+                    <td><button v-if="canDelete" class="ot-btn sm ghost" @click="remove(f.FileName)">Delete</button></td>
                 </tr>
             </tbody>
         </table>
@@ -35,16 +35,18 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { useCurrentProfile } from '~/composables/useCurrentProfile';
+import { computed, onMounted, ref } from 'vue';
+import { useAccess } from '~/composables/useAccess';
 import { confirmAction, fmtBytes, fmtDate, notify, q, tumblrGet, tumblrPost, uploadMedia } from '~/composables/useOmniTumblr';
 
 interface LibraryFile { FileName: string; Key: string; Kind: string; Bytes: number; AddedUtc: string; Used: boolean }
 
 const props = defineProps<{ blogId: string }>();
 const emit = defineEmits<{ changed: [] }>();
-const { isAdmin } = useCurrentProfile();
-const canEdit = isAdmin;
+const { can } = useAccess();
+// Uploading is posting work; deleting from the library is its own permission.
+const canUpload = computed(() => can('omnitumblr.posts.act'));
+const canDelete = computed(() => can('omnitumblr.library.manage'));
 
 const files = ref<LibraryFile[]>([]);
 const loading = ref(false);
@@ -70,7 +72,7 @@ function onPick(event: Event) {
 
 function onDrop(event: DragEvent) {
     dragging.value = false;
-    if (!canEdit.value) return;
+    if (!canUpload.value) return;
     if (event.dataTransfer?.files) void uploadAll(Array.from(event.dataTransfer.files));
 }
 

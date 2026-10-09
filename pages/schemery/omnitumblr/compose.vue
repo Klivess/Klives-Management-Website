@@ -7,7 +7,7 @@
             </div>
         </div>
 
-        <div v-if="!isAdmin" class="ot-banner info"><span class="glyph">🔒</span><div><strong>Admins only</strong> Your profile can view OmniTumblr but not post.</div></div>
+        <div v-if="!canPost" class="ot-banner info"><span class="glyph">🔒</span><div><strong>View only</strong> Your profile can view OmniTumblr but not post — that needs “Work on posts”.</div></div>
 
         <div class="ot-grid sidebar">
             <div class="ot-stack">
@@ -147,7 +147,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { useCurrentProfile } from '~/composables/useCurrentProfile';
+import { useAccess } from '~/composables/useAccess';
 import {
     fmtBytes, fmtWhen, fromLocalInput, toLocalInput, tumblrPost, uploadMedia, useTumblrOverview, type PostKind, type PostSummary,
 } from '~/composables/useOmniTumblr';
@@ -159,7 +159,8 @@ interface PendingFile { id: number; file: File; name: string; size: number; kind
 
 const KINDS: PostKind[] = ['Video', 'Photo', 'Text', 'Link'];
 const route = useRoute();
-const { isAdmin } = useCurrentProfile();
+const { can } = useAccess();
+const canPost = computed(() => can('omnitumblr.posts.act'));
 const { overview } = useTumblrOverview();
 
 const blogs = computed(() => overview.value?.Blogs ?? []);
@@ -257,7 +258,7 @@ const contentLabel = computed(() => {
 const captionReady = computed(() => captionMode.value !== 'manual' || kind.value !== 'Text' || !!caption.value.trim() || !!title.value.trim());
 const captionLabel = computed(() => captionMode.value === 'ai' ? 'AI writes the caption per blog' : captionMode.value === 'none' ? 'No caption' : caption.value ? 'Caption written' : 'No caption written (optional)');
 const timeReady = computed(() => when.value === 'now' || !!scheduledLocal.value);
-const canSubmit = computed(() => isAdmin.value && selected.value.length > 0 && contentReady.value && !uploading.value && timeReady.value);
+const canSubmit = computed(() => canPost.value && selected.value.length > 0 && contentReady.value && !uploading.value && timeReady.value);
 
 async function submit() {
     submitting.value = true;

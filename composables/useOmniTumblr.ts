@@ -1,7 +1,7 @@
 import { computed, onBeforeUnmount, onMounted } from 'vue';
 import Swal from 'sweetalert2';
 import { useCookie, useState } from '#imports';
-import { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import { KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, AuthorizationHeaderValue, ReportXhrAccess } from '~/scripts/APIInterface';
 
 // ─────────────────────────────── Dialogs ───────────────────────────────
 
@@ -510,29 +510,21 @@ export interface UploadResult {
     BlogId: string | null;
 }
 
-/** The login cookie, read directly (event handlers run outside the Nuxt context useCookie needs). */
-function readPasswordCookie(): string {
-    try {
-        const match = document.cookie.match(/(?:^|; )password=([^;]*)/);
-        if (match) return decodeURIComponent(match[1]);
-    } catch { /* not in a browser */ }
-    try { return useCookie<string | null>('password').value || ''; } catch { return ''; }
-}
-
 /** Streams a file to OmniTumblr with progress (XHR: fetch has no upload progress). */
 export function uploadMedia(file: File, purpose: 'compose' | 'library', blogId: string | null, onProgress?: (percent: number) => void): { promise: Promise<UploadResult>; abort: () => void } {
     const xhr = new XMLHttpRequest();
     const promise = new Promise<UploadResult>((resolve, reject) => {
-        const password = readPasswordCookie();
+        const authorization = AuthorizationHeaderValue();
         xhr.open('POST', `${KliveAPIUrl}/omnitumblr/media/upload${q({ fileName: file.name, purpose, blogId })}`, true);
-        xhr.setRequestHeader('Authorization', password);
+        if (authorization) xhr.setRequestHeader('Authorization', authorization);
         xhr.setRequestHeader('X-Klive-Client', 'website');
         xhr.upload.onprogress = e => { if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100)); };
         xhr.onload = () => {
             let body: any = null;
             try { body = JSON.parse(xhr.responseText); } catch { body = xhr.responseText; }
-            if (xhr.status >= 200 && xhr.status < 300) resolve(body as UploadResult);
-            else reject(new Error(typeof body === 'object' && body?.error ? body.error : (xhr.responseText || `Upload failed (${xhr.status})`)));
+            if (xhr.status >= 200 && xhr.status < 300) return resolve(body as UploadResult);
+            ReportXhrAccess(xhr, '/omnitumblr/media/upload');
+            reject(new Error(typeof body === 'object' && body?.error ? body.error : (xhr.responseText || `Upload failed (${xhr.status})`)));
         };
         xhr.onerror = () => reject(new Error('Network error while uploading.'));
         xhr.onabort = () => reject(new Error('Upload cancelled.'));

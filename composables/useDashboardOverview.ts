@@ -1,13 +1,15 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { useCookie } from '#imports';
 import {
+  AuthorizationHeaderValue,
   KliveAPIUrl,
+  ReportXhrAccess,
   RequestBatchFromKliveAPI,
   RequestGETFromKliveAPI,
   RequestPOSTFromKliveAPI,
 } from '~/scripts/APIInterface';
 import { useCurrentProfile } from '~/composables/useCurrentProfile';
 import { useEventStream } from '~/composables/useEventStream';
+import { resolvePageAccess, satisfiesRule } from '~/scripts/pageAccess';
 
 export type DashboardSeverity = 'critical' | 'warning' | 'info';
 export type DashboardTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
@@ -88,6 +90,40 @@ const routes = {
   games: '/klivegames/servers',
   linkAgents: '/klivelink/agents',
 } as const;
+
+/**
+ * The permission each dashboard route needs (its gate on the server). A route is only requested
+ * when the profile holds its key, so a limited profile's dashboard simply has fewer panels —
+ * never a wall of refused requests.
+ */
+const routePermissions: Record<keyof typeof routes, string> = {
+  frontpage: 'system.status.view',
+  api: 'system.status.view',
+  trader: 'omnitrader.status.view',
+  errors: 'system.logs.read',
+  logs: 'system.logs.read',
+  uptime: 'system.uptime.view',
+  projects: 'projects.overview.view',
+  agentStatus: 'kliveagent.status.view',
+  agentJobs: 'kliveagent.history.read',
+  agentNotifications: 'kliveagent.history.read',
+  cloud: 'klivecloud.drive.view',
+  cs2: 'cs2.scans.read',
+  memes: 'memescraper.health.view',
+  gram: 'omnigram.overview.view',
+  tumblr: 'omnitumblr.overview.view',
+  projectAnalytics: 'projects.overview.view',
+  agentStats: 'kliveagent.status.view',
+  defence: 'omnidefence.overview.view',
+  omniscience: 'omniscience.overview.view',
+  mail: 'klivemail.overview.view',
+  gadgets: 'klivetech.gadgets.read',
+  games: 'klivegames.servers.read',
+  linkAgents: 'klivelink.agents.view',
+};
+
+const FAST_ROUTES: (keyof typeof routes)[] = ['frontpage', 'api', 'trader', 'errors', 'logs', 'uptime', 'projects', 'agentStatus', 'agentJobs', 'agentNotifications'];
+const SLOW_ROUTES: (keyof typeof routes)[] = ['cloud', 'cs2', 'memes', 'gram', 'tumblr', 'projectAnalytics', 'agentStats', 'defence', 'omniscience', 'mail', 'gadgets', 'games', 'linkAgents'];
 
 function asArray<T = any>(value: unknown): T[] {
   return Array.isArray(value) ? value as T[] : [];
@@ -239,10 +275,36 @@ function normalizeProjectAnalytics(payload: any) {
 
 export function useDashboardOverview() {
   const currentProfile = useCurrentProfile();
-  const passwordCookie = useCookie<string>('password');
   const rank = computed(() => currentProfile.rank.value ?? 0);
-  const isAdmin = computed(() => rank.value >= 4);
-  const isKlives = computed(() => rank.value >= 5);
+  const signedIn = computed(() => currentProfile.profile.value != null);
+  const can = currentProfile.can;
+  const canOpen = (path: string) => satisfiesRule(resolvePageAccess(path).rule, can, signedIn.value);
+
+  /** What this profile may see and do here — every panel and action keys off one of these. */
+  const caps = computed(() => ({
+    logs: can('system.logs.read'),
+    projects: can('projects.overview.view'),
+    projectStream: can('projects.events.stream'),
+    agent: can('kliveagent.status.view'),
+    mail: can('klivemail.overview.view'),
+    cloud: can('klivecloud.'),
+    upload: can('klivecloud.files.upload'),
+    askAgent: can('kliveagent.chat.use'),
+    newProject: can('projects.lifecycle.manage'),
+    restart: can('system.services.control'),
+    halt: can('projects.fleet.control'),
+    safeMode: can('omnitrader.risk.manage'),
+    schemes: canOpen('/schemes'),
+    admin: canOpen('/admin'),
+    /** The operator column: live work across projects and the agent. */
+    operator: can('projects.overview.view') || can('kliveagent.status.view'),
+    /** Any panel of the work column at all. */
+    work: can('system.logs.read') || can('projects.overview.view') || can('kliveagent.status.view'),
+  }));
+  /** @deprecated Layout tiers are derived from permissions now (see `caps`). */
+  const isKlives = computed(() => caps.value.operator);
+  /** @deprecated Layout tiers are derived from permissions now (see `caps`). */
+  const isAdmin = computed(() => caps.value.work);
 
   const data = reactive<Record<string, any>>({
     frontpage: null,
@@ -295,32 +357,8 @@ export function useDashboardOverview() {
   let lastSampleAt = 0;
   let dashboardStarted = false;
 
-  const fastManifest = computed(() => {
-    const manifest: string[] = [routes.frontpage, routes.api, routes.trader];
-    if (isAdmin.value) manifest.push(routes.errors, routes.logs, routes.uptime);
-    if (isKlives.value) manifest.push(
-      routes.projects,
-      routes.agentStatus,
-      routes.agentJobs,
-      routes.agentNotifications,
-    );
-    return manifest;
-  });
-
-  const slowManifest = computed(() => {
-    const manifest: string[] = [routes.cloud, routes.cs2, routes.memes, routes.gram, routes.tumblr];
-    if (isKlives.value) manifest.push(
-      routes.projectAnalytics,
-      routes.agentStats,
-      routes.defence,
-      routes.omniscience,
-      routes.mail,
-      routes.gadgets,
-      routes.games,
-      routes.linkAgents,
-    );
-    return manifest;
-  });
+  const fastManifest = computed(() => FAST_ROUTES.filter(key => can(routePermissions[key])).map(key => routes[key] as string));
+  const slowManifest = computed(() => SLOW_ROUTES.filter(key => can(routePermissions[key])).map(key => routes[key] as string));
 
   function keyForPath(path: string): string | null {
     const match = Object.entries(routes).find(([, value]) => value === path);
@@ -378,7 +416,7 @@ export function useDashboardOverview() {
   async function refreshTier(tier: Tier) {
     if (disposed.value || typeof document !== 'undefined' && document.hidden) return;
     if (!currentProfile.ready.value) await currentProfile.ensureLoaded();
-    if (rank.value < 1) return;
+    if (!signedIn.value) return;
 
     if (inFlight[tier]) {
       queued[tier] = true;
@@ -388,6 +426,11 @@ export function useDashboardOverview() {
     inFlight[tier] = true;
     queued[tier] = false;
     const paths = [...(tier === 'fast' ? fastManifest.value : slowManifest.value)];
+    if (!paths.length) {
+      inFlight[tier] = false;
+      initialLoading[tier] = false;
+      return;
+    }
     const successfulPaths = new Set<string>();
     const controller = new AbortController();
     requestControllers[tier] = controller;
@@ -439,7 +482,7 @@ export function useDashboardOverview() {
 
   const projectStream = useEventStream({
     onFleet: () => {
-      if (!isKlives.value || disposed.value || typeof document !== 'undefined' && document.hidden) return;
+      if (!caps.value.projectStream || disposed.value || typeof document !== 'undefined' && document.hidden) return;
       if (projectDebounce) return;
       projectDebounce = setTimeout(() => {
         projectDebounce = null;
@@ -448,9 +491,16 @@ export function useDashboardOverview() {
     },
   });
 
-  watch(isKlives, enabled => {
+  watch(() => caps.value.projectStream, enabled => {
+    if (!dashboardStarted) return;
     if (enabled) projectStream.connect();
     else projectStream.disconnect();
+  });
+
+  // Access changed live (a grant or a revoke): the manifests changed with it, so refresh now
+  // rather than at the next tick.
+  watch(() => [fastManifest.value.join('|'), slowManifest.value.join('|')], () => {
+    if (dashboardStarted && !disposed.value) void refreshAll();
   });
 
   function handleVisibility() {
@@ -458,9 +508,9 @@ export function useDashboardOverview() {
   }
 
   function startDashboardRuntime() {
-    if (disposed.value || dashboardStarted || rank.value < 1) return;
+    if (disposed.value || dashboardStarted || !signedIn.value) return;
     dashboardStarted = true;
-    if (isKlives.value) projectStream.connect();
+    if (caps.value.projectStream) projectStream.connect();
     fastTimer = setInterval(() => void refreshTier('fast'), FAST_INTERVAL_MS);
     slowTimer = setInterval(() => void refreshTier('slow'), SLOW_INTERVAL_MS);
     // Start both tiers without coupling their schedules. A slow or hung optional
@@ -474,7 +524,7 @@ export function useDashboardOverview() {
       profileRetryTimer = null;
       if (disposed.value) return;
       await currentProfile.refresh();
-      if (rank.value >= 1) startDashboardRuntime();
+      if (signedIn.value) startDashboardRuntime();
       else scheduleProfileRetry();
     }, 5_000);
   }
@@ -484,7 +534,7 @@ export function useDashboardOverview() {
     document.addEventListener('visibilitychange', handleVisibility);
     await currentProfile.ensureLoaded();
     if (disposed.value) return;
-    if (rank.value >= 1) startDashboardRuntime();
+    if (signedIn.value) startDashboardRuntime();
     else scheduleProfileRetry();
   });
 
@@ -587,7 +637,7 @@ export function useDashboardOverview() {
         id: 'offline-services', source: 'Services', severity: 'critical',
         title: `${offlineServices.value.length} service${offlineServices.value.length === 1 ? '' : 's'} offline`,
         detail: offlineServices.value.map((service: any) => stringValue(service?.Name)).filter(Boolean).join(', '),
-        timestamp: data.frontpage?.TimeStatisticsGenerated, href: isAdmin.value ? '/admin' : undefined,
+        timestamp: data.frontpage?.TimeStatisticsGenerated, href: caps.value.admin ? '/admin' : undefined,
       });
     }
 
@@ -600,7 +650,7 @@ export function useDashboardOverview() {
       if (value > 85) add({
         id: `resource-${id}`, source: 'Host', severity: 'critical', title: `${label} pressure is high`,
         detail: `${value.toFixed(1)}% utilised`, timestamp: data.frontpage?.TimeStatisticsGenerated,
-        href: isAdmin.value ? '/admin' : undefined,
+        href: caps.value.admin ? '/admin' : undefined,
       });
     }
 
@@ -619,7 +669,7 @@ export function useDashboardOverview() {
       });
     }
 
-    if (isKlives.value && data.agentStatus && !data.agentStatus.ready) {
+    if (caps.value.agent && data.agentStatus && !data.agentStatus.ready) {
       add({
         id: 'agent-not-ready', source: 'KliveAgent', severity: 'warning', title: 'Agent is not ready',
         detail: stringValue(data.agentStatus.message || data.agentStatus.state, 'Agent is initializing'), href: '/kliveagent',
@@ -758,7 +808,6 @@ export function useDashboardOverview() {
       id: 'cloud', label: 'Storage drive', value: `${numberValue(data.cloud?.UsagePercentage).toFixed(0)}% used`,
       tone: numberValue(data.cloud?.UsagePercentage) > 85 ? 'danger' : 'success', href: '/klivecloud',
     });
-    if (!isKlives.value) return chips;
     const gadgets = asArray(data.gadgets);
     const onlineGadgets = gadgets.filter((gadget: any) => !!gadget?.isOnline).length;
     const servers = gameServers.value;
@@ -779,7 +828,7 @@ export function useDashboardOverview() {
     numberValue(point?.Value ?? point?.TotalValue ?? point?.value ?? point?.totalValue)));
 
   async function restartService(serviceName: string): Promise<{ queued: boolean; verified: boolean; message: string }> {
-    if (!isKlives.value || actionPending.restart) throw new Error('Restart is unavailable.');
+    if (!caps.value.restart || actionPending.restart) throw new Error('Restart is unavailable.');
     const selectedService = offlineServices.value.find((service: any) => stringValue(service?.Name) === serviceName);
     if (!selectedService) throw new Error('Only a currently inactive service can be restarted here.');
     actionPending.restart = true;
@@ -808,7 +857,7 @@ export function useDashboardOverview() {
   }
 
   async function haltProjects() {
-    if (!isKlives.value || actionPending.halt || !activeProjectCount.value) throw new Error('Project halt is unavailable.');
+    if (!caps.value.halt || actionPending.halt || !activeProjectCount.value) throw new Error('Project halt is unavailable.');
     actionPending.halt = true;
     try {
       const response = await RequestPOSTFromKliveAPI('/projects/halt-all', '', false, false);
@@ -823,7 +872,7 @@ export function useDashboardOverview() {
   }
 
   async function enterFirmSafeMode() {
-    if (!isKlives.value || actionPending.safeMode || data.trader?.Controls?.SafeModeActive || safeModeAcknowledged.value) throw new Error('Firm safe mode is unavailable.');
+    if (!caps.value.safeMode || actionPending.safeMode || data.trader?.Controls?.SafeModeActive || safeModeAcknowledged.value) throw new Error('Firm safe mode is unavailable.');
     actionPending.safeMode = true;
     try {
       const query = '/api/omnitrader/firm/risk/safe-mode?enable=true&reason=dashboard%20protective%20action';
@@ -859,21 +908,29 @@ export function useDashboardOverview() {
   }
 
   function uploadOne(file: File, completedBytes: number, totalBytes: number): Promise<void> {
-    const password = passwordCookie.value || '';
-    const query = `${KliveAPIUrl}/KliveCloud/UploadFile?fileName=${encodeURIComponent(file.name)}&permissionLevel=1`;
+    // Lands in the root of KliveCloud; the uploader gets Editor access on it (KliveCloud access lists).
+    const query = `${KliveAPIUrl}/KliveCloud/UploadFile?fileName=${encodeURIComponent(file.name)}`;
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', query, true);
-      xhr.setRequestHeader('Authorization', password);
+      const authorization = AuthorizationHeaderValue();
+      if (authorization) xhr.setRequestHeader('Authorization', authorization);
       xhr.setRequestHeader('X-Klive-Client', 'website');
       xhr.setRequestHeader('X-Klive-Page', '/dashboard');
       xhr.upload.onprogress = event => {
         if (!event.lengthComputable) return;
         upload.percent = totalBytes > 0 ? Math.min(99, Math.round((completedBytes + event.loaded) / totalBytes * 100)) : 0;
       };
-      xhr.onload = () => xhr.status >= 200 && xhr.status < 300
-        ? resolve()
-        : reject(new Error(xhr.responseText || `Upload failed (${xhr.status})`));
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) return resolve();
+        ReportXhrAccess(xhr, '/KliveCloud/UploadFile');
+        let message = xhr.responseText;
+        try {
+          const body = JSON.parse(xhr.responseText);
+          message = body?.message || body?.error || message;
+        } catch { /* plain text */ }
+        reject(new Error(message || `Upload failed (${xhr.status})`));
+      };
       xhr.onerror = () => reject(new Error('Upload failed because the network connection was lost.'));
       xhr.send(file);
     });
@@ -917,6 +974,7 @@ export function useDashboardOverview() {
   return {
     currentProfile,
     rank,
+    caps,
     isAdmin,
     isKlives,
     data,

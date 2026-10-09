@@ -5,7 +5,7 @@
                 <h1>Settings</h1>
                 <p class="subtitle">The Tumblr app, connected accounts and the engine.</p>
             </div>
-            <div v-if="isAdmin" class="ot-actions">
+            <div v-if="canManage" class="ot-actions">
                 <button class="ot-btn primary" @click="openWizard(null)">Connect a Tumblr account</button>
             </div>
         </div>
@@ -36,7 +36,7 @@
                         Its <em>Default callback URL</em> must be exactly the URL above (for OAuth 2.0, also add it under <em>OAuth2 redirect URLs</em>).
                     </p>
 
-                    <form v-if="isAdmin" class="appform" @submit.prevent="saveApp">
+                    <form v-if="canManage" class="appform" @submit.prevent="saveApp">
                         <div class="ot-formgrid wide">
                             <div class="ot-field">
                                 <label for="ck">OAuth consumer key</label>
@@ -110,7 +110,7 @@
             <h2 class="ot-sectionhead">Tumblr accounts</h2>
             <div v-if="!settings.Connections.length" class="ot-card"><div class="body">
                 <OmniTraderStateBlock title="No accounts connected" detail="Connect the Tumblr account that owns your blogs.">
-                    <button v-if="isAdmin" class="ot-btn primary" @click="openWizard(null)">Connect a Tumblr account</button>
+                    <button v-if="canManage" class="ot-btn primary" @click="openWizard(null)">Connect a Tumblr account</button>
                 </OmniTraderStateBlock>
             </div></div>
             <div class="ot-stack">
@@ -119,7 +119,7 @@
                                 :attention="c.Health === 'NeedsReauth'">
                     <template #controls>
                         <span class="ot-chip" :class="c.Health === 'Healthy' ? 'ok' : c.Health === 'NeedsReauth' ? 'bad' : ''">{{ c.Health === 'NeedsReauth' ? 'Needs reconnecting' : c.Health }}</span>
-                        <template v-if="isAdmin">
+                        <template v-if="canManage">
                             <button class="ot-btn sm" @click="openWizard(c.ConnectionId)">Reconnect</button>
                             <button class="ot-btn sm ghost" :disabled="busy" @click="refreshConnection(c.ConnectionId)">Refresh</button>
                             <button class="ot-btn sm danger" :disabled="busy || c.ManagedBlogs > 0" :title="c.ManagedBlogs ? 'Remove its managed blogs first' : ''" @click="removeConnection(c)">Remove</button>
@@ -137,7 +137,7 @@
                                         <span class="muted small">{{ b.Followers != null ? `${fmtCount(b.Followers)} followers` : '' }} {{ b.Title ? `· ${b.Title}` : '' }}</span>
                                     </div>
                                     <NuxtLink v-if="b.Managed && b.ManagedBlogId" class="ot-btn sm ghost" :to="`/schemery/omnitumblr/blog/${b.ManagedBlogId}`">Open</NuxtLink>
-                                    <button v-else-if="isAdmin" class="ot-btn sm" :disabled="busy" @click="manage(c.ConnectionId, b.Name)">Manage</button>
+                                    <button v-else-if="can('omnitumblr.blogs.manage')" class="ot-btn sm" :disabled="busy" @click="manage(c.ConnectionId, b.Name)">Manage</button>
                                 </li>
                             </ul>
                             <p class="muted small">Last checked {{ fmtRelative(c.LastVerifiedUtc, now) }}<template v-if="c.AccessTokenExpiresUtc"> · access token renews {{ fmtRelative(c.AccessTokenExpiresUtc, now) }}</template></p>
@@ -164,19 +164,22 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { useCurrentProfile } from '~/composables/useCurrentProfile';
+import { useAccess } from '~/composables/useAccess';
 import {
     confirmAction, fmtCount, fmtDate, fmtRelative, fmtWhen, notify, tumblrGet, tumblrPost, useNow, usePoll, useTumblrOverview,
     type AppConfig, type AuthMode, type Connection, type EngineStatus,
 } from '~/composables/useOmniTumblr';
 
-definePageMeta({ layout: 'navbar' });
+// App settings and Tumblr connections are their own permission, above viewing blogs.
+definePageMeta({ layout: 'navbar', access: { kind: 'keys', any: ['omnitumblr.settings.view'] } });
 useHead({ title: 'Settings · OmniTumblr' });
 
 interface Settings { App: AppConfig; Connections: Connection[]; Engine: EngineStatus }
 
 const router = useRouter();
-const { isAdmin } = useCurrentProfile();
+const { can } = useAccess();
+// App keys and Tumblr connections.
+const canManage = computed(() => can('omnitumblr.settings.manage'));
 const { refresh: refreshOverview } = useTumblrOverview();
 const now = useNow();
 

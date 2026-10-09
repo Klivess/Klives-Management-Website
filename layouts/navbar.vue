@@ -38,13 +38,19 @@
       </nav>
 
       <div class="vnav-footer">
-        <div v-if="!collapsed" class="vnav-user">
-          <div class="vnav-user-name">{{ username || 'unknown' }}</div>
-          <div class="vnav-user-role">rank {{ rank ?? '?' }}</div>
-        </div>
-        <button class="vnav-logout" type="button" @click="logOut" title="Log Out">
+        <NuxtLink to="/account" class="vnav-user" active-class="vnav-user-active" :title="accountTitle" data-testid="nav-account">
+          <span class="km-avatar" :class="{ owner: isOwner }" :style="{ '--hue': avatarHue(profileId), '--size': '30px' }">{{ initials(username) }}</span>
+          <span v-if="!collapsed" class="vnav-user-text">
+            <span class="vnav-user-name">{{ username || 'Signed in' }}</span>
+            <span class="vnav-user-role">
+              <span v-if="profileLoaded" class="km-rank" :class="`r${rankInfo.value}`">{{ isOwner ? 'Owner' : rankInfo.name }}</span>
+              <span v-if="profileLoaded && !isOwner" class="vnav-user-perms">{{ permissionSummary }}</span>
+            </span>
+          </span>
+        </NuxtLink>
+        <button class="vnav-logout" type="button" @click="logOut" title="Sign out" data-testid="nav-signout">
           <span class="vnav-icon">⏻</span>
-          <span v-if="!collapsed" class="vnav-label">Log Out</span>
+          <span v-if="!collapsed" class="vnav-label">Sign out</span>
         </button>
       </div>
     </aside>
@@ -59,7 +65,12 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { SignOut } from '~/scripts/APIInterface';
+import { resolvePageAccess, satisfiesRule } from '~/scripts/pageAccess';
+import { avatarHue, initials, rankMeta } from '~/scripts/profileFormat';
 
+// Which items show is decided by scripts/pageAccess.ts — the same table that guards the pages,
+// so the nav never offers a page that would say "no access".
 const NAV_GROUPS = [
   {
     id: 'main',
@@ -72,9 +83,9 @@ const NAV_GROUPS = [
     id: 'intel',
     label: 'Intel',
     items: [
-      { to: '/omniscience', label: 'Omniscience', icon: '◎', klivesOnly: true },
-      { to: '/omnidefence', label: 'OmniDefence', icon: '⛨', klivesOnly: true },
-      { to: '/tripwires', label: 'Tripwires', icon: '⚡', klivesOnly: true },
+      { to: '/omniscience', label: 'Omniscience', icon: '◎' },
+      { to: '/omnidefence', label: 'OmniDefence', icon: '⛨' },
+      { to: '/tripwires', label: 'Tripwires', icon: '⚡' },
     ],
   },
   {
@@ -95,13 +106,13 @@ const NAV_GROUPS = [
     label: 'Klive Suite',
     items: [
       { to: '/klivecloud', label: 'KliveCloud', icon: '☁' },
-      { to: '/klivetech', label: 'KliveTech', icon: '⚙', klivesOnly: true },
+      { to: '/klivetech', label: 'KliveTech', icon: '⚙' },
       { to: '/klivechat', label: 'KliveChat', icon: '✉' },
-      { to: '/klivemail', label: 'KliveMail', icon: '@', klivesOnly: true },
-      { to: '/kliveagent', label: 'KliveAgent', icon: '◈', klivesOnly: true },
-      { to: '/projects', label: 'Projects', icon: '⛓', klivesOnly: true },
-      { to: '/klivegames', label: 'KliveGames', icon: '⛏', klivesOnly: true },
-      { to: '/klivelink', label: 'KliveLink', icon: '⌁', klivesOnly: true },
+      { to: '/klivemail', label: 'KliveMail', icon: '@' },
+      { to: '/kliveagent', label: 'KliveAgent', icon: '◈' },
+      { to: '/projects', label: 'Projects', icon: '⛓' },
+      { to: '/klivegames', label: 'KliveGames', icon: '⛏' },
+      { to: '/klivelink', label: 'KliveLink', icon: '⌁' },
       { to: '/klivetools', label: 'KliveTools', icon: '⚒' },
       { to: '/stratum', label: 'Stratum', icon: '▲' },
     ],
@@ -110,9 +121,10 @@ const NAV_GROUPS = [
     id: 'ops',
     label: 'Ops',
     items: [
-      { to: '/botSchedule', label: 'Schedule', icon: '◷', minRank: 4 },
-      { to: '/admin', label: 'Admin', icon: '★', minRank: 4 },
-      { to: '/administration/api-telemetry', label: 'API telemetry', icon: '⌇', klivesOnly: true },
+      { to: '/botSchedule', label: 'Schedule', icon: '◷' },
+      { to: '/admin', label: 'Admin', icon: '★' },
+      { to: '/administration/profiles', label: 'Profiles', icon: '◉' },
+      { to: '/administration/api-telemetry', label: 'API telemetry', icon: '⌇' },
     ],
   },
 ];
@@ -121,8 +133,6 @@ interface NavItem {
   to: string;
   label: string;
   icon: string;
-  klivesOnly?: boolean;
-  minRank?: number;
 }
 
 interface NavGroup {
@@ -134,15 +144,32 @@ interface NavGroup {
 const collapsed = ref(false);
 const overlay = ref(false);
 const openGroups = ref<Record<string, boolean>>({});
-const router = useRouter();
-const { rank, username, isKlives, ensureLoaded, reset: resetCurrentProfile } = useCurrentProfile();
+const current = useCurrentProfile();
+const { username, isOwner, ensureLoaded, can } = current;
+
+const profileLoaded = computed(() => current.profile.value != null);
+const profileId = computed(() => String(current.profile.value?.userId ?? current.profile.value?.UserID ?? username.value));
+const rankInfo = computed(() => rankMeta(current.rank.value));
+const permissionSummary = computed(() => {
+  if (current.suspended.value) return 'suspended';
+  const count = current.grantedPermissions.value.size;
+  return `${count} permission${count === 1 ? '' : 's'}${current.readOnly.value ? ' · read-only' : ''}`;
+});
+const accountTitle = computed(() => profileLoaded.value
+  ? `${username.value} — ${isOwner.value ? 'Owner' : `${rankInfo.value.name} · ${permissionSummary.value}`}. Open your account.`
+  : 'Your account');
 
 const railWidth = computed(() => collapsed.value ? '56px' : '220px');
+// Until the profile is known only pages anyone signed in can open are listed; the rest appear
+// once it loads (and change live with access).
 const visibleGroups = computed(() => (NAV_GROUPS as NavGroup[])
   .map(group => ({
     ...group,
-    items: group.items.filter(item => (!item.klivesOnly || isKlives.value)
-      && (item.minRank == null || (rank.value ?? -1) >= item.minRank)),
+    items: group.items.filter(item => {
+      const { rule } = resolvePageAccess(item.to);
+      if (rule.kind === 'public' || rule.kind === 'signed-in') return true;
+      return profileLoaded.value && satisfiesRule(rule, can, true);
+    }),
   }))
   .filter(group => group.items.length > 0));
 
@@ -167,11 +194,9 @@ const toggleGroup = (id: string) => {
   };
 };
 
-const logOut = async () => {
-  const cookie = useCookie('password');
-  cookie.value = '';
-  resetCurrentProfile();
-  await router.push('/');
+const logOut = () => {
+  // Ends this session on the server too, then reloads to the login page.
+  SignOut(null, { serverLogout: true });
 };
 
 onMounted(() => {
@@ -336,6 +361,26 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 8px;
 }
+.vnav-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px;
+  margin: 0 -6px;
+  border-radius: 6px;
+  text-decoration: none;
+  transition: background 120ms;
+}
+.vnav-user:hover { background: rgba(255, 255, 255, 0.04); }
+.vnav-user-active { background: rgba(c.$secondary, 0.12); }
+.is-collapsed .vnav-user { justify-content: center; margin: 0; }
+.vnav-user-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
 .vnav-user-name {
   font-size: 12px;
   color: c.$white;
@@ -344,10 +389,18 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 .vnav-user-role {
-  font-size: 10px;
-  color: rgba(150, 150, 150, 0.6);
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.vnav-user-role .km-rank { height: 17px; font-size: 9.5px; padding: 0 6px; }
+.vnav-user-perms {
+  font-size: 10.5px;
+  color: rgba(150, 150, 150, 0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .vnav-logout {
   display: flex;

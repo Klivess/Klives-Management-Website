@@ -11,7 +11,7 @@
             </div>
         </div>
 
-        <div class="admin-action-strip">
+        <div v-if="canOpen('/omnidefence')" class="admin-action-strip">
             <div class="admin-action-copy">
                 <span class="admin-action-label">Security Console</span>
                 <strong>OmniDefence</strong>
@@ -23,7 +23,7 @@
         </div>
 
         <!-- Key Metrics -->
-        <KMInfoGrid columns="4" rows="1" rowHeight="110">
+        <KMInfoGrid v-if="can('system.status.view')" columns="4" rows="1" rowHeight="110">
             <KMInfoBox caption="Bot Uptime">
                 <div class="admin-metric">
                     <div class="metric-big clr-success">{{ stats.BotUptimeHumanized }}</div>
@@ -53,7 +53,7 @@
         </KMInfoGrid>
 
         <!-- System & Process | Logs & Tasks -->
-        <KMInfoGrid columns="2" rows="1" rowHeight="260">
+        <KMInfoGrid v-if="can('system.status.view')" columns="2" rows="1" rowHeight="260">
             <KMInfoBox caption="System & Process Details">
                 <div class="detail-list">
                     <div class="detail-row"><span class="dl">Machine</span><span class="dv">{{ stats.MachineName }}</span></div>
@@ -81,7 +81,7 @@
         </KMInfoGrid>
 
         <!-- Uptime Statistics -->
-        <KMInfoGrid columns="1" rows="1" rowHeight="260">
+        <KMInfoGrid v-if="can('system.uptime.view')" columns="1" rows="1" rowHeight="260">
             <KMInfoBox caption="System Uptime Statistics">
                 <div class="uptime-container" v-if="!uptimeStats.loading && !uptimeStats.error">
                     <div class="uptime-controls">
@@ -159,7 +159,7 @@
             </KMInfoBox>
         </KMInfoGrid>
 
-        <KMInfoGrid columns="1" rows="1" rowHeight="390">
+        <KMInfoGrid v-if="can('system.status.view')" columns="1" rows="1" rowHeight="390">
             <KMInfoBox caption="KliveAPI Statistics">
                 <div v-if="!apiStats.loading && !apiStats.error" class="api-stats-container">
                     <div class="api-stats-row">
@@ -231,7 +231,7 @@
             </KMInfoBox>
         </KMInfoGrid>
 
-        <KMInfoGrid columns="2" rows="1" rowHeight="300">
+        <KMInfoGrid v-if="can('system.status.view')" columns="2" rows="1" rowHeight="300">
             <KMInfoBox caption="Busiest API Routes">
                 <div class="api-route-list">
                     <div v-for="route in apiStats.topRoutes" :key="`top-${route.method}-${route.route}`" class="api-route-row">
@@ -260,7 +260,7 @@
         </KMInfoGrid>
 
         <!-- Disk Statistics -->
-        <KMInfoGrid columns="1" rows="1" rowHeight="220">
+        <KMInfoGrid v-if="can('system.status.view')" columns="1" rows="1" rowHeight="220">
             <KMInfoBox caption="Disk Statistics">
                 <div class="disk-grid">
                     <div class="disk-item" v-for="disk in stats.DiskStatistics" :key="disk.DriveName">
@@ -277,7 +277,7 @@
         </KMInfoGrid>
 
         <!-- Services & Network -->
-        <KMInfoGrid columns="2" rows="1" rowHeight="340">
+        <KMInfoGrid v-if="can('system.status.view')" columns="2" rows="1" rowHeight="340">
             <KMInfoBox caption="All Services">
                 <div class="services-scroll">
                     <div class="service-row" v-for="svc in stats.Services" :key="svc.Name">
@@ -291,6 +291,7 @@
                         <div class="service-actions">
                             <span class="svc-uptime">{{ svc.UptimeHumanized }}</span>
                             <button
+                                v-if="can('system.services.control')"
                                 class="service-action-btn restart"
                                 :disabled="botUpdating || isServiceActionPending(svc.Name)"
                                 @click="manageService(svc, 'restart')"
@@ -298,6 +299,7 @@
                                 {{ getServiceActionLabel(svc.Name, 'restart') }}
                             </button>
                             <button
+                                v-if="can('system.services.control')"
                                 class="service-action-btn quit"
                                 :disabled="botUpdating || isServiceActionPending(svc.Name)"
                                 @click="manageService(svc, 'quit')"
@@ -328,7 +330,7 @@
         </KMInfoGrid>
 
         <!-- Selenium Instances -->
-        <KMInfoGrid columns="1" rows="1" rowHeight="260">
+        <KMInfoGrid v-if="can('system.resources.read')" columns="1" rows="1" rowHeight="260">
             <KMInfoBox caption="Selenium Instances">
                 <div class="selenium-header">
                     <span class="selenium-count" v-if="seleniumInstances.length > 0">{{ seleniumInstances.length }} active instance{{ seleniumInstances.length !== 1 ? 's' : '' }}</span>
@@ -355,35 +357,35 @@
                     <p class="utility-intro">Open the main operator tools, inspect runtime activity, and push configuration or deployment changes from one control surface.</p>
 
                     <div class="utility-grid">
-                        <NuxtLink to="/administration/botlogs" class="utility-card">
+                        <NuxtLink v-if="canOpen('/administration/botlogs')" to="/administration/botlogs" class="utility-card">
                             <span class="utility-label">Diagnostics</span>
                             <h3>Bot Logs</h3>
                             <p>Inspect runtime output, failures, and service chatter without leaving Admin.</p>
                             <KMButton message="OPEN BOT LOGS" style="height: 50px; width: 100%; margin-top: 12px;" />
                         </NuxtLink>
 
-                        <NuxtLink to="/klivelink" class="utility-card">
+                        <NuxtLink v-if="canOpen('/klivelink')" to="/klivelink" class="utility-card">
                             <span class="utility-label">Remote Control</span>
                             <h3>KliveLink</h3>
                             <p>Jump into remote administration tools and connected machine capabilities.</p>
                             <KMButton message="OPEN KLIVELINK" style="height: 50px; width: 100%; margin-top: 12px;" />
                         </NuxtLink>
 
-                        <NuxtLink to="/administration/omnisettings" class="utility-card">
+                        <NuxtLink v-if="canOpen('/administration/omnisettings')" to="/administration/omnisettings" class="utility-card">
                             <span class="utility-label">Configuration</span>
                             <h3>OmniSettings</h3>
                             <p>Audit service configuration, secrets, and provider routing from the settings dashboard.</p>
                             <KMButton message="OPEN OMNISETTINGS" style="height: 50px; width: 100%; margin-top: 12px;" />
                         </NuxtLink>
 
-                        <NuxtLink to="/administration/remotedesktop" class="utility-card">
+                        <NuxtLink v-if="canOpen('/administration/remotedesktop')" to="/administration/remotedesktop" class="utility-card">
                             <span class="utility-label">Remote Control</span>
                             <h3>Remote Desktop</h3>
                             <p>Live video and full mouse and keyboard control of the machine. Drive it from anywhere.</p>
                             <KMButton message="OPEN REMOTE DESKTOP" style="height: 50px; width: 100%; margin-top: 12px;" />
                         </NuxtLink>
 
-                        <div class="utility-card utility-card-danger update-bot-area">
+                        <div v-if="can('system.update.deploy')" class="utility-card utility-card-danger update-bot-area">
                             <span class="utility-label">Deployment</span>
                             <h3>Update Bot</h3>
                             <p>Pull latest code, rebuild, and restart the stack. This temporarily interrupts the API.</p>
@@ -401,26 +403,35 @@
                     </div>
                 </div>
             </KMInfoBox>
-            <KMInfoBox caption="Manage Profiles">
+            <KMInfoBox v-if="canOpen('/administration/profiles')" caption="Profiles">
                 <div class="profiles-panel">
                     <div class="profiles-panel-header">
                         <div>
                             <span class="utility-label">Access Control</span>
-                            <h3>Profile Directory</h3>
-                            <p>Review clearance, login eligibility, and create new operator accounts from a cleaner profile desk.</p>
+                            <h3>Profiles &amp; permissions</h3>
+                            <p>Who can use Klives Management and what each profile may do: permissions, live sessions, activity and suspensions.</p>
                         </div>
-                        <KMButton style="height: 72px; width: 300px; font-size: 15px; letter-spacing: 0.08em;" message="CREATE NEW PROFILE" :onclick="goToCreateProfile" />
                     </div>
-
-                    <div class="profiles-list-shell">
-                        <AdminKMProfileList style="height: 350px;" />
+                    <div class="utility-grid">
+                        <NuxtLink to="/administration/profiles" class="utility-card">
+                            <span class="utility-label">Directory</span>
+                            <h3>Open the profile console</h3>
+                            <p>See who is online and where, and change anyone's access live.</p>
+                            <KMButton message="OPEN PROFILES" style="height: 50px; width: 100%; margin-top: 12px;" />
+                        </NuxtLink>
+                        <NuxtLink v-if="can('profiles.lifecycle.create')" to="/administration/profiles/new" class="utility-card">
+                            <span class="utility-label">New</span>
+                            <h3>Create a profile</h3>
+                            <p>Name, rank, a generated password and exactly the permissions it needs.</p>
+                            <KMButton message="CREATE PROFILE" style="height: 50px; width: 100%; margin-top: 12px;" />
+                        </NuxtLink>
                     </div>
                 </div>
             </KMInfoBox>
         </KMInfoGrid>
 
-        <!-- Port Forwarding Manager (Klives Only) -->
-        <KMInfoGrid v-if="isKlives" columns="1" rows="1" rowHeight="auto" style="margin-bottom: 24px;">
+        <!-- Port Forwarding Manager -->
+        <KMInfoGrid v-if="can('system.portforwarding.read')" columns="1" rows="1" rowHeight="auto" style="margin-bottom: 24px;">
             <KMInfoBox caption="UPnP Port Forwarding Manager">
                 <div class="pf-dashboard">
                     <!-- Status Header -->
@@ -446,7 +457,7 @@
                             <button class="pf-btn refresh" @click="loadPortMappings" :disabled="pfLoading">
                                 {{ pfLoading ? 'Refreshing...' : 'Refresh List' }}
                             </button>
-                            <button class="pf-btn add" @click="openAddPortMappingModal" :disabled="pfGatewayStatus === 'error'">
+                            <button v-if="can('system.portforwarding.manage')" class="pf-btn add" @click="openAddPortMappingModal" :disabled="pfGatewayStatus === 'error'">
                                 + Add Mapping
                             </button>
                         </div>
@@ -484,8 +495,10 @@
                                     <td class="pf-ip">{{ mapping.PrivateIp }}</td>
                                     <td class="pf-exp">{{ mapping.ExpirationDate }}</td>
                                     <td class="pf-row-actions" style="padding-right: 20px;">
-                                        <button class="pf-action-btn edit" @click="openEditPortMappingModal(mapping)">Edit</button>
-                                        <button class="pf-action-btn delete" @click="deletePortMapping(mapping)">Delete</button>
+                                        <template v-if="can('system.portforwarding.manage')">
+                                            <button class="pf-action-btn edit" @click="openEditPortMappingModal(mapping)">Edit</button>
+                                            <button class="pf-action-btn delete" @click="deletePortMapping(mapping)">Delete</button>
+                                        </template>
                                     </td>
                                 </tr>
                                 <tr v-if="pfMappings.length === 0 && !pfLoading">
@@ -506,7 +519,7 @@
         </KMInfoGrid>
 
         <!-- Terminal CLI -->
-        <KMInfoGrid columns="1" rows="1" rowHeight="550">
+        <KMInfoGrid v-if="can('system.terminal.use')" columns="1" rows="1" rowHeight="550">
             <div style="height: 100%; width: 100%;">
                 <TerminalUI />
             </div>
@@ -524,13 +537,14 @@ import KMInfoBox from '~/components/KMInfoBox.vue';
 import KMButton from '~/components/KMButton.vue';
 import TerminalUI from '~/components/Admin/TerminalUI.vue';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import { useCurrentProfile } from '~/composables/useCurrentProfile';
+import { resolvePageAccess, satisfiesRule } from '~/scripts/pageAccess';
 import Swal from 'sweetalert2';
 
 export default {
     components: { KMInfoGrid, KMInfoBox, KMButton, TerminalUI },
     data() {
         return {
-            isKlives: false,
             pfLoading: false,
             pfGatewayStatus: 'unknown',
             pfLocalIp: '127.0.0.1',
@@ -1349,8 +1363,12 @@ export default {
                 this.serviceActionState = nextState;
             }
         },
-        goToCreateProfile() {
-            window.location.replace('/createprofile');
+        /** Would the server allow this key right now? (Options API: the profile composable is read in created().) */
+        can(key) {
+            return this.access ? this.access.can(key) : false;
+        },
+        canOpen(path) {
+            return this.access ? satisfiesRule(resolvePageAccess(path).rule, this.access.can, true) : false;
         },
         async ensureBotRestartNotificationPermission() {
             if (!process.client || !('Notification' in window)) {
@@ -1505,9 +1523,19 @@ export default {
 
             this.waitForBotRestart(attempts + 1);
         },
+        /** Loads only the panels this profile can see: nothing is requested just to be refused. */
+        loadPermitted() {
+            if (this.can('system.status.view')) {
+                this.loadStats();
+                this.loadApiStats();
+            }
+            if (this.can('system.resources.read')) this.loadSeleniumInstances();
+            if (this.can('system.uptime.view')) this.loadUptimeStats();
+            if (this.can('system.portforwarding.read')) this.loadPortMappings();
+        },
         restartAutoRefresh() {
             if (!this.refreshInterval) {
-                this.refreshInterval = setInterval(() => { this.loadStats(); this.loadSeleniumInstances(); this.loadUptimeStats(); this.loadApiStats(); }, 10000);
+                this.refreshInterval = setInterval(() => this.loadPermitted(), 10000);
             }
         },
         formatBytes(bytes) {
@@ -1536,32 +1564,15 @@ export default {
             return ms.toFixed(2) + ' ms';
         }
     },
+    created() {
+        // Not reactive data: the composable's refs are reactive themselves, so templates calling
+        // can() re-render when access changes live.
+        this.access = this.$nuxt.runWithContext(() => useCurrentProfile());
+    },
     async mounted() {
-        this.loadStats();
-        this.loadSeleniumInstances();
-        this.loadUptimeStats();
-        this.loadApiStats();
-        try {
-            const r = await RequestGETFromKliveAPI('/KMProfiles/GetCurrentProfile', false, false);
-            if (r.ok) {
-                const p = await r.json();
-                this.isKlives = Number(p?.KlivesManagementRank) === 5;
-                if (this.isKlives) {
-                    this.loadPortMappings();
-                }
-            }
-        } catch (e) {
-            console.error('Failed to load profile for Klives check:', e);
-        }
-        this.refreshInterval = setInterval(() => { 
-            this.loadStats(); 
-            this.loadSeleniumInstances(); 
-            this.loadUptimeStats(); 
-            this.loadApiStats(); 
-            if (this.isKlives) {
-                this.loadPortMappings();
-            }
-        }, 10000);
+        await this.access.ensureLoaded();
+        this.loadPermitted();
+        this.refreshInterval = setInterval(() => this.loadPermitted(), 10000);
     },
     beforeUnmount() {
         if (this.refreshInterval) clearInterval(this.refreshInterval);

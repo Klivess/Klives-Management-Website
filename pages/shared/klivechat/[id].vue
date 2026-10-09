@@ -106,7 +106,7 @@
                             <div>
                                 <div class="participant-name-row">
                                     <div class="participant-name">You · {{ myName }}</div>
-                                    <span v-if="canModerate" class="participant-role-chip">ASSOCIATE+</span>
+                                    <span v-if="canModerate" class="participant-role-chip">MOD</span>
                                 </div>
                                 <div class="participant-state">{{ describeLocalState() }}</div>
                                 <div class="participant-badges">
@@ -137,7 +137,7 @@
                             <div>
                                 <div class="participant-name-row">
                                     <div class="participant-name">{{ peer.name || 'Anonymous' }}</div>
-                                    <span v-if="peer.canModerate" class="participant-role-chip">ASSOCIATE+</span>
+                                    <span v-if="peer.canModerate" class="participant-role-chip">MOD</span>
                                 </div>
                                 <div class="participant-state">{{ describePeerState(peer) }}</div>
                                 <div class="participant-badges">
@@ -173,6 +173,7 @@
 </template>
 
 <script setup>
+import { GetAuthToken } from '~/scripts/APIInterface';
 // KliveChat rooms are a standalone window, deliberately kept off the navbar/dashboard
 // layout so the main KM application's authenticated routes are never queried from here.
 definePageMeta({ layout: 'empty' });
@@ -207,14 +208,14 @@ const myName = ref('');
 const roomName = ref('Loading...');
 const currentUrl = ref('');
 const localParticipantId = ref('');
-const currentRank = ref(0);
+// Muting and removing people is klivechat.rooms.moderate (and only over profiles ranked below you).
 const isMuted = ref(false);
 const isVideo = ref(false);
 const isScreenSharing = ref(false);
 const preferredFacingMode = ref('user');
 const peersState = ref([]);
 const audioRefs = {};
-const canModerate = computed(() => currentRank.value >= 3);
+const canModerate = ref(false);
 const canFlipCamera = computed(() => isVideo.value && !isScreenSharing.value);
 
 const localVisualizer = ref(null);
@@ -246,9 +247,9 @@ function setPeerVisualizerRef(el, id) {
     }
 }
 
-function getLocalPassword() {
-    const match = document.cookie.match(/(?:^|; )password=([^;]*)/);
-    return match ? decodeURIComponent(match[1]) : '';
+/** This browser's sign-in, if any (rooms are open to guests too). */
+function getLocalCredential() {
+    return GetAuthToken();
 }
 
 function getGuestIdentity() {
@@ -442,7 +443,7 @@ async function init() {
         if (response && response.ok) {
             const data = await response.json();
             lsName = data.name || '';
-            currentRank.value = Number(data.rank ?? 0);
+            canModerate.value = data.canModerate === true;
         }
     } catch (error) {
         console.error('Failed to parse my profile name:', error);
@@ -457,7 +458,7 @@ async function init() {
 
     myName.value = lsName;
     wsUrl += '&name=' + encodeURIComponent(lsName);
-    const authorization = getLocalPassword();
+    const authorization = getLocalCredential();
     if (authorization) {
         wsUrl += '&authorization=' + encodeURIComponent(authorization);
     } else {

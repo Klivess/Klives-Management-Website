@@ -34,10 +34,22 @@
         <span
           class="breadcrumb-item"
           @click="navigateToRoot"
-          :class="{ active: currentPath.length === 0 }"
+          :class="{ active: currentPath.length === 0 && !inSharedView }"
         >
-          Root
+          My Drive
         </span>
+        <span v-if="inSharedView || sharedRoot">
+          <span class="breadcrumb-separator">/</span>
+          <span class="breadcrumb-item" :class="{ active: inSharedView }" @click="openSharedWithMe">Shared with me</span>
+        </span>
+        <button
+          v-else-if="sharedWithMeCount > 0 && currentPath.length === 0"
+          type="button"
+          class="shared-pill"
+          @click="openSharedWithMe"
+        >
+          Shared with me · {{ sharedWithMeCount }}
+        </button>
         <span v-for="(folder, index) in currentPath" :key="folder.ItemID">
           <span class="breadcrumb-separator">/</span>
           <span
@@ -53,7 +65,8 @@
       <div class="actions">
         <!-- New Bulk Actions -->
         <template v-if="selectedItems.size > 0">
-            <button class="action-btn delete-btn" @click="deleteSelectedItems">
+            <button v-if="can('klivecloud.files.delete')" class="action-btn delete-btn" :disabled="!selectionEditable"
+                    :title="selectionEditable ? '' : 'Some selected items are view-only for you'" @click="deleteSelectedItems">
                 🗑️ Delete ({{ selectedItems.size }})
             </button>
             <button class="action-btn download-btn" @click="downloadSelectedItems">
@@ -62,19 +75,14 @@
             <div class="separator">|</div>
         </template>
 
-        <select v-model="selectedPermission" class="permission-select" title="Set permission for new uploads/folders">
-            <option :value="0">Anybody (0)</option>
-            <option :value="1">Guest (1)</option>
-            <option :value="2">Manager (2)</option>
-            <option :value="3">Associate (3)</option>
-            <option :value="4">Admin (4)</option>
-            <option :value="5">Klives (5)</option>
-        </select>
-
-        <button class="action-btn upload-btn" @click="triggerFileUpload">
+        <span v-if="folderLevel === 'Viewer' && !inSharedView" class="view-only-chip" title="You can open and download here, but not change anything">View only</span>
+        <button v-if="currentFolderItem && canShareItem(currentFolderItem)" class="action-btn share-folder-btn" @click="openShare(currentFolderItem)">
+          Share folder
+        </button>
+        <button v-if="can('klivecloud.files.upload')" class="action-btn upload-btn" :disabled="!canAddHere" :title="addHereHint" @click="triggerFileUpload">
          Upload File
         </button>
-        <button class="action-btn folder-btn" @click="promptCreateFolder">
+        <button v-if="can('klivecloud.files.upload')" class="action-btn folder-btn" :disabled="!canAddHere" :title="addHereHint" @click="promptCreateFolder">
           New Folder
         </button>
         <input
@@ -134,14 +142,14 @@
 
       <!-- Empty State -->
       <div v-else-if="items.length === 0" class="empty-state">
-        <p>This folder is empty.</p>
+        <p>{{ inSharedView ? 'Nothing has been shared with you yet.' : 'This folder is empty.' }}</p>
       </div>
 
       <!-- File List -->
       <div v-else class="file-grid">
         <!-- Back Button (if not root) -->
         <div
-          v-if="currentPath.length > 0"
+          v-if="currentPath.length > 0 || inSharedView"
           class="file-item folder-item back-item"
           :class="{ 'drag-hover': activeDropTargetID === 'back' }"
           @click="navigateUp"
@@ -165,7 +173,7 @@
             'drag-hover': activeDropTargetID === item.ItemID
           }"
           :ref="(el) => setItemRef(el, item.ItemID)"
-          draggable="true"
+          :draggable="item.MyLevel === 'Editor' && can('klivecloud.files.organize')"
           @dragstart="onItemDragStart($event, item)"
           @dragend="onItemDragEnd($event)"
           @dragover.prevent="item.ItemType === 'Folder' ? onFolderDragOver($event, item) : null"
@@ -192,12 +200,30 @@
               <span class="separator">•</span>
               <span>{{ formatDate(item.ModifiedDate) }}</span>
             </div>
-            <div class="item-perm" @click.stop="promptChangePermission(item)" title="Click to change permission" style="cursor: pointer;">
-                🔒 {{ item.MinimumPermissionLevel }}
+            <div
+              class="item-access"
+              :class="{ clickable: canShareItem(item) }"
+              :title="canShareItem(item) ? 'Change who can use this' : accessTitle(item)"
+              @click.stop="canShareItem(item) && openShare(item)"
+            >
+              <span v-if="item.Access?.People?.length" class="access-stack" aria-hidden="true">
+                <span v-for="person in item.Access.People.slice(0, 3)" :key="person.ProfileId" class="access-face" :style="{ '--hue': avatarHue(person.ProfileId) }">{{ initials(person.Name) }}</span>
+              </span>
+              <span class="access-text">{{ item.Access?.Summary ?? item.MinimumPermissionLevel }}</span>
+              <span v-if="item.MyLevel === 'Viewer'" class="access-level">View only</span>
             </div>
           </div>
           <div class="item-actions-hover">
             <button
+                v-if="canShareItem(item)"
+                @click.stop="openShare(item)"
+                title="Share with people"
+                class="share-btn"
+            >
+                👥
+            </button>
+            <button
+                v-if="canShareItem(item)"
                 @click.stop="shareItem(item)"
                 title="Share Link"
                 class="share-btn"
@@ -205,13 +231,13 @@
                 🔗
             </button>
             <button
-                v-if="item.ItemType === 'File'"
+                v-if="item.ItemType === 'File' && can('klivecloud.files.download')"
                 @click.stop="downloadFile(item)"
                 title="Download"
             >
                 ⬇️
             </button>
-            <button @click.stop="deleteItem(item)" title="Delete" class="delete-btn">
+            <button v-if="item.MyLevel === 'Editor' && can('klivecloud.files.delete')" @click.stop="deleteItem(item)" title="Delete" class="delete-btn">
                 🗑️
             </button>
           </div>
@@ -219,7 +245,7 @@
       </div>
 
       <!-- Share Links Section -->
-      <div v-if="sharedLinks.length > 0" class="shared-links-section">
+      <div v-if="sharedLinks.length > 0 && !inSharedView" class="shared-links-section">
           <h3 class="section-title">Active Share Links ({{ sharedLinks.length }})</h3>
           <div class="shared-links-table-container">
               <table class="shared-links-table">
@@ -293,6 +319,8 @@
             </div>
         </div>
     </div>
+
+    <KliveCloudShareDialog :item="sharingItem" @close="sharingItem = null" @saved="onAccessSaved" />
   </div>
 </template>
 
@@ -300,15 +328,21 @@
 import { ref, onMounted, onUnmounted, reactive, watch, nextTick, computed } from 'vue';
 import Swal from 'sweetalert2';
 import {
+  AuthorizationHeaderValue,
+  KliveAPIUrl,
+  ReportXhrAccess,
   RequestGETFromKliveAPI,
   RequestPOSTFromKliveAPI,
-  KliveAPIUrl,
-  KMPermissions
 } from '~/scripts/APIInterface';
+import { useAccess } from '~/composables/useAccess';
+import { pushToast } from '~/scripts/accessState';
+import { avatarHue, initials } from '~/scripts/profileFormat';
 
 definePageMeta({ layout: 'navbar' });
 
 // Types
+type CloudLevel = 'Editor' | 'Viewer' | 'None';
+
 interface CloudItem {
   ItemID: string;
   Name: string;
@@ -317,10 +351,32 @@ interface CloudItem {
   CreatedDate: string;
   ModifiedDate: string;
   CreatedByUserID: string;
+  CreatedByName?: string | null;
   ItemType: 'Folder' | 'File';
+  /** A one-word summary of who has access ("Everyone", "3 people"). */
   MinimumPermissionLevel: string;
   FileSizeBytes: number;
+  /** What the signed-in profile may do with it. */
+  MyLevel?: CloudLevel;
+  /** Who has access — only included when the caller may change it. */
+  Access?: {
+    Everyone: 'Viewer' | 'Editor' | null;
+    Inherit: boolean;
+    People: { ProfileId: string; Name: string; Level: 'Viewer' | 'Editor' }[];
+    Summary: string;
+  } | null;
 }
+
+interface BrowseResult {
+  Folder: CloudItem | null;
+  Virtual: string | null;
+  Path: { ItemID: string; Name: string; ParentFolderID?: string | null }[];
+  MyLevel: CloudLevel;
+  Items: CloudItem[];
+  SharedWithMeCount: number;
+}
+
+const SHARED_WITH_ME = 'shared-with-me';
 
 interface DriveInfo {
     DriveName: string;
@@ -356,10 +412,47 @@ const currentPath = ref<CloudItem[]>([]); // Breadcrumb trail (folders)
 const loading = ref(false);
 const error = ref('');
 const fileInput = ref<HTMLInputElement | null>(null);
-const passwordCookie = useCookie('password');
 const isDragging = ref(false);
-const selectedPermission = ref(1);
 const driveInfo = ref<DriveInfo | null>(null);
+const { can } = useAccess();
+
+// Where we are, and what we may do here.
+const folderLevel = ref<CloudLevel>('Editor');
+const currentFolderItem = ref<CloudItem | null>(null);
+const inSharedView = ref(false);
+const sharedRoot = ref(false);
+const sharedWithMeCount = ref(0);
+const sharingItem = ref<CloudItem | null>(null);
+const canAddHere = computed(() => !inSharedView.value && folderLevel.value === 'Editor');
+const addHereHint = computed(() => (inSharedView.value ? 'Open a shared folder to add files to it'
+  : folderLevel.value === 'Editor' ? '' : 'You can only view this folder'));
+const selectionEditable = computed(() => [...selectedItems.value].every(id => items.value.find(i => i.ItemID === id)?.MyLevel === 'Editor'));
+
+const canShareItem = (item: CloudItem) => item.MyLevel === 'Editor' && can('klivecloud.sharing.manage');
+const accessTitle = (item: CloudItem) => (item.MyLevel === 'Viewer' ? 'You can view this' : `Shared with: ${item.MinimumPermissionLevel}`);
+
+const openShare = (item: CloudItem) => { sharingItem.value = item; };
+const onAccessSaved = (updated: CloudItem) => {
+  sharingItem.value = null;
+  const index = items.value.findIndex(i => i.ItemID === updated.ItemID);
+  if (index >= 0) items.value[index] = { ...items.value[index], ...updated };
+  if (currentFolderItem.value?.ItemID === updated.ItemID) currentFolderItem.value = { ...currentFolderItem.value, ...updated };
+  notify('Access updated', `${updated.Name}: ${updated.Access?.Summary ?? updated.MinimumPermissionLevel}`);
+};
+
+/** A small confirmation in the corner (the site's toast host). */
+const notify = (title: string, detail = '', tone: 'info' | 'error' = 'info') =>
+  pushToast({ tone, title, detail, permissions: [], reason: tone }, tone === 'error' ? 7_000 : 3_500);
+
+/** The server's own explanation of a failure (KliveCloud answers JSON with a message). */
+const failureText = async (response: Response) => {
+  try {
+    const body = await response.clone().json();
+    return body?.message || body?.error || `Request failed (${response.status})`;
+  } catch {
+    return (await response.text().catch(() => '')) || `Request failed (${response.status})`;
+  }
+};
 
 // Share Links State
 const sharedLinks = ref<ShareLink[]>([]);
@@ -511,6 +604,7 @@ const setItemRef = (el: Element | ComponentPublicInstance | null, id: string) =>
 };
 
 const getCurrentFolderID = () => {
+  if (inSharedView.value) return SHARED_WITH_ME;
   return currentPath.value.length > 0
     ? currentPath.value[currentPath.value.length - 1].ItemID
     : '';
@@ -533,27 +627,21 @@ const fetchItems = async (folderID: string = '') => {
   loading.value = true;
   error.value = '';
   try {
-    const url = folderID
-      ? `/KliveCloud/ListItems?folderID=${folderID}`
-      : '/KliveCloud/ListItems';
-    
-    // Using the existing API interface
-    const response = await RequestGETFromKliveAPI(url);
-    
+    const url = folderID ? `/KliveCloud/Browse?folderID=${encodeURIComponent(folderID)}` : '/KliveCloud/Browse';
+    const response = await RequestGETFromKliveAPI(url, false, false);
+
     if (response.ok) {
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        data.sort((a: any, b: any) => {
-          if (a.ItemType === 'Folder' && b.ItemType !== 'Folder') return -1;
-          if (a.ItemType !== 'Folder' && b.ItemType === 'Folder') return 1;
-          return a.Name.localeCompare(b.Name);
-        });
-      }
-      items.value = data;
+      const data = await response.json() as BrowseResult;
+      items.value = data.Items;
+      inSharedView.value = data.Virtual === SHARED_WITH_ME;
+      currentPath.value = data.Path as unknown as CloudItem[];
+      // The first visible folder sits inside something hidden: it was reached through "Shared with me".
+      sharedRoot.value = !!data.Path[0]?.ParentFolderID;
+      currentFolderItem.value = data.Folder;
+      folderLevel.value = data.MyLevel;
+      if (!folderID) sharedWithMeCount.value = data.SharedWithMeCount;
     } else {
-      const text = await response.text();
-      error.value = `Failed to load items: ${text}`;
-      console.error('Fetch items failed:', text);
+      error.value = await failureText(response);
     }
   } catch (e: any) {
     error.value = `Error: ${e.message}`;
@@ -565,10 +653,7 @@ const fetchItems = async (folderID: string = '') => {
 
 const createFolder = async (name: string) => {
   const parentID = getCurrentFolderID();
-  const params = new URLSearchParams({
-    name: name,
-    permissionLevel: selectedPermission.value.toString()
-  });
+  const params = new URLSearchParams({ name });
   if (parentID) {
     params.append('parentFolderID', parentID);
   }
@@ -578,18 +663,10 @@ const createFolder = async (name: string) => {
   try {
     const response = await RequestPOSTFromKliveAPI(query);
     if (response.ok) {
-      Swal.fire({
-          icon: 'success',
-          title: 'Folder Created',
-          toast: true,
-          position: 'top-end',
-          showConfirmButton: false,
-          timer: 3000
-      });
+      notify('Folder created', name);
       refreshCurrentFolder();
-    } else {
-      const text = await response.text();
-      Swal.fire('Error', `Failed to create folder: ${text}`, 'error');
+    } else if (response.status !== 403 || !response.headers.get('RequestDeniedCode')) {
+      notify("Couldn't create the folder", await failureText(response), 'error');
     }
   } catch (e: any) {
     Swal.fire('Error', e.message, 'error');
@@ -600,18 +677,10 @@ const deleteItemAPI = async (itemID: string) => {
     try {
         const response = await RequestPOSTFromKliveAPI(`/KliveCloud/DeleteItem?itemID=${itemID}`);
         if(response.ok) {
-            Swal.fire({
-                icon: 'success',
-                title: 'Item Deleted',
-                toast: true,
-                position: 'top-end',
-                showConfirmButton: false,
-                timer: 3000
-            });
+            notify('Deleted');
             refreshCurrentFolder();
-        } else {
-            const text = await response.text();
-             Swal.fire('Error', `Failed to delete: ${text}`, 'error');
+        } else if (response.status !== 403 || !response.headers.get('RequestDeniedCode')) {
+            notify("Couldn't delete", await failureText(response), 'error');
         }
     } catch (e: any) {
         Swal.fire('Error', e.message, 'error');
@@ -642,10 +711,7 @@ const uploadFileAPI = async (file: File) => {
     }
 
     const parentID = getCurrentFolderID();
-    const params = new URLSearchParams({
-        fileName: file.name,
-        permissionLevel: selectedPermission.value.toString()
-    });
+    const params = new URLSearchParams({ fileName: file.name });
     if (parentID) {
         params.append('parentFolderID', parentID);
     }
@@ -666,11 +732,11 @@ const uploadFileAPI = async (file: File) => {
         const xhr = new XMLHttpRequest();
         task.xhr = xhr;
 
-        const password = passwordCookie.value || '';
+        const authorization = AuthorizationHeaderValue();
         const query = `${KliveAPIUrl}/KliveCloud/UploadFile?${params.toString()}`;
 
         xhr.open('POST', query, true);
-        xhr.setRequestHeader('Authorization', password);
+        if (authorization) xhr.setRequestHeader('Authorization', authorization);
         // Do NOT set Content-Type so browser sets boundary? Wait, for raw binary, we don't need boundary.
         // But if we just send the file, browser might set type.
         // API expects raw bytes. So we don't need multipart.
@@ -696,9 +762,10 @@ const uploadFileAPI = async (file: File) => {
                 resolve();
             } else {
                 task.status = 'error';
-                // Try to read error text
-                const errorText = xhr.responseText || 'Upload failed';
-                console.error("Upload error:", errorText);
+                ReportXhrAccess(xhr, '/KliveCloud/UploadFile');
+                let errorText = xhr.responseText || 'Upload failed';
+                try { const body = JSON.parse(xhr.responseText); errorText = body?.message || body?.error || errorText; } catch { /* plain text */ }
+                if (xhr.status !== 401 && !(xhr.status === 403 && xhr.getResponseHeader('RequestDeniedCode'))) notify(`Couldn't upload ${file.name}`, errorText, 'error');
                 reject(new Error(errorText));
             }
         };
@@ -737,8 +804,7 @@ const downloadFileAPI = async (item: CloudItem) => {
         const response = await RequestGETFromKliveAPI(`/KliveCloud/DownloadFile?itemID=${item.ItemID}`, false, true);
         
         if (!response.ok) {
-             const text = await response.text();
-             Swal.fire('Download Error', text, 'error');
+             if (response.status !== 403 || !response.headers.get('RequestDeniedCode')) notify("Couldn't download", await failureText(response), 'error');
              activeDownloads.value.delete(item.ItemID);
              return;
         }
@@ -768,21 +834,24 @@ const refreshCurrentFolder = () => {
 };
 
 const navigateToRoot = () => {
-  currentPath.value = [];
   fetchItems();
 };
 
+const openSharedWithMe = () => {
+  selectedItems.value.clear();
+  fetchItems(SHARED_WITH_ME);
+};
+
 const navigateToFolder = (folder: CloudItem, index: number) => {
-  // Slice the path up to this folder
-  currentPath.value = currentPath.value.slice(0, index + 1);
   fetchItems(folder.ItemID);
 };
 
 const navigateUp = () => {
-    if (currentPath.value.length > 0) {
-        currentPath.value.pop();
-        fetchItems(getCurrentFolderID());
-    }
+    if (inSharedView.value) return navigateToRoot();
+    const parent = currentPath.value.length > 1 ? currentPath.value[currentPath.value.length - 2].ItemID : '';
+    // Top of a folder shared into something hidden: up is "Shared with me".
+    if (!parent && sharedRoot.value) return openSharedWithMe();
+    fetchItems(parent);
 }
 
 const handleItemClick = (item: CloudItem, event?: MouseEvent) => {
@@ -846,8 +915,7 @@ const handleItemClick = (item: CloudItem, event?: MouseEvent) => {
   }
 
   if (item.ItemType === 'Folder') {
-    // Navigate into folder
-    currentPath.value.push(item);
+    // Navigate into folder (the server returns the breadcrumbs)
     fetchItems(item.ItemID);
     selectedItems.value.clear(); // Clear selection on navigation
   } else {
@@ -1199,6 +1267,10 @@ const fetchSharedLinks = async () => {
             // Limit concurrency? 
             // For now, simple loop is fine unless user has hundreds of links
             for (const link of links) {
+                if (link.ItemName) {
+                    enrichedLinks.push(link);
+                    continue;
+                }
                 try {
                     const itemRes = await RequestGETFromKliveAPI(`/KliveCloud/GetItemInfo?itemID=${link.ItemID}`, false, false);
                     if (itemRes.ok) {
@@ -1429,12 +1501,12 @@ const moveItems = async (itemIDs: string[], newParentFolderID: string) => {
                 failedCount++;
                 continue;
             }
-            const response = await RequestPOSTFromKliveAPI(`/KliveCloud/MoveItem?itemID=${id}&newParentFolderID=${newParentFolderID}`);
+            const response = await RequestPOSTFromKliveAPI(`/KliveCloud/MoveItem?itemID=${encodeURIComponent(id)}&newParentFolderID=${encodeURIComponent(newParentFolderID)}`);
             if (response.ok) {
                 successCount++;
             } else {
                 failedCount++;
-                lastError = await response.text();
+                lastError = await failureText(response);
             }
         } catch (e: any) {
             failedCount++;
@@ -1443,18 +1515,11 @@ const moveItems = async (itemIDs: string[], newParentFolderID: string) => {
     }
 
     if (successCount > 0) {
-        Swal.fire({
-            icon: 'success',
-            title: `Moved ${successCount} item(s) successfully` + (failedCount > 0 ? `, ${failedCount} failed` : ''),
-            toast: true,
-            position: 'top-end',
-            showConfirmButton: false,
-            timer: 3000
-        });
+        notify(`Moved ${successCount} item${successCount === 1 ? '' : 's'}`, failedCount > 0 ? `${failedCount} couldn't be moved: ${lastError}` : '');
         selectedItems.value.clear();
         refreshCurrentFolder();
     } else if (failedCount > 0) {
-        Swal.fire('Error', `Failed to move items: ${lastError}`, 'error');
+        notify("Couldn't move", lastError, 'error');
     }
 };
 
@@ -1476,64 +1541,6 @@ const promptCreateFolder = async () => {
     }
 };
 
-const promptChangePermission = async (item: CloudItem) => {
-    const { value: permissionLevel } = await Swal.fire({
-        title: 'Change Permission',
-        input: 'select',
-        inputOptions: {
-            '0': 'Anybody (0)',
-            '1': 'Guest (1)',
-            '2': 'Manager (2)',
-            '3': 'Associate (3)',
-            '4': 'Admin (4)',
-            '5': 'Klives (5)'
-        },
-        inputLabel: `Select new permission level for "${item.Name}"`,
-        inputValue: getPermissionLevelValue(item.MinimumPermissionLevel),
-        showCancelButton: true,
-    });
-
-    if (permissionLevel) {
-        changePermissionAPI(item, parseInt(permissionLevel));
-    }
-};
-
-const getPermissionLevelValue = (levelName: string): string => {
-    const map: Record<string, string> = {
-        'Anybody': '0',
-        'Guest': '1',
-        'Manager': '2',
-        'Associate': '3',
-        'Admin': '4',
-        'Klives': '5'
-    };
-    return map[levelName] || '1';
-};
-
-const changePermissionAPI = async (item: CloudItem, newLevel: number) => {
-    try {
-        const query = `/KliveCloud/ChangeItemPermission?itemID=${item.ItemID}&permissionLevel=${newLevel}`;
-        const response = await RequestPOSTFromKliveAPI(query);
-        
-        if (response.ok) {
-            Swal.fire({
-                icon: 'success',
-                title: 'Permission Updated',
-                toast: true,
-                position: 'top-end',
-                showConfirmButton: false,
-                timer: 3000
-            });
-            refreshCurrentFolder();
-        } else {
-             const text = await response.text();
-             Swal.fire('Error', `Failed to update permission: ${text}`, 'error');
-        }
-    } catch (e: any) {
-        Swal.fire('Error', e.message, 'error');
-    }
-}
-
 const showContextMenu = (event: MouseEvent, item: CloudItem) => {
     // Implement custom context menu if desired, for now just log
     console.log('Context menu for', item.Name);
@@ -1542,8 +1549,8 @@ const showContextMenu = (event: MouseEvent, item: CloudItem) => {
 // Lifecycle
 onMounted(() => {
     fetchItems();
-    fetchDriveInfo();
-    fetchSharedLinks();
+    if (can('klivecloud.drive.view')) fetchDriveInfo();
+    if (can('klivecloud.sharing.manage')) fetchSharedLinks();
 
     // Prevent tab closure if active uploads or downloads
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -1767,19 +1774,40 @@ const loadPreview = async (id: string) => {
   }
 }
 
-.permission-select {
-    padding: 8px 12px;
-    border-radius: 4px;
-    background-color: #2e3440;
-    color: #eceff4;
-    border: 1px solid #4c566a;
-    cursor: pointer;
-    font-weight: bold;
-    outline: none;
-
-    &:hover {
-        background-color: #3b4252;
+.actions .action-btn {
+    &.share-folder-btn {
+        background-color: #3b4f3a;
+        &:hover { background-color: #4d6a4b; }
     }
+    &:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+}
+
+.view-only-chip {
+    align-self: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(136, 192, 208, 0.5);
+    color: #88c0d0;
+    font-size: 0.75rem;
+    font-weight: bold;
+    letter-spacing: 0.04em;
+}
+
+.breadcrumbs .shared-pill {
+    margin-left: 12px;
+    padding: 3px 12px;
+    border-radius: 999px;
+    border: 1px solid #4c566a;
+    background: #2e3440;
+    color: #88c0d0;
+    font-size: 0.8rem;
+    letter-spacing: normal;
+    text-transform: none;
+    cursor: pointer;
+    &:hover { border-color: #88c0d0; box-shadow: none; }
 }
 
 .cloud-content {
@@ -1912,14 +1940,40 @@ const loadPreview = async (id: string) => {
       color: #888;
     }
 
-    .item-perm {
+    .item-access {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        max-width: 100%;
+        margin-top: 3px;
+        padding: 1px 6px 1px 2px;
+        border-radius: 999px;
+        background: #1c1c1c;
+        border: 1px solid #2a2a2a;
         font-size: 0.62rem;
         color: #aaa;
-        margin-top: 2px;
-        background: #222;
-        padding: 1px 4px;
-        border-radius: 4px;
-        display: inline-block;
+
+        &.clickable { cursor: pointer; }
+        &.clickable:hover { border-color: #4CAF50; color: #ddd; }
+
+        .access-stack { display: inline-flex; }
+        .access-face {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            margin-left: -4px;
+            font-size: 0.5rem;
+            font-weight: bold;
+            color: hsl(var(--hue, 120) 70% 85%);
+            background: hsl(var(--hue, 120) 38% 26%);
+            border: 1px solid #111;
+            &:first-child { margin-left: 0; }
+        }
+        .access-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .access-level { color: #88c0d0; white-space: nowrap; }
     }
 
     .separator {

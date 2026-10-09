@@ -6,8 +6,8 @@
                 <p class="subtitle">{{ subtitle }}</p>
             </div>
             <div class="ot-actions">
-                <NuxtLink class="ot-btn ghost" to="/schemery/omnitumblr/compose">Compose a post</NuxtLink>
-                <button v-if="isAdmin" class="ot-btn primary" @click="openWizard(null)">Add blogs</button>
+                <NuxtLink v-if="can('omnitumblr.posts.act')" class="ot-btn ghost" to="/schemery/omnitumblr/compose">Compose a post</NuxtLink>
+                <button v-if="can('omnitumblr.blogs.manage')" class="ot-btn primary" @click="openWizard(null)">Add blogs</button>
             </div>
         </div>
 
@@ -19,9 +19,9 @@
                 {{ item.Detail }}
             </div>
             <div v-if="item.Action" class="actions">
-                <button v-if="item.Action === 'reconnect' && isAdmin" class="ot-btn sm" @click="openWizard(item.ConnectionId)">Reconnect</button>
+                <button v-if="item.Action === 'reconnect' && can('omnitumblr.settings.manage')" class="ot-btn sm" @click="openWizard(item.ConnectionId)">Reconnect</button>
                 <NuxtLink v-else-if="item.Action === 'settings'" class="ot-btn sm" to="/schemery/omnitumblr/settings">Open settings</NuxtLink>
-                <button v-else-if="item.Action === 'add-blog' && isAdmin" class="ot-btn sm" @click="openWizard(null)">Add blogs</button>
+                <button v-else-if="item.Action === 'add-blog' && can('omnitumblr.blogs.manage')" class="ot-btn sm" @click="openWizard(null)">Add blogs</button>
                 <NuxtLink v-else-if="item.BlogId && item.Action === 'strategy'" class="ot-btn sm" :to="`/schemery/omnitumblr/blog/${item.BlogId}?tab=strategy`">Edit strategy</NuxtLink>
                 <NuxtLink v-else-if="item.BlogId && item.Action === 'queue'" class="ot-btn sm" :to="`/schemery/omnitumblr/blog/${item.BlogId}?tab=queue`">Open queue</NuxtLink>
             </div>
@@ -47,7 +47,7 @@
         <div v-if="overview && !overview.Blogs.length" class="ot-card">
             <div class="body">
                 <OmniTraderStateBlock title="No blogs yet" detail="Connect a Tumblr account and pick the blogs OmniTumblr should run. Each blog gets a weekly schedule, a content source and an AI caption voice.">
-                    <button v-if="isAdmin" class="ot-btn primary" @click="openWizard(null)">Add your first blog</button>
+                    <button v-if="can('omnitumblr.blogs.manage')" class="ot-btn primary" @click="openWizard(null)">Add your first blog</button>
                 </OmniTraderStateBlock>
             </div>
         </div>
@@ -94,14 +94,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { useCurrentProfile } from '~/composables/useCurrentProfile';
+import { useAccess } from '~/composables/useAccess';
 import { fmtCount, fmtRelative, fmtSignedCount, fmtWhen, useNow, useTumblrOverview } from '~/composables/useOmniTumblr';
 
 definePageMeta({ layout: 'navbar' });
 useHead({ title: 'OmniTumblr · Klives Management' });
 
 const router = useRouter();
-const { isAdmin } = useCurrentProfile();
+const { can } = useAccess();
 const { overview, refresh } = useTumblrOverview();
 const now = useNow();
 

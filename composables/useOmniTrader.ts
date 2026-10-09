@@ -179,7 +179,7 @@ export function useOmniTrader() {
 
     function describe(res: Response | null | undefined, what: string): string {
         if (!res) return `${what} could not reach the API`;
-        if (res.status === 403 || res.status === 401) return `${what} was refused — this action needs a higher clearance`;
+        if (res.status === 403 || res.status === 401) return `${what} was refused — your profile is missing the permission for it`;
         return `${what} failed (HTTP ${res.status})`;
     }
 

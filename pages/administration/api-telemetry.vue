@@ -5,7 +5,7 @@
   components/ApiTelemetry/. Nuxt's path-prefixed auto-import would name them
   <ApiTelemetryTelChart>; a bare <TelChart> without the import renders NOTHING.
 
-  Data: /KliveAPI/telemetry/* (Klives-only). Standard ranges are precomputed,
+  Data: /KliveAPI/telemetry/* (system.api.telemetry.read). Standard ranges are precomputed,
   pre-compressed views on the server; see composables/useApiTelemetry.ts for the
   client half of the "instant" contract (SWR snapshots, ETag revalidation, prefetch).
 -->
@@ -50,7 +50,7 @@
       </div>
 
       <div v-if="hasErrors && !data.overview" class="notice" role="alert">
-        Couldn’t load telemetry: {{ Object.values(errors)[0] }}. This page needs the Klives rank, and the KliveAPI telemetry engine running.
+        Couldn’t load telemetry: {{ Object.values(errors)[0] }}. This page needs the “View API telemetry” permission, and the KliveAPI telemetry engine running.
       </div>
 
       <!-- Live strip: 1 s ticks from the 10 s tier's open bucket. -->

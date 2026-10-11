@@ -320,24 +320,15 @@ const fetchCS2Stats = async () => {
 
 const fetchMemescraperStats = async () => {
     try {
-        const response = await RequestGETFromKliveAPI('/memescraper/memeScraperAnalytics', false, false);
+        // The summary route counts "today" in the viewer's time zone and skips the full analytics.
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        const response = await RequestGETFromKliveAPI(`/memescraper/summary?tz=${encodeURIComponent(tz)}`, false, false);
         if (response.ok) {
-            const analytics = await response.json();
-            let todayDownloads = 0;
-            if (analytics.MemesDownloadedPerDay) {
-                const today = new Date();
-                const todayStr = today.toISOString().split('T')[0];
-                for (const key of Object.keys(analytics.MemesDownloadedPerDay)) {
-                    if (key.includes(todayStr) || new Date(key).toDateString() === today.toDateString()) {
-                        todayDownloads = analytics.MemesDownloadedPerDay[key];
-                        break;
-                    }
-                }
-            }
+            const summary = await response.json();
             memescraperStats.value = {
-                totalSources: analytics.TotalInstagramSources || 0,
-                totalMemes: analytics.TotalReelsDownloaded || 0,
-                todayDownloads,
+                totalSources: summary.TotalInstagramSources || 0,
+                totalMemes: summary.TotalReelsDownloaded || 0,
+                todayDownloads: summary.DownloadedToday || 0,
                 loading: false
             };
         } else {

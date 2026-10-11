@@ -63,6 +63,10 @@ const SLOW_STALE_MS = 180_000;
 const SAMPLE_LIMIT = 40;
 const REQUEST_TIMEOUT_MS = 12_000;
 
+function viewerTimeZone(): string {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
+}
+
 const routes = {
   frontpage: '/GeneralBotStatistics/GetFrontpageStats',
   api: '/KliveAPI/Statistics',
@@ -76,7 +80,8 @@ const routes = {
   agentNotifications: '/kliveagent/notifications?unreadOnly=true',
   cloud: '/KliveCloud/GetDriveInfo',
   cs2: '/cs2arbitragebot/getscanalytics',
-  memes: '/memescraper/memeScraperAnalytics',
+  // A few counts, not the full analytics; "today" is the viewer's day.
+  memes: `/memescraper/summary?tz=${encodeURIComponent(viewerTimeZone())}`,
   gram: '/omnigram/dashboard-stats',
   tumblr: '/omnitumblr/dashboard-stats',
   // The overview returns live fleet state immediately and warms historical JSONL analytics
@@ -741,6 +746,7 @@ export function useDashboardOverview() {
   });
 
   function todayMemeDownloads(): number {
+    if (typeof data.memes?.DownloadedToday === 'number') return data.memes.DownloadedToday;
     const values = data.memes?.MemesDownloadedPerDay || {};
     const today = new Date().toDateString();
     for (const [key, value] of Object.entries(values)) {

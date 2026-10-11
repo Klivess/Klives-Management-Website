@@ -327,13 +327,17 @@ function responseForPath(pathWithQuery: string, role: DashboardRole, overrides: 
         TotalListingsScanned: 42_018,
         HighestPredictedGainFoundSoFar: 1.237,
       };
-    case '/memescraper/memeScraperAnalytics':
+    case '/memescraper/summary':
       return {
         TotalInstagramSources: 8,
+        ReelSources: 7,
+        FailingSources: 0,
         TotalReelsDownloaded: 1_284,
+        DownloadedToday: 17,
+        Downloaded7d: 96,
+        DownloadedPrev7d: 88,
+        LastDownloadUtc: new Date().toISOString(),
         MemesDownloadedPerDay: { [today]: 17 },
-        ReelsDownloadedPerSource: { fixture_source: 400 },
-        TopNichesByDownload: { tech: 100 },
       };
     case '/omnigram/dashboard-stats':
       return { TotalAccounts: 3, ActiveAccounts: 2, ConnectedAccounts: 2, PausedAccounts: 0, ErrorAccounts: 0, AutopilotAccounts: 2, PendingCount: 5, FailedCount: 0, SuccessRate: 96, TotalFollowers: 18_400, FollowerGain7d: 220, PostsThisWeek: 3, PostsToday: 1, AvgViews30d: 5400, Reach7d: 21_000, NextPostUtc: null, NextPostAccount: null, AttentionCount: 0 };

@@ -1396,7 +1396,7 @@ export const PERMISSIONS: FixturePermission[] = [
     "tier": "Glance",
     "tierValue": 1,
     "title": "View OmniGram overview",
-    "description": "Dashboard statistics across all accounts.",
+    "description": "The autopilot overview and dashboard statistics.",
     "legacyRank": 1,
     "implies": [],
     "sensitive": false
@@ -1409,9 +1409,11 @@ export const PERMISSIONS: FixturePermission[] = [
     "tier": "Read",
     "tierValue": 2,
     "title": "View accounts",
-    "description": "Instagram accounts with their profiles and configuration.",
+    "description": "Instagram accounts with their profile, strategy, health and queue.",
     "legacyRank": 1,
-    "implies": [],
+    "implies": [
+      "omnigram.overview.view"
+    ],
     "sensitive": false
   },
   {
@@ -1422,7 +1424,7 @@ export const PERMISSIONS: FixturePermission[] = [
     "tier": "Act",
     "tierValue": 3,
     "title": "Operate accounts",
-    "description": "Pause, resume and re-login accounts and edit their notes.",
+    "description": "Pause and resume accounts, refresh them from Instagram, plan now and edit their notes.",
     "legacyRank": 4,
     "implies": [
       "omnigram.accounts.read"
@@ -1437,7 +1439,7 @@ export const PERMISSIONS: FixturePermission[] = [
     "tier": "Manage",
     "tierValue": 4,
     "title": "Manage accounts",
-    "description": "Add and remove accounts, edit their Instagram profile and configuration.",
+    "description": "Switch autopilot, edit strategies, remove accounts and delete published posts from Instagram.",
     "legacyRank": 4,
     "implies": [
       "omnigram.accounts.act"
@@ -1452,9 +1454,11 @@ export const PERMISSIONS: FixturePermission[] = [
     "tier": "Read",
     "tierValue": 2,
     "title": "View content",
-    "description": "Content folders, posts, the publishing queue, analytics and events.",
+    "description": "Posts, media, the content library, analytics, comments and events.",
     "legacyRank": 1,
-    "implies": [],
+    "implies": [
+      "omnigram.accounts.read"
+    ],
     "sensitive": false
   },
   {
@@ -1465,12 +1469,55 @@ export const PERMISSIONS: FixturePermission[] = [
     "tier": "Act",
     "tierValue": 3,
     "title": "Publish content",
-    "description": "Schedule, publish, cancel and draft posts, upload media and take analytics snapshots.",
+    "description": "Compose, schedule, edit, approve, publish, skip and cancel posts, regenerate captions and upload media.",
     "legacyRank": 4,
     "implies": [
       "omnigram.content.read"
     ],
     "sensitive": false
+  },
+  {
+    "key": "omnigram.comments.act",
+    "service": "OmniGram",
+    "serviceKey": "omnigram",
+    "area": "Comments",
+    "tier": "Act",
+    "tierValue": 3,
+    "title": "Moderate comments",
+    "description": "Reply to, hide and delete comments on the accounts' posts.",
+    "legacyRank": 4,
+    "implies": [
+      "omnigram.content.read"
+    ],
+    "sensitive": false
+  },
+  {
+    "key": "omnigram.settings.view",
+    "service": "OmniGram",
+    "serviceKey": "omnigram",
+    "area": "Settings",
+    "tier": "Manage",
+    "tierValue": 4,
+    "title": "View settings and connections",
+    "description": "The Instagram app settings, account connections, tokens' expiry and engine status.",
+    "legacyRank": 4,
+    "implies": [],
+    "sensitive": false
+  },
+  {
+    "key": "omnigram.settings.manage",
+    "service": "OmniGram",
+    "serviceKey": "omnigram",
+    "area": "Settings",
+    "tier": "Critical",
+    "tierValue": 5,
+    "title": "Change settings and connections",
+    "description": "The Instagram app secret, connecting and reconnecting accounts, and removing v1 credentials.",
+    "legacyRank": 4,
+    "implies": [
+      "omnigram.settings.view"
+    ],
+    "sensitive": true
   },
   {
     "key": "omniscience.overview.view",

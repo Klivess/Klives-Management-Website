@@ -336,7 +336,7 @@ function responseForPath(pathWithQuery: string, role: DashboardRole, overrides: 
         TopNichesByDownload: { tech: 100 },
       };
     case '/omnigram/dashboard-stats':
-      return { TotalAccounts: 3, ActiveAccounts: 2, TotalPosts: 50, PostedCount: 45, PendingCount: 5, SuccessRate: 96 };
+      return { TotalAccounts: 3, ActiveAccounts: 2, ConnectedAccounts: 2, PausedAccounts: 0, ErrorAccounts: 0, AutopilotAccounts: 2, PendingCount: 5, FailedCount: 0, SuccessRate: 96, TotalFollowers: 18_400, FollowerGain7d: 220, PostsThisWeek: 3, PostsToday: 1, AvgViews30d: 5400, Reach7d: 21_000, NextPostUtc: null, NextPostAccount: null, AttentionCount: 0 };
     case '/omnitumblr/dashboard-stats':
       return { TotalAccounts: 2, ActiveAccounts: 2, AutopilotBlogs: 2, PendingCount: 3, FailedCount: 0, SuccessRate: 93, TotalFollowers: 1200, FollowerGain7d: 14, PostsThisWeek: 4, PostsToday: 1, AvgNotes30d: 18.5, NextPostUtc: null, NextPostBlog: null, AttentionCount: 0 };
     case '/KliveCloud/GetDriveInfo':

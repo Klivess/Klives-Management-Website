@@ -10,7 +10,7 @@
         <template v-else>
             <div class="head">
                 <div class="ot-legend">
-                    <span class="item"><span class="swatch" :style="{ background: OURS }"></span>Posted by OmniTumblr</span>
+                    <span class="item"><span class="swatch" :style="{ background: OURS }"></span>Posted by {{ owner }}</span>
                     <span class="item"><span class="swatch" :style="{ background: OTHERS }"></span>Posted elsewhere</span>
                 </div>
                 <div class="spacer"></div>
@@ -44,9 +44,9 @@
             <div v-if="focusBucket && !showTable" class="ot-tooltip" :style="tooltipStyle">
                 <div class="t">{{ focusBucket.label }}</div>
                 <template v-if="focusBucket.ours + focusBucket.others > 0">
-                    <div v-if="focusBucket.ours" class="r"><span><span class="swatch" :style="{ background: OURS }"></span> by OmniTumblr</span><span class="v">{{ focusBucket.ours }}</span></div>
+                    <div v-if="focusBucket.ours" class="r"><span><span class="swatch" :style="{ background: OURS }"></span> by {{ owner }}</span><span class="v">{{ focusBucket.ours }}</span></div>
                     <div v-if="focusBucket.others" class="r"><span><span class="swatch" :style="{ background: OTHERS }"></span> elsewhere</span><span class="v">{{ focusBucket.others }}</span></div>
-                    <div class="r"><span>notes</span><span class="v">{{ fmtCount(focusBucket.notes) }}</span></div>
+                    <div class="r"><span>{{ unit }}</span><span class="v">{{ fmtCount(focusBucket.notes) }}</span></div>
                 </template>
                 <div v-else class="r"><span>no posts</span></div>
             </div>
@@ -54,7 +54,7 @@
             <div v-if="showTable" class="ot-tablewrap" style="max-height:300px">
                 <table class="ot-table">
                     <thead>
-                        <tr><th>{{ weekly ? 'Week of' : 'Day' }}</th><th class="num">By OmniTumblr</th><th class="num">Elsewhere</th><th class="num">Notes</th></tr>
+                        <tr><th>{{ weekly ? 'Week of' : 'Day' }}</th><th class="num">By {{ owner }}</th><th class="num">Elsewhere</th><th class="num">{{ unit[0].toUpperCase() + unit.slice(1) }}</th></tr>
                     </thead>
                     <tbody>
                         <tr v-for="b in postedBuckets" :key="b.key">
@@ -74,7 +74,13 @@ import { fmtCount } from '~/composables/useOmniTumblr';
 interface PostingDay { Day: string; Ours: number; Others: number; Notes: number }
 interface Bucket { key: string; label: string; ours: number; others: number; notes: number }
 
-const props = withDefaults(defineProps<{ days: PostingDay[]; height?: number }>(), { height: 230 });
+const props = withDefaults(defineProps<{
+    days: PostingDay[];
+    height?: number;
+    /** What Notes measures, for labels ("notes" on Tumblr, "views" on Instagram). */
+    unit?: string;
+    owner?: string;
+}>(), { height: 230, unit: 'notes', owner: 'OmniTumblr' });
 
 const OURS = 'var(--ot-cat-1)';
 const OTHERS = 'var(--ot-cat-4)';
@@ -202,7 +208,7 @@ const summary = computed(() => {
     const posts = posted.reduce((a, b) => a + b.ours + b.others, 0);
     const notes = posted.reduce((a, b) => a + b.notes, 0);
     const best = posted.reduce((a, b) => (b.notes > a.notes ? b : a));
-    return `${posts} posts on ${posted.length} ${weekly.value ? 'weeks' : 'days'} earned ${fmtCount(notes)} notes; `
+    return `${posts} posts on ${posted.length} ${weekly.value ? 'weeks' : 'days'} earned ${fmtCount(notes)} ${props.unit}; `
         + `best was ${best.label} with ${fmtCount(best.notes)}. Use arrow keys to read individual ${weekly.value ? 'weeks' : 'days'}.`;
 });
 </script>

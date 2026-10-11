@@ -774,10 +774,12 @@ export function useDashboardOverview() {
         tone: 'info',
       },
       {
+        // As for OmniTumblr: scheduled posts are normal; only items needing a decision colour the row.
         id: 'gram', label: 'OmniGram', href: '/schemery/omnigram',
-        primary: `${numberValue(data.gram?.ActiveAccounts)}/${gramTotal} active`,
-        secondary: `${numberValue(data.gram?.PendingCount)} pending`, tertiary: `${numberValue(data.gram?.SuccessRate).toFixed(1)}% success`,
-        tone: numberValue(data.gram?.PendingCount) ? 'warning' : 'success',
+        primary: `${numberValue(data.gram?.AutopilotAccounts ?? data.gram?.ActiveAccounts)}/${gramTotal} on autopilot`,
+        secondary: `${numberValue(data.gram?.PostsThisWeek)} posts in 7 d`,
+        tertiary: numberValue(data.gram?.AttentionCount) ? `${numberValue(data.gram?.AttentionCount)} need attention` : `${numberValue(data.gram?.PendingCount)} queued`,
+        tone: numberValue(data.gram?.AttentionCount) ? 'warning' : gramTotal ? 'success' : 'neutral',
       },
       {
         // Scheduled posts are normal in v2; only items needing a decision colour the row.

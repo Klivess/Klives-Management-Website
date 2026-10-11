@@ -3,10 +3,10 @@
         <div v-if="!cells.length" class="ot-state compact">
             <span class="glyph" aria-hidden="true">○</span>
             <strong>Not enough posts yet</strong>
-            <p>Each cell averages the notes of posts published in that hour. It fills in as the blog posts.</p>
+            <p>Each cell averages the {{ unit }} of posts published in that hour. It fills in as the {{ owner }} posts.</p>
         </div>
         <template v-else>
-            <div class="grid" role="table" :aria-label="`Average notes by weekday and hour, ${timeZone}`">
+            <div class="grid" role="table" :aria-label="`Average ${unit} by weekday and hour, ${timeZone}`">
                 <div class="row head" role="row">
                     <span role="columnheader"></span>
                     <span v-for="h in 24" :key="h" class="hour" role="columnheader">{{ (h - 1) % 3 === 0 ? String(h - 1).padStart(2, '0') : '' }}</span>
@@ -19,9 +19,9 @@
                 </div>
             </div>
             <div class="legend">
-                <span>fewer notes</span>
+                <span>fewer {{ unit }}</span>
                 <span class="ramp" aria-hidden="true"></span>
-                <span>more notes</span>
+                <span>more {{ unit }}</span>
                 <span class="tz">hours in {{ timeZone }} · {{ sampleSize }} posts</span>
             </div>
         </template>
@@ -36,7 +36,10 @@ const props = withDefaults(defineProps<{
     cells: { Dow: number; Hour: number; Posts: number; AvgNotes: number }[];
     timeZone?: string;
     sampleSize?: number;
-}>(), { timeZone: 'UTC', sampleSize: 0 });
+    /** What AvgNotes measures, for labels ("notes" on Tumblr, "views" on Instagram). */
+    unit?: string;
+    owner?: string;
+}>(), { timeZone: 'UTC', sampleSize: 0, unit: 'notes', owner: 'blog' });
 
 const map = computed(() => new Map(props.cells.map(c => [`${c.Dow}:${c.Hour}`, c])));
 const max = computed(() => Math.max(1, ...props.cells.map(c => c.AvgNotes)));
@@ -54,7 +57,7 @@ function cellStyle(day: number, hour: number) {
 function cellTitle(day: number, hour: number) {
     const cell = map.value.get(`${day}:${hour}`);
     const span = `${DAY_LONG[day]} ${String(hour).padStart(2, '0')}:00–${String((hour + 1) % 24).padStart(2, '0')}:00`;
-    return cell ? `${span}: ${cell.AvgNotes} notes on average over ${cell.Posts} post(s)` : `${span}: no posts`;
+    return cell ? `${span}: ${cell.AvgNotes} ${props.unit} on average over ${cell.Posts} post(s)` : `${span}: no posts`;
 }
 </script>
 

@@ -1,1520 +1,760 @@
 <template>
-    <div class="klivechat-shell">
-        <div class="klivechat-grid"></div>
-        <div class="klivechat-aurora"></div>
+    <div class="ot-os kc-call" :class="{ 'panel-open': !!panel && live }">
+        <header class="kc-top">
+            <NuxtLink v-if="signedIn" to="/klivechat" class="kc-iconbtn" title="All rooms" aria-label="All rooms">
+                <KliveChatIcon name="arrow-left" :size="18" />
+            </NuxtLink>
+            <div class="kc-title">
+                <span class="kc-title-name">{{ roomName }}</span>
+                <KliveChatIcon v-if="room?.locked" name="lock" :size="14" class="kc-dim" />
+            </div>
+            <span v-if="live" class="kc-top-meta">
+                <span class="ot-dot" :class="phase === 'live' ? 'ok' : 'warn'" aria-hidden="true"></span>
+                <span>{{ peopleCount }}</span>
+                <span class="kc-sep" aria-hidden="true">·</span>
+                <span class="mono">{{ elapsed }}</span>
+            </span>
+            <span v-if="phase === 'reconnecting'" class="ot-chip warn">Reconnecting…</span>
+            <div class="kc-spacer"></div>
+            <button type="button" class="ot-btn ghost sm" @click="copyLink">
+                <KliveChatIcon :name="copied ? 'check' : 'link'" :size="15" />
+                <span class="kc-wide">{{ copied ? 'Copied' : 'Copy link' }}</span>
+            </button>
+        </header>
 
-        <main class="klivechat-frame">
-            <section class="panel hero-panel">
-                <div class="hero-header">
-                    <div>
-                        <div class="eyebrow">KLIVECHAT / ROOM {{ roomId }}</div>
-                        <h1>{{ roomName }}</h1>
-                        <p>Share the room link, manage your microphone and camera, and keep the call aligned from a single dashboard-style surface.</p>
-                    </div>
+        <div class="kc-body">
+            <main class="kc-main">
+                <div v-if="booting" class="kc-center"><span class="kc-loader" aria-label="Loading"></span></div>
 
-                    <div class="room-id-badge">
-                        ID {{ roomId }}
+                <section v-else-if="ended" class="kc-center kc-ended">
+                    <h1>{{ ended.title }}</h1>
+                    <p v-if="ended.detail">{{ ended.detail }}</p>
+                    <div class="kc-ended-actions">
+                        <button v-if="ended.retry" type="button" class="ot-btn primary" @click="rejoin">{{ ended.retry }}</button>
+                        <NuxtLink v-if="signedIn" to="/klivechat" class="ot-btn">All rooms</NuxtLink>
                     </div>
+                </section>
+
+                <KliveChatPreJoin v-else-if="phase === 'prejoin' && s" :room-name="roomName" :here="here" :signed-in="signedIn" :initial-name="initialName"
+                                  :mic-on="s.local.micOn" :mic-error="s.local.micError" :mic-level="s.local.micLevel"
+                                  :cam-on="s.local.camOn" :cam-track="s.local.camTrack" :cam-error="s.local.camError"
+                                  :mirror="s.prefs.mirrorSelf && s.local.facing === 'user'" :locked="!!preview?.locked" :joining="false"
+                                  :devices="s.devices" :prefs="s.prefs"
+                                  @join="join" @toggle-mic="call?.toggleMic()" @toggle-cam="call?.toggleCam()" @select="(kind, id) => call?.selectDevice(kind, id)" />
+
+                <div v-else-if="phase === 'connecting'" class="kc-center kc-connecting">
+                    <span class="kc-loader" aria-hidden="true"></span>
+                    <span>{{ (s?.reconnectAttempt ?? 0) > 2 ? "Can't reach KliveChat. Retrying…" : `Joining ${roomName}…` }}</span>
                 </div>
 
-                <div class="status-row">
-                    <span class="status-pill status-pill--active">YOU {{ myName || 'Loading...' }}</span>
-                    <span class="status-pill">{{ isMuted ? 'MIC MUTED' : 'MIC LIVE' }}</span>
-                    <span class="status-pill">{{ isVideo ? 'VIDEO ON' : 'VIDEO OFF' }}</span>
-                    <span class="status-pill">{{ isScreenSharing ? 'SCREEN SHARING' : 'NO SCREEN SHARE' }}</span>
-                </div>
-            </section>
+                <KliveChatStage v-else :tiles="tiles" :focus-key="focusKey" :show-stats="!!s?.prefs.showStats" @pin="pin" />
 
-            <section class="panel link-panel">
-                <div class="panel-top">
-                    <div>
-                        <div class="eyebrow">SHARE LINK</div>
-                        <h2>Invite other people to this room</h2>
-                    </div>
-                    <div class="panel-note">COPY FROM THE BROWSER URL</div>
+                <div v-if="live && s && !s.peers.length" class="kc-alone">
+                    <span>Nobody else is here</span>
+                    <button type="button" class="ot-btn sm" @click="copyLink"><KliveChatIcon :name="copied ? 'check' : 'link'" :size="14" /> {{ copied ? 'Copied' : 'Copy link' }}</button>
                 </div>
 
-                <div class="link-stack">
-                    <input class="link-input" :value="currentUrl" readonly />
-                    <div class="link-meta">
-                        <span>{{ currentUrl || 'Waiting for browser URL...' }}</span>
-                        <button class="ghost-button compact" type="button" @click="copyShareLink">COPY LINK</button>
-                    </div>
-                    <div v-if="copyStatus" class="status-pill status-pill--active">
-                        {{ copyStatus }}
-                    </div>
-                </div>
-            </section>
+                <TransitionGroup name="kc-pop" tag="div" class="kc-notices" aria-live="polite">
+                    <div v-for="notice in s?.notices ?? []" :key="notice.id" class="kc-notice" :class="notice.tone" @click="call?.dismissNotice(notice.id)">{{ notice.text }}</div>
+                </TransitionGroup>
 
-            <section class="panel controls-panel">
-                <div class="panel-top">
-                    <div>
-                        <div class="eyebrow">SESSION CONTROLS</div>
-                        <h2>Manage audio and media</h2>
-                    </div>
-                    <div class="panel-note">WEBCAM AND SCREEN SHARE READY</div>
-                </div>
+                <button v-if="s?.audioBlocked" type="button" class="kc-audio-blocked" @click="call?.resumeAudio()">
+                    <KliveChatIcon name="volume-off" :size="16" /> The browser paused call audio. Click to play.
+                </button>
 
-                <div class="control-strip">
-                    <button class="control-tile" type="button" :class="{ active: !isMuted }" @click="toggleMute">
-                        <span class="control-title">{{ isMuted ? 'Unmute mic' : 'Mute mic' }}</span>
-                        <span class="control-copy">Toggle your microphone without leaving the room.</span>
-                        <span class="control-chip">{{ isMuted ? 'OFF' : 'ON' }}</span>
+                <Transition name="kc-pop">
+                    <button v-if="chatPreview" type="button" class="kc-chat-preview" @click="openPanel('chat')">
+                        <b>{{ chatPreview.senderName }}</b> <span>{{ chatPreview.text }}</span>
                     </button>
+                </Transition>
+            </main>
 
-                    <button class="control-tile" type="button" :class="{ active: isVideo }" @click="toggleVideo">
-                        <span class="control-title">{{ isVideo ? 'Disable camera' : 'Enable camera' }}</span>
-                        <span class="control-copy">Send your camera feed to the room when you need it.</span>
-                        <span class="control-chip">{{ isVideo ? 'LIVE' : 'OFF' }}</span>
-                    </button>
-
-                    <button v-if="canFlipCamera" class="control-tile" type="button" @click="flipCamera">
-                        <span class="control-title">Flip camera</span>
-                        <span class="control-copy">Swap between the front and rear camera without leaving the room.</span>
-                        <span class="control-chip">{{ preferredFacingMode === 'environment' ? 'REAR' : 'FRONT' }}</span>
-                    </button>
-
-                    <button class="control-tile" type="button" :class="{ active: isScreenSharing }" @click="toggleScreenShare">
-                        <span class="control-title">{{ isScreenSharing ? 'Stop screen share' : 'Share screen' }}</span>
-                        <span class="control-copy">Present a browser tab or desktop capture.</span>
-                        <span class="control-chip">{{ isScreenSharing ? 'LIVE' : 'OFF' }}</span>
-                    </button>
-
-                    <button class="control-tile danger" type="button" @click="leaveRoom">
-                        <span class="control-title">Leave room</span>
-                        <span class="control-copy">Cleanly disconnect and return to the main dashboard.</span>
-                        <span class="control-chip">EXIT</span>
-                    </button>
+            <aside v-if="panel && live && s" class="kc-panel" :aria-label="panel === 'chat' ? 'Chat' : 'People'">
+                <div class="kc-panel-tabs" role="tablist">
+                    <button type="button" role="tab" :aria-selected="panel === 'chat'" @click="openPanel('chat')">Chat</button>
+                    <button type="button" role="tab" :aria-selected="panel === 'people'" @click="openPanel('people')">People <span class="kc-count">{{ peopleCount }}</span></button>
+                    <button type="button" class="kc-iconbtn kc-panel-close" aria-label="Close panel" @click="panel = null"><KliveChatIcon name="close" :size="16" /></button>
                 </div>
-            </section>
+                <KliveChatMessages v-if="panel === 'chat'" :entries="s.chat" :self-id="s.selfId" :disabled="phase !== 'live'"
+                                    @send="sendChat" @retry="retryChat" />
+                <KliveChatPeoplePanel v-else :peers="s.peers" :self="selfSummary" :my-rank="me?.rank ?? 0" :can-moderate="s.canModerate"
+                                      :can-rename="s.isHost || !!me?.canDeleteAnyRoom" :locked="!!room?.locked" :room-name="roomName"
+                                      @moderate="(id, action) => call?.moderate(id, action)" @lock="locked => call?.setLocked(locked)"
+                                      @rename="name => call?.renameRoom(name)" @volume="(id, v) => call?.setPeerVolume(id, v)"
+                                      @local-mute="id => call?.togglePeerMute(id)" />
+            </aside>
+        </div>
 
-            <section class="panel roster-panel">
-                <div class="panel-top">
-                    <div>
-                        <div class="eyebrow">PARTICIPANTS</div>
-                        <h2>{{ peersState.length + 1 }} connected</h2>
-                    </div>
-                    <div class="panel-note">{{ focusedPeerId ? 'FOCUS MODE' : 'GRID MODE' }}</div>
+        <footer v-if="live && s" class="kc-controls">
+            <div class="kc-controls-side kc-wide">
+                <span class="mono">{{ clock }}</span>
+                <span v-if="s.prefs.pushToTalk && !s.local.micOn" class="kc-ptt" :class="{ on: s.local.pttHeld }">{{ s.local.pttHeld ? 'Talking' : 'Hold Space to talk' }}</span>
+            </div>
+
+            <div class="kc-controls-center">
+                <div class="kc-pair">
+                    <button type="button" class="kc-ctl" :class="{ off: !micLive, blocked: !!s.local.micError }" :aria-pressed="micLive"
+                            :title="s.local.micError || `${micLive ? 'Mute' : 'Unmute'} (M)`" @click="call?.toggleMic()">
+                        <KliveChatIcon :name="micLive ? 'mic' : 'mic-off'" />
+                        <span v-if="s.local.mutedTalking" class="kc-hint">You're muted</span>
+                    </button>
+                    <button type="button" class="kc-caret" aria-label="Audio settings" :aria-expanded="menu === 'audio'" @click="toggleMenu('audio')">
+                        <KliveChatIcon name="chevron-up" :size="14" />
+                    </button>
+                    <KliveChatDeviceMenu v-if="menu === 'audio'" class="kc-popover" kind="audio" :devices="s.devices" :prefs="s.prefs" :level="s.local.micLevel"
+                                         :mic-on="micLive" :can-pick-speaker="s.canPickSpeaker" :can-share-screen="s.canShareScreen"
+                                         @select="selectDevice" @pref="setPref" @close="menu = null" />
                 </div>
 
-                <div :class="['participant-grid', { 'has-focus': focusedPeerId !== null }]">
-                    <div
-                        :class="['participant-card', { focused: focusedPeerId === 'local' }]"
-                        @click="toggleFocus('local')"
-                    >
-                        <div class="participant-head">
-                            <div>
-                                <div class="participant-name-row">
-                                    <div class="participant-name">You · {{ myName }}</div>
-                                    <span v-if="canModerate" class="participant-role-chip">MOD</span>
-                                </div>
-                                <div class="participant-state">{{ describeLocalState() }}</div>
-                                <div class="participant-badges">
-                                    <span class="participant-badge" :class="{ active: !isMuted, danger: isMuted }">{{ isMuted ? 'Muted' : 'Mic live' }}</span>
-                                    <span class="participant-badge" :class="{ active: isVideo }">{{ isVideo ? 'Camera on' : 'Camera off' }}</span>
-                                    <span class="participant-badge" :class="{ active: isScreenSharing }">{{ isScreenSharing ? 'Screen share' : 'No screen' }}</span>
-                                </div>
-                            </div>
-                            <canvas ref="localVisualizer" width="60" height="20" class="signal-meter"></canvas>
-                        </div>
-
-                        <div class="media-frame">
-                            <video ref="localVideo" class="participant-video" autoplay playsinline muted></video>
-                            <div v-if="!isVideo && !isScreenSharing" class="media-placeholder">
-                                <span>AUDIO ONLY</span>
-                                <strong>Camera and screen share are off</strong>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div
-                        v-for="peer in peersState"
-                        :key="peer.id"
-                        :class="['participant-card', { focused: focusedPeerId === peer.id }]"
-                        @click="toggleFocus(peer.id)"
-                    >
-                        <div class="participant-head">
-                            <div>
-                                <div class="participant-name-row">
-                                    <div class="participant-name">{{ peer.name || 'Anonymous' }}</div>
-                                    <span v-if="peer.canModerate" class="participant-role-chip">MOD</span>
-                                </div>
-                                <div class="participant-state">{{ describePeerState(peer) }}</div>
-                                <div class="participant-badges">
-                                    <span class="participant-badge" :class="{ active: !peer.isMuted, danger: peer.isMuted }">{{ peer.isMuted ? 'Muted' : 'Mic live' }}</span>
-                                    <span class="participant-badge" :class="{ active: peer.hasVideo && !peer.isScreenSharing }">{{ peer.hasVideo && !peer.isScreenSharing ? 'Camera on' : 'Camera off' }}</span>
-                                    <span class="participant-badge" :class="{ active: peer.isScreenSharing }">{{ peer.isScreenSharing ? 'Screen share' : 'No screen' }}</span>
-                                </div>
-                            </div>
-                            <canvas :ref="(el) => setPeerVisualizerRef(el, peer.id)" width="60" height="20" class="signal-meter"></canvas>
-                        </div>
-
-                        <div class="media-frame">
-                            <video :ref="(el) => setAudioRef(el, peer.id)" class="participant-video" autoplay playsinline></video>
-                            <div v-if="!peer.hasVideo && !peer.isScreenSharing" class="media-placeholder">
-                                <span>AUDIO ONLY</span>
-                                <strong>{{ peer.isMuted ? 'Participant is muted' : 'Listening without video' }}</strong>
-                            </div>
-                        </div>
-
-                        <div v-if="canModerate" class="participant-actions" @click.stop>
-                            <button class="participant-action-btn" type="button" @click.stop="moderatePeer(peer, 'kick')">REMOVE</button>
-                            <button class="participant-action-btn danger" type="button" @click.stop="moderatePeer(peer, 'ban')">BAN</button>
-                        </div>
-                    </div>
-
-                    <div v-if="peersState.length === 0" class="empty-room">
-                        No participants yet. Share the room link to bring someone in.
-                    </div>
+                <div class="kc-pair">
+                    <button type="button" class="kc-ctl" :class="{ off: !s.local.camOn }" :aria-pressed="s.local.camOn"
+                            :title="`${s.local.camOn ? 'Turn camera off' : 'Turn camera on'} (V)`" @click="call?.toggleCam()">
+                        <KliveChatIcon :name="s.local.camOn ? 'video' : 'video-off'" />
+                    </button>
+                    <button type="button" class="kc-caret" aria-label="Camera settings" :aria-expanded="menu === 'video'" @click="toggleMenu('video')">
+                        <KliveChatIcon name="chevron-up" :size="14" />
+                    </button>
+                    <KliveChatDeviceMenu v-if="menu === 'video'" class="kc-popover" kind="video" :devices="s.devices" :prefs="s.prefs" :level="0"
+                                         :mic-on="micLive" :can-pick-speaker="s.canPickSpeaker" :can-share-screen="s.canShareScreen"
+                                         @select="selectDevice" @pref="setPref" @close="menu = null" />
                 </div>
-            </section>
-        </main>
+
+                <button v-if="s.local.camOn && s.devices.cams.length > 1" type="button" class="kc-ctl kc-narrow-only" title="Switch camera" @click="call?.switchCamera()">
+                    <KliveChatIcon name="switch-camera" />
+                </button>
+
+                <button v-if="s.canShareScreen" type="button" class="kc-ctl" :class="{ active: s.local.screenOn }" :aria-pressed="s.local.screenOn"
+                        :title="`${s.local.screenOn ? 'Stop sharing' : 'Share screen'} (S)`" @click="call?.toggleScreen()">
+                    <KliveChatIcon :name="s.local.screenOn ? 'screen-off' : 'screen'" />
+                </button>
+
+                <div class="kc-pair">
+                    <button type="button" class="kc-ctl" title="Settings" :aria-expanded="menu === 'settings'" @click="toggleMenu('settings')">
+                        <KliveChatIcon name="settings" />
+                    </button>
+                    <KliveChatDeviceMenu v-if="menu === 'settings'" class="kc-popover" kind="settings" :devices="s.devices" :prefs="s.prefs" :level="0"
+                                         :mic-on="micLive" :can-pick-speaker="s.canPickSpeaker" :can-share-screen="s.canShareScreen"
+                                         @select="selectDevice" @pref="setPref" @close="menu = null" />
+                </div>
+
+                <button type="button" class="kc-ctl leave" title="Leave" aria-label="Leave" @click="leave">
+                    <KliveChatIcon name="phone-off" />
+                </button>
+            </div>
+
+            <div class="kc-controls-side right">
+                <button type="button" class="kc-ctl subtle" :class="{ active: panel === 'people' }" title="People (P)" @click="togglePanel('people')">
+                    <KliveChatIcon name="users" />
+                    <span class="kc-badge quiet">{{ peopleCount }}</span>
+                </button>
+                <button type="button" class="kc-ctl subtle" :class="{ active: panel === 'chat' }" title="Chat (C)" @click="togglePanel('chat')">
+                    <KliveChatIcon name="chat" />
+                    <span v-if="s.unread" class="kc-badge">{{ s.unread > 99 ? '99+' : s.unread }}</span>
+                </button>
+            </div>
+        </footer>
+
+        <div v-if="menu" class="kc-menu-backdrop" @click="menu = null"></div>
     </div>
 </template>
 
-<script setup>
-import { GetAuthToken } from '~/scripts/APIInterface';
-// KliveChat rooms are a standalone window, deliberately kept off the navbar/dashboard
-// layout so the main KM application's authenticated routes are never queried from here.
+<script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import { useRoute } from 'vue-router';
+import type { TileModel } from '~/components/KliveChat/Tile.vue';
+import { fetchMe, fetchRoom, roomLink } from '~/scripts/klivechat/api';
+import { KliveChatCall, type ChatEntry } from '~/scripts/klivechat/call';
+import { callDuration, statsLine } from '~/scripts/klivechat/format';
+import { consumeAutoJoin, loadPrefs, type ChatPrefs } from '~/scripts/klivechat/prefs';
+import type { ChatMe, RoomSummary } from '~/scripts/klivechat/types';
+
+// A standalone window for guests and members alike: no navbar shell, nothing that needs a profile.
 definePageMeta({ layout: 'empty' });
 
-import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import Swal from 'sweetalert2';
-import { KliveAPIUrl, RequestGETFromKliveAPI } from '../../../scripts/APIInterface';
-
 const route = useRoute();
-const router = useRouter();
 const roomId = String(route.params.id);
 
-const isAuthenticated = ref(false);
-const focusedPeerId = ref(null);
-const copyStatus = ref('');
-let copyStatusTimer = null;
-
-function toggleFocus(id) {
-    focusedPeerId.value = focusedPeerId.value === id ? null : id;
-}
-
-const wsBaseUrl = KliveAPIUrl.replace('https', 'wss').replace('http', 'ws');
-let wsUrl = `${wsBaseUrl}/klivechat/ws?roomId=${roomId}`;
-let ws = null;
-let localStream = null;
-const peerConnections = {};
-const peerAudioOnlyStreams = {};
-let socketCloseHandled = false;
-
-const myName = ref('');
-const roomName = ref('Loading...');
-const currentUrl = ref('');
-const localParticipantId = ref('');
-// Muting and removing people is klivechat.rooms.moderate (and only over profiles ranked below you).
-const isMuted = ref(false);
-const isVideo = ref(false);
-const isScreenSharing = ref(false);
-const preferredFacingMode = ref('user');
-const peersState = ref([]);
-const audioRefs = {};
-const canModerate = ref(false);
-const canFlipCamera = computed(() => isVideo.value && !isScreenSharing.value);
-
-const localVisualizer = ref(null);
-const peerVisualizers = {};
-let audioContext = null;
-let drawVisualizerLoop = null;
-let localAnalyser = null;
-const peerAnalysers = {};
-
-const localVideo = ref(null);
-
-const iceServers = {
-    iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-    ]
-};
-
-function setAudioRef(el, id) {
-    if (el) {
-        audioRefs[id] = el;
-        bindPeerMedia(id);
-    }
-}
-
-function setPeerVisualizerRef(el, id) {
-    if (el) {
-        peerVisualizers[id] = el;
-    }
-}
-
-/** This browser's sign-in, if any (rooms are open to guests too). */
-function getLocalCredential() {
-    return GetAuthToken();
-}
-
-function getGuestIdentity() {
-    if (!process.client) {
-        return '';
-    }
-
-    const storageKey = 'klivechat-guest-identity';
-    let guestIdentity = window.localStorage.getItem(storageKey);
-    if (!guestIdentity) {
-        guestIdentity = `guest-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
-        window.localStorage.setItem(storageKey, guestIdentity);
-    }
-
-    return guestIdentity;
-}
-
-function normalizePeer(peer) {
-    return {
-        id: peer?.id || '',
-        name: peer?.name || 'Anonymous',
-        rank: Number(peer?.rank ?? 0),
-        isGuest: Boolean(peer?.isGuest ?? true),
-        isMuted: Boolean(peer?.isMuted),
-        hasVideo: Boolean(peer?.hasVideo),
-        isScreenSharing: Boolean(peer?.isScreenSharing),
-        canModerate: Boolean(peer?.canModerate)
-    };
-}
-
-function findPeer(id) {
-    return peersState.value.find((peer) => peer.id === id) || null;
-}
-
-function createAudioOnlyStream(stream) {
-    const audioOnlyStream = new MediaStream();
-    stream.getAudioTracks().forEach((track) => {
-        if (track.readyState === 'live') {
-            audioOnlyStream.addTrack(track);
-        }
-    });
-    return audioOnlyStream;
-}
-
-function bindPeerMedia(id) {
-    const element = audioRefs[id];
-    const connection = peerConnections[id];
-    const peer = findPeer(id);
-    const remoteStream = connection?._remoteStream;
-    if (!element || !remoteStream) {
-        return;
-    }
-
-    const shouldShowVideo = Boolean(peer?.hasVideo || peer?.isScreenSharing)
-        && remoteStream.getVideoTracks().some((track) => track.readyState === 'live');
-
-    if (shouldShowVideo) {
-        delete peerAudioOnlyStreams[id];
-        if (element.srcObject !== remoteStream) {
-            element.srcObject = remoteStream;
-        }
-        return;
-    }
-
-    const audioOnlyStream = createAudioOnlyStream(remoteStream);
-    peerAudioOnlyStreams[id] = audioOnlyStream;
-    if (element.srcObject !== audioOnlyStream) {
-        element.srcObject = audioOnlyStream;
-    }
-}
-
-function upsertPeer(rawPeer) {
-    const peer = normalizePeer(rawPeer);
-    if (!peer.id || peer.id === localParticipantId.value) {
-        return;
-    }
-
-    const index = peersState.value.findIndex((existingPeer) => existingPeer.id === peer.id);
-    if (index === -1) {
-        peersState.value.push(peer);
-    } else {
-        peersState.value[index] = { ...peersState.value[index], ...peer };
-    }
-
-    bindPeerMedia(peer.id);
-}
-
-function describeLocalState() {
-    const mediaState = isScreenSharing.value ? 'Screen sharing' : isVideo.value ? 'Camera live' : 'Audio only';
-    const micState = isMuted.value ? 'Muted' : 'Mic live';
-    return `${micState} · ${mediaState}`;
-}
-
-function describePeerState(peer) {
-    const mediaState = peer.isScreenSharing ? 'Screen sharing' : peer.hasVideo ? 'Camera live' : 'Audio only';
-    const micState = peer.isMuted ? 'Muted' : 'Mic live';
-    return `${micState} · ${mediaState}`;
-}
-
-function sendLocalParticipantState() {
-    sendWSMessage('media-state', null, {
-        isMuted: isMuted.value,
-        hasVideo: isVideo.value || isScreenSharing.value,
-        isScreenSharing: isScreenSharing.value
-    });
-}
-
-async function acquireCameraTrack() {
-    const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-            facingMode: { ideal: preferredFacingMode.value }
-        },
-        audio: false
-    });
-
-    return stream.getVideoTracks()[0];
-}
-
-function removeLocalVideoTracks() {
-    if (!localStream) {
-        return;
-    }
-
-    const videoTracks = localStream.getVideoTracks();
-    videoTracks.forEach((track) => {
-        track.enabled = false;
-        track.stop();
-        localStream.removeTrack(track);
-    });
-}
-
-function syncPeerVideoTrack(videoTrack) {
-    Object.values(peerConnections).forEach((pc) => {
-        const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
-        if (videoTrack) {
-            if (sender) {
-                sender.replaceTrack(videoTrack);
-            } else {
-                pc.addTrack(videoTrack, localStream);
-            }
-            return;
-        }
-
-        if (sender) {
-            pc.removeTrack(sender);
-        }
-    });
-}
-
-async function verifyRoomExists() {
-    // The lobby list can be stale and the URL can be hand-typed, so confirm with the
-    // server that this room id maps to a real, still-open room before joining.
-    try {
-        const response = await RequestGETFromKliveAPI(`/klivechat/rooms?id=${encodeURIComponent(roomId)}`, false, false);
-        return Boolean(response && response.ok);
-    } catch (error) {
-        console.error('Failed to verify room existence:', error);
-        return false;
-    }
-}
-
-async function refuseMissingRoom() {
-    if (socketCloseHandled) {
-        return;
-    }
-    socketCloseHandled = true;
-    await Swal.fire({
-        title: 'Room Not Found',
-        text: 'This KliveChat room does not exist or has already been closed.',
-        icon: 'error',
-        background: '#161516',
-        color: '#fff'
-    });
-    // The lobby no longer exists, so drop the user back to the login screen.
-    router.push('/');
-}
-
-async function init() {
-    currentUrl.value = window.location.href;
-    wsUrl = `${wsBaseUrl}/klivechat/ws?roomId=${roomId}`;
-
-    // Refuse before prompting for a name or requesting media if the room is gone.
-    if (!(await verifyRoomExists())) {
-        await refuseMissingRoom();
-        return;
-    }
-
-    let lsName = '';
-    try {
-        const response = await RequestGETFromKliveAPI('/klivechat/me', false, false);
-        if (response && response.ok) {
-            const data = await response.json();
-            lsName = data.name || '';
-            canModerate.value = data.canModerate === true;
-        }
-    } catch (error) {
-        console.error('Failed to parse my profile name:', error);
-    }
-
-    if (!lsName || lsName.trim() === '') {
-        lsName = await getGuestName();
-        isAuthenticated.value = false;
-    } else {
-        isAuthenticated.value = true;
-    }
-
-    myName.value = lsName;
-    wsUrl += '&name=' + encodeURIComponent(lsName);
-    const authorization = getLocalCredential();
-    if (authorization) {
-        wsUrl += '&authorization=' + encodeURIComponent(authorization);
-    } else {
-        const guestIdentity = getGuestIdentity();
-        if (guestIdentity) {
-            wsUrl += '&guestIdentity=' + encodeURIComponent(guestIdentity);
-        }
-    }
-
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isVideo.value });
-        if (localVideo.value) {
-            localVideo.value.srcObject = localStream;
-        }
-        setupLocalVisualizer();
-        connectWebSocket();
-    } catch (error) {
-        console.error('Mic access denied', error);
-        Swal.fire({
-            title: 'Error',
-            text: 'Microphone access is required to use KliveChat.',
-            icon: 'error',
-            background: '#161516',
-            color: '#fff'
-        });
-    }
-}
-
-async function getGuestName() {
-    const { value: name } = await Swal.fire({
-        title: 'Join Room',
-        text: 'Please enter a display name to join:',
-        input: 'text',
-        allowOutsideClick: false,
-        allowEscapeKey: false,
-        background: '#161516',
-        color: '#fff',
-        inputValidator: (value) => {
-            if (!value) return 'You need to write something!';
-            return undefined;
-        }
-    });
-
-    return name || 'Guest_' + Math.floor(Math.random() * 1000);
-}
-
-function setupLocalVisualizer() {
-    if (!audioContext) {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    const source = audioContext.createMediaStreamSource(localStream);
-    localAnalyser = audioContext.createAnalyser();
-    localAnalyser.fftSize = 64;
-    source.connect(localAnalyser);
-}
-
-function setupPeerVisualizer(stream, id) {
-    if (!audioContext) return;
-
-    try {
-        const source = audioContext.createMediaStreamSource(stream);
-        const analyser = audioContext.createAnalyser();
-        analyser.fftSize = 64;
-        source.connect(analyser);
-        peerAnalysers[id] = analyser;
-    } catch (error) {
-        console.error('Failed to setup peer visualizer, perhaps no audio track.', error);
-    }
-}
-
-function renderVisualizers() {
-    drawVisualizerLoop = requestAnimationFrame(renderVisualizers);
-
-    if (localVisualizer.value && localAnalyser) {
-        drawCanvas(localVisualizer.value, localAnalyser, '#4d9e39');
-    }
-
-    for (const id in peerVisualizers) {
-        const canvas = peerVisualizers[id];
-        const analyser = peerAnalysers[id];
-        if (canvas && analyser) {
-            drawCanvas(canvas, analyser, '#33cc33');
-        }
-    }
-}
-
-function drawCanvas(canvas, analyser, color) {
-    const ctx = canvas.getContext('2d');
-    const width = canvas.width;
-    const height = canvas.height;
-
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    analyser.getByteFrequencyData(dataArray);
-
-    let sum = 0;
-    for (let i = 0; i < dataArray.length; i++) {
-        sum += dataArray[i];
-    }
-
-    const average = sum / dataArray.length;
-
-    ctx.clearRect(0, 0, width, height);
-
-    const fillWidth = (average / 255) * width;
-    ctx.fillStyle = color;
-    ctx.fillRect(0, 0, fillWidth, height);
-}
-
-function connectWebSocket() {
-    ws = new WebSocket(wsUrl);
-    socketCloseHandled = false;
-
-    ws.onopen = () => {
-        console.log('Connected to signaling server');
-        if (!drawVisualizerLoop) {
-            renderVisualizers();
-        }
-        sendLocalParticipantState();
-    };
-
-    ws.onmessage = async (event) => {
-        const msg = JSON.parse(event.data);
-
-        switch (msg.type) {
-            case 'room-info':
-                roomName.value = msg.payload.roomName;
-                localParticipantId.value = msg.payload.clientId || '';
-                peersState.value = [];
-                msg.payload.users.forEach((user) => upsertPeer(user));
-                break;
-            case 'user-joined':
-                upsertPeer(msg.payload);
-                await createOffer(msg.payload.id);
-                break;
-            case 'user-left':
-                removePeer(msg.payload.id);
-                break;
-            case 'participant-state':
-                upsertPeer(msg.payload);
-                break;
-            case 'participant-removed':
-                await handleParticipantRemoved(msg.payload);
-                break;
-            case 'room-error':
-                await handleRoomError(msg.payload);
-                break;
-            case 'offer':
-                await handleOffer(msg.senderId, msg.payload);
-                break;
-            case 'answer':
-                await handleAnswer(msg.senderId, msg.payload);
-                break;
-            case 'ice-candidate':
-                await handleIceCandidate(msg.senderId, msg.payload);
-                break;
-            case 'renegotiate':
-                await handleRenegotiate(msg.senderId);
-                break;
-        }
-    };
-
-    ws.onclose = async (event) => {
-        console.log('Disconnected from signaling server');
-        if (!socketCloseHandled && event.reason === 'Invalid Room ID') {
-            // Room was closed between the existence check and the socket handshake.
-            await refuseMissingRoom();
-            return;
-        }
-        if (!socketCloseHandled && event.reason === 'Room deleted') {
-            // The host closed the room while we were still in it: notify and eject.
-            socketCloseHandled = true;
-            await Swal.fire({
-                title: 'Room Closed',
-                text: 'This room has been closed by its host. You have been disconnected.',
-                icon: 'warning',
-                background: '#161516',
-                color: '#fff'
-            });
-            leaveRoom();
-            return;
-        }
-        if (!socketCloseHandled && (event.reason === 'Banned from room' || event.reason === 'Removed from room')) {
-            socketCloseHandled = true;
-            await Swal.fire({
-                title: event.reason === 'Banned from room' ? 'Banned from Room' : 'Removed from Room',
-                text: event.reason === 'Banned from room'
-                    ? 'A moderator banned you from this call.'
-                    : 'A moderator removed you from this call.',
-                icon: 'warning',
-                background: '#161516',
-                color: '#fff'
-            });
-            leaveRoom();
-        }
-    };
-}
-
-function removePeer(id) {
-    peersState.value = peersState.value.filter((peer) => peer.id !== id);
-    if (focusedPeerId.value === id) {
-        focusedPeerId.value = null;
-    }
-    if (peerConnections[id]) {
-        peerConnections[id].close();
-        delete peerConnections[id];
-    }
-    delete audioRefs[id];
-    delete peerVisualizers[id];
-    delete peerAnalysers[id];
-    delete peerAudioOnlyStreams[id];
-}
-
-function createPeerConnection(targetId) {
-    const pc = new RTCPeerConnection(iceServers);
-
-    localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
-
-    pc.onicecandidate = (event) => {
-        if (event.candidate) {
-            sendWSMessage('ice-candidate', targetId, event.candidate);
-        }
-    };
-
-    pc.ontrack = (event) => {
-        pc._remoteStream = event.streams[0];
-        setupPeerVisualizer(pc._remoteStream, targetId);
-        pc._remoteStream.getTracks().forEach((track) => {
-            track.onended = () => bindPeerMedia(targetId);
-        });
-        bindPeerMedia(targetId);
-    };
-
-    pc.onnegotiationneeded = async () => {
-        try {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            sendWSMessage('offer', targetId, pc.localDescription);
-        } catch (error) {
-            console.error('Negotiation failed', error);
-        }
-    };
-
-    peerConnections[targetId] = pc;
-    return pc;
-}
-
-async function createOffer(targetId) {
-    createPeerConnection(targetId);
-}
-
-async function handleOffer(senderId, offer) {
-    let pc = peerConnections[senderId];
-    if (!pc) {
-        pc = createPeerConnection(senderId);
-    }
-    await pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    sendWSMessage('answer', senderId, pc.localDescription);
-}
-
-async function handleAnswer(senderId, answer) {
-    const pc = peerConnections[senderId];
-    if (pc) {
-        await pc.setRemoteDescription(new RTCSessionDescription(answer));
-    }
-}
-
-async function handleIceCandidate(senderId, candidate) {
-    const pc = peerConnections[senderId];
-    if (pc) {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
-    }
-}
-
-async function handleRenegotiate() {
-    // Negotiation is handled by the peer connection event.
-}
-
-function sendWSMessage(type, targetId, payload) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type, targetId, payload }));
-    }
-}
-
-async function handleParticipantRemoved(payload) {
-    if (!payload?.id) {
-        return;
-    }
-
-    removePeer(payload.id);
-
-    if (payload.id === localParticipantId.value && !socketCloseHandled) {
-        socketCloseHandled = true;
-        await Swal.fire({
-            title: payload.action === 'ban' ? 'Banned from Room' : 'Removed from Room',
-            text: payload.action === 'ban'
-                ? 'A moderator banned you from this call.'
-                : 'A moderator removed you from this call.',
-            icon: 'warning',
-            background: '#161516',
-            color: '#fff'
-        });
-        leaveRoom();
-    }
-}
-
-async function handleRoomError(payload) {
-    if (!payload?.message) {
-        return;
-    }
-
-    await Swal.fire({
-        title: 'KliveChat',
-        text: payload.message,
-        icon: 'warning',
-        background: '#161516',
-        color: '#fff'
-    });
-}
-
-async function moderatePeer(peer, action) {
-    if (!canModerate.value) {
-        return;
-    }
-
-    const verb = action === 'ban' ? 'ban' : 'remove';
-    const result = await Swal.fire({
-        title: `${verb.toUpperCase()} ${peer.name}?`,
-        text: action === 'ban'
-            ? 'They will be blocked from rejoining this room while it stays open.'
-            : 'They will be disconnected from the room immediately.',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: action === 'ban' ? 'Ban participant' : 'Remove participant',
-        confirmButtonColor: action === 'ban' ? '#cc3333' : '#d97706',
-        cancelButtonColor: '#555',
-        background: '#161516',
-        color: '#fff'
-    });
-
-    if (!result.isConfirmed) {
-        return;
-    }
-
-    sendWSMessage('moderate-participant', null, { targetId: peer.id, action });
-}
-
-function toggleMute() {
-    if (localStream) {
-        isMuted.value = !isMuted.value;
-        localStream.getAudioTracks().forEach((track) => {
-            track.enabled = !isMuted.value;
-        });
-        sendLocalParticipantState();
-    }
-}
-
-async function toggleVideo() {
-    isVideo.value = !isVideo.value;
-
-    if (isVideo.value) {
-        try {
-            if (isScreenSharing.value) {
-                isScreenSharing.value = false;
-                removeLocalVideoTracks();
-            }
-
-            const videoTrack = await acquireCameraTrack();
-            localStream.addTrack(videoTrack);
-            syncPeerVideoTrack(videoTrack);
-
-            if (localVideo.value) {
-                localVideo.value.srcObject = localStream;
-            }
-            sendLocalParticipantState();
-        } catch (error) {
-            console.error('Camera access failed', error);
-            isVideo.value = false;
-            sendLocalParticipantState();
-        }
-    } else {
-        removeLocalVideoTracks();
-        syncPeerVideoTrack(null);
-        sendLocalParticipantState();
-    }
-}
-
-async function flipCamera() {
-    if (!localStream || !isVideo.value || isScreenSharing.value) {
-        return;
-    }
-
-    const previousFacingMode = preferredFacingMode.value;
-    preferredFacingMode.value = preferredFacingMode.value === 'user' ? 'environment' : 'user';
-
-    try {
-        const videoTrack = await acquireCameraTrack();
-        removeLocalVideoTracks();
-        localStream.addTrack(videoTrack);
-        syncPeerVideoTrack(videoTrack);
-
-        if (localVideo.value) {
-            localVideo.value.srcObject = localStream;
-        }
-
-        sendLocalParticipantState();
-    } catch (error) {
-        preferredFacingMode.value = previousFacingMode;
-        console.error('Camera flip failed', error);
-    }
-}
-
-async function toggleScreenShare() {
-    if (isScreenSharing.value) {
-        isScreenSharing.value = false;
-
-        const videoTracks = localStream.getVideoTracks();
-        videoTracks.forEach((track) => {
-            track.enabled = false;
-            track.stop();
-            localStream.removeTrack(track);
-        });
-
-        if (isVideo.value) {
-            try {
-                const videoTrack = await acquireCameraTrack();
-                localStream.addTrack(videoTrack);
-                syncPeerVideoTrack(videoTrack);
-            } catch (error) {
-                console.error('Reverting to camera failed', error);
-                isVideo.value = false;
-            }
-        } else {
-            syncPeerVideoTrack(null);
-        }
-        sendLocalParticipantState();
-    } else {
-        try {
-            const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-            const screenTrack = screenStream.getVideoTracks()[0];
-
-            screenTrack.onended = () => {
-                if (isScreenSharing.value) {
-                    toggleScreenShare();
-                }
-            };
-
-            if (isVideo.value) {
-                isVideo.value = false;
-            }
-
-            isScreenSharing.value = true;
-
-            removeLocalVideoTracks();
-
-            localStream.addTrack(screenTrack);
-            syncPeerVideoTrack(screenTrack);
-
-            if (localVideo.value) {
-                localVideo.value.srcObject = localStream;
-            }
-            sendLocalParticipantState();
-        } catch (error) {
-            console.error('Screen share access failed', error);
-            isScreenSharing.value = false;
-            sendLocalParticipantState();
-        }
-    }
-}
-
-async function copyShareLink() {
-    if (!currentUrl.value) {
-        currentUrl.value = window.location.href;
-    }
-
-    try {
-        await navigator.clipboard.writeText(currentUrl.value);
-        copyStatus.value = 'Link copied.';
-
-        if (copyStatusTimer) {
-            clearTimeout(copyStatusTimer);
-        }
-
-        copyStatusTimer = window.setTimeout(() => {
-            copyStatus.value = '';
-        }, 1800);
-    } catch (error) {
-        console.error('Copy failed', error);
-        copyStatus.value = 'Clipboard copy failed.';
-    }
-}
-
-function leaveRoom() {
-    // Authenticated users return to the dashboard; guests go to the login screen so
-    // they never land in the authenticated navbar shell.
-    router.push(isAuthenticated.value ? '/dashboard' : '/');
-}
-
-onMounted(() => {
-    if (process.client) {
-        init();
+const call = shallowRef<KliveChatCall | null>(null);
+const s = computed(() => call.value?.state ?? null);
+const me = ref<ChatMe | null>(null);
+const preview = ref<RoomSummary | null>(null);
+const booting = ref(true);
+const notFound = ref(false);
+const initialName = ref('');
+const panel = ref<'chat' | 'people' | null>(null);
+const menu = ref<'audio' | 'video' | 'settings' | null>(null);
+const pinnedKey = ref<string | null>(null);
+const copied = ref(false);
+const now = ref(Date.now());
+const endedAt = ref(0);
+const chatPreview = ref<ChatEntry | null>(null);
+
+const signedIn = computed(() => !!me.value);
+const phase = computed(() => s.value?.phase ?? 'prejoin');
+const live = computed(() => phase.value === 'live' || phase.value === 'reconnecting');
+const room = computed(() => s.value?.room ?? null);
+const roomName = computed(() => room.value?.name ?? preview.value?.name ?? 'KliveChat');
+const peopleCount = computed(() => (s.value?.peers.length ?? 0) + 1);
+const micLive = computed(() => !!s.value && !s.value.local.micError && s.value.local.micReady && (s.value.local.micOn || s.value.local.pttHeld));
+const here = computed(() => (preview.value?.participants ?? []).map(p => p.name));
+const elapsed = computed(() => (s.value?.joinedAt ? callDuration(now.value - s.value.joinedAt) : '0:00'));
+const clock = computed(() => new Date(now.value).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }));
+
+useHead({
+    title: () => `${s.value?.unread ? `(${s.value.unread}) ` : ''}${roomName.value} · KliveChat`,
+});
+
+const selfSummary = computed(() => ({
+    name: s.value?.selfName || 'You',
+    isGuest: !signedIn.value,
+    isHost: !!s.value?.isHost,
+    micOn: micLive.value,
+    camOn: !!s.value?.local.camOn,
+    screenOn: !!s.value?.local.screenOn,
+    speaking: !!s.value?.local.speaking,
+}));
+
+const ended = computed(() => {
+    const reason = notFound.value ? 'not-found' : s.value?.phase === 'ended' ? s.value.endReason : null;
+    if (!reason) return null;
+    const lasted = s.value?.joinedAt && endedAt.value ? callDuration(endedAt.value - s.value.joinedAt) : '';
+    switch (reason) {
+        case 'left': return { title: 'You left the call', detail: lasted ? `In the call for ${lasted}` : '', retry: 'Rejoin' };
+        case 'kicked': return { title: `${s.value?.endDetail || 'A moderator'} removed you from the call`, detail: '', retry: 'Rejoin' };
+        case 'banned': return { title: "You're banned from this room", detail: '', retry: '' };
+        case 'deleted': return { title: 'This room was closed', detail: '', retry: '' };
+        case 'locked': return { title: 'This room is locked', detail: 'Only moderators can join right now.', retry: 'Try again' };
+        case 'full': return { title: 'This room is full', detail: '', retry: 'Try again' };
+        case 'replaced': return { title: 'You joined from another tab', detail: '', retry: 'Use this tab' };
+        default: return { title: 'Room not found', detail: 'Check the link.', retry: '' };
     }
 });
 
-onUnmounted(() => {
-    if (copyStatusTimer) {
-        clearTimeout(copyStatusTimer);
+const tiles = computed<TileModel[]>(() => {
+    const state = s.value;
+    if (!state) return [];
+    const local = state.local;
+    const list: TileModel[] = [{
+        key: 'self:camera',
+        kind: 'camera',
+        peerId: state.selfId || 'self',
+        isSelf: true,
+        name: state.selfName || 'You',
+        isGuest: !state.signedIn,
+        track: local.camTrack,
+        videoOn: local.camOn && !!local.camTrack,
+        mirror: state.prefs.mirrorSelf && local.facing === 'user',
+        muted: !micLive.value,
+        speaking: local.speaking,
+        screenAudio: false,
+        status: 'ok',
+        quality: null,
+        statsText: null,
+        joinedAt: 0,
+    }];
+    for (const peer of state.peers) {
+        list.push({
+            key: `${peer.id}:camera`,
+            kind: 'camera',
+            peerId: peer.id,
+            isSelf: false,
+            name: peer.name,
+            isGuest: peer.isGuest,
+            track: peer.camTrack,
+            videoOn: peer.hasVideo && peer.camLive,
+            mirror: false,
+            muted: peer.isMuted,
+            speaking: peer.speaking,
+            screenAudio: false,
+            status: !peer.connected ? 'offline' : peer.media === 'connected' ? 'ok' : 'connecting',
+            quality: peer.stats.quality,
+            statsText: statsLine(peer.stats),
+            joinedAt: peer.joinedAt,
+        });
     }
-
-    if (drawVisualizerLoop) {
-        cancelAnimationFrame(drawVisualizerLoop);
+    if (local.screenOn) {
+        list.push({
+            key: 'self:screen', kind: 'screen', peerId: state.selfId || 'self', isSelf: true, name: state.selfName || 'You', isGuest: !state.signedIn,
+            track: local.screenTrack, videoOn: !!local.screenTrack, mirror: false, muted: false, speaking: false, screenAudio: local.screenAudio,
+            status: 'ok', quality: null, statsText: null, joinedAt: Number.MAX_SAFE_INTEGER,
+        });
     }
-
-    if (audioContext) {
-        audioContext.close();
+    for (const peer of state.peers) {
+        if (!peer.isScreenSharing) continue;
+        list.push({
+            key: `${peer.id}:screen`, kind: 'screen', peerId: peer.id, isSelf: false, name: peer.name, isGuest: peer.isGuest,
+            track: peer.screenTrack, videoOn: peer.screenLive, mirror: false, muted: false, speaking: false, screenAudio: peer.hasScreenAudio,
+            status: !peer.connected ? 'offline' : peer.media === 'connected' ? 'ok' : 'connecting', quality: null, statsText: null, joinedAt: peer.joinedAt,
+        });
     }
+    return list;
+});
 
-    if (ws) {
-        ws.close();
+// Someone starting a screen share takes the stage (unless you're already watching another one).
+const knownScreens = new Set<string>();
+watch(() => tiles.value.filter(t => t.kind === 'screen' && !t.isSelf).map(t => t.key), keys => {
+    for (const key of keys) {
+        if (knownScreens.has(key)) continue;
+        knownScreens.add(key);
+        const current = tiles.value.find(t => t.key === pinnedKey.value);
+        if (!current || current.kind !== 'screen') pinnedKey.value = key;
     }
+    for (const key of [...knownScreens]) if (!keys.includes(key)) knownScreens.delete(key);
+});
 
-    if (localStream) {
-        localStream.getTracks().forEach((track) => track.stop());
+const focusKey = computed(() => (pinnedKey.value && tiles.value.some(t => t.key === pinnedKey.value) ? pinnedKey.value : null));
+
+function pin(key: string | null) {
+    pinnedKey.value = key === null || pinnedKey.value === key ? null : key;
+}
+
+function openPanel(which: 'chat' | 'people') {
+    panel.value = which;
+    chatPreview.value = null;
+}
+
+function togglePanel(which: 'chat' | 'people') {
+    if (panel.value === which) panel.value = null;
+    else openPanel(which);
+}
+
+function toggleMenu(which: 'audio' | 'video' | 'settings') {
+    menu.value = menu.value === which ? null : which;
+}
+
+function sendChat(text: string) {
+    call.value?.sendChat(text);
+}
+
+function retryChat(key: string) {
+    call.value?.retryChat(key);
+}
+
+function selectDevice(kind: 'mic' | 'cam' | 'speaker', id: string | null) {
+    void call.value?.selectDevice(kind, id);
+}
+
+function setPref(key: keyof ChatPrefs, value: boolean) {
+    const c = call.value;
+    if (!c) return;
+    if (key === 'noiseSuppression') void c.setNoiseSuppression(value);
+    else c.setPref(key, value as never);
+}
+
+async function copyLink() {
+    try {
+        await navigator.clipboard.writeText(roomLink(roomId));
+        copied.value = true;
+        setTimeout(() => { copied.value = false; }, 1600);
+    } catch {
+        call.value?.notify("Couldn't copy the link.", 'warn');
     }
+}
 
-    Object.values(peerConnections).forEach((pc) => pc.close());
+async function join(name: string) {
+    await call.value?.join(name);
+}
+
+function leave() {
+    menu.value = null;
+    call.value?.leave();
+}
+
+async function rejoin() {
+    if (notFound.value) return;
+    pinnedKey.value = null;
+    await call.value?.rejoin();
+}
+
+watch(panel, value => call.value?.setChatOpen(value === 'chat'));
+watch(phase, (value, previous) => {
+    if (value === 'ended' && previous !== 'ended') {
+        endedAt.value = Date.now();
+        panel.value = null;
+        menu.value = null;
+    }
+});
+
+// New messages while chat is closed: a short preview above the controls.
+let previewTimer: ReturnType<typeof setTimeout> | null = null;
+watch(() => s.value?.lastIncoming, entry => {
+    if (!entry || panel.value === 'chat') return;
+    chatPreview.value = entry;
+    if (previewTimer) clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => { chatPreview.value = null; }, 5000);
+});
+
+function isTyping(target: EventTarget | null) {
+    const el = target as HTMLElement | null;
+    return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+}
+
+function onKeyDown(event: KeyboardEvent) {
+    const c = call.value;
+    if (!c || !live.value || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.key === 'Escape') {
+        if (menu.value) menu.value = null;
+        else if (panel.value) panel.value = null;
+        else if (pinnedKey.value) pinnedKey.value = null;
+        return;
+    }
+    if (isTyping(event.target)) return;
+    if (event.key === ' ' && c.state.prefs.pushToTalk && !c.state.local.micOn) {
+        event.preventDefault();
+        if (!event.repeat) c.pushToTalk(true);
+        return;
+    }
+    if (event.repeat) return;
+    switch (event.key.toLowerCase()) {
+        case 'm': c.toggleMic(); break;
+        case 'v': c.toggleCam(); break;
+        case 's': if (c.state.canShareScreen) void c.toggleScreen(); break;
+        case 'c': togglePanel('chat'); break;
+        case 'p': togglePanel('people'); break;
+        default: return;
+    }
+    event.preventDefault();
+}
+
+function onKeyUp(event: KeyboardEvent) {
+    if (event.key === ' ' && call.value?.state.local.pttHeld) {
+        event.preventDefault();
+        call.value.pushToTalk(false);
+    }
+}
+
+function onBlur() {
+    call.value?.pushToTalk(false);
+}
+
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+
+onMounted(async () => {
+    clockTimer = setInterval(() => { now.value = Date.now(); }, 500);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+
+    const autoJoin = consumeAutoJoin(roomId);
+    const [profile, summary] = await Promise.all([
+        fetchMe(),
+        fetchRoom(roomId).catch(() => undefined), // unreachable: let the socket decide
+    ]);
+    me.value = profile;
+    if (summary === null) {
+        notFound.value = true;
+        booting.value = false;
+        return;
+    }
+    preview.value = summary ?? null;
+    initialName.value = profile?.name ?? loadPrefs().guestName ?? '';
+
+    const instance = new KliveChatCall(roomId, { signedIn: !!profile, name: initialName.value });
+    call.value = instance;
+    if (import.meta.dev) (window as unknown as { __klivechat?: KliveChatCall }).__klivechat = instance;
+    booting.value = false;
+    await instance.prepare();
+    // From the lobby the click to get here was the gesture audio needs: go straight in.
+    if (autoJoin && profile) await instance.join();
+});
+
+onBeforeUnmount(() => {
+    if (clockTimer) clearInterval(clockTimer);
+    if (previewTimer) clearTimeout(previewTimer);
+    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('keyup', onKeyUp);
+    window.removeEventListener('blur', onBlur);
+    call.value?.destroy();
 });
 </script>
 
 <style scoped>
-.klivechat-shell {
-    min-height: 100vh;
-    position: relative;
-    overflow: hidden;
-    padding: 28px clamp(16px, 3vw, 32px) 40px;
-    background: linear-gradient(180deg, #201f20 0%, #161616 100%);
-}
-
-.klivechat-shell::before,
-.klivechat-shell::after {
-    content: '';
-    position: absolute;
+.kc-call {
+    --kc-top: 52px;
+    --kc-controls: 76px;
+    position: fixed;
     inset: 0;
-    pointer-events: none;
-}
-
-.klivechat-shell::before {
-    background-image: linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
-    background-size: 56px 56px;
-    opacity: 0.06;
-}
-
-.klivechat-shell::after {
-    background: linear-gradient(180deg, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.28));
-}
-
-.klivechat-grid {
-    position: absolute;
-    inset: 0;
-    background-image: linear-gradient(rgba(0, 0, 0, 0.16) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 0, 0, 0.16) 1px, transparent 1px);
-    background-size: 22px 22px;
-    opacity: 0.05;
-    pointer-events: none;
-}
-
-.klivechat-aurora {
-    position: absolute;
-    inset: -18% auto auto -10%;
-    width: 40vw;
-    height: 40vw;
-    min-width: 320px;
-    min-height: 320px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(77, 158, 57, 0.12) 0%, rgba(77, 158, 57, 0.04) 30%, transparent 70%);
-    filter: blur(22px);
-    pointer-events: none;
-}
-
-.klivechat-frame {
-    position: relative;
-    z-index: 1;
-    width: min(1500px, 100%);
-    margin: 0 auto;
-    display: grid;
-    gap: 18px;
-}
-
-.panel {
-    background: rgba(22, 22, 22, 0.94);
-    border: 1px solid #2e2e2e;
-    border-radius: 22px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-}
-
-.hero-panel,
-.link-panel,
-.controls-panel,
-.roster-panel {
-    padding: 20px;
-}
-
-.eyebrow {
-    color: #4d9e39;
-    font-size: 0.74rem;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-    margin-bottom: 10px;
-}
-
-.hero-header {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
+    flex-direction: column;
+    background: #080a07;
+    overflow: hidden;
 }
+.mono { font-family: var(--ot-mono); }
 
-.hero-header h1,
-.panel-top h2 {
-    margin: 0;
-    color: #f6fff3;
-    font-size: clamp(2rem, 4vw, 3.2rem);
-    line-height: 1.05;
+/* ── top bar ── */
+.kc-top {
+    flex: 0 0 var(--kc-top);
+    display: flex;
+    align-items: center;
+    gap: var(--ot-space-3);
+    padding: 0 var(--ot-space-4);
+    border-bottom: 1px solid var(--ot-line);
+    background: rgba(11, 13, 10, 0.94);
+    min-width: 0;
 }
-
-.hero-header p,
-.panel-note,
-.link-meta,
-.participant-state {
-    color: #969696;
+.kc-title { display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 620; font-size: 15px; }
+.kc-title-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.kc-dim { color: var(--ot-muted); }
+.kc-top-meta { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ot-text-2); white-space: nowrap; }
+.kc-sep { color: var(--ot-disabled); }
+.kc-spacer { flex: 1 1 auto; }
+.kc-iconbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--ot-radius-sm);
+    border: 0;
+    background: none;
+    color: var(--ot-text-2);
+    cursor: pointer;
 }
+.kc-iconbtn:hover { color: var(--ot-text); background: var(--ot-surface-3); }
 
-.hero-header p {
-    margin-top: 10px;
-    max-width: 58rem;
-    font-size: 1rem;
+/* ── body ── */
+.kc-body { flex: 1 1 auto; display: flex; min-height: 0; }
+.kc-main { position: relative; flex: 1 1 auto; min-width: 0; padding: 12px; display: flex; }
+.kc-main > :deep(.kc-stage) { flex: 1 1 auto; }
+.kc-center { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--ot-space-3); text-align: center; }
+.kc-connecting { color: var(--ot-text-2); font-size: 13.5px; }
+.kc-loader {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 3px solid var(--ot-line-strong);
+    border-top-color: var(--ot-accent);
+    animation: kc-spin 0.8s linear infinite;
 }
+@keyframes kc-spin { to { transform: rotate(360deg); } }
+.kc-ended h1 { margin: 0; font-size: 22px; font-weight: 640; }
+.kc-ended p { margin: 0; color: var(--ot-text-2); font-size: 13.5px; }
+.kc-ended-actions { display: flex; gap: var(--ot-space-2); margin-top: var(--ot-space-2); }
 
-.room-id-badge {
-    align-self: center;
-    padding: 10px 12px;
+.kc-alone {
+    position: absolute;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: var(--ot-space-3);
+    padding: 6px 6px 6px 14px;
     border-radius: 999px;
-    background: rgba(0, 0, 0, 0.18);
-    border: 1px solid #2e2e2e;
-    color: #4d9e39;
-    font-size: 0.78rem;
-    letter-spacing: 0.18em;
+    border: 1px solid var(--ot-line-strong);
+    background: rgba(18, 21, 15, 0.9);
+    font-size: 12.5px;
+    color: var(--ot-text-2);
+    backdrop-filter: blur(6px);
+    z-index: 5;
     white-space: nowrap;
 }
 
-.status-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 18px;
-}
-
-.status-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 9px 12px;
-    border-radius: 999px;
-    border: 1px solid #2e2e2e;
-    background: rgba(0, 0, 0, 0.18);
-    color: #4d9e39;
-    font-size: 0.78rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-}
-
-.status-pill--active {
-    color: #ffffff;
-    border-color: #ffffff;
-    box-shadow: 0 0 5px rgba(255, 245, 245, 0.5);
-}
-
-.panel-top {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-}
-
-.panel-note {
-    padding-top: 6px;
-    font-size: 0.78rem;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-}
-
-.link-stack {
-    display: grid;
-    gap: 12px;
-    margin-top: 16px;
-}
-
-.link-input {
-    width: 100%;
-    box-sizing: border-box;
-    border: none;
-    background: #1d1d1d;
-    color: #4d9e39;
-    border-radius: 25px;
-    padding: 7px 12px;
-    font-family: 'Roboto';
-    font-size: 20px;
-    outline: none;
-    transition: 0.4s;
-}
-
-.link-input:hover,
-.link-input:focus {
-    border-bottom: 4px solid #4d9e39;
-}
-
-.link-meta {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    font-size: 0.88rem;
-}
-
-.ghost-button,
-.control-tile {
-    border: 2px solid #2e2e2e;
-    border-radius: 16px;
-    font: inherit;
-    cursor: pointer;
-    transition: background-color 0.2s cubic-bezier(0.19, 1, 0.22, 1), border 1s cubic-bezier(0.19, 1, 0.22, 1), color 0.6s cubic-bezier(0.19, 1, 0.22, 1), transform 0.2s ease;
-    user-select: none;
-}
-
-.ghost-button {
-    min-height: 38px;
-    padding: 0 14px;
-    letter-spacing: 0.2125rem;
-    line-height: 1;
-    text-transform: uppercase;
-    background: transparent;
-    color: #4d9e39;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.ghost-button:hover,
-.control-tile:hover {
-    background-color: rgba(255, 255, 255, 0.05);
-    border-color: #fff;
-    box-shadow: 0 0 5px rgba(255, 245, 245, 0.8);
-    color: #fff;
-    transform: translateY(-1px);
-}
-
-.control-strip {
-    display: grid;
-    gap: 14px;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    margin-top: 16px;
-}
-
-.control-tile {
-    min-height: 128px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: flex-start;
-    padding: 18px;
-    background: rgba(0, 0, 0, 0.12);
-    color: #4d9e39;
-}
-
-.control-tile.active {
-    background: rgba(255, 255, 255, 0.04);
-    border-color: #fff;
-    color: #fff;
-}
-
-.control-tile.danger {
-    color: #cc3333;
-}
-
-.control-title {
-    color: inherit;
-    font-size: 1rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-}
-
-.control-copy {
-    font-size: 0.86rem;
-    line-height: 1.45;
-    text-align: left;
-}
-
-.control-chip {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 68px;
-    padding: 7px 10px;
-    border-radius: 999px;
-    background: transparent;
-    border: 1px solid #2e2e2e;
-    color: #4d9e39;
-    font-size: 0.74rem;
-    letter-spacing: 0.12em;
-}
-
-.participant-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 16px;
-    align-items: start;
-    margin-top: 16px;
-}
-
-.participant-grid.has-focus .participant-card:not(.focused) {
-    opacity: 0.8;
-}
-
-.participant-card {
-    padding: 16px;
-    border-radius: 22px;
-    border: 1px solid #2e2e2e;
-    background: rgba(22, 22, 22, 0.96);
-    cursor: pointer;
-    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
-}
-
-.participant-card:hover {
-    transform: translateY(-2px);
-    border-color: #fff;
-}
-
-.participant-card.focused {
-    grid-column: 1 / -1;
-    border-color: #fff;
-    box-shadow: 0 0 5px rgba(255, 245, 245, 0.8);
-}
-
-.participant-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 12px;
-}
-
-.participant-name {
-    color: #fff;
-    font-size: 0.98rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-}
-
-.participant-name-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-
-.participant-role-chip {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 8px;
-    border-radius: 999px;
-    background: rgba(77, 158, 57, 0.16);
-    border: 1px solid rgba(77, 158, 57, 0.34);
-    color: #d7ffd0;
-    font-size: 0.66rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-}
-
-.participant-state {
-    margin-top: 4px;
-    font-size: 0.76rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-}
-
-.participant-badges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 10px;
-}
-
-.participant-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 5px 9px;
-    border-radius: 999px;
-    border: 1px solid #2e2e2e;
-    background: rgba(0, 0, 0, 0.16);
-    color: #969696;
-    font-size: 0.68rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-}
-
-.participant-badge.active {
-    color: #dfffd8;
-    border-color: rgba(77, 158, 57, 0.45);
-    background: rgba(77, 158, 57, 0.12);
-}
-
-.participant-badge.danger {
-    color: #ffc2c2;
-    border-color: rgba(239, 68, 68, 0.38);
-    background: rgba(239, 68, 68, 0.12);
-}
-
-.signal-meter {
-    flex: 0 0 auto;
-    border-radius: 999px;
-    background: rgba(0, 0, 0, 0.35);
-    border: 1px solid #2e2e2e;
-}
-
-.media-frame {
-    position: relative;
-    overflow: hidden;
-    border-radius: 18px;
-    background: radial-gradient(circle at top, rgba(77, 158, 57, 0.08), rgba(0, 0, 0, 0.85));
-    border: 1px solid #2e2e2e;
-}
-
-.media-placeholder {
+.kc-notices {
     position: absolute;
-    inset: 0;
+    top: 16px;
+    right: 16px;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    gap: 10px;
-    padding: 16px;
-    background: linear-gradient(180deg, rgba(4, 4, 4, 0.12), rgba(4, 4, 4, 0.72));
-    color: #d7ffd0;
-    text-align: center;
+    align-items: flex-end;
+    gap: 6px;
+    z-index: 20;
     pointer-events: none;
 }
-
-.media-placeholder span {
-    color: #86c96d;
-    font-size: 0.72rem;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-}
-
-.media-placeholder strong {
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: #f4fff0;
-}
-
-.participant-video {
-    display: block;
-    width: 100%;
-    min-height: 240px;
-    max-height: 72vh;
-    object-fit: cover;
-    background: transparent;
-}
-
-.participant-card.focused .participant-video {
-    min-height: 50vh;
-    object-fit: contain;
-}
-
-.participant-actions {
-    display: flex;
-    gap: 10px;
-    margin-top: 12px;
-}
-
-.participant-action-btn {
-    border: 1px solid rgba(217, 119, 6, 0.38);
-    background: rgba(217, 119, 6, 0.12);
-    color: #ffd7a7;
-    border-radius: 999px;
-    min-height: 34px;
-    padding: 0 14px;
-    font: inherit;
-    font-size: 0.72rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+.kc-notice {
+    pointer-events: auto;
+    max-width: 340px;
+    padding: 8px 12px;
+    border-radius: var(--ot-radius);
+    border: 1px solid var(--ot-line-strong);
+    background: rgba(25, 29, 22, 0.97);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    font-size: 13px;
     cursor: pointer;
-    transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
+.kc-notice.warn { border-color: rgba(240, 180, 41, 0.5); }
+.kc-notice.error { border-color: rgba(255, 123, 123, 0.55); }
 
-.participant-action-btn:hover {
-    transform: translateY(-1px);
-    border-color: rgba(217, 119, 6, 0.7);
-    background: rgba(217, 119, 6, 0.18);
+.kc-audio-blocked, .kc-chat-preview {
+    position: absolute;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ot-space-2);
+    max-width: min(520px, calc(100% - 32px));
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--ot-line-strong);
+    background: rgba(25, 29, 22, 0.97);
+    color: var(--ot-text);
+    font-size: 13px;
+    cursor: pointer;
+    z-index: 15;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
+.kc-chat-preview:hover { border-color: var(--ot-accent); }
+.kc-audio-blocked, .kc-audio-blocked:hover { border-color: rgba(240, 180, 41, 0.6); color: var(--ot-warning); }
+.kc-chat-preview span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ot-text-2); }
+.kc-chat-preview b { flex: 0 0 auto; font-weight: 650; }
 
-.participant-action-btn.danger {
-    border-color: rgba(239, 68, 68, 0.38);
-    background: rgba(239, 68, 68, 0.12);
-    color: #ffc2c2;
+/* ── side panel ── */
+.kc-panel {
+    flex: 0 0 360px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin: 12px 12px 12px 0;
+    border-radius: var(--ot-radius-lg);
+    border: 1px solid var(--ot-line);
+    background: var(--ot-surface);
+    overflow: hidden;
 }
-
-.participant-action-btn.danger:hover {
-    border-color: rgba(239, 68, 68, 0.7);
-    background: rgba(239, 68, 68, 0.18);
+.kc-panel-tabs { display: flex; align-items: center; gap: 4px; padding: 6px; border-bottom: 1px solid var(--ot-line); }
+.kc-panel-tabs [role='tab'] {
+    height: 32px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--ot-radius-sm);
+    background: none;
+    color: var(--ot-text-2);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
 }
+.kc-panel-tabs [role='tab'][aria-selected='true'] { background: var(--ot-surface-3); color: var(--ot-text); }
+.kc-count { margin-left: 4px; color: var(--ot-muted); font-family: var(--ot-mono); font-size: 11.5px; }
+.kc-panel-close { margin-left: auto; }
 
-.empty-room {
-    margin-top: 16px;
-    padding: 14px 16px;
-    border-radius: 18px;
-    border: 1px dashed #2e2e2e;
-    background: rgba(0, 0, 0, 0.16);
-    color: #969696;
+/* ── controls ── */
+.kc-controls {
+    flex: 0 0 var(--kc-controls);
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: var(--ot-space-3);
+    padding: 0 var(--ot-space-4);
 }
+.kc-controls-side { display: flex; align-items: center; gap: var(--ot-space-3); font-size: 13px; color: var(--ot-text-2); min-width: 0; }
+.kc-controls-side.right { justify-content: flex-end; gap: var(--ot-space-2); }
+.kc-controls-center { display: flex; align-items: center; gap: 10px; }
+.kc-pair { position: relative; display: inline-flex; align-items: center; border-radius: 999px; background: var(--ot-surface-2); }
+.kc-ctl {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 0;
+    background: var(--ot-surface-2);
+    color: var(--ot-text);
+    cursor: pointer;
+    transition: background var(--ot-fast), color var(--ot-fast);
+}
+.kc-ctl:hover { background: var(--ot-surface-3); }
+.kc-ctl.off { background: #b3322c; color: #fff; }
+.kc-ctl.off:hover { background: #c53a33; }
+.kc-ctl.blocked { background: rgba(240, 180, 41, 0.18); color: var(--ot-warning); }
+.kc-ctl.active { background: var(--ot-accent); color: var(--ot-on-accent); }
+.kc-ctl.leave { width: 64px; border-radius: 24px; background: #c0362f; color: #fff; }
+.kc-ctl.leave:hover { background: #d63d35; }
+.kc-ctl.subtle { width: 44px; height: 44px; background: none; }
+.kc-ctl.subtle:hover, .kc-ctl.subtle.active { background: var(--ot-surface-2); color: var(--ot-accent); }
+.kc-pair .kc-ctl { background: transparent; }
+.kc-pair .kc-ctl.off { background: #b3322c; }
+.kc-pair .kc-ctl.blocked { background: rgba(240, 180, 41, 0.18); }
+.kc-caret {
+    width: 26px;
+    height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: -2px;
+    padding-right: 4px;
+    border: 0;
+    border-radius: 0 999px 999px 0;
+    background: none;
+    color: var(--ot-text-2);
+    cursor: pointer;
+}
+.kc-caret:hover { color: var(--ot-text); }
+.kc-popover { position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%); z-index: 40; }
+.kc-menu-backdrop { position: fixed; inset: 0; z-index: 30; }
+.kc-controls { position: relative; z-index: 35; }
+.kc-badge {
+    position: absolute;
+    top: 4px;
+    right: 2px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--ot-accent);
+    color: var(--ot-on-accent);
+    font-size: 10.5px;
+    font-weight: 700;
+    line-height: 17px;
+    text-align: center;
+}
+.kc-badge.quiet { background: var(--ot-surface-3); color: var(--ot-text-2); }
+.kc-hint {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 10px;
+    border-radius: var(--ot-radius-sm);
+    background: var(--ot-warning);
+    color: #241a04;
+    font-size: 12px;
+    font-weight: 650;
+    white-space: nowrap;
+    pointer-events: none;
+}
+.kc-ptt { padding: 2px 8px; border-radius: 999px; border: 1px solid var(--ot-line-strong); font-size: 11.5px; color: var(--ot-muted); }
+.kc-ptt.on { color: var(--ot-on-accent); background: var(--ot-accent); border-color: var(--ot-accent); }
+.kc-narrow-only { display: none; }
 
-@media (max-width: 920px) {
-    .hero-header,
-    .panel-top,
-    .link-meta {
-        flex-direction: column;
-        align-items: flex-start;
-    }
+.kc-pop-enter-active, .kc-pop-leave-active { transition: opacity var(--ot-normal), transform var(--ot-normal); }
+.kc-pop-enter-from, .kc-pop-leave-to { opacity: 0; transform: translateY(6px); }
+.kc-chat-preview.kc-pop-enter-from, .kc-chat-preview.kc-pop-leave-to { transform: translate(-50%, 6px); }
 
-    .room-id-badge {
-        align-self: flex-start;
-    }
-
-    .participant-grid {
-        grid-template-columns: 1fr;
+@media (max-width: 900px) {
+    .kc-panel {
+        position: absolute;
+        top: var(--kc-top);
+        right: 0;
+        bottom: var(--kc-controls);
+        left: 0;
+        margin: 0;
+        border-radius: 0;
+        border-width: 1px 0;
+        z-index: 25;
+        flex-basis: auto;
     }
 }
-
-@media (max-width: 620px) {
-    .klivechat-shell {
-        padding-inline: 12px;
-    }
-
-    .hero-panel,
-    .link-panel,
-    .controls-panel,
-    .roster-panel {
-        padding: 18px;
-    }
-
-    .control-tile {
-        min-height: 112px;
-    }
-
-    .participant-video {
-        min-height: 180px;
-    }
+@media (max-width: 720px) {
+    .kc-call { --kc-controls: 68px; }
+    .kc-top { padding: 0 var(--ot-space-2); gap: var(--ot-space-2); }
+    .kc-wide { display: none; }
+    .kc-main { padding: 8px; }
+    .kc-controls { display: flex; justify-content: space-between; padding: 0 var(--ot-space-2); gap: 4px; }
+    .kc-controls-center { gap: 6px; }
+    .kc-controls-side.right { gap: 0; }
+    .kc-ctl { width: 44px; height: 44px; }
+    .kc-ctl.subtle { width: 40px; }
+    .kc-ctl.leave { width: 52px; }
+    .kc-caret { display: none; }
+    .kc-narrow-only { display: inline-flex; }
+    .kc-popover.kc-menu { position: fixed; left: 12px; right: 12px; bottom: calc(var(--kc-controls) + 8px); width: auto; transform: none; }
+}
+@media (max-width: 400px) {
+    .kc-controls-center { gap: 4px; }
+    .kc-ctl { width: 40px; height: 40px; }
+    .kc-ctl.leave { width: 46px; }
 }
 </style>

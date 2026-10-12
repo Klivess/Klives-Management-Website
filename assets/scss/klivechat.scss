@@ -1,0 +1,14 @@
+/* KliveChat surfaces (the lobby and the call) sit on the ot-os tokens. The site styles every <button>
+   (centred content, 20px/30px padding, a 2px border, a white glow and white border on hover); KliveChat's
+   buttons carry their own chrome, so that is reset here, at the lowest specificity that still wins. */
+
+:where(.kc-lobby, .kc-call) button {
+    padding: 0;
+    border: 0;
+    overflow: visible;
+    justify-content: center;
+}
+
+:where(.kc-lobby, .kc-call) button:hover {
+    box-shadow: none;
+}

@@ -50,6 +50,7 @@ export default defineNuxtConfig({
     '~/assets/scss/klivetech-os.scss',
     '~/assets/scss/omniscience.scss',
     '~/assets/scss/omnitrader-os.scss',
+    '~/assets/scss/klivechat.scss',
     '~/assets/scss/access-ui.scss'],
   modules: [],
   // Playwright writes videos, traces and screenshots into the project while tests run; without

@@ -1,1974 +1,1806 @@
 <template>
-  <div class="shared-shell" @dragover.prevent="onDragOver" @dragleave="onDragLeave" @drop.prevent="onFileDrop">
-    <div class="shared-background"></div>
+    <div class="ot-os ks" :class="{ solo: index && !isFolderShare }" :style="{ '--ks-head': `${headHeight}px` }">
+        <header ref="head" class="ks-head" :inert="!!viewer">
+            <div class="ks-top ks-frame">
+                <span class="ks-brand"><KliveCloudIcon name="cloud" :size="19" /><b>KliveCloud</b></span>
+                <template v-if="root">
+                    <span class="ks-divider" aria-hidden="true"></span>
+                    <div class="ks-title">
+                        <KliveCloudFileGlyph :kind="root.kind" :size="30" />
+                        <div class="ks-title-text">
+                            <h1>{{ root.name }}</h1>
+                            <div class="ks-meta">
+                                <span class="ks-summary">{{ summary }}</span>
+                                <span v-if="isFolderShare" class="ot-chip ks-mode" :class="{ info: mode !== 'ReadOnly' }">{{ modeLabel }}</span>
+                                <span v-if="expiry" class="ot-chip" :class="{ warn: expiry.soon }"><KliveCloudIcon name="clock" :size="11" />{{ expiry.text }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ks-actions">
+                        <button type="button" class="ot-btn ghost" :aria-label="copied === 'page' ? 'Link copied' : 'Copy link'" @click="copyLink(pageLink, 'page')">
+                            <KliveCloudIcon :name="copied === 'page' ? 'check' : 'link'" :size="16" />
+                            <span class="ks-wide">{{ copied === 'page' ? 'Copied' : 'Copy link' }}</span>
+                        </button>
+                        <a v-if="downloadAllUrl" class="ot-btn primary" :href="downloadAllUrl" :aria-label="isFolderShare ? 'Download all' : 'Download'">
+                            <KliveCloudIcon name="download" :size="16" />
+                            <span class="ks-wide">{{ isFolderShare ? 'Download all' : 'Download' }}</span>
+                        </a>
+                    </div>
+                </template>
+            </div>
 
-    <section v-if="loading" class="state-panel">
-      <div class="loading-mark"></div>
-      <h2>Loading shared item</h2>
-      <p>Fetching the latest details from KliveCloud.</p>
-    </section>
+            <div v-if="index && isFolderShare" class="ks-tools ks-frame" :class="{ selecting: selectedCount > 0 }">
+                <template v-if="selectedCount">
+                    <button type="button" class="ks-icon" title="Clear selection" aria-label="Clear selection" @click="clearSelection">
+                        <KliveCloudIcon name="close" :size="17" />
+                    </button>
+                    <span class="ks-selected"><b>{{ selectedCount.toLocaleString('en-GB') }} selected</b><span> · {{ formatBytes(selectedBytes) }}</span></span>
+                    <button v-if="!allSelected" type="button" class="ks-textbtn" @click="selectAll">Select all {{ listing.length.toLocaleString('en-GB') }}</button>
+                    <div class="ks-spacer"></div>
+                    <button v-if="canDownloadSelection" type="button" class="ot-btn sm" @click="downloadSelection">
+                        <KliveCloudIcon name="download" :size="15" /><span class="ks-wide">Download</span>
+                    </button>
+                    <button v-if="canWrite" type="button" class="ot-btn sm" @click="askMove(selectedKeys)">
+                        <KliveCloudIcon name="folder-move" :size="15" /><span class="ks-wide">Move</span>
+                    </button>
+                    <button v-if="canDelete" type="button" class="ot-btn sm danger" @click="askRemove(selectedKeys)">
+                        <KliveCloudIcon name="trash" :size="15" /><span class="ks-wide">Delete</span>
+                    </button>
+                </template>
 
-    <section v-else-if="error" class="state-panel">
-      <div class="state-icon">!</div>
-      <h2>{{ error }}</h2>
-      <p>The share link may be invalid, expired, or no longer attached to an item.</p>
-    </section>
+                <template v-else>
+                    <nav class="ks-crumbs" aria-label="Folder path">
+                        <span v-if="searching" class="ks-crumb current">{{ plural(listing.length, 'result') }} for “{{ query.trim() }}”</span>
+                        <template v-else>
+                            <template v-for="(crumb, i) in crumbs" :key="crumb.key">
+                                <KliveCloudIcon v-if="i > 0" name="chevron-right" :size="14" class="ks-crumb-sep" />
+                                <span v-if="i === crumbs.length - 1" class="ks-crumb current" aria-current="page">{{ crumb.name }}</span>
+                                <button v-else type="button" class="ks-crumb" :class="{ target: dropKey === crumb.key }" :data-drop-key="crumb.key" @click="openFolder(crumb.key)">
+                                    {{ crumb.name }}
+                                </button>
+                            </template>
+                        </template>
+                    </nav>
 
-    <section v-else-if="sharedItem && rootItem" class="share-console">
-      <header class="topbar">
-        <div class="topbar-left">
-          <p class="eyebrow">KliveCloud / Shared {{ isFolder ? 'folder' : 'file' }}</p>
+                    <label class="ks-search">
+                        <KliveCloudIcon name="search" :size="15" />
+                        <input ref="searchInput" v-model="query" type="search" :placeholder="`Search ${root?.name ?? ''}`" aria-label="Search everything in this share"
+                               autocomplete="off" spellcheck="false" @keydown.esc.prevent="clearSearch" />
+                        <kbd v-if="!query" class="ks-kbd" aria-hidden="true">/</kbd>
+                        <button v-else type="button" class="ks-search-clear" aria-label="Clear search" @click="clearSearch">
+                            <KliveCloudIcon name="close" :size="14" />
+                        </button>
+                    </label>
 
-          <nav v-if="isFolder" class="breadcrumbs" aria-label="Folder breadcrumbs">
-            <template v-for="(crumb, index) in folderPath" :key="crumb.ItemID">
-              <button 
-                class="crumb" 
-                :class="{ 
-                  active: index === folderPath.length - 1,
-                  'drag-hover': activeDropTargetID === crumb.ItemID
-                }" 
-                @click="openFolder(crumb.ItemID)"
-                @dragover.prevent="onFolderDragOver($event, crumb)"
-                @dragleave="onFolderDragLeave($event, crumb)"
-                @drop.prevent.stop="onFolderDrop($event, crumb)"
-              >{{ crumb.Name }}</button>
-              <span v-if="index < folderPath.length - 1" class="crumb-sep">/</span>
+                    <select v-if="view === 'grid'" v-model="sortChoice" class="ot-select auto ks-sortpick" aria-label="Sort">
+                        <option value="name:1">Name</option>
+                        <option value="modified:-1">Newest first</option>
+                        <option value="modified:1">Oldest first</option>
+                        <option value="size:-1">Largest first</option>
+                        <option value="size:1">Smallest first</option>
+                        <option value="kind:1">Kind</option>
+                    </select>
+
+                    <div class="ot-segment ks-views" role="group" aria-label="View">
+                        <button type="button" title="List" aria-label="List" :aria-pressed="view === 'list'" @click="setView('list')"><KliveCloudIcon name="list" :size="16" /></button>
+                        <button type="button" title="Grid" aria-label="Grid" :aria-pressed="view === 'grid'" @click="setView('grid')"><KliveCloudIcon name="grid" :size="16" /></button>
+                    </div>
+
+                    <template v-if="canWrite">
+                        <button type="button" class="ot-btn ghost ks-newfolder" @click="askNewFolder">
+                            <KliveCloudIcon name="folder-plus" :size="16" /><span>New folder</span>
+                        </button>
+                        <div class="ks-split ks-pop">
+                            <button type="button" class="ot-btn" @click="pickFiles"><KliveCloudIcon name="upload" :size="16" /><span class="ks-wide">Upload</span></button>
+                            <button type="button" class="ot-btn ks-split-more" aria-label="More ways to add" :aria-expanded="menu === 'upload'" @click="toggleMenu('upload')">
+                                <KliveCloudIcon name="chevron-down" :size="15" />
+                            </button>
+                            <div v-if="menu === 'upload'" class="ks-menu" role="menu">
+                                <button type="button" role="menuitem" @click="pickFiles"><KliveCloudIcon name="upload" :size="15" />Upload files</button>
+                                <button type="button" role="menuitem" @click="pickFolder"><KliveCloudIcon name="folder" :size="15" />Upload a folder</button>
+                                <button type="button" role="menuitem" @click="askNewFolder"><KliveCloudIcon name="folder-plus" :size="15" />New folder</button>
+                            </div>
+                        </div>
+                    </template>
+                </template>
+            </div>
+        </header>
+
+        <main class="ks-main ks-frame" :class="{ solo: index && !isFolderShare }" :inert="!!viewer">
+            <div v-if="!index && pending" class="ks-loading" aria-label="Loading">
+                <div v-for="n in 6" :key="n" class="ks-skel"><span class="ot-skel"></span><span class="ot-skel"></span></div>
+            </div>
+
+            <section v-else-if="!index" class="ks-state" role="alert">
+                <span class="ks-state-icon" :class="{ bad: failure.retry }"><KliveCloudIcon :name="failure.icon" :size="22" /></span>
+                <h2>{{ failure.title }}</h2>
+                <p>{{ failure.detail }}</p>
+                <button v-if="failure.retry" type="button" class="ot-btn" @click="retryLoad"><KliveCloudIcon name="refresh" :size="15" /> Try again</button>
+            </section>
+
+            <section v-else-if="!isFolderShare && root" class="ks-single">
+                <KliveCloudPreview :item="root" :code="code" single variant="page" />
+            </section>
+
+            <section v-else class="ks-folder">
+                <div v-if="!listing.length" class="ks-empty" :class="{ droppable: canWrite && !searching }">
+                    <template v-if="searching">
+                        <span class="ks-empty-icon"><KliveCloudIcon name="search" :size="22" /></span>
+                        <strong>No matches for “{{ query.trim() }}”</strong>
+                        <button type="button" class="ot-btn sm ghost" @click="clearSearch">Clear search</button>
+                    </template>
+                    <template v-else>
+                        <span class="ks-empty-icon"><KliveCloudIcon :name="canWrite ? 'upload' : 'folder'" :size="22" /></span>
+                        <strong>This folder is empty</strong>
+                        <template v-if="canWrite">
+                            <span>Drop files here, or</span>
+                            <div class="ks-empty-actions">
+                                <button type="button" class="ot-btn primary" @click="pickFiles"><KliveCloudIcon name="upload" :size="15" /> Upload files</button>
+                                <button type="button" class="ot-btn ghost" @click="askNewFolder"><KliveCloudIcon name="folder-plus" :size="15" /> New folder</button>
+                            </div>
+                        </template>
+                    </template>
+                </div>
+
+                <table v-else-if="view === 'list'" class="ks-list" :class="{ selecting: selectedCount > 0, searching }">
+                    <thead>
+                        <tr>
+                            <th class="ks-c-check">
+                                <input type="checkbox" class="ks-check" :checked="allSelected" :indeterminate="someSelected" aria-label="Select all" @change="toggleAll" />
+                            </th>
+                            <th v-for="column in COLUMNS" :key="column.key" :class="column.cls" :aria-sort="sort.key === column.key ? (sort.dir === 1 ? 'ascending' : 'descending') : undefined">
+                                <button type="button" class="ks-sort" :class="{ on: sort.key === column.key }" @click="sortBy(column.key)">
+                                    {{ column.label }}
+                                    <KliveCloudIcon v-if="sort.key === column.key" :name="sort.dir === 1 ? 'arrow-up' : 'arrow-down'" :size="12" />
+                                </button>
+                            </th>
+                            <th class="ks-c-act"><span class="ks-sr">Actions</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="item in visible" :key="item.key" class="ks-row" :class="itemClass(item)" :data-drop-key="item.type === 'Folder' ? item.key : undefined"
+                            :draggable="canWrite" @click="onItemClick($event, item)" @dragstart="onDragStart($event, item)" @dragend="onDragEnd">
+                            <td class="ks-c-check">
+                                <input type="checkbox" class="ks-check" :checked="selected.has(item.key)" :aria-label="`Select ${item.name}`" @click.stop="onCheck($event, item)" />
+                            </td>
+                            <td class="ks-c-name">
+                                <div class="ks-name">
+                                    <KliveCloudThumb :kind="item.kind" :url="thumbUrl(item)" :glyph="30" class="ks-thumb" />
+                                    <div class="ks-name-text">
+                                        <button type="button" class="ks-open" :class="{ folder: item.type === 'Folder' }" :tabindex="item.key === tabStop ? 0 : -1"
+                                                :data-focus-key="item.key" @keydown="onItemKey($event, item)" @focus="focusKey = item.key">{{ item.name }}</button>
+                                        <span class="ks-sub">
+                                            <button v-if="searching" type="button" class="ks-where" @click.stop="openFolder(item.parentKey)">{{ locationOf(item) }}</button>
+                                            <span class="ks-sub-meta">{{ subMeta(item) }}</span>
+                                        </span>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="ks-c-kind">{{ describeItem(item) }}</td>
+                            <td class="ks-c-size">{{ sizeText(item) }}</td>
+                            <td class="ks-c-date">{{ formatWhen(item.modified, now) }}</td>
+                            <td class="ks-c-act" @click.stop>
+                                <div class="ks-acts">
+                                    <a v-if="downloadUrlFor(item)" class="ks-icon ks-quick" :href="downloadUrlFor(item)" :title="item.type === 'Folder' ? 'Download as ZIP' : 'Download'"
+                                       :aria-label="`Download ${item.name}`"><KliveCloudIcon name="download" :size="16" /></a>
+                                    <button type="button" class="ks-icon ks-quick" :title="copied === item.key ? 'Copied' : 'Copy link'" :aria-label="`Copy link to ${item.name}`"
+                                            @click="copyLink(linkFor(item), item.key)"><KliveCloudIcon :name="copied === item.key ? 'check' : 'link'" :size="16" /></button>
+                                    <div class="ks-pop">
+                                        <button type="button" class="ks-icon" title="More" :aria-label="`More for ${item.name}`" :aria-expanded="menu === item.key" @click="toggleMenu(item.key)">
+                                            <KliveCloudIcon name="more" :size="16" />
+                                        </button>
+                                        <div v-if="menu === item.key" class="ks-menu" role="menu">
+                                            <button type="button" role="menuitem" @click="open(item)"><KliveCloudIcon :name="item.type === 'Folder' ? 'folder' : 'eye'" :size="15" />{{ item.type === 'Folder' ? 'Open' : 'Preview' }}</button>
+                                            <a v-if="downloadUrlFor(item)" role="menuitem" :href="downloadUrlFor(item)" @click="menu = null"><KliveCloudIcon name="download" :size="15" />{{ item.type === 'Folder' ? 'Download as ZIP' : 'Download' }}</a>
+                                            <button type="button" role="menuitem" @click="copyLink(linkFor(item), item.key, true)"><KliveCloudIcon name="link" :size="15" />Copy link</button>
+                                            <button v-if="canWrite" type="button" role="menuitem" @click="askMove([item.key])"><KliveCloudIcon name="folder-move" :size="15" />Move to…</button>
+                                            <button v-if="canDelete" type="button" role="menuitem" class="danger" @click="askRemove([item.key])"><KliveCloudIcon name="trash" :size="15" />Delete</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div v-else ref="gridEl" class="ks-grid" :class="{ selecting: selectedCount > 0 }">
+                    <div v-for="item in visible" :key="item.key" class="ks-tile" :class="itemClass(item)" :data-drop-key="item.type === 'Folder' ? item.key : undefined"
+                         :draggable="canWrite" @click="onItemClick($event, item)" @dragstart="onDragStart($event, item)" @dragend="onDragEnd">
+                        <div class="ks-tile-media">
+                            <KliveCloudThumb v-if="item.type === 'File'" :kind="item.kind" :url="thumbUrl(item)" :glyph="52" fill class="ks-tile-thumb" />
+                            <KliveCloudFileGlyph v-else kind="folder" :size="58" />
+                        </div>
+                        <input type="checkbox" class="ks-check ks-tile-check" :checked="selected.has(item.key)" :aria-label="`Select ${item.name}`" @click.stop="onCheck($event, item)" />
+                        <div class="ks-tile-info">
+                            <button type="button" class="ks-open" :class="{ folder: item.type === 'Folder' }" :title="item.name" :tabindex="item.key === tabStop ? 0 : -1"
+                                    :data-focus-key="item.key" @keydown="onItemKey($event, item)" @focus="focusKey = item.key">{{ item.name }}</button>
+                            <span class="ks-tile-meta">{{ item.type === 'Folder' ? describeItem(item) : sizeText(item) }}</span>
+                        </div>
+                        <div class="ks-pop ks-tile-more" @click.stop>
+                            <button type="button" class="ks-icon" title="More" :aria-label="`More for ${item.name}`" :aria-expanded="menu === item.key" @click="toggleMenu(item.key)">
+                                <KliveCloudIcon name="more" :size="16" />
+                            </button>
+                            <div v-if="menu === item.key" class="ks-menu" role="menu">
+                                <button type="button" role="menuitem" @click="open(item)"><KliveCloudIcon :name="item.type === 'Folder' ? 'folder' : 'eye'" :size="15" />{{ item.type === 'Folder' ? 'Open' : 'Preview' }}</button>
+                                <a v-if="downloadUrlFor(item)" role="menuitem" :href="downloadUrlFor(item)" @click="menu = null"><KliveCloudIcon name="download" :size="15" />{{ item.type === 'Folder' ? 'Download as ZIP' : 'Download' }}</a>
+                                <button type="button" role="menuitem" @click="copyLink(linkFor(item), item.key, true)"><KliveCloudIcon name="link" :size="15" />Copy link</button>
+                                <button v-if="canWrite" type="button" role="menuitem" @click="askMove([item.key])"><KliveCloudIcon name="folder-move" :size="15" />Move to…</button>
+                                <button v-if="canDelete" type="button" role="menuitem" class="danger" @click="askRemove([item.key])"><KliveCloudIcon name="trash" :size="15" />Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="listing.length > limit" ref="moreEl" class="ks-more-rows"><span class="ot-skel"></span></div>
+                <p v-if="listing.length" class="ks-foot">{{ footNote }}</p>
+            </section>
+        </main>
+
+        <div v-if="dropping" class="ks-drop" aria-hidden="true">
+            <div class="ks-drop-card"><KliveCloudIcon name="upload" :size="18" /><span>Drop to upload to <b>{{ dropFolderName }}</b></span></div>
+        </div>
+
+        <KliveCloudViewer v-if="viewer" :items="viewer.items" :index="viewer.index" :code="code" :link="linkFor(viewer.items[viewer.index])" :now="now"
+                          @go="stepViewer" @close="closeViewer" />
+
+        <KliveCloudUploadTray v-if="uploads.jobs.length || preparing" :jobs="uploads.jobs" :preparing="preparing"
+                              @cancel="uploads.cancel" @retry="uploads.retry" @cancel-all="uploads.cancelAll" @clear="uploads.clearFinished" />
+
+        <TransitionGroup name="ks-toast" tag="div" class="ks-toasts" :class="{ raised: uploads.jobs.length > 0 }" aria-live="polite">
+            <div v-for="note in toasts" :key="note.id" class="ks-toast" :class="note.tone">
+                <KliveCloudIcon :name="note.tone === 'bad' ? 'alert' : 'check'" :size="15" />
+                <span>{{ note.text }}</span>
+            </div>
+        </TransitionGroup>
+
+        <div v-if="menu" class="ks-backdrop" @click="menu = null" @contextmenu.prevent="menu = null"></div>
+
+        <input ref="filePicker" class="ks-hidden" type="file" multiple tabindex="-1" aria-hidden="true" @change="onPicked" />
+        <input ref="folderPicker" class="ks-hidden" type="file" webkitdirectory multiple tabindex="-1" aria-hidden="true" @change="onPicked" />
+
+        <ProfilesModal :open="newFolder.open" title="New folder" @close="newFolder.open = false">
+            <form class="ks-form" @submit.prevent="createFolder">
+                <input v-model="newFolder.name" class="ot-input" maxlength="120" placeholder="Folder name" aria-label="Folder name" autofocus />
+                <p v-if="newFolder.error" class="ks-form-error" role="alert">{{ newFolder.error }}</p>
+            </form>
+            <template #footer>
+                <button type="button" class="ot-btn ghost" @click="newFolder.open = false">Cancel</button>
+                <button type="button" class="ot-btn primary" :disabled="newFolder.busy || !newFolder.name.trim()" @click="createFolder">{{ newFolder.busy ? 'Creating…' : 'Create' }}</button>
             </template>
-          </nav>
-          <h1 v-else class="file-title">{{ rootItem.Name }}</h1>
+        </ProfilesModal>
 
-          <div class="topbar-meta">
-            <span class="badge" :class="`badge-${sharePermissionMode.toLowerCase()}`">{{ permissionLabel }}</span>
-            <span v-if="isFolder">{{ countNestedItems(activeFolderId || rootFolderId) }}</span>
-            <span v-if="!isFolder">{{ formatSize(rootItem.FileSizeBytes) }}</span>
-            <span v-if="sharedItem.ExpirationDate" class="badge badge-warn">Expires {{ formatDate(sharedItem.ExpirationDate) }}</span>
-          </div>
-        </div>
+        <ProfilesModal :open="!!removal" :title="removalTitle" tone="danger" @close="removal = null">
+            <p class="ks-confirm">{{ removalDetail }}</p>
+            <ul v-if="removalItems.length > 1" class="ks-confirm-list">
+                <li v-for="item in removalItems.slice(0, 5)" :key="item.key"><KliveCloudFileGlyph :kind="item.kind" :size="22" /><span>{{ item.name }}</span></li>
+                <li v-if="removalItems.length > 5" class="more">and {{ removalItems.length - 5 }} more</li>
+            </ul>
+            <template #footer>
+                <button type="button" class="ot-btn ghost" @click="removal = null">Cancel</button>
+                <button type="button" class="ot-btn danger" :disabled="removal?.busy" @click="confirmRemoval">{{ removal?.busy ? 'Deleting…' : 'Delete' }}</button>
+            </template>
+        </ProfilesModal>
 
-        <div class="topbar-right">
-          <button class="btn btn-ghost" @click="copyCurrentLink">Copy link</button>
-          <button v-if="canWrite && isFolder" class="btn btn-ghost" @click="createSharedFolder" :disabled="isMutating">New folder</button>
-          <button v-if="canWrite && isFolder" class="btn btn-primary" @click="triggerSharedUpload" :disabled="isMutating">Upload</button>
-          <a v-if="!isFolder" class="btn btn-primary" :href="getSharedDownloadUrl()">Download</a>
-        </div>
-      </header>
-
-      <div v-if="mutationError" class="inline-error">{{ mutationError }}</div>
-
-      <input ref="uploadInput" class="hidden-input" type="file" multiple @change="handleSharedUpload" />
-
-      <!-- Single File Layout -->
-      <div v-if="!isFolder" class="single-file-container">
-        <div class="single-file-card">
-          <div class="file-preview-header">
-            <span class="file-icon-large">{{ getCloudItemEmoji(rootItem) }}</span>
-            <h2>{{ rootItem.Name }}</h2>
-            <p class="file-size-badge">{{ formatSize(rootItem.FileSizeBytes) }}</p>
-          </div>
-          
-          <div class="file-preview-body">
-            <div v-if="rootItem.IsImage" class="media-frame">
-              <img :src="getSharedDownloadUrl()" :alt="rootItem.Name" />
-            </div>
-            <div v-else-if="rootItem.IsVideo" class="media-frame">
-              <video controls :src="getSharedStreamUrl()"></video>
-            </div>
-            <div v-else class="fallback-frame">
-              <p>Preview is not supported for this file type.</p>
-            </div>
-          </div>
-
-          <div class="file-preview-footer">
-            <div class="file-meta-grid">
-              <div class="meta-item">
-                <span>Created</span>
-                <strong>{{ formatDateTime(rootItem.CreatedDate) }}</strong>
-              </div>
-              <div class="meta-item">
-                <span>Modified</span>
-                <strong>{{ formatDateTime(rootItem.ModifiedDate) }}</strong>
-              </div>
-            </div>
-            <a class="btn btn-primary full-width" :href="getSharedDownloadUrl()">Download File</a>
-          </div>
-        </div>
-      </div>
-
-      <!-- Folder Workspace Layout -->
-      <div v-else class="folder-workspace">
-        <div
-          ref="gridContainer"
-          class="file-grid-area"
-          :class="{ 'drop-active': isDropActive }"
-        >
-          <div v-if="visibleItems.length === 0 && !sameId(activeFolderId, rootFolderId)" class="empty-state">
-            <div class="empty-glyph">[ ]</div>
-            <p>This folder is empty.</p>
-          </div>
-          <div v-else-if="visibleItems.length === 0" class="empty-state">
-            <div class="empty-glyph">[ ]</div>
-            <p>{{ canWrite ? 'Drop files here or use Upload to add content.' : 'This shared folder is empty.' }}</p>
-          </div>
-
-          <div v-else class="shared-table-container">
-            <table class="shared-files-table">
-              <thead>
-                <tr>
-                  <th class="checkbox-col">
-                    <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll" />
-                  </th>
-                  <th>Name</th>
-                  <th>Size</th>
-                  <th>Modified</th>
-                  <th class="actions-col">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr 
-                  v-if="!sameId(activeFolderId, rootFolderId)" 
-                  class="table-row-back" 
-                  :class="{ 'drag-hover': activeDropTargetID === 'parent' }"
-                  @click="openFolder(parentFolderId)"
-                  @dragover.prevent="onFolderDragOver($event, null)"
-                  @dragleave="onFolderDragLeave($event, null)"
-                  @drop.prevent.stop="onFolderDrop($event, null)"
-                >
-                  <td class="checkbox-col"></td>
-                  <td class="name-cell">
-                    <div class="name-cell-inner">
-                      <span class="type-icon">📁</span>
-                      <span class="item-name-text">.. (Up one level)</span>
-                    </div>
-                  </td>
-                  <td>—</td>
-                  <td>—</td>
-                  <td class="actions-col"></td>
-                </tr>
-
-                <tr 
-                  v-for="item in visibleItems" 
-                  :key="item.ItemID"
-                  :class="{ 
-                    selected: isSelected(item.ItemID),
-                    'drag-hover': activeDropTargetID === item.ItemID
-                  }"
-                  :draggable="canWrite"
-                  @dragstart="onItemDragStart($event, item)"
-                  @dragend="onItemDragEnd($event)"
-                  @dragover.prevent="item.ItemType === 'Folder' ? onFolderDragOver($event, item) : null"
-                  @dragleave="item.ItemType === 'Folder' ? onFolderDragLeave($event, item) : null"
-                  @drop.prevent.stop="item.ItemType === 'Folder' ? onFolderDrop($event, item) : null"
-                  @click="onRowClick($event, item)"
-                  @dblclick="onRowDoubleClick(item)"
-                >
-                  <td class="checkbox-col" @click.stop>
-                    <input type="checkbox" :checked="isSelected(item.ItemID)" @change="toggleSelection(item.ItemID)" />
-                  </td>
-                  <td class="name-cell">
-                    <div class="name-cell-inner">
-                      <span class="type-icon">{{ getCloudItemEmoji(item) }}</span>
-                      <span class="item-name-text">{{ item.Name }}</span>
-                    </div>
-                  </td>
-                  <td>
-                    {{ item.ItemType === 'File' ? formatSize(item.FileSizeBytes) : 'Folder' }}
-                  </td>
-                  <td class="date-cell">
-                    {{ formatDate(item.ModifiedDate) }}
-                  </td>
-                  <td class="actions-col" @click.stop>
-                    <div class="row-actions">
-                      <a
-                        v-if="item.ItemType === 'File'"
-                        class="action-btn"
-                        :href="getSharedDownloadUrl(item.ItemID)"
-                        :download="item.Name"
-                        title="Download"
-                      >⬇️</a>
-                      <button
-                        v-if="canDelete"
-                        class="action-btn action-btn-danger"
-                        @click="deleteSharedItem(item)"
-                        :disabled="isMutating"
-                        title="Delete"
-                      >🗑️</button>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div v-if="isDropActive" class="drop-overlay">
-            <div class="drop-card">
-              <div class="drop-icon">+</div>
-              <h3>Drop to upload</h3>
-              <p>Files will be added to this folder.</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Sticky Collapsible Side Preview Panel -->
-        <aside v-if="selectionCount > 0" class="preview-drawer">
-          <div class="drawer-header">
-            <h3>Selection Info</h3>
-            <button class="close-drawer-btn" @click="clearSelection">✕</button>
-          </div>
-          
-          <div class="drawer-body">
-            <!-- Multi-selection details -->
-            <div v-if="selectionCount > 1" class="preview-multi">
-              <div class="multi-count">📁 {{ selectionCount }} items selected</div>
-              <div class="detail-stack compact">
-                <div class="detail-row">
-                  <span>Total Size</span>
-                  <strong>{{ formatSize(selectedSizeBytes) }}</strong>
-                </div>
-              </div>
-              <div class="drawer-actions">
-                <button class="btn btn-primary full-width" @click="downloadSelected">Download files</button>
-                <button v-if="canDelete" class="btn btn-danger full-width" @click="deleteSelected" :disabled="isMutating">Delete selected</button>
-              </div>
-            </div>
-
-            <!-- Single selection details -->
-            <div v-else-if="primarySelected" class="preview-single">
-              <h4 class="item-name">{{ primarySelected.Name }}</h4>
-              
-              <div class="preview-media">
-                <img v-if="primarySelected.ItemType === 'File' && primarySelected.IsImage" :src="getSharedDownloadUrl(primarySelected.ItemID)" :alt="primarySelected.Name" />
-                <video v-else-if="primarySelected.ItemType === 'File' && primarySelected.IsVideo" controls :src="getSharedStreamUrl(primarySelected.ItemID)"></video>
-                <div v-else class="preview-doc">
-                  <div class="doc-glyph">{{ getCloudItemEmoji(primarySelected) }}</div>
-                  <p>{{ primarySelected.ItemType === 'Folder' ? 'Double-click to open folder' : 'No preview available' }}</p>
-                </div>
-              </div>
-
-              <div class="detail-stack compact">
-                <div v-if="primarySelected.ItemType === 'File'" class="detail-row">
-                  <span>Size</span>
-                  <strong>{{ formatSize(primarySelected.FileSizeBytes) }}</strong>
-                </div>
-                <div class="detail-row">
-                  <span>Modified</span>
-                  <strong>{{ formatDateTime(primarySelected.ModifiedDate) }}</strong>
-                </div>
-              </div>
-
-              <div class="drawer-actions">
-                <a v-if="primarySelected.ItemType === 'File'" class="btn btn-primary full-width" :href="getSharedDownloadUrl(primarySelected.ItemID)" :download="primarySelected.Name">Download</a>
-                <button v-if="primarySelected.ItemType === 'Folder'" class="btn btn-primary full-width" @click="openFolder(primarySelected.ItemID)">Open folder</button>
-                <button v-if="canDelete" class="btn btn-danger full-width" @click="deleteSharedItem(primarySelected)" :disabled="isMutating">Delete</button>
-              </div>
-            </div>
-          </div>
-        </aside>
-      </div>
-    </section>
-
-    <!-- Upload Progress Panel -->
-    <div v-if="activeUploads.length > 0" class="upload-panel" :class="{ minimized: !isUploadPanelOpen }">
-      <div class="upload-header" @click="isUploadPanelOpen = !isUploadPanelOpen">
-        <span>{{ activeUploadCount }} uploading / {{ activeUploads.length }} total</span>
-        <div class="upload-controls" @click.stop>
-          <button @click="clearCompletedUploads">Clear done</button>
-          <button @click="isUploadPanelOpen = !isUploadPanelOpen">{{ isUploadPanelOpen ? '_' : '^' }}</button>
-        </div>
-      </div>
-      <div v-if="isUploadPanelOpen" class="upload-list">
-        <div v-for="task in activeUploads" :key="task.id" class="upload-item">
-          <div class="upload-info">
-            <span class="upload-name">{{ task.fileName }}</span>
-            <span class="upload-status" :style="{ color: getStatusColor(task.status) }">{{ task.status }} {{ task.progress }}%</span>
-          </div>
-          <div class="upload-progress-bar"><div class="progress-fill" :style="{ width: task.progress + '%', background: getStatusColor(task.status) }"></div></div>
-        </div>
-      </div>
+        <KliveCloudFolderPicker v-if="index" :open="!!moving" :index="index" :keys="moving?.keys ?? []" :busy="moving?.busy" @close="moving = null" @pick="moveTo" />
     </div>
-  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
-import Swal from 'sweetalert2';
-import { KliveAPIUrl } from '~/scripts/APIInterface';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import {
+    buildShareIndex, copyText, describeExpiry, describeItem, formatBytes, formatWhen, hasThumbnail, isWithin, keyOf, normalizeMode,
+    pathTo, plural, postShare, searchShare, shareApi, sortItems, truthy,
+    type RawShareInfo, type ShareItem, type SortKey,
+} from '~/scripts/klivecloud/shared';
+import { createUploadQueue, pastedName, takeDrop, takeInput, type Picked } from '~/scripts/klivecloud/uploads';
 
 definePageMeta({ layout: 'empty' });
 
-type CloudItemType = 'File' | 'Folder';
-type RawCloudItemType = CloudItemType | number | string | null | undefined;
+/* What someone sees when they open a KliveCloud share link: one file with its preview, or a
+   folder to browse, preview, search and download, and (when the link allows) add to and tidy. */
 
-interface SharedChildItem {
-  ItemID: string;
-  Name: string;
-  RelativePath: string;
-  ParentFolderID: string;
-  CreatedDate: string;
-  ModifiedDate: string;
-  CreatedByUserID: string;
-  ItemType: RawCloudItemType;
-  MinimumPermissionLevel: string;
-  FileSizeBytes: number;
-  IsImage?: boolean;
-  IsVideo?: boolean;
-  VideoMimeType?: string | null;
-}
-
-interface NormalizedSharedChildItem extends Omit<SharedChildItem, 'ItemType'> {
-  ItemType: CloudItemType;
-}
-
-interface UploadTask {
-  id: string;
-  fileName: string;
-  progress: number;
-  status: 'uploading' | 'finalizing' | 'completed' | 'error';
-}
-
-interface SharedItemInfo extends SharedChildItem {
-  IsImage: boolean;
-  IsVideo: boolean;
-  ShareCode: string;
-  SharePermissionMode?: string;
-  PermissionMode?: string | number | null;
-  CanWrite?: boolean;
-  CanDelete?: boolean;
-  ExpirationDate?: string | null;
-  Children: SharedChildItem[];
-}
-
-interface MarqueeRect {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
+const COLUMNS: { key: SortKey; label: string; cls: string }[] = [
+    { key: 'name', label: 'Name', cls: 'ks-c-name' },
+    { key: 'kind', label: 'Kind', cls: 'ks-c-kind' },
+    { key: 'size', label: 'Size', cls: 'ks-c-size' },
+    { key: 'modified', label: 'Modified', cls: 'ks-c-date' },
+];
+const PAGE_SIZE = 240;
+const ZIP_PICK_LIMIT = 300;
 
 const route = useRoute();
+const router = useRouter();
 const requestUrl = useRequestURL();
 const code = computed(() => String(route.params.code || ''));
 
-const activeFolderId = ref('');
-const selectedIds = ref<Set<string>>(new Set());
-const primarySelectedId = ref('');
-const mutationError = ref('');
-const isMutating = ref(false);
-const isDropActive = ref(false);
-const activeUploads = ref<UploadTask[]>([]);
-const isUploadPanelOpen = ref(false);
-const uploadInput = ref<HTMLInputElement | null>(null);
-const gridContainer = ref<HTMLElement | null>(null);
-const failedThumbnails = ref<Set<string>>(new Set());
-const draggedItem = ref<NormalizedSharedChildItem | null>(null);
-const activeDropTargetID = ref<string | null>(null);
-
-const isMarqueeing = ref(false);
-const marqueeRect = ref<MarqueeRect | null>(null);
-let marqueeOriginX = 0;
-let marqueeOriginY = 0;
-let marqueeBaseSelection = new Set<string>();
-let marqueeAdditive = false;
-
-const { data: sharedItem, pending: loading, error: fetchError, refresh } = await useFetch<SharedItemInfo>(
-  () => `${KliveAPIUrl}/KliveCloud/GetSharedItemInfo?code=${encodeURIComponent(code.value)}`,
-  { key: `shared-item-${code.value}` }
+const { data, pending, error: fetchError, refresh } = await useFetch<RawShareInfo>(
+    () => shareApi(code.value, false).info(),
+    { key: `shared-item-${code.value}` },
 );
 
-function normalizeItemType(itemType: unknown): CloudItemType {
-  const value = String(itemType ?? '').trim().toLowerCase();
-  if (value === 'folder' || value === '1') return 'Folder';
-  return 'File';
+// ── the share ──────────────────────────────────────────────────────────────
+
+// A failed refresh empties `data`. Unless the link itself is gone, the page keeps showing the
+// last listing it had rather than blanking over a dropped connection.
+const lastGood = shallowRef<RawShareInfo | null>(data.value ?? null);
+watch(data, value => { if (value) lastGood.value = value; });
+const gone = computed(() => [404, 410].includes(Number(fetchError.value?.statusCode)));
+const share = computed(() => (gone.value ? null : data.value ?? lastGood.value));
+
+const index = computed(() => (share.value ? buildShareIndex(share.value) : null));
+const root = computed(() => index.value?.root ?? null);
+const isFolderShare = computed(() => root.value?.type === 'Folder');
+const api = computed(() => shareApi(code.value, !isFolderShare.value));
+const mode = computed(() => normalizeMode(share.value?.SharePermissionMode ?? share.value?.PermissionMode));
+const canWrite = computed(() => isFolderShare.value && (truthy(share.value?.CanWrite) || mode.value !== 'ReadOnly'));
+const canDelete = computed(() => isFolderShare.value && (truthy(share.value?.CanDelete) || mode.value === 'WriteDelete'));
+const canZip = computed(() => truthy(share.value?.CanDownloadZip));
+const modeLabel = computed(() => ({ ReadOnly: 'View only', Write: 'Can add files', WriteDelete: 'Can add & delete' }[mode.value]));
+
+const now = ref<number | null>(null);
+const expiry = computed(() => {
+    const at = Date.parse(share.value?.ExpirationDate ?? '');
+    return Number.isFinite(at) ? describeExpiry(at, now.value) : null;
+});
+
+const summary = computed(() => {
+    const idx = index.value;
+    if (!idx) return '';
+    const r = idx.root;
+    if (r.type === 'File') return `${describeItem(r)} · ${formatBytes(r.bytes)} · ${formatWhen(r.modified, now.value)}`;
+    if (!idx.totalFiles && !idx.totalFolders) return 'Empty folder';
+    const parts = [plural(idx.totalFiles, 'file')];
+    if (idx.totalFolders) parts.push(plural(idx.totalFolders, 'folder'));
+    parts.push(formatBytes(r.bytes));
+    return parts.join(' · ');
+});
+
+const failure = computed(() => {
+    const status = Number(fetchError.value?.statusCode);
+    if (status === 404) return { icon: 'link', title: "This link doesn't work", detail: 'It may have been removed, or the address is incomplete.', retry: false };
+    if (status === 410) return { icon: 'clock', title: 'This link has expired', detail: 'Ask whoever sent it for a new one.', retry: false };
+    return { icon: 'alert', title: "Couldn't open this share", detail: "KliveCloud didn't respond.", retry: true };
+});
+
+function retryLoad() {
+    void refresh();
 }
 
-function normalizeSharePermissionMode(mode: unknown): 'ReadOnly' | 'Write' | 'WriteDelete' {
-  const value = String(mode ?? '').trim().replace(/[-_\s]/g, '').toLowerCase();
-  if (value === '2' || value === 'writedelete' || value === 'delete') return 'WriteDelete';
-  if (value === '1' || value === 'write') return 'Write';
-  return 'ReadOnly';
+watch(fetchError, error => {
+    if (error && !gone.value && lastGood.value) toast("Couldn't refresh the folder.", 'bad');
+});
+
+// ── where we are: ?f=<folder>, ?file=<file being viewed> ──────────────────
+
+const folderParam = computed(() => keyOf(route.query.f));
+const fileParam = computed(() => keyOf(route.query.file));
+
+const folderKey = computed(() => {
+    const idx = index.value;
+    if (!idx) return '';
+    const asked = idx.byKey.get(folderParam.value);
+    if (asked?.type === 'Folder') return asked.key;
+    const file = idx.byKey.get(fileParam.value);
+    if (file && file !== idx.root && file.type === 'File') return file.parentKey;
+    return idx.root.key;
+});
+const folder = computed(() => index.value?.byKey.get(folderKey.value) ?? null);
+const crumbs = computed(() => (index.value ? pathTo(index.value, folderKey.value) : []));
+
+function otherParams() {
+    const { f: _f, file: _file, ...rest } = route.query;
+    return rest;
 }
 
-function normalizeBoolean(value: unknown) {
-  if (value === true || value === 1) return true;
-  const normalized = String(value ?? '').trim().toLowerCase();
-  return normalized === 'true' || normalized === '1' || normalized === 'yes';
+function folderParamFor(key: string) {
+    const item = index.value?.byKey.get(key);
+    return item && item !== index.value?.root ? item.id : undefined;
 }
 
-function normalizeSharedChild<T extends SharedChildItem>(item: T): NormalizedSharedChildItem {
-  return {
-    ...item,
-    ParentFolderID: item.ParentFolderID || '',
-    RelativePath: item.RelativePath || item.Name || '',
-    ItemType: normalizeItemType(item.ItemType)
-  };
+function openFolder(key: string) {
+    const target = index.value?.byKey.get(key);
+    if (!target || target.type !== 'Folder') return;
+    query.value = '';
+    menu.value = null;
+    clearSelection();
+    if (target.key !== folderKey.value || fileParam.value) void router.push({ query: { ...otherParams(), f: folderParamFor(target.key) } });
+    if (import.meta.client) window.scrollTo({ top: 0 });
 }
 
-function sameId(left?: string | null, right?: string | null) {
-  return String(left || '').toLowerCase() === String(right || '').toLowerCase();
-}
+// ── listing ────────────────────────────────────────────────────────────────
 
-function sortSharedItems(left: NormalizedSharedChildItem, right: NormalizedSharedChildItem) {
-  if (left.ItemType !== right.ItemType) return left.ItemType === 'Folder' ? -1 : 1;
-  return left.Name.localeCompare(right.Name);
-}
+const query = ref('');
+const searching = computed(() => query.value.trim().length > 0);
+const sort = reactive<{ key: SortKey; dir: 1 | -1 }>({ key: 'name', dir: 1 });
 
-const rootItem = computed<NormalizedSharedChildItem | null>(() => sharedItem.value ? normalizeSharedChild(sharedItem.value) : null);
-const isFolder = computed(() => rootItem.value?.ItemType === 'Folder');
-const rootFolderId = computed(() => isFolder.value ? rootItem.value?.ItemID || '' : '');
-const sharePermissionMode = computed(() => normalizeSharePermissionMode(sharedItem.value?.SharePermissionMode ?? sharedItem.value?.PermissionMode));
-const canWrite = computed(() => normalizeBoolean(sharedItem.value?.CanWrite) || sharePermissionMode.value === 'Write' || sharePermissionMode.value === 'WriteDelete');
-const canDelete = computed(() => normalizeBoolean(sharedItem.value?.CanDelete) || sharePermissionMode.value === 'WriteDelete');
-const children = computed<NormalizedSharedChildItem[]>(() => Array.isArray(sharedItem.value?.Children) ? sharedItem.value!.Children.map(normalizeSharedChild) : []);
-
-function getDirectChildren(folderId: string) {
-  return children.value
-    .filter((entry) => sameId(entry.ParentFolderID, folderId))
-    .sort(sortSharedItems);
-}
-
-const activeFolder = computed<NormalizedSharedChildItem | null>(() => {
-  if (!isFolder.value) return null;
-  if (sameId(activeFolderId.value, rootFolderId.value)) return rootItem.value;
-  return children.value.find((entry) => sameId(entry.ItemID, activeFolderId.value) && entry.ItemType === 'Folder') || rootItem.value;
-});
-const visibleItems = computed<NormalizedSharedChildItem[]>(() => {
-  const folderId = activeFolderId.value || rootFolderId.value;
-  return getDirectChildren(folderId);
-});
-const parentFolderId = computed(() => {
-  if (!activeFolder.value || sameId(activeFolderId.value, rootFolderId.value)) return rootFolderId.value;
-  return activeFolder.value.ParentFolderID || rootFolderId.value;
-});
-const folderPath = computed(() => {
-  if (!sharedItem.value || !isFolder.value || !rootItem.value) return [];
-
-  const path: NormalizedSharedChildItem[] = [rootItem.value];
-  const folderMap = new Map(children.value.filter((entry) => entry.ItemType === 'Folder').map((entry) => [entry.ItemID, entry]));
-  let cursor = activeFolderId.value;
-  const nestedPath: NormalizedSharedChildItem[] = [];
-  const seen = new Set<string>();
-
-  while (cursor && !sameId(cursor, rootFolderId.value) && !seen.has(cursor)) {
-    seen.add(cursor);
-    const folder = folderMap.get(cursor);
-    if (!folder) break;
-    nestedPath.unshift(folder);
-    cursor = folder.ParentFolderID;
-  }
-
-  return path.concat(nestedPath);
-});
-const permissionLabel = computed(() => {
-  if (sharePermissionMode.value === 'WriteDelete') return 'Write & delete';
-  if (sharePermissionMode.value === 'Write') return 'Write';
-  return 'Read only';
-});
-const error = computed(() => {
-  if (!fetchError.value) return '';
-  if (fetchError.value.statusCode === 404) return 'Shared item not found';
-  if (fetchError.value.statusCode === 410) return 'This share link expired';
-  return 'Failed to load the shared item';
-});
-const selectionCount = computed(() => selectedIds.value.size);
-const primarySelected = computed<NormalizedSharedChildItem | null>(() => {
-  if (!primarySelectedId.value) return null;
-  return children.value.find((entry) => sameId(entry.ItemID, primarySelectedId.value)) || null;
-});
-const selectedSizeBytes = computed(() => {
-  let total = 0;
-  for (const id of selectedIds.value) {
-    const item = children.value.find((entry) => sameId(entry.ItemID, id));
-    if (item?.ItemType === 'File') total += item.FileSizeBytes;
-  }
-  return total;
-});
-const activeUploadCount = computed(() => activeUploads.value.filter((task) => task.status === 'uploading' || task.status === 'finalizing').length);
-
-const sharedPageUrl = computed(() => new URL(route.fullPath || `/shared/${encodeURIComponent(code.value)}`, requestUrl.origin).toString());
-const embedTitle = computed(() => rootItem.value?.Name || 'KliveCloud shared item');
-const embedDescription = computed(() => {
-  const item = rootItem.value;
-  if (!item) return 'Shared via KliveCloud';
-  if (item.ItemType === 'File') return `Shared via KliveCloud - ${formatSize(item.FileSizeBytes)}`;
-  return `Shared via KliveCloud - ${countNestedItems(item.ItemID)} items`;
+const listing = computed<ShareItem[]>(() => {
+    const idx = index.value;
+    if (!idx || !isFolderShare.value) return [];
+    const base = searching.value ? searchShare(idx, query.value) : (idx.childrenOf.get(folderKey.value) ?? []);
+    return sortItems(base, sort.key, sort.dir);
 });
 
-useHead(() => {
-  const item = rootItem.value;
-  const title = embedTitle.value;
-  const description = embedDescription.value;
-  const meta: Array<Record<string, string>> = [
-    { key: 'description', name: 'description', content: description },
-    { key: 'og-site-name', property: 'og:site_name', content: 'KliveCloud' },
-    { key: 'og-title', property: 'og:title', content: title },
-    { key: 'og-description', property: 'og:description', content: description },
-    { key: 'og-url', property: 'og:url', content: sharedPageUrl.value },
-    { key: 'twitter-title', name: 'twitter:title', content: title },
-    { key: 'twitter-description', name: 'twitter:description', content: description },
-    { key: 'theme-color', name: 'theme-color', content: '#4d9e39' }
-  ];
+const limit = ref(PAGE_SIZE);
+const visible = computed(() => listing.value.slice(0, limit.value));
+watch([folderKey, query], () => { limit.value = PAGE_SIZE; });
 
-  if (item?.ItemType === 'File' && (item.IsImage || item.IsVideo)) {
-    const previewUrl = getSharedPreviewUrl(item.ItemID, 1280, 720);
-    meta.push(
-      { key: 'og-image', property: 'og:image', content: previewUrl },
-      { key: 'og-image-secure', property: 'og:image:secure_url', content: previewUrl },
-      { key: 'og-image-type', property: 'og:image:type', content: 'image/jpeg' },
-      { key: 'og-image-width', property: 'og:image:width', content: '1280' },
-      { key: 'og-image-height', property: 'og:image:height', content: '720' },
-      { key: 'twitter-image', name: 'twitter:image', content: previewUrl }
-    );
-  }
-
-  if (item?.ItemType === 'File' && item.IsVideo) {
-    const videoUrl = getSharedEmbedVideoUrl(item.ItemID);
-    const videoType = 'video/mp4';
-    meta.push(
-      { key: 'og-type', property: 'og:type', content: 'video.other' },
-      { key: 'og-video', property: 'og:video', content: videoUrl },
-      { key: 'og-video-url', property: 'og:video:url', content: videoUrl },
-      { key: 'og-video-secure', property: 'og:video:secure_url', content: videoUrl },
-      { key: 'og-video-type', property: 'og:video:type', content: videoType },
-      { key: 'og-video-width', property: 'og:video:width', content: '1280' },
-      { key: 'og-video-height', property: 'og:video:height', content: '720' },
-      { key: 'twitter-card', name: 'twitter:card', content: 'player' },
-      { key: 'twitter-player', name: 'twitter:player', content: videoUrl },
-      { key: 'twitter-player-stream', name: 'twitter:player:stream', content: videoUrl },
-      { key: 'twitter-player-stream-type', name: 'twitter:player:stream:content_type', content: videoType },
-      { key: 'twitter-player-width', name: 'twitter:player:width', content: '1280' },
-      { key: 'twitter-player-height', name: 'twitter:player:height', content: '720' }
-    );
-  } else {
-    meta.push(
-      { key: 'og-type', property: 'og:type', content: 'website' },
-      { key: 'twitter-card', name: 'twitter:card', content: 'summary_large_image' }
-    );
-  }
-
-  return {
-    title: `${title} | KliveCloud`,
-    link: [{ key: 'canonical', rel: 'canonical', href: sharedPageUrl.value }],
-    meta
-  };
+const footNote = computed(() => {
+    if (searching.value) return plural(listing.value.length, 'result');
+    const bytes = listing.value.reduce((sum, item) => sum + item.bytes, 0);
+    return `${plural(listing.value.length, 'item')} · ${formatBytes(bytes)}`;
 });
 
-watch(sharedItem, (item) => {
-  const normalizedRoot = item ? normalizeSharedChild(item) : null;
-  if (normalizedRoot?.ItemType === 'Folder') {
-    const activeFolderStillExists = sameId(activeFolderId.value, normalizedRoot.ItemID)
-      || children.value.some((entry) => sameId(entry.ItemID, activeFolderId.value) && entry.ItemType === 'Folder');
-    if (!activeFolderStillExists) {
-      activeFolderId.value = normalizedRoot.ItemID;
+function sortBy(key: SortKey) {
+    if (sort.key === key) sort.dir = sort.dir === 1 ? -1 : 1;
+    else {
+        sort.key = key;
+        sort.dir = key === 'name' || key === 'kind' ? 1 : -1;
     }
+    savePrefs();
+}
 
-    const survivingIds = new Set<string>();
-    for (const id of selectedIds.value) {
-      if (children.value.some((entry) => sameId(entry.ItemID, id))) survivingIds.add(id);
+const sortChoice = computed({
+    get: () => `${sort.key}:${sort.dir}`,
+    set: (value: string) => {
+        const [key, dir] = value.split(':');
+        sort.key = key as SortKey;
+        sort.dir = dir === '-1' ? -1 : 1;
+        savePrefs();
+    },
+});
+
+function thumbUrl(item: ShareItem) {
+    return hasThumbnail(item) ? api.value.preview(item) : null;
+}
+
+function sizeText(item: ShareItem) {
+    if (item.type === 'Folder') return item.files ? formatBytes(item.bytes) : '—';
+    return formatBytes(item.bytes);
+}
+
+/** The line under a name on a phone, where the columns don't fit. */
+function subMeta(item: ShareItem) {
+    if (item.type === 'Folder') return item.files ? `${describeItem(item)} · ${formatBytes(item.bytes)}` : describeItem(item);
+    return `${formatBytes(item.bytes)} · ${formatWhen(item.modified, now.value)}`;
+}
+
+function locationOf(item: ShareItem) {
+    const idx = index.value;
+    if (!idx) return '';
+    const path = pathTo(idx, item.parentKey);
+    return path.length > 1 ? path.slice(1).map(step => step.name).join(' / ') : idx.root.name;
+}
+
+// A folder mostly of photos and videos opens as a grid, until the visitor picks for themselves.
+const autoView = computed<'list' | 'grid'>(() => {
+    const files = (index.value?.childrenOf.get(folderKey.value) ?? []).filter(item => item.type === 'File');
+    if (files.length < 4) return 'list';
+    return files.filter(item => thumbUrl(item)).length / files.length >= 0.6 ? 'grid' : 'list';
+});
+const chosenView = ref<'list' | 'grid' | null>(null);
+const view = computed(() => chosenView.value ?? autoView.value);
+
+function setView(next: 'list' | 'grid') {
+    chosenView.value = next;
+    savePrefs();
+}
+
+const PREFS_KEY = 'klivecloud.share';
+function savePrefs() {
+    try {
+        const stored = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
+        stored.sort = { key: sort.key, dir: sort.dir };
+        stored.views = { ...(stored.views ?? {}), ...(chosenView.value ? { [code.value]: chosenView.value } : {}) };
+        localStorage.setItem(PREFS_KEY, JSON.stringify(stored));
+    } catch { /* private window: just don't remember */ }
+}
+
+function loadPrefs() {
+    try {
+        const stored = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
+        if (stored.sort?.key && COLUMNS.some(column => column.key === stored.sort.key)) {
+            sort.key = stored.sort.key;
+            sort.dir = stored.sort.dir === -1 ? -1 : 1;
+        }
+        const chosen = stored.views?.[code.value];
+        if (chosen === 'list' || chosen === 'grid') chosenView.value = chosen;
+    } catch { /* nothing remembered */ }
+}
+
+// ── selection ──────────────────────────────────────────────────────────────
+
+const selected = ref(new Set<string>());
+const anchorKey = ref('');
+const selectedKeys = computed(() => [...selected.value]);
+const selectedItems = computed(() => selectedKeys.value.map(key => index.value?.byKey.get(key)).filter((item): item is ShareItem => !!item));
+const selectedCount = computed(() => selectedItems.value.length);
+const selectedBytes = computed(() => outermost(selectedItems.value).reduce((sum, item) => sum + item.bytes, 0));
+const allSelected = computed(() => listing.value.length > 0 && listing.value.every(item => selected.value.has(item.key)));
+const someSelected = computed(() => selectedCount.value > 0 && !allSelected.value);
+const canDownloadSelection = computed(() => canZip.value || selectedItems.value.some(item => item.type === 'File'));
+
+/** Drops anything that sits inside another of the items (search results can hold both). */
+function outermost(items: ShareItem[]) {
+    const idx = index.value;
+    if (!idx) return items;
+    const keys = new Set(items.map(item => item.key));
+    return items.filter(item => !pathTo(idx, item.parentKey).some(step => keys.has(step.key)));
+}
+
+function toggle(item: ShareItem) {
+    const next = new Set(selected.value);
+    if (next.has(item.key)) next.delete(item.key);
+    else next.add(item.key);
+    selected.value = next;
+    anchorKey.value = item.key;
+}
+
+function selectRange(item: ShareItem) {
+    const order = listing.value.map(entry => entry.key);
+    const from = order.indexOf(anchorKey.value);
+    const to = order.indexOf(item.key);
+    if (from < 0 || to < 0) {
+        toggle(item);
+        return;
     }
-    selectedIds.value = survivingIds;
-    if (primarySelectedId.value && !survivingIds.has(primarySelectedId.value)) {
-      primarySelectedId.value = '';
-    }
-  }
-}, { immediate: true });
-
-function getIcon(name: string) {
-  const ext = name.split('.').pop()?.toLowerCase();
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext || '')) return 'IMG';
-  if (['mp4', 'mov', 'mkv', 'webm', 'm4v', 'avi'].includes(ext || '')) return 'VID';
-  if (['mp3', 'wav', 'flac', 'aac'].includes(ext || '')) return 'AUD';
-  if (['zip', 'rar', '7z', 'tar'].includes(ext || '')) return 'ZIP';
-  if (ext === 'pdf') return 'PDF';
-  if (['txt', 'md', 'json', 'csv'].includes(ext || '')) return 'TXT';
-  return 'FILE';
+    const next = new Set(selected.value);
+    for (let i = Math.min(from, to); i <= Math.max(from, to); i++) next.add(order[i]);
+    selected.value = next;
 }
 
-function getCloudItemIcon(item: NormalizedSharedChildItem) {
-  if (item.ItemType === 'Folder') return 'DIR';
-  return getIcon(item.Name);
-}
-
-function hasThumbnail(item: NormalizedSharedChildItem) {
-  if (item.ItemType !== 'File') return false;
-  if (failedThumbnails.value.has(item.ItemID)) return false;
-  return !!(item.IsImage || item.IsVideo);
-}
-
-function markThumbnailFailed(itemId: string) {
-  const next = new Set(failedThumbnails.value);
-  next.add(itemId);
-  failedThumbnails.value = next;
-}
-
-function formatSize(bytes: number) {
-  if (!bytes) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  return `${parseFloat((bytes / Math.pow(1024, index)).toFixed(2))} ${units[index]}`;
-}
-
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString();
-}
-
-function formatDateTime(dateStr: string) {
-  return new Date(dateStr).toLocaleString();
-}
-
-function getSharedDownloadUrl(itemId?: string) {
-  const params = new URLSearchParams({ code: code.value });
-  if (itemId) params.set('itemID', itemId);
-  return `${KliveAPIUrl}/KliveCloud/DownloadShared?${params.toString()}`;
-}
-
-function getSharedStreamUrl(itemId?: string) {
-  const params = new URLSearchParams({ code: code.value });
-  if (itemId) params.set('itemID', itemId);
-  return `${KliveAPIUrl}/KliveCloud/StreamSharedVideo?${params.toString()}`;
-}
-
-function getSharedEmbedVideoUrl(itemId?: string) {
-  const params = new URLSearchParams({ code: code.value });
-  if (itemId) params.set('itemID', itemId);
-  return `${KliveAPIUrl}/KliveCloud/StreamSharedVideoEmbed?${params.toString()}`;
-}
-
-function getSharedPreviewUrl(itemId?: string, maxWidth = 320, maxHeight = 320) {
-  const params = new URLSearchParams({ code: code.value, maxWidth: String(maxWidth), maxHeight: String(maxHeight) });
-  if (itemId) params.set('itemID', itemId);
-  return `${KliveAPIUrl}/KliveCloud/GetSharedPreview?${params.toString()}`;
-}
-
-function openFolder(folderId: string) {
-  activeFolderId.value = folderId || rootFolderId.value;
-  clearSelection();
-}
-
-function isSelected(itemId: string) {
-  return selectedIds.value.has(itemId);
-}
-
-function setSingleSelection(itemId: string) {
-  selectedIds.value = new Set([itemId]);
-  primarySelectedId.value = itemId;
-}
-
-function toggleSelection(itemId: string) {
-  const next = new Set(selectedIds.value);
-  if (next.has(itemId)) {
-    next.delete(itemId);
-    if (sameId(primarySelectedId.value, itemId)) {
-      primarySelectedId.value = next.size > 0 ? Array.from(next).pop() || '' : '';
-    }
-  } else {
-    next.add(itemId);
-    primarySelectedId.value = itemId;
-  }
-  selectedIds.value = next;
-}
-
-function addToSelection(itemId: string) {
-  const next = new Set(selectedIds.value);
-  next.add(itemId);
-  selectedIds.value = next;
-  primarySelectedId.value = itemId;
+function selectAll() {
+    selected.value = new Set(listing.value.map(item => item.key));
 }
 
 function clearSelection() {
-  selectedIds.value = new Set();
-  primarySelectedId.value = '';
+    if (selected.value.size) selected.value = new Set();
+    anchorKey.value = '';
 }
 
-function onTileClick(event: MouseEvent, item: NormalizedSharedChildItem) {
-  event.stopPropagation();
-  if (event.shiftKey) {
-    addToSelection(item.ItemID);
-    return;
-  }
-  if (event.ctrlKey || event.metaKey) {
-    toggleSelection(item.ItemID);
-    return;
-  }
-  setSingleSelection(item.ItemID);
+function toggleAll() {
+    if (allSelected.value) clearSelection();
+    else selectAll();
 }
 
-function onTileDoubleClick(item: NormalizedSharedChildItem) {
-  if (item.ItemType === 'Folder') {
-    openFolder(item.ItemID);
-    return;
-  }
-  if (item.ItemType === 'File' && (item.IsImage || item.IsVideo)) {
-    setSingleSelection(item.ItemID);
-    return;
-  }
-  if (process.client) window.location.assign(getSharedDownloadUrl(item.ItemID));
+function onCheck(event: MouseEvent, item: ShareItem) {
+    if (event.shiftKey && anchorKey.value) selectRange(item);
+    else toggle(item);
 }
 
-function countNestedItems(folderId: string) {
-  const total = children.value.filter((entry) => sameId(entry.ParentFolderID, folderId)).length;
-  return `${total} item${total === 1 ? '' : 's'}`;
+// Whatever no longer exists after a refresh drops out of the selection.
+watch(index, idx => {
+    if (!idx || !selected.value.size) return;
+    const kept = new Set([...selected.value].filter(key => idx.byKey.has(key)));
+    if (kept.size !== selected.value.size) selected.value = kept;
+});
+watch([folderKey, query], clearSelection);
+
+// ── opening things ─────────────────────────────────────────────────────────
+
+const focusKey = ref('');
+const tabStop = computed(() => (visible.value.some(item => item.key === focusKey.value) ? focusKey.value : visible.value[0]?.key ?? ''));
+
+function open(item: ShareItem) {
+    menu.value = null;
+    if (item.type === 'Folder') openFolder(item.key);
+    else openFile(item);
 }
 
-async function copyCurrentLink() {
-  if (!process.client) return;
-  await navigator.clipboard.writeText(window.location.href);
-  await Swal.fire({ title: 'Copied', text: 'Share link copied to clipboard.', icon: 'success', timer: 1300, showConfirmButton: false, background: '#161516', color: '#fff' });
+function onItemClick(event: MouseEvent, item: ShareItem) {
+    // One click opens. The second click of a double-click would land on whatever the first one
+    // brought up under the pointer (the first row of the folder it opened, say).
+    if (event.detail > 1) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('.ks-c-act, .ks-pop, .ks-check, .ks-where, a')) return;
+    focusKey.value = item.key;
+    if (event.shiftKey && anchorKey.value) selectRange(item);
+    else if (event.ctrlKey || event.metaKey || selectedCount.value > 0) toggle(item);
+    else open(item);
 }
 
-function triggerSharedUpload() {
-  if (!canWrite.value || isMutating.value) return;
-  uploadInput.value?.click();
-}
+const gridEl = ref<HTMLElement | null>(null);
 
-async function createSharedFolder() {
-  if (!canWrite.value || isMutating.value) return;
-  const result = await Swal.fire({
-    title: 'Create folder',
-    input: 'text',
-    inputPlaceholder: 'Folder name',
-    showCancelButton: true,
-    confirmButtonText: 'Create',
-    confirmButtonColor: '#4d9e39',
-    background: '#161516',
-    color: '#ffffff'
-  });
-
-  const folderName = result.value?.trim();
-  if (!result.isConfirmed || !folderName) return;
-
-  await mutateSharedFolder(`/KliveCloud/CreateSharedFolder?code=${encodeURIComponent(code.value)}&parentFolderID=${encodeURIComponent(activeFolderId.value || rootFolderId.value)}&name=${encodeURIComponent(folderName)}`);
-}
-
-async function handleSharedUpload(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const files = Array.from(input.files || []);
-  input.value = '';
-  await uploadSharedFiles(files);
-}
-
-async function uploadSharedFiles(files: File[]) {
-  if (!files.length || !canWrite.value || isMutating.value) return;
-
-  isMutating.value = true;
-  mutationError.value = '';
-  isUploadPanelOpen.value = true;
-  try {
-    for (const file of files) {
-      await uploadSharedFile(file);
-    }
-    await refresh();
-  } catch (err) {
-    mutationError.value = err instanceof Error ? err.message : 'Upload failed.';
-  } finally {
-    isMutating.value = false;
-  }
-}
-
-function uploadSharedFile(file: File) {
-  return new Promise<void>((resolve, reject) => {
-    const task: UploadTask = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      fileName: file.name,
-      progress: 0,
-      status: 'uploading'
-    };
-    activeUploads.value.push(task);
-
-    const params = new URLSearchParams({
-      code: code.value,
-      parentFolderID: activeFolderId.value || rootFolderId.value,
-      fileName: file.name
+function focusItem(key: string) {
+    focusKey.value = key;
+    void nextTick(() => {
+        const el = document.querySelector<HTMLElement>(`[data-focus-key="${CSS.escape(key)}"]`);
+        el?.focus({ preventScroll: true });
+        el?.closest('.ks-row, .ks-tile')?.scrollIntoView({ block: 'nearest' });
     });
-
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${KliveAPIUrl}/KliveCloud/UploadShared?${params.toString()}`, true);
-
-    xhr.upload.onprogress = (event) => {
-      if (!event.lengthComputable) return;
-      task.progress = Math.round((event.loaded / event.total) * 100);
-      if (task.progress === 100) task.status = 'finalizing';
-    };
-
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        task.status = 'completed';
-        task.progress = 100;
-        resolve();
-        return;
-      }
-
-      task.status = 'error';
-      reject(new Error(xhr.responseText || 'Upload failed.'));
-    };
-
-    xhr.onerror = () => {
-      task.status = 'error';
-      reject(new Error('Network error while uploading.'));
-    };
-
-    xhr.send(file);
-  });
 }
 
-function onDragOver(event: DragEvent) {
-  if (!canWrite.value || isMutating.value) return;
-  if (!event.dataTransfer || !Array.from(event.dataTransfer.types || []).includes('Files')) return;
-  isDropActive.value = true;
-}
-
-function onDragLeave(event: DragEvent) {
-  const related = event.relatedTarget as Node | null;
-  if (related && (event.currentTarget as HTMLElement).contains(related)) return;
-  isDropActive.value = false;
-}
-
-async function onFileDrop(event: DragEvent) {
-  isDropActive.value = false;
-  const files = Array.from(event.dataTransfer?.files || []);
-  if (!files.length) return;
-  await uploadSharedFiles(files);
-}
-
-function onGridMouseDown(event: MouseEvent) {
-  if (event.button !== 0) return;
-  const target = event.target as HTMLElement;
-  if (target.closest('.tile') || target.closest('.tile-actions') || target.closest('button') || target.closest('a')) return;
-  if (!gridContainer.value) return;
-
-  const containerRect = gridContainer.value.getBoundingClientRect();
-  marqueeOriginX = event.clientX - containerRect.left + gridContainer.value.scrollLeft;
-  marqueeOriginY = event.clientY - containerRect.top + gridContainer.value.scrollTop;
-  marqueeAdditive = event.ctrlKey || event.metaKey || event.shiftKey;
-  marqueeBaseSelection = marqueeAdditive ? new Set(selectedIds.value) : new Set<string>();
-
-  if (!marqueeAdditive) clearSelection();
-
-  isMarqueeing.value = true;
-  marqueeRect.value = { left: marqueeOriginX, top: marqueeOriginY, width: 0, height: 0 };
-
-  window.addEventListener('mousemove', onMarqueeMove);
-  window.addEventListener('mouseup', onMarqueeUp, { once: true });
-  event.preventDefault();
-}
-
-function onMarqueeMove(event: MouseEvent) {
-  if (!gridContainer.value || !isMarqueeing.value) return;
-  const containerRect = gridContainer.value.getBoundingClientRect();
-  const x = event.clientX - containerRect.left + gridContainer.value.scrollLeft;
-  const y = event.clientY - containerRect.top + gridContainer.value.scrollTop;
-
-  const left = Math.min(marqueeOriginX, x);
-  const top = Math.min(marqueeOriginY, y);
-  const width = Math.abs(x - marqueeOriginX);
-  const height = Math.abs(y - marqueeOriginY);
-  marqueeRect.value = { left, top, width, height };
-
-  updateMarqueeSelection(left, top, width, height);
-}
-
-function updateMarqueeSelection(left: number, top: number, width: number, height: number) {
-  if (!gridContainer.value) return;
-  const containerRect = gridContainer.value.getBoundingClientRect();
-  const tiles = gridContainer.value.querySelectorAll<HTMLElement>('.tile[data-item-id]');
-  const next = new Set<string>(marqueeBaseSelection);
-  let lastHit = '';
-
-  const right = left + width;
-  const bottom = top + height;
-
-  tiles.forEach((tile) => {
-    const itemId = tile.dataset.itemId;
-    if (!itemId) return;
-    const tileRect = tile.getBoundingClientRect();
-    const tileLeft = tileRect.left - containerRect.left + (gridContainer.value?.scrollLeft || 0);
-    const tileTop = tileRect.top - containerRect.top + (gridContainer.value?.scrollTop || 0);
-    const tileRight = tileLeft + tileRect.width;
-    const tileBottom = tileTop + tileRect.height;
-
-    const intersects = tileLeft < right && tileRight > left && tileTop < bottom && tileBottom > top;
-    if (intersects) {
-      next.add(itemId);
-      lastHit = itemId;
-    } else if (!marqueeAdditive) {
-      next.delete(itemId);
+function onItemKey(event: KeyboardEvent, item: ShareItem) {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    const list = listing.value;
+    const at = list.findIndex(entry => entry.key === item.key);
+    const columns = view.value === 'grid' && gridEl.value ? getComputedStyle(gridEl.value).gridTemplateColumns.split(' ').filter(Boolean).length || 1 : 1;
+    let next = -1;
+    switch (event.key) {
+        case 'ArrowDown': next = at + columns; break;
+        case 'ArrowUp': next = at - columns; break;
+        case 'ArrowRight': if (view.value === 'grid') next = at + 1; break;
+        case 'ArrowLeft': if (view.value === 'grid') next = at - 1; break;
+        case 'Home': next = 0; break;
+        case 'End': next = list.length - 1; break;
+        case ' ':
+            event.preventDefault();
+            toggle(item);
+            return;
+        default: return;
     }
-  });
-
-  selectedIds.value = next;
-  if (lastHit) {
-    primarySelectedId.value = lastHit;
-  } else if (!next.has(primarySelectedId.value)) {
-    primarySelectedId.value = next.size > 0 ? Array.from(next).pop() || '' : '';
-  }
+    event.preventDefault();
+    if (next < 0 || next >= list.length) return;
+    if (next >= limit.value) limit.value = Math.ceil((next + 1) / PAGE_SIZE) * PAGE_SIZE;
+    if (event.shiftKey) {
+        if (!anchorKey.value) anchorKey.value = item.key;
+        selectRange(list[next]);
+    }
+    focusItem(list[next].key);
 }
 
-function onMarqueeUp() {
-  isMarqueeing.value = false;
-  marqueeRect.value = null;
-  window.removeEventListener('mousemove', onMarqueeMove);
-}
+// ── the viewer ─────────────────────────────────────────────────────────────
 
-onBeforeUnmount(() => {
-  window.removeEventListener('mousemove', onMarqueeMove);
+const viewer = computed(() => {
+    const idx = index.value;
+    const file = idx?.byKey.get(fileParam.value);
+    if (!idx || !file || file === idx.root || file.type !== 'File') return null;
+    let items = listing.value.filter(item => item.type === 'File');
+    if (!items.some(item => item.key === file.key)) {
+        items = sortItems((idx.childrenOf.get(file.parentKey) ?? []).filter(item => item.type === 'File'), sort.key, sort.dir);
+    }
+    return { items, index: Math.max(0, items.findIndex(item => item.key === file.key)) };
 });
 
-function clearCompletedUploads() {
-  activeUploads.value = activeUploads.value.filter((task) => task.status === 'uploading' || task.status === 'finalizing');
-  if (activeUploads.value.length === 0) isUploadPanelOpen.value = false;
+// Opening pushes a history entry, so Back closes the viewer rather than leaving the page.
+const viewerPushed = ref(false);
+watch(fileParam, (key, previous) => {
+    if (key) return;
+    viewerPushed.value = false;
+    // However it closed (Escape, the button, Back), the last file looked at is where focus goes.
+    if (previous && import.meta.client) focusItem(previous);
+});
+
+function openFile(item: ShareItem) {
+    viewerPushed.value = true;
+    void router.push({ query: { ...otherParams(), f: folderParamFor(folderKey.value), file: item.id } });
 }
 
-function getStatusColor(status: UploadTask['status']) {
-  if (status === 'completed') return '#81c784';
-  if (status === 'error') return '#e57373';
-  if (status === 'finalizing') return '#88c0d0';
-  return '#4CAF50';
+function stepViewer(at: number) {
+    const item = viewer.value?.items[at];
+    if (item) void router.replace({ query: { ...route.query, file: item.id } });
 }
 
-async function deleteSharedItem(item: NormalizedSharedChildItem) {
-  if (!canDelete.value || isMutating.value) return;
-  const result = await Swal.fire({
-    title: `Delete ${item.Name}?`,
-    text: item.ItemType === 'Folder' ? 'This will delete the folder and its contents.' : 'This file will be removed from the shared folder.',
-    icon: 'warning',
-    showCancelButton: true,
-    confirmButtonText: 'Delete',
-    confirmButtonColor: '#ef4444',
-    background: '#161516',
-    color: '#ffffff'
-  });
-
-  if (!result.isConfirmed) return;
-  await mutateSharedFolder(`/KliveCloud/DeleteSharedItem?code=${encodeURIComponent(code.value)}&itemID=${encodeURIComponent(item.ItemID)}`);
-}
-
-async function deleteSelected() {
-  if (!canDelete.value || isMutating.value || selectedIds.value.size === 0) return;
-  const ids = Array.from(selectedIds.value);
-  const result = await Swal.fire({
-    title: `Delete ${ids.length} items?`,
-    text: 'Selected files and folders will be permanently removed.',
-    icon: 'warning',
-    showCancelButton: true,
-    confirmButtonText: 'Delete all',
-    confirmButtonColor: '#ef4444',
-    background: '#161516',
-    color: '#ffffff'
-  });
-  if (!result.isConfirmed) return;
-
-  isMutating.value = true;
-  mutationError.value = '';
-  try {
-    for (const id of ids) {
-      const response = await fetch(`${KliveAPIUrl}/KliveCloud/DeleteSharedItem?code=${encodeURIComponent(code.value)}&itemID=${encodeURIComponent(id)}`, { method: 'POST', mode: 'cors' });
-      if (!response.ok) throw new Error(await response.text());
+function closeViewer() {
+    if (viewerPushed.value && window.history.state?.back) {
+        viewerPushed.value = false;
+        router.back();
+    } else {
+        void router.replace({ query: { ...otherParams(), f: folderParamFor(folderKey.value) } });
     }
-    clearSelection();
-    await refresh();
-  } catch (err) {
-    mutationError.value = err instanceof Error ? err.message : 'Bulk delete failed.';
-  } finally {
-    isMutating.value = false;
-  }
 }
 
-function downloadSelected() {
-  if (!process.client) return;
-  for (const id of selectedIds.value) {
-    const item = children.value.find((entry) => sameId(entry.ItemID, id));
-    if (!item || item.ItemType !== 'File') continue;
+// ── links & downloads ──────────────────────────────────────────────────────
+
+const shareBase = computed(() => `${requestUrl.origin}/shared/${encodeURIComponent(code.value)}`);
+
+function linkFor(item?: ShareItem | null) {
+    const idx = index.value;
+    if (!item || !idx || item === idx.root) return shareBase.value;
+    return `${shareBase.value}?${item.type === 'Folder' ? 'f' : 'file'}=${encodeURIComponent(item.id)}`;
+}
+
+const pageLink = computed(() => linkFor(folder.value));
+
+const copied = ref('');
+let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+async function copyLink(url: string, tag: string, announce = false) {
+    menu.value = null;
+    if (!(await copyText(url))) {
+        toast("Couldn't copy the link.", 'bad');
+        return;
+    }
+    copied.value = tag;
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => { copied.value = ''; }, 1600);
+    if (announce) toast('Link copied');
+}
+
+const downloadAllUrl = computed(() => {
+    const idx = index.value;
+    if (!idx) return '';
+    if (!isFolderShare.value) return api.value.download();
+    return canZip.value && idx.root.files > 0 ? api.value.zip() : '';
+});
+
+function downloadUrlFor(item: ShareItem) {
+    if (item.type === 'File') return api.value.download(item);
+    return canZip.value && item.files > 0 ? api.value.zip(item.id) : '';
+}
+
+function startDownload(url: string) {
     const link = document.createElement('a');
-    link.href = getSharedDownloadUrl(item.ItemID);
-    link.download = item.Name;
+    link.href = url;
+    link.rel = 'noopener';
     document.body.appendChild(link);
     link.click();
     link.remove();
-  }
 }
 
-async function mutateSharedFolder(url: string) {
-  isMutating.value = true;
-  mutationError.value = '';
-  try {
-    const response = await fetch(`${KliveAPIUrl}${url}`, { method: 'POST', mode: 'cors' });
-    if (!response.ok) throw new Error(await response.text());
-    await refresh();
-  } catch (err) {
-    mutationError.value = err instanceof Error ? err.message : 'Shared folder update failed.';
-  } finally {
-    isMutating.value = false;
-  }
+function downloadSelection() {
+    const items = outermost(selectedItems.value);
+    if (!items.length) return;
+    if (items.length === 1) {
+        const url = downloadUrlFor(items[0]);
+        if (url) startDownload(url);
+        return;
+    }
+    if (canZip.value) {
+        const here = searching.value ? undefined : folderParamFor(folderKey.value);
+        if (!searching.value && allSelected.value) startDownload(api.value.zip(here));
+        else if (items.length > ZIP_PICK_LIMIT) toast(`Pick up to ${ZIP_PICK_LIMIT} items, or download the whole folder.`, 'bad');
+        else startDownload(api.value.zip(here, items.map(item => item.id)));
+        return;
+    }
+    // A server without ZIP downloads: one download per file.
+    items.filter(item => item.type === 'File').forEach((item, i) => setTimeout(() => startDownload(api.value.download(item)), i * 350));
 }
 
-function getCloudItemEmoji(item: NormalizedSharedChildItem) {
-  if (item.ItemType === 'Folder') return '📁';
-  const ext = item.Name.split('.').pop()?.toLowerCase();
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext || '')) return '🖼️';
-  if (['mp4', 'mov', 'mkv', 'webm', 'm4v', 'avi'].includes(ext || '')) return '🎥';
-  if (['mp3', 'wav', 'flac', 'aac'].includes(ext || '')) return '🎵';
-  if (['zip', 'rar', '7z', 'tar'].includes(ext || '')) return '📦';
-  if (ext === 'pdf') return '📄';
-  if (['txt', 'md', 'json', 'csv'].includes(ext || '')) return '📝';
-  return '📄';
+// ── menus & toasts ─────────────────────────────────────────────────────────
+
+const menu = ref<string | null>(null);
+function toggleMenu(name: string) {
+    menu.value = menu.value === name ? null : name;
 }
 
-const isAllSelected = computed(() => {
-  if (visibleItems.value.length === 0) return false;
-  return visibleItems.value.every(item => selectedIds.value.has(item.ItemID));
+const toasts = ref<{ id: number; text: string; tone: 'ok' | 'bad' }[]>([]);
+let toastId = 0;
+function toast(text: string, tone: 'ok' | 'bad' = 'ok') {
+    const id = ++toastId;
+    toasts.value = [...toasts.value.slice(-2), { id, text, tone }];
+    setTimeout(() => { toasts.value = toasts.value.filter(note => note.id !== id); }, tone === 'bad' ? 6000 : 3200);
+}
+
+// What's new since the last look: briefly highlighted when it arrives.
+const fresh = ref(new Set<string>());
+function flash(key: string) {
+    if (!key) return;
+    fresh.value = new Set(fresh.value).add(key);
+    setTimeout(() => {
+        const next = new Set(fresh.value);
+        next.delete(key);
+        fresh.value = next;
+    }, 4000);
+}
+
+function itemClass(item: ShareItem) {
+    return {
+        selected: selected.value.has(item.key),
+        target: dropKey.value === item.key,
+        fresh: fresh.value.has(item.key),
+        dragged: dragKeys.value.includes(item.key),
+        folder: item.type === 'Folder',
+    };
+}
+
+// ── keeping the listing current ────────────────────────────────────────────
+
+let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+function scheduleRefresh(delay = 700) {
+    if (refreshTimer) return;
+    refreshTimer = setTimeout(async () => {
+        refreshTimer = undefined;
+        await refresh();
+    }, delay);
+}
+
+let fetchedAt = Date.now();
+watch(data, () => { fetchedAt = Date.now(); });
+function onVisibility() {
+    // Someone else may have added files while this tab sat in the background.
+    if (document.visibilityState === 'visible' && Date.now() - fetchedAt > 30_000 && isFolderShare.value) void refresh();
+}
+
+// ── uploads ────────────────────────────────────────────────────────────────
+
+const uploads = createUploadQueue({
+    url: (folderId, fileName) => api.value.upload(folderId, fileName),
+    onUploaded: job => {
+        if (job.folderId === folder.value?.id) flash(keyOf(job.itemId));
+        scheduleRefresh();
+    },
 });
+const preparing = ref('');
+const filePicker = ref<HTMLInputElement | null>(null);
+const folderPicker = ref<HTMLInputElement | null>(null);
 
-function toggleSelectAll() {
-  if (isAllSelected.value) {
-    const next = new Set<string>();
-    selectedIds.value = next;
-  } else {
-    const next = new Set<string>();
-    visibleItems.value.forEach(item => next.add(item.ItemID));
-    selectedIds.value = next;
-  }
+function pickFiles() {
+    menu.value = null;
+    filePicker.value?.click();
 }
 
-function onRowClick(event: MouseEvent, item: NormalizedSharedChildItem) {
-  const target = event.target as HTMLElement;
-  if (target.closest('.checkbox-col') || target.closest('.actions-col') || target.closest('input') || target.closest('button') || target.closest('a')) {
-    return;
-  }
-  
-  if (event.shiftKey && primarySelectedId.value) {
-    const ids = visibleItems.value.map(i => i.ItemID);
-    const lastIdx = ids.indexOf(primarySelectedId.value);
-    const currIdx = ids.indexOf(item.ItemID);
-    if (lastIdx !== -1 && currIdx !== -1) {
-      const start = Math.min(lastIdx, currIdx);
-      const end = Math.max(lastIdx, currIdx);
-      const next = new Set(selectedIds.value);
-      for (let i = start; i <= end; i++) {
-        next.add(ids[i]);
-      }
-      selectedIds.value = next;
-      primarySelectedId.value = item.ItemID;
-      return;
+function pickFolder() {
+    menu.value = null;
+    folderPicker.value?.click();
+}
+
+function onPicked(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const picked = takeInput(input.files);
+    input.value = '';
+    void upload(picked, folderKey.value);
+}
+
+async function upload(picked: Picked, targetKey: string, rename?: (file: File) => string) {
+    const target = index.value?.byKey.get(targetKey);
+    if (!target || target.type !== 'Folder' || (!picked.files.length && !picked.dirs.length)) return;
+    if (!canWrite.value) {
+        toast("This link doesn't allow uploads.", 'bad');
+        return;
     }
-  }
-  
-  if (event.ctrlKey || event.metaKey) {
-    toggleSelection(item.ItemID);
-    return;
-  }
-  
-  setSingleSelection(item.ItemID);
-}
-
-function onRowDoubleClick(item: NormalizedSharedChildItem) {
-  if (item.ItemType === 'Folder') {
-    openFolder(item.ItemID);
-  } else {
-    if (process.client) {
-      window.location.assign(getSharedDownloadUrl(item.ItemID));
+    const folderIds = new Map<string, string>([['', target.id]]);
+    if (picked.dirs.length) {
+        preparing.value = `Creating ${plural(picked.dirs.length, 'folder')}…`;
+        for (const dir of picked.dirs) {
+            const cut = dir.lastIndexOf('/');
+            const parentId = folderIds.get(cut < 0 ? '' : dir.slice(0, cut));
+            if (!parentId) continue;
+            const result = await postShare(api.value.createFolder(parentId, dir.slice(cut + 1)));
+            if (!result.ok) {
+                toast(`${dir}: ${result.error}`, 'bad');
+                continue;
+            }
+            try {
+                const created = JSON.parse(result.body);
+                folderIds.set(dir, String(created.ItemID));
+                if (cut < 0 && targetKey === folderKey.value) flash(keyOf(created.ItemID));
+            } catch { /* its files are skipped below */ }
+        }
+        preparing.value = '';
+        scheduleRefresh(0);
     }
-  }
+    uploads.add(picked.files.filter(entry => folderIds.has(entry.dir)).map(entry => {
+        const fileName = rename ? rename(entry.file) : entry.file.name;
+        return { file: entry.file, folderId: folderIds.get(entry.dir)!, fileName, label: entry.dir ? `${entry.dir}/${fileName}` : fileName };
+    }));
 }
 
-function onItemDragStart(e: DragEvent, item: NormalizedSharedChildItem) {
-  if (!canWrite.value) return;
-  draggedItem.value = item;
-  if (e.dataTransfer) {
-    e.dataTransfer.setData('text/plain', item.ItemID);
-    e.dataTransfer.effectAllowed = 'move';
-  }
+function onPaste(event: ClipboardEvent) {
+    if (!canWrite.value || viewer.value || dialogOpen.value || isTyping(event.target)) return;
+    const files = Array.from(event.clipboardData?.files ?? []);
+    if (!files.length) return;
+    event.preventDefault();
+    const at = new Date();
+    void upload({ files: files.map(file => ({ file, dir: '' })), dirs: [] }, folderKey.value, file => pastedName(file, at));
 }
 
-function onItemDragEnd(e: DragEvent) {
-  draggedItem.value = null;
-  activeDropTargetID.value = null;
+// ── dragging: files in from the desktop, or items onto a folder ────────────
+
+const dropping = ref(false);
+const dropKey = ref<string | null>(null);
+const dragKeys = ref<string[]>([]);
+let dragDepth = 0;
+
+const dropFolderName = computed(() => index.value?.byKey.get(dropKey.value ?? folderKey.value)?.name ?? '');
+const carriesFiles = (event: DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes('Files');
+
+function folderUnder(event: DragEvent) {
+    const key = (event.target as HTMLElement | null)?.closest?.('[data-drop-key]')?.getAttribute('data-drop-key') ?? '';
+    return index.value?.byKey.get(key)?.type === 'Folder' ? key : null;
 }
 
-function onFolderDragOver(e: DragEvent, targetFolder: NormalizedSharedChildItem | null) {
-  if (!canWrite.value || !draggedItem.value) return;
+function canMoveInto(targetKey: string, keys: string[]) {
+    const idx = index.value;
+    if (!idx || !idx.byKey.has(targetKey)) return false;
+    return keys.some(key => {
+        const item = idx.byKey.get(key);
+        return !!item && item.key !== targetKey && item.parentKey !== targetKey && !isWithin(idx, targetKey, item.key);
+    });
+}
 
-  const targetID = targetFolder ? targetFolder.ItemID : 'parent';
-
-  // Cannot move a folder into itself
-  if (draggedItem.value.ItemID === targetID) return;
-
-  // Cannot move a folder into one of its descendants
-  if (draggedItem.value.ItemType === 'Folder' && targetFolder) {
-    if (targetFolder.RelativePath.startsWith(draggedItem.value.RelativePath + '/')) {
-      return;
+function onDragStart(event: DragEvent, item: ShareItem) {
+    if (!canWrite.value || !event.dataTransfer) {
+        event.preventDefault();
+        return;
     }
-  }
-
-  if (e.dataTransfer) {
-    e.dataTransfer.dropEffect = 'move';
-  }
-
-  activeDropTargetID.value = targetID;
-}
-
-function onFolderDragLeave(e: DragEvent, targetFolder: NormalizedSharedChildItem | null) {
-  const targetID = targetFolder ? targetFolder.ItemID : 'parent';
-  if (activeDropTargetID.value === targetID) {
-    activeDropTargetID.value = null;
-  }
-}
-
-async function onFolderDrop(e: DragEvent, targetFolder: NormalizedSharedChildItem | null) {
-  e.preventDefault();
-  activeDropTargetID.value = null;
-
-  if (!canWrite.value || !draggedItem.value) return;
-
-  const sourceItem = draggedItem.value;
-  // If targetFolder is null, we dropped on '..', so parent folder ID is parentFolderId.value
-  const destParentFolderID = targetFolder ? targetFolder.ItemID : parentFolderId.value;
-
-  if (!destParentFolderID) return;
-
-  // Determine the list of items to move
-  let itemsToMove: string[] = [];
-  if (selectedIds.value.has(sourceItem.ItemID)) {
-    itemsToMove = Array.from(selectedIds.value);
-  } else {
-    itemsToMove = [sourceItem.ItemID];
-  }
-
-  itemsToMove = itemsToMove.filter(id => id !== destParentFolderID);
-
-  if (itemsToMove.length === 0) return;
-
-  await moveItems(itemsToMove, destParentFolderID);
-}
-
-async function moveItems(itemIDs: string[], newParentFolderID: string) {
-  isMutating.value = true;
-  mutationError.value = '';
-  let successCount = 0;
-  let failedCount = 0;
-  let lastError = '';
-
-  for (const id of itemIDs) {
-    try {
-      if (id === newParentFolderID) {
-        failedCount++;
-        continue;
-      }
-      
-      const response = await fetch(`${KliveAPIUrl}/KliveCloud/MoveSharedItem?code=${encodeURIComponent(code.value)}&itemID=${encodeURIComponent(id)}&newParentFolderID=${encodeURIComponent(newParentFolderID)}`, { method: 'POST', mode: 'cors' });
-      if (response.ok) {
-        successCount++;
-      } else {
-        failedCount++;
-        lastError = await response.text();
-      }
-    } catch (err: any) {
-      failedCount++;
-      lastError = err.message;
+    const keys = selected.value.has(item.key) ? [...selected.value] : [item.key];
+    dragKeys.value = keys;
+    menu.value = null;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('application/x-klivecloud', keys.join(','));
+    if (keys.length > 1) {
+        const ghost = document.createElement('div');
+        ghost.className = 'ks-drag-ghost';
+        ghost.textContent = `${keys.length} items`;
+        document.body.appendChild(ghost);
+        event.dataTransfer.setDragImage(ghost, 16, 16);
+        setTimeout(() => ghost.remove());
     }
-  }
+}
 
-  if (successCount > 0) {
+function onDragEnd() {
+    dragKeys.value = [];
+    dropKey.value = null;
+}
+
+function onWindowDragEnter(event: DragEvent) {
+    if (!carriesFiles(event) || dragKeys.value.length) return;
+    dragDepth++;
+    if (canWrite.value && !viewer.value && !dialogOpen.value) dropping.value = true;
+}
+
+function onWindowDragOver(event: DragEvent) {
+    const internal = dragKeys.value.length > 0;
+    if (!internal && !carriesFiles(event)) return;
+    // Always claim the drop, so a file let go over the page never replaces it.
+    event.preventDefault();
+    const target = folderUnder(event);
+    if (internal) {
+        const ok = !!target && canMoveInto(target, dragKeys.value);
+        dropKey.value = ok ? target : null;
+        if (event.dataTransfer) event.dataTransfer.dropEffect = ok ? 'move' : 'none';
+        return;
+    }
+    if (event.dataTransfer) event.dataTransfer.dropEffect = dropping.value ? 'copy' : 'none';
+    if (dropping.value) dropKey.value = target;
+}
+
+function onWindowDragLeave(event: DragEvent) {
+    if (!carriesFiles(event) || dragKeys.value.length) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth) {
+        dropping.value = false;
+        dropKey.value = null;
+    }
+}
+
+function onWindowDrop(event: DragEvent) {
+    const target = folderUnder(event);
+    if (dragKeys.value.length) {
+        event.preventDefault();
+        const keys = dragKeys.value;
+        onDragEnd();
+        if (target && canMoveInto(target, keys)) void moveItems(keys, target);
+        return;
+    }
+    if (!carriesFiles(event) || !event.dataTransfer) return;
+    event.preventDefault();
+    const wasDropping = dropping.value;
+    dragDepth = 0;
+    dropping.value = false;
+    dropKey.value = null;
+    if (!isFolderShare.value || viewer.value || dialogOpen.value) return;
+    if (!wasDropping || !canWrite.value) {
+        toast("This link doesn't allow uploads.", 'bad');
+        return;
+    }
+    const read = takeDrop(event.dataTransfer);
+    const into = target ?? folderKey.value;
+    void read().then(picked => upload(picked, into));
+}
+
+// ── new folder, delete, move ───────────────────────────────────────────────
+
+const newFolder = reactive({ open: false, name: '', error: '', busy: false });
+const INVALID_NAME = /[\\/:*?"<>|\u0000-\u001f]/;
+
+function askNewFolder() {
+    menu.value = null;
+    Object.assign(newFolder, { open: true, name: '', error: '', busy: false });
+}
+
+async function createFolder() {
+    const name = newFolder.name.trim();
+    const parent = folder.value;
+    if (!name || !parent || newFolder.busy) return;
+    if (INVALID_NAME.test(name) || name.includes('..')) {
+        newFolder.error = 'A name can\'t contain \\ / : * ? " < > | or "..".';
+        return;
+    }
+    newFolder.busy = true;
+    newFolder.error = '';
+    const result = await postShare(api.value.createFolder(parent.id, name));
+    newFolder.busy = false;
+    if (!result.ok) {
+        newFolder.error = result.error;
+        return;
+    }
+    newFolder.open = false;
+    try { flash(keyOf(JSON.parse(result.body).ItemID)); } catch { /* it still appears */ }
+    await refresh();
+}
+
+const removal = ref<{ keys: string[]; busy: boolean } | null>(null);
+const removalItems = computed(() => (removal.value?.keys ?? []).map(key => index.value?.byKey.get(key)).filter((item): item is ShareItem => !!item));
+const removalTitle = computed(() => (removalItems.value.length === 1 ? `Delete “${removalItems.value[0].name}”?` : `Delete ${removalItems.value.length} items?`));
+const removalDetail = computed(() => (removalItems.value.some(item => item.type === 'Folder')
+    ? 'Folders are deleted with everything in them. This can\'t be undone.'
+    : 'This can\'t be undone.'));
+
+function askRemove(keys: string[]) {
+    menu.value = null;
+    if (canDelete.value && keys.length) removal.value = { keys, busy: false };
+}
+
+async function confirmRemoval() {
+    const job = removal.value;
+    if (!job || job.busy) return;
+    job.busy = true;
+    const items = outermost(removalItems.value);
+    let done = 0;
+    let error = '';
+    for (const item of items) {
+        const result = await postShare(api.value.remove(item.id));
+        if (result.ok) done++;
+        else error ||= result.error;
+    }
+    removal.value = null;
     clearSelection();
     await refresh();
-  }
-
-  if (failedCount > 0) {
-    mutationError.value = `Failed to move ${failedCount} item(s): ${lastError}`;
-  }
-  isMutating.value = false;
+    if (error) toast(done ? `Deleted ${done} of ${items.length}. ${error}` : error, 'bad');
+    else toast(done === 1 ? `Deleted “${items[0].name}”` : `Deleted ${plural(done, 'item')}`);
 }
 
-if (sharedItem.value) {
-  const item = sharedItem.value;
-  const description = normalizeItemType(item.ItemType) === 'Folder'
-    ? `Shared KliveCloud folder with ${item.Children?.length || 0} entries.`
-    : `Shared via KliveCloud - ${formatSize(item.FileSizeBytes)}`;
+const moving = ref<{ keys: string[]; busy: boolean } | null>(null);
 
-  useServerSeoMeta({
-    title: item.Name,
-    description,
-    ogTitle: item.Name,
-    ogDescription: description,
-    ogSiteName: 'KliveCloud',
-    themeColor: '#4d9e39'
-  });
+function askMove(keys: string[]) {
+    menu.value = null;
+    if (canWrite.value && keys.length) moving.value = { keys, busy: false };
 }
+
+async function moveTo(targetKey: string) {
+    const job = moving.value;
+    if (!job || job.busy) return;
+    job.busy = true;
+    await moveItems(job.keys, targetKey);
+    moving.value = null;
+}
+
+async function moveItems(keys: string[], targetKey: string) {
+    const idx = index.value;
+    const target = idx?.byKey.get(targetKey);
+    if (!idx || !target) return;
+    const items = outermost(keys.map(key => idx.byKey.get(key)).filter((item): item is ShareItem => !!item))
+        .filter(item => item.key !== targetKey && item.parentKey !== targetKey && !isWithin(idx, targetKey, item.key));
+    if (!items.length) return;
+    let done = 0;
+    let error = '';
+    for (const item of items) {
+        const result = await postShare(api.value.move(item.id, target.id));
+        if (result.ok) done++;
+        else error ||= result.error;
+    }
+    clearSelection();
+    await refresh();
+    if (error) toast(done ? `Moved ${done} of ${items.length}. ${error}` : error, 'bad');
+    else toast(done === 1 ? `Moved “${items[0].name}” to ${target.name}` : `Moved ${plural(done, 'item')} to ${target.name}`);
+}
+
+// ── keyboard ───────────────────────────────────────────────────────────────
+
+const searchInput = ref<HTMLInputElement | null>(null);
+const dialogOpen = computed(() => newFolder.open || !!removal.value || !!moving.value);
+
+function isTyping(target: EventTarget | null) {
+    const el = target as HTMLElement | null;
+    return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+}
+
+function clearSearch() {
+    query.value = '';
+    searchInput.value?.blur();
+}
+
+function onKey(event: KeyboardEvent) {
+    if (viewer.value || dialogOpen.value || event.defaultPrevented || !isFolderShare.value) return;
+    const typing = isTyping(event.target) && (event.target as HTMLInputElement).type !== 'checkbox';
+    if (event.key === 'Escape') {
+        if (menu.value) menu.value = null;
+        else if (!typing && selectedCount.value) clearSelection();
+        return;
+    }
+    if (typing) return;
+    const mod = event.ctrlKey || event.metaKey;
+    if (event.key === '/' && !mod) {
+        event.preventDefault();
+        searchInput.value?.focus();
+    } else if (mod && event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        selectAll();
+    } else if (event.key === 'Delete' && canDelete.value && selectedCount.value) {
+        event.preventDefault();
+        askRemove(selectedKeys.value);
+    } else if ((event.key === 'Backspace' || (event.altKey && event.key === 'ArrowUp')) && !searching.value && folder.value && folder.value !== root.value) {
+        event.preventDefault();
+        openFolder(folder.value.parentKey);
+    }
+}
+
+// ── page furniture ─────────────────────────────────────────────────────────
+
+const head = ref<HTMLElement | null>(null);
+// Measured once mounted; this is the desktop header, so the server render rarely shifts.
+const headHeight = ref(117);
+const moreEl = ref<HTMLElement | null>(null);
+let headObserver: ResizeObserver | null = null;
+let moreObserver: IntersectionObserver | null = null;
+let clock: ReturnType<typeof setInterval> | undefined;
+
+watch(moreEl, el => {
+    moreObserver?.disconnect();
+    if (!el) return;
+    moreObserver = new IntersectionObserver(entries => {
+        if (entries.some(entry => entry.isIntersecting)) limit.value += PAGE_SIZE;
+    }, { rootMargin: '600px' });
+    moreObserver.observe(el);
+});
+
+onMounted(() => {
+    now.value = Date.now();
+    clock = setInterval(() => { now.value = Date.now(); }, 30_000);
+    loadPrefs();
+    if (head.value) {
+        headObserver = new ResizeObserver(() => { headHeight.value = head.value?.offsetHeight ?? headHeight.value; });
+        headObserver.observe(head.value);
+    }
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('paste', onPaste);
+    window.addEventListener('dragenter', onWindowDragEnter);
+    window.addEventListener('dragover', onWindowDragOver);
+    window.addEventListener('dragleave', onWindowDragLeave);
+    window.addEventListener('drop', onWindowDrop);
+    document.addEventListener('visibilitychange', onVisibility);
+});
+
+onBeforeUnmount(() => {
+    clearInterval(clock);
+    clearTimeout(refreshTimer);
+    clearTimeout(copiedTimer);
+    headObserver?.disconnect();
+    moreObserver?.disconnect();
+    uploads.cancelAll();
+    window.removeEventListener('keydown', onKey);
+    window.removeEventListener('paste', onPaste);
+    window.removeEventListener('dragenter', onWindowDragEnter);
+    window.removeEventListener('dragover', onWindowDragOver);
+    window.removeEventListener('dragleave', onWindowDragLeave);
+    window.removeEventListener('drop', onWindowDrop);
+    document.removeEventListener('visibilitychange', onVisibility);
+});
+
+// ── link previews (Discord, iMessage, …) ───────────────────────────────────
+
+/** A photo to stand for a folder: the first one at the top, or failing that anywhere inside. */
+const cover = computed(() => {
+    const idx = index.value;
+    if (!idx || idx.root.type !== 'Folder') return null;
+    const usable = (item: ShareItem) => item.kind === 'image' && hasThumbnail(item);
+    const top = sortItems(idx.childrenOf.get(idx.root.key) ?? [], 'name', 1).find(usable);
+    if (top) return top;
+    for (const item of idx.byKey.values()) if (usable(item)) return item;
+    return null;
+});
+
+useHead(() => {
+    const idx = index.value;
+    const deep = idx?.byKey.get(fileParam.value) ?? idx?.byKey.get(folderParam.value);
+    const item = deep ?? idx?.root ?? null;
+    const title = item?.name ?? 'Shared link';
+    let description = 'Shared with KliveCloud';
+    if (item?.type === 'File') description = `${describeItem(item)} · ${formatBytes(item.bytes)}`;
+    else if (item) description = `Folder · ${plural(item.files, 'file')} · ${formatBytes(item.bytes)}`;
+
+    const meta: Record<string, string>[] = [
+        { key: 'description', name: 'description', content: description },
+        { key: 'og-site-name', property: 'og:site_name', content: 'KliveCloud' },
+        { key: 'og-title', property: 'og:title', content: title },
+        { key: 'og-description', property: 'og:description', content: description },
+        { key: 'og-url', property: 'og:url', content: linkFor(item) },
+        { key: 'twitter-title', name: 'twitter:title', content: title },
+        { key: 'twitter-description', name: 'twitter:description', content: description },
+        { key: 'theme-color', name: 'theme-color', content: '#6ddc4f' },
+    ];
+
+    const visual = item?.type === 'File' && (item.kind === 'image' || item.kind === 'video') ? item : cover.value;
+    if (visual) {
+        const image = api.value.preview(visual, 1280, 720);
+        meta.push(
+            { key: 'og-image', property: 'og:image', content: image },
+            { key: 'og-image-secure', property: 'og:image:secure_url', content: image },
+            { key: 'og-image-type', property: 'og:image:type', content: 'image/jpeg' },
+            { key: 'twitter-image', name: 'twitter:image', content: image },
+        );
+    }
+
+    // Only a video shared on its own: its playable copy is prepared as soon as the link is
+    // opened, so a link preview can play it. A video inside a folder gets its picture.
+    if (item?.type === 'File' && item.kind === 'video' && item === idx?.root) {
+        const video = api.value.playable(item);
+        meta.push(
+            { key: 'og-type', property: 'og:type', content: 'video.other' },
+            { key: 'og-video', property: 'og:video', content: video },
+            { key: 'og-video-url', property: 'og:video:url', content: video },
+            { key: 'og-video-secure', property: 'og:video:secure_url', content: video },
+            { key: 'og-video-type', property: 'og:video:type', content: 'video/mp4' },
+            { key: 'og-video-width', property: 'og:video:width', content: '1280' },
+            { key: 'og-video-height', property: 'og:video:height', content: '720' },
+            { key: 'twitter-card', name: 'twitter:card', content: 'player' },
+            { key: 'twitter-player', name: 'twitter:player', content: video },
+            { key: 'twitter-player-stream', name: 'twitter:player:stream', content: video },
+            { key: 'twitter-player-stream-type', name: 'twitter:player:stream:content_type', content: 'video/mp4' },
+            { key: 'twitter-player-width', name: 'twitter:player:width', content: '1280' },
+            { key: 'twitter-player-height', name: 'twitter:player:height', content: '720' },
+        );
+    } else {
+        meta.push(
+            { key: 'og-type', property: 'og:type', content: 'website' },
+            { key: 'twitter-card', name: 'twitter:card', content: visual ? 'summary_large_image' : 'summary' },
+        );
+    }
+
+    return {
+        title: `${title} · KliveCloud`,
+        link: [
+            { key: 'canonical', rel: 'canonical', href: linkFor(item) },
+            // The OS type ramp is set in Inter; the rest of the site only loads Roboto.
+            { key: 'gfonts-pre', rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
+            { key: 'inter', rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400..700&display=swap' },
+        ],
+        bodyAttrs: { class: 'ks-body' },
+        meta,
+    };
+});
 </script>
 
+<style>
+/* The site gives every <button> padding, a 2px border, a white glow on hover and a white fill
+   while pressed. Buttons here carry their own chrome. `html :where(.ks)` puts these resets one
+   element above the global rules, whatever order the stylesheets load in, and still below any
+   class, so every styled button keeps its own look. */
+html :where(.ks) button {
+    padding: 0;
+    border: 0;
+    background: none;
+    justify-content: center;
+    user-select: none;
+    transition: background-color var(--ot-fast), color var(--ot-fast), border-color var(--ot-fast), opacity var(--ot-fast);
+}
+html :where(.ks) button:hover { box-shadow: none; background-color: transparent; }
+html :where(.ks) button:active { background-color: transparent; }
+
+body.ks-body { background: var(--ot-bg); }
+
+.ks-drag-ghost {
+    position: fixed;
+    top: -100px;
+    left: -100px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: #6ddc4f;
+    color: #08140b;
+    font: 600 13px/18px Inter, Roboto, sans-serif;
+}
+</style>
+
 <style scoped>
-* {
-  box-sizing: border-box;
-}
-
-.shared-shell {
-  min-height: 100vh;
-  position: relative;
-  padding: 24px;
-  background: #0b0d0b;
-  color: #f6fff2;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-}
-
-.shared-background {
-  display: none;
-}
-
-.state-panel,
-.share-console {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.state-panel {
-  max-width: 460px;
-  padding: 32px 24px;
-  text-align: center;
-  border-radius: 8px;
-  background: #111411;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.loading-mark,
-.state-icon {
-  width: 48px;
-  height: 48px;
-  margin: 0 auto 16px;
-  border-radius: 6px;
-}
-
-.loading-mark {
-  border: 3px solid rgba(125, 219, 94, 0.1);
-  border-top-color: #55c83c;
-  animation: spin 0.8s linear infinite;
-}
-
-.state-icon {
-  display: grid;
-  place-items: center;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  color: #ffc6c6;
-  font-size: 1.4rem;
-  font-weight: 700;
-}
-
-.share-console {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.topbar-left { min-width: 0; flex: 1; }
-
-.eyebrow {
-  margin: 0;
-  color: #8dd574;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  font-size: 0.7rem;
-  font-weight: 800;
-}
-
-.file-title {
-  margin: 6px 0 8px;
-  font-size: clamp(1.6rem, 3vw, 2.4rem);
-  font-weight: 800;
-  line-height: 1.05;
-  word-break: break-word;
-}
-
-.breadcrumbs {
-  margin: 8px 0 6px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.crumb {
-  border: 0;
-  background: transparent;
-  color: #cdeac1;
-  padding: 4px 6px;
-  font: inherit;
-  font-size: 1.4rem;
-  font-weight: 800;
-  cursor: pointer;
-  border-radius: 6px;
-  letter-spacing: -0.01em;
-}
-
-.crumb:hover { background: rgba(125, 219, 94, 0.1); color: #f6fff2; }
-
-.crumb.active { color: #ffffff; cursor: default; }
-.crumb.active:hover { background: transparent; }
-
-.crumb-sep { color: #4b6745; margin: 0 4px; font-size: 1.3rem; }
-
-.topbar-meta {
-  margin: 4px 0 0;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  color: #9fb69a;
-  font-size: 0.88rem;
-}
-
-.badge {
-  padding: 4px 9px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #dfffd8;
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  font-weight: 700;
-}
-
-.badge-readonly { background: rgba(125, 219, 94, 0.08); border-color: rgba(125, 219, 94, 0.18); color: #c8ffb6; }
-.badge-write { background: rgba(94, 129, 172, 0.18); border-color: rgba(94, 129, 172, 0.38); color: #d6e6ff; }
-.badge-writedelete { background: rgba(245, 158, 11, 0.18); border-color: rgba(245, 158, 11, 0.4); color: #ffe2a4; }
-.badge-warn { background: rgba(239, 68, 68, 0.16); border-color: rgba(239, 68, 68, 0.32); color: #ffc6c6; }
-
-.topbar-right {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.btn {
-  box-sizing: border-box;
-  border: 1px solid transparent;
-  cursor: pointer;
-  text-decoration: none;
-  font: inherit;
-  font-weight: 600;
-  padding: 8px 14px;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 34px;
-  white-space: nowrap;
-  font-size: 0.85rem;
-  transition: background 0.1s ease, border-color 0.1s ease;
-}
-
-.btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.btn-primary {
-  color: #050b05;
-  background: #55c83c;
-}
-.btn-primary:hover:not(:disabled) {
-  background: #6fe056;
-}
-
-.btn-ghost {
-  color: #dfffd8;
-  background: transparent;
-  border-color: rgba(255, 255, 255, 0.12);
-}
-.btn-ghost:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-.btn-danger {
-  color: #fff;
-  background: #b32424;
-  border-color: #cf3c3c;
-}
-.btn-danger:hover:not(:disabled) {
-  background: #d63636;
-}
-
-.full-width { width: 100%; margin-top: 8px; }
-
-.inline-error {
-  padding: 12px 16px;
-  border-radius: 10px;
-  border: 1px solid rgba(239, 68, 68, 0.34);
-  background: rgba(239, 68, 68, 0.08);
-  color: #ffc6c6;
-  font-weight: 600;
-}
-
-/* Single File Redesigned Layout */
-.single-file-container {
-  display: grid;
-  place-items: center;
-  padding: 40px 10px;
-}
-
-.single-file-card {
-  width: 100%;
-  max-width: 520px;
-  background: linear-gradient(135deg, rgba(15, 24, 16, 0.95), rgba(7, 11, 8, 0.95));
-  border: 1px solid rgba(125, 219, 94, 0.16);
-  border-radius: 14px;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.file-preview-header {
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.file-icon-large {
-  font-size: 3.5rem;
-  line-height: 1;
-}
-
-.file-preview-header h2 {
-  margin: 6px 0 0;
-  font-size: 1.4rem;
-  color: #fff;
-  font-weight: 700;
-  word-break: break-all;
-}
-
-.file-size-badge {
-  margin: 4px 0 0;
-  font-size: 0.85rem;
-  color: #8dd574;
-  font-weight: 600;
-}
-
-.file-preview-body {
-  border-radius: 10px;
-  background: #000;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  overflow: hidden;
-  display: grid;
-  place-items: center;
-  min-height: 200px;
-}
-
-.media-frame {
-  width: 100%;
-  max-height: 320px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.media-frame img,
-.media-frame video {
-  width: 100%;
-  height: 100%;
-  max-height: 320px;
-  object-fit: contain;
-}
-
-.fallback-frame {
-  padding: 30px;
-  text-align: center;
-  color: #9fb69a;
-  font-size: 0.9rem;
-}
-
-.file-preview-footer {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.file-meta-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.meta-item {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
-  padding: 8px 12px;
-}
-
-.meta-item span {
-  display: block;
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  color: #8dd574;
-  margin-bottom: 2px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-}
-
-.meta-item strong {
-  display: block;
-  font-size: 0.82rem;
-  color: #fff;
-  font-weight: 600;
-}
-
-/* Folder Workspace Layout */
-.folder-workspace {
-  display: flex;
-  align-items: stretch;
-  gap: 16px;
-  min-height: 520px;
-}
-
-.file-grid-area {
-  flex: 1;
-  min-width: 0;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: linear-gradient(135deg, rgba(15, 24, 16, 0.92), rgba(7, 11, 8, 0.92));
-  padding: 16px;
-  position: relative;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
-}
-
-.file-grid-area.drop-active {
-  outline: 2px dashed rgba(125, 219, 94, 0.6);
-  outline-offset: -10px;
-}
-
-/* Shared Files Table */
-.shared-table-container {
-  width: 100%;
-  overflow-x: auto;
-}
-
-.shared-files-table {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: left;
-  font-size: 0.88rem;
-  color: #dfffd8;
-}
-
-.shared-files-table th,
-.shared-files-table td {
-  padding: 10px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-}
-
-.shared-files-table th {
-  background: rgba(0, 0, 0, 0.25);
-  color: #8dd574;
-  font-weight: 700;
-  text-transform: uppercase;
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-}
-
-.shared-files-table tbody tr {
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.shared-files-table tbody tr:hover {
-  background: rgba(125, 219, 94, 0.04);
-}
-
-.shared-files-table tbody tr.selected {
-  background: rgba(125, 219, 94, 0.09);
-}
-
-.shared-files-table tbody tr.selected td {
-  border-bottom-color: rgba(125, 219, 94, 0.2);
-}
-
-.table-row-back {
-  opacity: 0.8;
-}
-
-.table-row-back:hover {
-  opacity: 1;
-}
-
-.checkbox-col {
-  width: 32px;
-  text-align: center;
-  padding-right: 0 !important;
-}
-
-.checkbox-col input[type="checkbox"] {
-  cursor: pointer;
-  accent-color: #55c83c;
-  transform: scale(1.05);
-}
-
-.name-cell-inner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.name-cell .type-icon {
-  font-size: 1.1rem;
-}
-
-.name-cell .item-name-text {
-  font-weight: 600;
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 350px;
-}
-
-.date-cell {
-  color: #9fb69a;
-}
-
-.actions-col {
-  width: 80px;
-  text-align: right;
-}
-
-.row-actions {
-  display: inline-flex;
-  gap: 6px;
-  justify-content: flex-end;
-}
-
-.action-btn {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 6px;
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 0.85rem;
-  color: #fff;
-  text-decoration: none;
-  transition: background 0.15s ease, transform 0.1s ease;
-}
-
-.action-btn:hover {
-  background: rgba(125, 219, 94, 0.15);
-  border-color: rgba(125, 219, 94, 0.3);
-  transform: scale(1.05);
-}
-
-.action-btn-danger:hover {
-  background: rgba(239, 68, 68, 0.18);
-  border-color: rgba(239, 68, 68, 0.35);
-}
-
-/* Collapsible Side Preview Panel */
-.preview-drawer {
-  width: 320px;
-  background: linear-gradient(135deg, rgba(15, 24, 16, 0.95), rgba(7, 11, 8, 0.95));
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 14px;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  align-self: start;
-  position: sticky;
-  top: 18px;
-  max-height: calc(100vh - 36px);
-  overflow-y: auto;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
-}
-
-.drawer-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  padding-bottom: 10px;
-}
-
-.drawer-header h3 {
-  margin: 0;
-  font-size: 1rem;
-  color: #8dd574;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.close-drawer-btn {
-  background: none;
-  border: none;
-  color: #9fb69a;
-  font-size: 1.1rem;
-  cursor: pointer;
-  transition: color 0.15s ease;
-}
-
-.close-drawer-btn:hover {
-  color: #fff;
-}
-
-.drawer-body {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.preview-multi {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  text-align: center;
-}
-
-.multi-count {
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: #fff;
-  padding: 10px 0;
-}
-
-.preview-single {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.preview-single .item-name {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: #fff;
-  word-break: break-all;
-  line-height: 1.3;
-}
-
-.preview-media {
-  width: 100%;
-  height: 160px;
-  border-radius: 8px;
-  background: #000;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  overflow: hidden;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.preview-media img,
-.preview-media video {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.preview-doc {
-  text-align: center;
-  padding: 16px;
-  color: #9fb69a;
-}
-
-.preview-doc .doc-glyph {
-  font-size: 3rem;
-  margin-bottom: 8px;
-}
-
-.preview-doc p {
-  margin: 0;
-  font-size: 0.8rem;
-}
-
-.detail-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  padding: 8px 12px;
-  border-radius: 8px;
-}
-
-.detail-row span {
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  color: #8dd574;
-  font-weight: 700;
-}
-
-.detail-row strong {
-  font-size: 0.85rem;
-  color: #fff;
-  font-weight: 600;
-}
-
-.drawer-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  min-height: 380px;
-  color: #9fb69a;
-  gap: 12px;
-  padding: 40px 20px;
-}
-
-.empty-glyph {
-  font-size: 3.5rem;
-  font-weight: 900;
-  color: rgba(125, 219, 94, 0.25);
-  line-height: 1;
-}
-
-.empty-state p {
-  margin: 0;
-  font-size: 0.95rem;
-}
-
-.hidden-input { display: none; }
-
-.upload-panel {
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  width: min(360px, calc(100vw - 32px));
-  max-height: 400px;
-  background: rgba(15, 24, 16, 0.97);
-  border: 1px solid rgba(125, 219, 94, 0.22);
-  border-radius: 12px;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
-  z-index: 10000;
-  overflow: hidden;
-}
-
-.upload-panel.minimized { max-height: 44px; }
-
-.upload-header {
-  min-height: 44px;
-  background: rgba(0, 0, 0, 0.35);
-  padding: 10px 15px;
-  color: #fff;
-  font-weight: 700;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
-}
-
-.upload-header:hover { background: rgba(0, 0, 0, 0.5); }
-
-.upload-controls { display: flex; gap: 6px; }
-
-.upload-controls button {
-  background: none;
-  border: none;
-  color: #cdeac1;
-  cursor: pointer;
-  padding: 2px 6px;
-  font: inherit;
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.upload-controls button:hover { color: #fff; }
-
-.upload-list {
-  overflow-y: auto;
-  max-height: 340px;
-  padding: 10px;
-}
-
-.upload-item {
-  background: rgba(0, 0, 0, 0.25);
-  padding: 8px 10px;
-  margin-bottom: 6px;
-  border-radius: 6px;
-}
-
-.upload-info {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 0.88rem;
-  margin-bottom: 4px;
-}
-
-.upload-name {
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.upload-status { color: #91a78d; font-size: 0.78rem; }
-
-.upload-progress-bar {
-  height: 4px;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  transition: width 0.2s;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.shared-files-table tbody tr.drag-hover {
-  background: rgba(125, 219, 94, 0.16) !important;
-  outline: 2px dashed rgba(125, 219, 94, 0.5);
-  outline-offset: -2px;
-}
-
-.breadcrumbs .crumb.drag-hover {
-  background: rgba(125, 219, 94, 0.2) !important;
-  color: #fff !important;
-  box-shadow: 0 0 0 1px rgba(125, 219, 94, 0.4);
-}
-
-@media (max-width: 1024px) {
-  .folder-workspace {
+.ks {
+    --ks-pad: 20px;
+    min-height: 100vh;
+    display: flex;
     flex-direction: column;
-  }
+    background: var(--ot-bg);
+    color-scheme: dark;
+}
+.ks-frame { width: 100%; max-width: 1320px; margin: 0 auto; padding-left: var(--ks-pad); padding-right: var(--ks-pad); }
+.ks-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.ks-hidden { display: none; }
+.ks-spacer { flex: 1 1 auto; }
 
-  .preview-drawer {
+/* ── header ── */
+.ks-head {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: rgba(11, 13, 10, 0.9);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--ot-line);
+}
+.ks-top { display: flex; align-items: center; gap: 14px; min-height: 64px; }
+.ks-brand { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; font-size: 14px; }
+.ks-brand :deep(svg) { color: var(--ot-accent); }
+.ks-brand b { font-weight: 680; letter-spacing: 0.1px; }
+.ks-divider { width: 1px; height: 26px; background: var(--ot-line-strong); flex: 0 0 auto; }
+.ks-title { display: flex; align-items: center; gap: 11px; min-width: 0; flex: 1 1 auto; }
+.ks-title-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ks-title h1 { margin: 0; font-size: 15.5px; line-height: 20px; font-weight: 640; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ks-meta { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12.5px; color: var(--ot-muted); white-space: nowrap; }
+.ks-summary { overflow: hidden; text-overflow: ellipsis; }
+.ks-meta .ot-chip { flex: 0 0 auto; padding: 0 7px; height: 20px; font-size: 11px; }
+.ks-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.ks-actions .ot-btn { height: 34px; }
+
+.ks-tools { display: flex; align-items: center; gap: 8px; min-height: 52px; padding-bottom: 2px; }
+.ks-tools.selecting { gap: 10px; }
+
+/* The site styles every <nav> as its top bar. */
+.ks-crumbs { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 1 1 auto; overflow-x: auto; scrollbar-width: none; background: none; border: 0; }
+.ks-crumbs::-webkit-scrollbar { display: none; }
+.ks-crumb {
+    flex: 0 0 auto;
+    max-width: 220px;
+    height: 30px;
+    padding: 0 8px;
+    border-radius: var(--ot-radius-sm);
+    font-size: 13.5px;
+    font-weight: 560;
+    color: var(--ot-text-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    line-height: 30px;
+}
+button.ks-crumb:hover, button.ks-crumb:active { color: var(--ot-text); background: var(--ot-surface-3); }
+.ks-crumb.current { color: var(--ot-text); font-weight: 620; cursor: default; max-width: none; flex: 0 1 auto; }
+.ks-crumb.target { color: var(--ot-text); background: var(--ot-accent-soft); box-shadow: inset 0 0 0 1px var(--ot-accent); }
+.ks-crumb-sep { color: var(--ot-disabled); flex: 0 0 auto; }
+
+.ks-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 260px;
+    height: 34px;
+    padding: 0 8px 0 10px;
+    border-radius: var(--ot-radius-sm);
+    border: 1px solid var(--ot-line);
+    background: rgba(0, 0, 0, 0.28);
+    color: var(--ot-muted);
+    transition: border-color var(--ot-fast), background var(--ot-fast);
+}
+.ks-search:hover { border-color: var(--ot-line-strong); }
+.ks-search:focus-within { border-color: var(--ot-accent); background: rgba(0, 0, 0, 0.4); }
+.ks-search input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    border: 0;
+    outline: none;
+    background: none;
+    color: var(--ot-text);
+    font-size: 13px;
+}
+.ks-search input::placeholder { color: var(--ot-muted); }
+.ks-search input::-webkit-search-cancel-button { display: none; }
+.ks-kbd {
+    flex: 0 0 auto;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 4px;
+    border: 1px solid var(--ot-line-strong);
+    font-family: var(--ot-mono);
+    font-size: 11px;
+    line-height: 16px;
+    text-align: center;
+    color: var(--ot-muted);
+}
+.ks-search-clear { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; color: var(--ot-muted); cursor: pointer; }
+.ks-search-clear:hover { color: var(--ot-text); background: var(--ot-surface-3); }
+
+.ks-sortpick { height: 34px; font-size: 12.5px; }
+.ks-views button { height: 32px; width: 36px; padding: 0; justify-content: center; }
+.ks-tools .ot-btn { height: 34px; }
+.ks-tools .ot-btn.sm { height: 30px; }
+
+.ks-split { display: inline-flex; }
+.ks-split > .ot-btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.ks-split-more { width: 30px; padding: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; border-left-width: 0; }
+
+.ks-selected { font-size: 13px; color: var(--ot-text-2); white-space: nowrap; }
+.ks-selected b { color: var(--ot-text); font-weight: 620; }
+.ks-textbtn {
+    height: 28px;
+    padding: 0 8px;
+    border-radius: var(--ot-radius-sm);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ot-accent);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.ks-textbtn:hover, .ks-textbtn:active { background: var(--ot-accent-soft); }
+
+/* ── shared bits ── */
+.ks-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
+    border-radius: var(--ot-radius-sm);
+    color: var(--ot-text-2);
+    cursor: pointer;
+}
+.ks-icon:hover, .ks-icon:active, .ks-icon[aria-expanded='true'] { color: var(--ot-text); background: var(--ot-surface-3); }
+
+.ks-pop { position: relative; display: inline-flex; }
+.ks-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 60;
+    min-width: 196px;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--ot-radius);
+    border: 1px solid var(--ot-line-strong);
+    background: var(--ot-surface-2);
+    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.55);
+    animation: ks-pop var(--ot-fast) ease-out;
+}
+@keyframes ks-pop { from { opacity: 0; transform: translateY(-3px); } }
+.ks-menu > button, .ks-menu > a {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
     width: 100%;
-    position: static;
-    max-height: none;
-  }
+    height: 32px;
+    padding: 0 10px;
+    border-radius: var(--ot-radius-sm);
+    font-size: 13px;
+    color: var(--ot-text);
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.ks-menu > button :deep(svg), .ks-menu > a :deep(svg) { color: var(--ot-text-2); }
+.ks-menu > button:hover, .ks-menu > a:hover, .ks-menu > button:active { background: var(--ot-surface-3); }
+.ks-menu > .danger, .ks-menu > .danger :deep(svg) { color: var(--ot-negative); }
+.ks-menu > .danger:hover { background: var(--ot-negative-soft); }
+.ks-backdrop { position: fixed; inset: 0; z-index: 50; }
+
+.ks-check {
+    appearance: none;
+    flex: 0 0 auto;
+    display: inline-grid;
+    place-content: center;
+    width: 17px;
+    height: 17px;
+    margin: 0;
+    border-radius: 5px;
+    border: 1.5px solid var(--ot-disabled);
+    background: transparent;
+    cursor: pointer;
+    transition: background var(--ot-fast), border-color var(--ot-fast), opacity var(--ot-fast);
+}
+.ks-check:hover { border-color: var(--ot-text-2); }
+.ks-check:checked, .ks-check:indeterminate { background: var(--ot-accent); border-color: var(--ot-accent); }
+.ks-check:checked::after {
+    content: '';
+    width: 9px;
+    height: 5px;
+    border-left: 2px solid var(--ot-on-accent);
+    border-bottom: 2px solid var(--ot-on-accent);
+    transform: translateY(-1px) rotate(-45deg);
+}
+.ks-check:indeterminate::after { content: ''; width: 8px; height: 2px; border-radius: 1px; background: var(--ot-on-accent); }
+
+/* ── main ── */
+.ks-main { flex: 1 1 auto; padding-top: 14px; padding-bottom: 72px; }
+/* One file: the page is exactly the screen and the preview takes what the header leaves. */
+.ks.solo { height: 100vh; height: 100dvh; }
+.ks-main.solo { display: flex; flex-direction: column; min-height: 0; padding-bottom: 12px; }
+.ks-folder { position: relative; }
+
+.ks-loading { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; }
+.ks-skel { display: flex; align-items: center; gap: 14px; height: 46px; padding: 0 12px; }
+.ks-skel .ot-skel:first-child { width: 30px; height: 30px; border-radius: 7px; flex: 0 0 auto; }
+.ks-skel .ot-skel:last-child { width: min(340px, 60%); }
+
+.ks-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    max-width: 420px;
+    margin: 12vh auto 0;
+    text-align: center;
+}
+.ks-state-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    margin-bottom: 6px;
+    border-radius: 16px;
+    color: var(--ot-text-2);
+    background: var(--ot-surface-2);
+    border: 1px solid var(--ot-line);
+}
+.ks-state-icon.bad { color: var(--ot-warning); }
+.ks-state h2 { margin: 0; font-size: 19px; font-weight: 640; }
+.ks-state p { margin: 0 0 8px; font-size: 13.5px; color: var(--ot-text-2); }
+
+.ks-single { flex: 1 1 auto; min-height: 320px; display: flex; }
+
+/* ── list ── */
+.ks-list { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 13.5px; }
+.ks-list th.ks-c-check { width: 42px; }
+.ks-list th.ks-c-kind { width: 168px; }
+.ks-list th.ks-c-size { width: 96px; }
+.ks-list th.ks-c-date { width: 168px; }
+.ks-list th.ks-c-act { width: 112px; }
+.ks-list th {
+    position: sticky;
+    top: var(--ks-head);
+    z-index: 5;
+    height: 38px;
+    padding: 0 10px;
+    background: var(--ot-bg);
+    border-bottom: 1px solid var(--ot-line);
+    text-align: left;
+    font-weight: 600;
+}
+.ks-list th.ks-c-check, .ks-list td.ks-c-check { padding: 0 0 0 12px; }
+.ks-sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 26px;
+    margin-left: -6px;
+    padding: 0 6px;
+    border-radius: var(--ot-radius-sm);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ot-muted);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.ks-sort:hover, .ks-sort:active { color: var(--ot-text); background: var(--ot-surface-3); }
+.ks-sort.on { color: var(--ot-text); }
+.ks-sort.on :deep(svg) { color: var(--ot-accent); }
+th.ks-c-size .ks-sort { margin-left: 0; margin-right: -6px; }
+.ks-list .ks-c-size { text-align: right; }
+
+.ks-row { cursor: pointer; }
+.ks-row td {
+    height: 50px;
+    padding: 0 10px;
+    border-bottom: 1px solid rgba(146, 196, 130, 0.07);
+    vertical-align: middle;
+    color: var(--ot-text-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ks-row td.ks-c-name, .ks-row td.ks-c-act { overflow: visible; }
+.ks-row:hover td { background: rgba(255, 255, 255, 0.025); }
+.ks-row.selected td { background: var(--ot-accent-soft); }
+.ks-row.selected td:first-child { box-shadow: inset 2px 0 0 var(--ot-accent); }
+.ks-row.target td { background: var(--ot-accent-soft); box-shadow: inset 0 1px 0 var(--ot-accent), inset 0 -1px 0 var(--ot-accent); }
+.ks-row.dragged { opacity: 0.45; }
+.ks-row.fresh td { animation: ks-fresh 1.8s ease-out; }
+@keyframes ks-fresh { 0%, 25% { background: rgba(109, 220, 79, 0.09); } }
+.ks-c-size, .ks-c-date { font-variant-numeric: tabular-nums; }
+
+.ks-name { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ks-thumb { width: 30px; height: 30px; border-radius: 7px; }
+.ks-name-text { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.ks-open {
+    display: block;
+    max-width: 100%;
+    padding: 0;
+    font-size: 13.5px;
+    font-weight: 520;
+    color: var(--ot-text);
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    border-radius: 3px;
+}
+.ks-open.folder { font-weight: 600; }
+/* Under the name: where a search result lives; on a phone, also its size and date. */
+.ks-sub { display: none; gap: 8px; min-width: 0; font-size: 12px; color: var(--ot-muted); white-space: nowrap; }
+.ks-sub-meta { display: none; overflow: hidden; text-overflow: ellipsis; }
+.ks-list.searching .ks-sub { display: flex; }
+.ks-where { padding: 0; font-size: 12px; color: var(--ot-text-2); cursor: pointer; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ks-where:hover { color: var(--ot-accent); text-decoration: underline; }
+
+.ks-acts { display: flex; align-items: center; justify-content: flex-end; gap: 2px; }
+@media (hover: hover) {
+    .ks-row .ks-acts { opacity: 0; }
+    .ks-row:hover .ks-acts, .ks-row:focus-within .ks-acts, .ks-acts:has([aria-expanded='true']) { opacity: 1; }
+    .ks-list:not(.selecting) .ks-row:not(:hover):not(.selected) .ks-check:not(:focus-visible) { opacity: 0.55; }
 }
 
+/* ── grid ── */
+.ks-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 14px; padding-top: 4px; }
+.ks-tile {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--ot-radius);
+    border: 1px solid var(--ot-line);
+    background: var(--ot-surface);
+    cursor: pointer;
+    transition: border-color var(--ot-fast), background var(--ot-fast), opacity var(--ot-fast);
+}
+.ks-tile:hover { border-color: var(--ot-line-strong); background: var(--ot-surface-2); }
+.ks-tile.selected { border-color: var(--ot-accent); background: var(--ot-accent-soft); box-shadow: 0 0 0 1px var(--ot-accent); }
+.ks-tile.target { border-color: var(--ot-accent); box-shadow: 0 0 0 2px var(--ot-accent); }
+.ks-tile.dragged { opacity: 0.45; }
+.ks-tile.fresh { animation: ks-tile-fresh 2.6s ease-out; }
+@keyframes ks-tile-fresh { 0%, 30% { box-shadow: 0 0 0 2px rgba(109, 220, 79, 0.6); } }
+.ks-tile-media {
+    aspect-ratio: 4 / 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: calc(var(--ot-radius) - 1px) calc(var(--ot-radius) - 1px) 0 0;
+    background: rgba(0, 0, 0, 0.24);
+    overflow: hidden;
+}
+.ks-tile-thumb { width: 100%; height: 100%; }
+.ks-tile-info { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px 10px; min-width: 0; }
+.ks-tile .ks-open { font-size: 13px; }
+.ks-tile-meta { font-size: 11.5px; color: var(--ot-muted); font-variant-numeric: tabular-nums; }
+.ks-tile-check { position: absolute; top: 8px; left: 8px; background: rgba(8, 10, 7, 0.6); border-color: rgba(233, 241, 229, 0.7); }
+.ks-tile-more { position: absolute; top: 6px; right: 6px; }
+.ks-tile-more > .ks-icon { background: rgba(8, 10, 7, 0.6); color: var(--ot-text); }
+.ks-tile-more > .ks-icon:hover { background: rgba(8, 10, 7, 0.85); }
+@media (hover: hover) {
+    .ks-tile .ks-tile-check, .ks-tile .ks-tile-more { opacity: 0; transition: opacity var(--ot-fast); }
+    .ks-tile:hover .ks-tile-check, .ks-tile:hover .ks-tile-more, .ks-tile:focus-within .ks-tile-check, .ks-tile:focus-within .ks-tile-more,
+    .ks-tile.selected .ks-tile-check, .ks-grid.selecting .ks-tile-check, .ks-tile-more:has([aria-expanded='true']) { opacity: 1; }
+}
+
+.ks-more-rows { padding: 16px 12px; }
+.ks-more-rows .ot-skel { display: block; width: 200px; }
+.ks-foot { margin: 14px 0 0; padding: 0 12px; font-size: 12px; color: var(--ot-muted); font-variant-numeric: tabular-nums; }
+
+/* ── empty ── */
+.ks-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    padding: 56px 24px;
+    border-radius: var(--ot-radius-lg);
+    text-align: center;
+    font-size: 13.5px;
+    color: var(--ot-text-2);
+}
+.ks-empty.droppable { border: 1.5px dashed var(--ot-line-strong); background: rgba(109, 220, 79, 0.025); }
+.ks-empty strong { font-size: 15px; font-weight: 620; color: var(--ot-text); }
+.ks-empty-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    margin-bottom: 6px;
+    border-radius: 14px;
+    color: var(--ot-text-2);
+    background: var(--ot-surface-2);
+    border: 1px solid var(--ot-line);
+}
+.ks-empty .ot-btn.sm { margin-top: 6px; }
+.ks-empty-actions { display: flex; gap: 8px; margin-top: 8px; }
+
+/* ── drop target, toasts, dialogs ── */
+.ks-drop {
+    position: fixed;
+    inset: var(--ks-head) 0 0 0;
+    z-index: 30;
+    pointer-events: none;
+    border: 2px dashed var(--ot-accent);
+    border-radius: var(--ot-radius-lg);
+    margin: 10px;
+    background: rgba(109, 220, 79, 0.05);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 28px;
+    animation: ks-pop var(--ot-fast) ease-out;
+}
+.ks-drop-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: 999px;
+    background: var(--ot-accent);
+    color: var(--ot-on-accent);
+    font-size: 13.5px;
+    font-weight: 560;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+.ks-drop-card b { font-weight: 700; }
+
+.ks-toasts {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    z-index: 300;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;
+}
+/* Clear of the upload tray in the bottom-right corner. */
+.ks-toasts.raised { left: 24px; transform: none; align-items: flex-start; }
+.ks-toast {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: min(520px, calc(100vw - 32px));
+    padding: 9px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--ot-line-strong);
+    background: var(--ot-surface-2);
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.5);
+    font-size: 13px;
+}
+.ks-toast :deep(svg) { color: var(--ot-positive); }
+.ks-toast.bad { border-color: rgba(255, 123, 123, 0.5); }
+.ks-toast.bad :deep(svg) { color: var(--ot-negative); }
+.ks-toast-enter-active, .ks-toast-leave-active { transition: opacity var(--ot-normal), transform var(--ot-normal); }
+.ks-toast-enter-from, .ks-toast-leave-to { opacity: 0; transform: translateY(8px); }
+
+.ks-form { display: flex; flex-direction: column; gap: 8px; }
+.ks-form .ot-input { height: 38px; font-size: 14px; }
+.ks-form-error { margin: 0; font-size: 12.5px; color: var(--ot-negative); }
+.ks-confirm { margin: 0; font-size: 13.5px; color: var(--ot-text-2); }
+.ks-confirm-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ks-confirm-list li { display: flex; align-items: center; gap: 10px; font-size: 13px; min-width: 0; }
+.ks-confirm-list li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ks-confirm-list li.more { padding-left: 32px; color: var(--ot-muted); }
+
+/* ── smaller screens ── */
+@media (max-width: 1080px) {
+    .ks-c-kind { display: none; }
+    .ks-search { width: 210px; }
+}
+@media (max-width: 860px) {
+    .ks-newfolder { display: none; }
+}
 @media (max-width: 720px) {
-  .shared-shell { padding: 18px 12px; }
-  .topbar { flex-direction: column; align-items: stretch; }
-  .topbar-right { justify-content: flex-start; }
-  .name-cell .item-name-text {
-    max-width: 150px;
-  }
+    .ks { --ks-pad: 12px; }
+    .ks-brand, .ks-divider, .ks-wide { display: none; }
+    .ks-top { min-height: 58px; gap: 10px; }
+    .ks-actions { gap: 6px; }
+    .ks-actions .ot-btn { width: 36px; padding: 0; }
+    .ks-tools { flex-wrap: wrap; row-gap: 0; column-gap: 6px; padding-bottom: 8px; }
+    .ks-tools:not(.selecting) .ks-crumbs { flex: 1 1 100%; height: 40px; }
+    .ks-search { flex: 1 1 120px; width: auto; min-width: 0; }
+    .ks-search input { width: 100%; }
+    .ks-kbd { display: none; }
+    /* The summary matters more than the chips: let them drop to a second line. */
+    .ks-meta { flex-wrap: wrap; row-gap: 3px; }
+    .ks-mode { display: none; }
+    .ks-tools .ot-btn.sm { width: 34px; padding: 0; }
+    .ks-split > .ot-btn:first-child { width: 36px; padding: 0; }
+    .ks-c-date, .ks-c-size { display: none; }
+    .ks-list th.ks-c-act { width: 44px; }
+    .ks-list .ks-quick { display: none; }
+    .ks-sub { display: flex; }
+    .ks-sub-meta { display: block; }
+    .ks-row td { height: 58px; }
+    .ks-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+    .ks-toasts, .ks-toasts.raised { left: 50%; transform: translateX(-50%); align-items: center; bottom: auto; top: calc(var(--ks-head) + 10px); }
+}
+@media (max-width: 420px) {
+    .ks-sortpick { display: none; }
 }
 </style>

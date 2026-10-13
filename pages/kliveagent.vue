@@ -61,6 +61,7 @@
             v-for="(msg, i) in messages"
             :key="messageKey(msg, i)"
             :message="msg"
+            :speaking="talk.state === 'speaking' && i === lastAgentIndex"
             @stop="stopRun(msg.requestId)"
           />
 
@@ -84,24 +85,39 @@
           <div class="ka-setup-msg">{{ agentStatusMessage }}</div>
         </div>
 
-        <div class="chat-input-row">
-          <label class="chat-attach-btn" :class="{ disabled: !agentReady || loading || sending }" title="Attach files, images, or videos">
-            ＋ File
-            <input type="file" multiple :disabled="!agentReady || loading || sending" @change="chooseAttachments" hidden>
-          </label>
-          <textarea
-            ref="chatInput"
-            v-model="inputMessage"
-            class="chat-input"
-            rows="1"
-            :placeholder="agentReady ? (loading ? 'Steer the active run…  (Enter to send)' : 'Ask KliveAgent anything…  (Enter to send, Shift+Enter for newline)') : 'KliveAgent is still setting up…'"
-            :disabled="!agentReady"
-            @input="autoGrowInput"
-            @keydown.enter.exact.prevent="sendMessage"
-          ></textarea>
-          <button @click="sendMessage" type="button" class="chat-send-btn" :disabled="isSendDisabled" :title="sendButtonTitle">
-            {{ loading ? 'Steer' : 'Send' }}
-          </button>
+        <div class="chat-input-row" :class="{ 'is-talking': talk.active }">
+          <template v-if="!talk.active">
+            <label class="chat-attach-btn" :class="{ disabled: !agentReady || loading || sending }" title="Attach files, images, or videos">
+              ＋ File
+              <input type="file" multiple :disabled="!agentReady || loading || sending" @change="chooseAttachments" hidden>
+            </label>
+            <textarea
+              ref="chatInput"
+              v-model="inputMessage"
+              class="chat-input"
+              rows="1"
+              :placeholder="agentReady ? (loading ? 'Steer the active run…  (Enter to send)' : 'Ask KliveAgent anything…  (Enter to send, Shift+Enter for newline)') : 'KliveAgent is still setting up…'"
+              :disabled="!agentReady"
+              @input="autoGrowInput"
+              @keydown.enter.exact.prevent="sendMessage"
+            ></textarea>
+            <button
+              type="button"
+              class="chat-talk-btn"
+              :class="{ 'is-resumable': talkResumable }"
+              :disabled="!agentReady"
+              :title="talkResumable ? 'Resume talking (Ctrl+.)' : 'Talk instead of typing (Ctrl+.)'"
+              data-testid="talk-toggle"
+              @click="enterTalkMode"
+            ><KliveChatIcon name="mic" :size="18" /></button>
+            <button @click="sendMessage" type="button" class="chat-send-btn" :disabled="isSendDisabled" :title="sendButtonTitle">
+              {{ loading ? 'Steer' : 'Send' }}
+            </button>
+          </template>
+          <TalkBar v-else :talk="talk" @exit="exitTalkMode" />
+        </div>
+        <div v-if="!talk.active && talk.state === 'error' && talk.error" class="chat-attachment-error" role="alert">
+          Talk mode stopped: {{ talk.error }}
         </div>
         <div v-if="pendingFiles.length" class="chat-attachments">
           <span v-for="(file, index) in pendingFiles" :key="index" class="chat-attachment">
@@ -509,10 +525,13 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
+import { ref, reactive, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, RequestPUTFromKliveAPI } from '~/scripts/APIInterface';
 import { renderMarkdown } from '~/scripts/agentMarkdown';
+import { useTalkMode } from '~/composables/useTalkMode';
 import AgentMessage from '~/components/KliveAgent/AgentMessage.vue';
+import TalkBar from '~/components/KliveAgent/TalkBar.vue';
+import KliveChatIcon from '~/components/KliveChat/Icon.vue';
 import LiveScreen from '~/components/KliveAgent/LiveScreen.vue';
 import ScriptResultCard from '~/components/KliveAgent/ScriptResultCard.vue';
 import AgentStatCard from '~/components/KliveAgent/AgentStatCard.vue';
@@ -685,6 +704,117 @@ function rememberConversation(id) {
     if (id) localStorage.setItem(LAST_CONVERSATION_KEY, id);
     else localStorage.removeItem(LAST_CONVERSATION_KEY);
   } catch {}
+}
+
+// ── Talk mode ──
+// The spoken alternative to the composer. Turns arrive over the talk socket already accepted by the
+// server; the page shows them like typed ones and follows their runs through the usual long-poll.
+const talk = reactive(useTalkMode({ onTurn: onSpokenTurn }));
+// The mode is remembered, but audio can only start from a click or key press — so a reload shows the
+// mic waiting to be tapped rather than starting by itself.
+const talkResumable = computed(() => !talk.active && talk.prefs.mode === 'talk');
+const lastAgentIndex = computed(() => {
+  for (let i = messages.value.length - 1; i >= 0; i--) if (messages.value[i].role !== 'User') return i;
+  return -1;
+});
+
+async function enterTalkMode() {
+  if (!agentReady.value || talk.active) return;
+  const id = conversationId.value || newClientId('conv');
+  conversationId.value = id;
+  rememberConversation(id);
+  talk.updatePrefs({ mode: 'talk' });
+  await talk.start(id);
+}
+
+async function exitTalkMode() {
+  talk.updatePrefs({ mode: 'type' });
+  await talk.stop();
+  nextTick(() => chatInput.value?.focus());
+}
+
+function toggleTalkMode() {
+  if (talk.active) void exitTalkMode();
+  else void enterTalkMode();
+}
+
+function onSpokenTurn(event) {
+  if (!event?.accepted) return;
+  conversationLoadGeneration += 1;
+  const requestId = event.requestId || pendingRequestId.value || null;
+  const resent = event.resubmitOf && messages.value.find((m) => m.clientMessageId === event.resubmitOf);
+  if (resent) {
+    resent.clientMessageId = event.clientMessageId;
+    resent.messageId = event.clientMessageId;
+    resent.requestId = requestId;
+  } else {
+    messages.value.push({
+      messageId: event.clientMessageId,
+      clientMessageId: event.clientMessageId,
+      requestId,
+      role: 'User',
+      content: event.text,
+      spoken: true,
+      attachments: [],
+      timestamp: new Date().toISOString(),
+      deliveryStatus: 'accepted',
+    });
+  }
+  liveDismissed.value = false;
+  scrollToBottom(true);
+  // Steering joins the run already being followed; a new turn starts following its own.
+  if (requestId && !event.steering && pendingRequestId.value !== requestId) {
+    attachRun({
+      requestId,
+      conversationId: conversationId.value,
+      clientMessageId: event.clientMessageId,
+      userMessage: event.text,
+      response: '',
+      status: 'Running',
+      createdAt: new Date().toISOString(),
+    });
+  }
+}
+
+// Switching conversations (or starting a new chat) while talking moves the talk socket with it.
+watch(conversationId, (id) => {
+  if (!talk.active) return;
+  if (!id) {
+    const fresh = newClientId('conv');
+    conversationId.value = fresh;
+    rememberConversation(fresh);
+    return;
+  }
+  void talk.start(id);
+});
+
+function isKeyboardTarget(target) {
+  return !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT'
+    || target.isContentEditable || !!target.closest?.('.crd'));
+}
+
+function onTalkKeyDown(event) {
+  if (event.ctrlKey && event.key === '.') {
+    event.preventDefault();
+    toggleTalkMode();
+    return;
+  }
+  if (!talk.active) return;
+  if (event.key === 'Escape') {
+    talk.interrupt();
+    return;
+  }
+  if (event.code === 'Space' && !talk.prefs.handsFree && !event.repeat && !isKeyboardTarget(event.target)) {
+    event.preventDefault();
+    talk.pttDown();
+  }
+}
+
+function onTalkKeyUp(event) {
+  if (talk.active && event.code === 'Space' && !talk.prefs.handsFree && !isKeyboardTarget(event.target)) {
+    event.preventDefault();
+    talk.pttUp();
+  }
 }
 
 function detachLocalRun() {
@@ -1935,10 +2065,15 @@ onMounted(() => {
   // Re-attach from server state. This also discovers active work when browser storage was cleared.
   void restoreDurableSession();
   sideDataHandle = setInterval(refreshDurableSideData, 10_000);
+  window.addEventListener('keydown', onTalkKeyDown);
+  window.addEventListener('keyup', onTalkKeyUp);
 });
 
 onUnmounted(() => {
   componentActive = false;
+  window.removeEventListener('keydown', onTalkKeyDown);
+  window.removeEventListener('keyup', onTalkKeyUp);
+  void talk.stop();
   // This only invalidates the page's poll generation; no server cancellation or durable state clear.
   detachLocalRun();
   if (sideDataHandle) {
@@ -2381,6 +2516,33 @@ onUnmounted(() => {
 .chat-send-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.chat-input-row.is-talking { align-items: center; padding: 10px 14px; }
+
+/* The site styles every <button>; this one carries its own chrome. */
+.chat-input-row .chat-talk-btn {
+  align-self: flex-end;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid rgba(98, 206, 71, 0.4);
+  background: #1f2a1c;
+  color: #e3f6d9;
+  letter-spacing: normal;
+  text-transform: none;
+  box-shadow: none;
+  cursor: pointer;
+  :deep(.kc-icon) { color: #e3f6d9; }
+  &:hover:not(:disabled) { background: #263522; border-color: $teritary; box-shadow: none; }
+  &:disabled { opacity: 0.4; cursor: not-allowed; }
+  &.is-resumable { animation: chat-talk-resume 1.6s ease-in-out infinite; }
+}
+
+@keyframes chat-talk-resume {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(98, 206, 71, 0); }
+  50% { box-shadow: 0 0 0 5px rgba(98, 206, 71, 0.25); }
 }
 
 .chat-reconnect {

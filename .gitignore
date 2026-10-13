@@ -30,3 +30,6 @@ test-results
 .env
 .env.*
 !.env.example
+
+# Talk-mode speech detector assets, copied from node_modules on install (scripts/copy-talk-assets.mjs)
+public/talk/

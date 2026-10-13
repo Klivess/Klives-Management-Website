@@ -1,9 +1,11 @@
 <template>
-  <div class="msg" :class="isUser ? 'msg-user' : 'msg-agent'">
+  <div class="msg" :class="[isUser ? 'msg-user' : 'msg-agent', { 'msg-speaking': speaking }]">
     <div class="msg-avatar" :title="roleLabel">{{ isUser ? '✦' : '◈' }}</div>
     <div class="msg-body">
       <div class="msg-head">
         <span class="msg-role">{{ roleLabel }}</span>
+        <span v-if="isSpoken" class="msg-spoken" title="Spoken in talk mode"><KliveChatIcon name="mic" :size="12" /></span>
+        <span v-if="speaking" class="msg-spoken msg-spoken-out" title="Being read aloud"><KliveChatIcon name="volume" :size="12" /></span>
         <span v-if="timeLabel" class="msg-time">{{ timeLabel }}</span>
       </div>
 
@@ -49,10 +51,13 @@
 import { computed } from 'vue';
 import { renderMarkdown } from '~/scripts/agentMarkdown';
 import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
+import KliveChatIcon from '~/components/KliveChat/Icon.vue';
 
 const props = defineProps({
   // { role, content, scripts, pending?, timestamp, phase?, iteration?, promptTokens?, completionTokens?, activity? }
   message: { type: Object, required: true },
+  // This reply is the one talk mode is reading aloud right now.
+  speaking: { type: Boolean, default: false },
 });
 
 defineEmits(['stop']);
@@ -61,6 +66,9 @@ const isUser = computed(() => props.message.role === 'User');
 // An automatic continuation after a restart is written by the system, not by Klives.
 const isSystem = computed(() => isUser.value && props.message.senderName === 'System');
 const roleLabel = computed(() => (isSystem.value ? 'System · auto-continue' : isUser.value ? 'You' : 'KliveAgent'));
+// Talk mode gives spoken turns an spk_ id, which is also what the server stores, so the badge survives a reload.
+const isSpoken = computed(() => isUser.value && (props.message.spoken
+  || String(props.message.messageId || props.message.clientMessageId || '').startsWith('spk_')));
 
 const activity = computed(() => (Array.isArray(props.message.activity) ? props.message.activity : []));
 const attachments = computed(() => Array.isArray(props.message.attachments) ? props.message.attachments : []);
@@ -191,6 +199,21 @@ const timeLabel = computed(() => {
   align-items: baseline;
   gap: 8px;
   margin-bottom: 4px;
+}
+
+.msg-spoken {
+  display: inline-flex;
+  align-self: center;
+  color: $teritary;
+  :deep(.kc-icon) { color: $teritary; }
+}
+.msg-spoken-out,
+.msg-spoken-out :deep(.kc-icon) { color: #8fd3ff; }
+
+.msg-speaking .msg-body {
+  border-color: rgba(143, 211, 255, 0.45);
+  box-shadow: 0 0 0 1px rgba(143, 211, 255, 0.12);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
 .msg-role {

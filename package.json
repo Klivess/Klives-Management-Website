@@ -7,13 +7,15 @@
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare",
+    "postinstall": "nuxt prepare && node scripts/copy-talk-assets.mjs",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "talk:assets": "node scripts/copy-talk-assets.mjs"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.2.0",
+    "@ricky0123/vad-web": "0.0.31",
     "@types/three": "^0.184.1",
     "axios": "^1.13.6",
     "chart.js": "^4.5.0",
@@ -25,6 +27,7 @@
     "markdown-it": "^14.2.0",
     "nuxt": "^3.12.4",
     "nuxt-helm": "^0.0.2",
+    "onnxruntime-web": "1.30.0",
     "sweetalert2": "^11.16.1",
     "three": "^0.184.0",
     "topojson-client": "^3.1.0",

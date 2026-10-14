@@ -1,6 +1,7 @@
 <template>
     <OmniTraderShell>
         <div class="ot-pagehead">
+            <h1><span class="code">DEPLOY</span>Deployments</h1>
             <div class="ot-actions">
                 <button class="ot-btn ghost" :disabled="loading" @click="loadAll">Refresh</button>
             </div>
@@ -13,21 +14,18 @@
                            :loading="loading && !deployments.length"
                            :foot="`of ${deployments.length} deployment(s)`" />
             <OmniTraderKpi label="Armed live" :tone="armedCount ? 'bad' : ''" :value="String(armedCount)"
-                           :loading="loading && !deployments.length"
-                           foot="able to place real orders now" />
+                           :loading="loading && !deployments.length" />
             <OmniTraderKpi label="Versions" tone="info" :value="String(versions.length)"
                            :loading="loading && !versions.length" foot="immutable configurations" />
             <OmniTraderKpi label="Live authority" :tone="liveAuthorityCount ? 'warn' : ''"
-                           :value="String(liveAuthorityCount)" :loading="loading && !versions.length"
-                           foot="versions cleared for real money" />
+                           :value="String(liveAuthorityCount)" :loading="loading && !versions.length" />
         </div>
 
         <div class="ot-grid sidebar">
             <div class="ot-stack">
-                <OmniTraderCard title="Deployments" subtitle="Running strategy instances" flush
+                <OmniTraderCard title="Deployments" flush
                                 :loading="loading" :empty="!deployments.length"
-                                empty-title="No deployments"
-                                empty-text="Deploy a strategy from the panel on the right.">
+                                empty-title="No deployments">
                     <OmniTraderDataTable :rows="deployments" :columns="deploymentColumns" label="deployments"
                                          selectable :row-key="d => d.Id" :selected-key="selected?.Id ?? null"
                                          default-sort="CreatedUtc" search-placeholder="Filter deployments…"
@@ -76,8 +74,7 @@
 
                 <OmniTraderCard title="Versions & authority" flush
                                 :loading="loading" :empty="!versions.length"
-                                empty-title="No versions registered"
-                                empty-text="A version gives a configuration an identity that evidence and authority can attach to.">
+                                empty-title="No versions registered">
                     <OmniTraderDataTable :rows="versions" :columns="versionColumns" label="versions"
                                          :row-key="v => v.Id" default-sort="CreatedUtc"
                                          search-placeholder="Filter versions…">
@@ -104,15 +101,11 @@
                             <button class="ot-btn sm ghost" :disabled="busy" @click="openPromotion(row)">Promote…</button>
                         </template>
                     </OmniTraderDataTable>
-                    <template #footer>
-                        Promotion requires one rung at a time, a completed experiment, and for demo and
-                        above at least 30 trades, positive Sharpe and drawdown under 50%.
-                    </template>
                 </OmniTraderCard>
             </div>
 
             <div class="ot-stack">
-                <OmniTraderCard title="Deploy" subtitle="Start a strategy instance">
+                <OmniTraderCard title="Deploy">
                     <div class="ot-field" style="margin-bottom:12px">
                         <label for="dp-strategy">Strategy</label>
                         <select id="dp-strategy" class="ot-select" v-model="deployForm.strategyClass">
@@ -154,9 +147,7 @@
                     <div v-if="deployForm.mode === 'Live'" class="ot-banner warn" style="margin-bottom:12px">
                         <span class="glyph" aria-hidden="true">⚠</span>
                         <div>
-                            Live deployments start <b>disarmed</b> and route through <b>Kraken spot only</b> —
-                            the strategy engine has no IG or Trading 212 router yet. Use the Execution ticket
-                            for those venues.
+                            Live deployments start <b>disarmed</b> and route through <b>Kraken spot only</b> — no IG / T212 strategy router; use the Execution ticket.
                         </div>
                     </div>
 
@@ -190,11 +181,7 @@
                     </button>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Register a version" subtitle="Give a configuration an identity">
-                    <p class="note">
-                        A version is an immutable configuration. Evidence and authority attach to it, which
-                        is what makes a promotion mean something.
-                    </p>
+                <OmniTraderCard title="Register a version">
                     <div class="ot-field" style="margin-bottom:12px">
                         <label for="vf-strategy">Strategy</label>
                         <select id="vf-strategy" class="ot-select" v-model="versionForm.strategyClass">
@@ -209,7 +196,6 @@
                     <button class="ot-btn block" :disabled="busy || !versionForm.strategyClass" @click="createVersion">
                         Register version
                     </button>
-                    <template #footer>Uses the parameters currently set in the Deploy panel.</template>
                 </OmniTraderCard>
             </div>
         </div>

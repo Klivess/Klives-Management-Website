@@ -6,10 +6,10 @@
     -->
     <Teleport to="body">
         <Transition name="fade">
-            <div v-if="open" class="ot-scrim" @click="$emit('close')"></div>
+            <div v-if="open" class="ot-scrim" :class="{ 'ot-terminal': terminal }" @click="$emit('close')"></div>
         </Transition>
         <Transition name="drawer">
-            <aside v-if="open" class="ot-drawer" role="dialog" aria-modal="true" :aria-label="title" ref="panel">
+            <aside v-if="open" class="ot-drawer" :class="{ 'ot-terminal': terminal, wide }" role="dialog" aria-modal="true" :aria-label="title" ref="panel">
                 <header>
                     <div>
                         <h3><slot name="title">{{ title }}</slot></h3>
@@ -27,9 +27,11 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
-const props = defineProps<{ open: boolean; title?: string; subtitle?: string }>();
+const props = defineProps<{ open: boolean; title?: string; subtitle?: string; wide?: boolean }>();
+// Inside the OmniTrader shell the teleported layer carries the terminal theme.
+const terminal = inject<boolean>('otTerminal', false);
 const emit = defineEmits<{ close: [] }>();
 
 const panel = ref<HTMLElement | null>(null);

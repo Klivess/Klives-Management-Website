@@ -626,7 +626,7 @@ export function useDashboardOverview() {
         id: 'trader-exceptions', source: 'OmniTrader', severity: 'critical',
         title: 'Trading exceptions require attention',
         detail: `${unknownOrders} unknown orders · ${materialBreaks} material breaks · ${criticalAlerts} critical alerts`,
-        timestamp: data.trader?.AsOfUtc, href: '/omnitrader',
+        timestamp: data.trader?.AsOfUtc, href: '/omnitrader/desk',
       });
     }
     if (data.trader?.Controls?.SafeModeActive || safeModeAcknowledged.value) {

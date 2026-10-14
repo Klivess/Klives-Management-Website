@@ -1,154 +1,102 @@
 <template>
-    <div class="ot-os" :data-density="density">
+    <div class="ot-os ot-terminal" :data-density="density">
         <a class="ot-skiplink" href="#ot-main">Skip to content</a>
-
-        <!-- Persistent environment band. Its colour is the single loudest signal on the page:
-             an operator should never have to read text to know they are pointed at live money. -->
-        <div class="ot-envband" :class="envClass(scope)" :style="scope === 'All' ? mixedBand : undefined"
-             role="presentation"></div>
+        <div class="ot-envband" :class="envClass(scope)" :style="scope === 'All' ? mixedBand : undefined" role="presentation"></div>
 
         <header class="ot-top">
-            <NuxtLink class="ot-brand" to="/omnitrader">
-                <b>OmniTrader</b>
-                <small>Trading OS</small>
+            <NuxtLink class="ot-brand" to="/omnitrader">OMNITRADER</NuxtLink>
+            <OtCommand />
+            <select id="ot-env" v-model="scope" class="ot-envselect" :class="envClass(scope)" aria-label="Environment scope">
+                <option value="All">All env</option>
+                <option v-for="e in ENVIRONMENTS" :key="e" :value="e">{{ e }}</option>
+            </select>
+            <NuxtLink class="ot-scope" to="/omnitrader/desk" :title="overview?.Health.Summary ?? ''">
+                <span class="ot-dot" :class="tradingDot"></span>
+                <span>{{ overview ? (tradingPermitted ? 'TRADING' : 'BLOCKED') : '—' }}</span>
+                <span v-if="overview?.Controls.SafeModeActive" class="ot-chip bad">SAFE</span>
+                <span class="sep">│</span>
+                <span>{{ fmtMoney(overview?.Portfolio.TotalValue, currency, 0) }}</span>
+                <span v-if="exceptionCount" class="ot-badge" :title="`${exceptionCount} item(s) need a decision`">{{ exceptionCount }}</span>
             </NuxtLink>
-
-            <label class="visually-hidden" for="ot-env">Environment scope</label>
-            <div class="envwrap">
-                <select id="ot-env" class="ot-envselect" :class="envClass(scope)" v-model="scope">
-                    <option value="All">All environments</option>
-                    <option v-for="e in ENVIRONMENTS" :key="e" :value="e">{{ e }}</option>
-                </select>
-            </div>
-
-            <span v-if="scope === 'All' && hasLiveVenue" class="ot-chip live" title="This scope includes live accounts">
-                <span class="glyph" aria-hidden="true">●</span> includes live
+            <span class="ot-top-spacer"></span>
+            <span class="ot-fresh" :class="freshness.tone" :title="lastSync ? lastSync.toISOString() : ''">
+                <span class="ot-dot" :class="freshness.dot"></span>{{ freshness.label }}
             </span>
-
-            <span class="ot-scope">
-                <span class="ot-dot" :class="tradingDot" aria-hidden="true"></span>
-                {{ tradingPermitted ? 'Trading permitted' : 'Trading blocked' }}
-                <span class="sep" aria-hidden="true">·</span>
-                <span>{{ currency }} {{ fmtMoney(overview?.Portfolio.TotalValue, currency, 0) }}</span>
-            </span>
-
-            <span v-if="overview?.Controls.SafeModeActive" class="ot-chip bad"
-                  :title="overview.Controls.SafeModeReason ?? ''">
-                <span class="glyph" aria-hidden="true">⛔</span> Safe mode
-            </span>
-
-            <div class="ot-top-spacer"></div>
-
-            <!-- Freshness says which kind of "now" this is: live, stale, or last-known-good. -->
-            <span class="ot-fresh" :class="freshness.tone" :title="lastSync ? lastSync.toISOString() : ''"
-                  aria-live="polite">
-                <span class="ot-dot" :class="freshness.dot" aria-hidden="true"></span>
-                {{ freshness.label }}
-            </span>
-
-            <button class="ot-btn ghost sm" :disabled="loadingOverview" @click="refreshOverview">Refresh</button>
-
-            <div class="ot-segment sm" role="group" aria-label="Row density">
-                <button type="button" :aria-pressed="density === 'standard'" @click="density = 'standard'">Standard</button>
-                <button type="button" :aria-pressed="density === 'compact'" @click="density = 'compact'">Compact</button>
-            </div>
-
-            <button class="ot-btn ghost sm" @click="paletteOpen = true" title="Jump to a page (Ctrl+K)">⌘K</button>
+            <span class="ot-clock" title="UTC"><b>{{ clock }}</b> UTC</span>
+            <details class="ot-menu">
+                <summary class="ot-btn ghost sm" aria-label="Display settings">⚙</summary>
+                <div class="pop">
+                    <span class="grp">Density</span>
+                    <div class="ot-segment sm">
+                        <button v-for="d in DENSITIES" :key="d" type="button" :aria-pressed="density === d" @click="density = d">{{ d }}</button>
+                    </div>
+                    <span class="grp">Ticker tape</span>
+                    <label class="item"><input v-model="tapeOn" type="checkbox" /> show</label>
+                    <input v-model="tapeText" class="ot-input sm mono" spellcheck="false" aria-label="Tape symbols" />
+                    <button class="item" type="button" @click="refreshOverview">Refresh firm status</button>
+                </div>
+            </details>
         </header>
 
-        <nav class="ot-nav" aria-label="OmniTrader sections">
+        <OtTape v-if="tapeOn" :symbols="tapeSymbols" />
+
+        <nav class="ot-nav" aria-label="OmniTrader">
             <div v-for="group in navigation" :key="group.label" class="ot-nav-group">
-                <span class="label" aria-hidden="true">{{ group.label }}</span>
-                <NuxtLink v-for="item in group.items" :key="item.to" :to="item.to"
-                          :class="{ active: isActive(item.to) }"
-                          :aria-current="isActive(item.to) ? 'page' : undefined">
+                <span class="label">{{ group.label }}</span>
+                <NuxtLink v-for="item in group.items" :key="item.to" :to="item.to" :class="{ active: isActive(item) }"
+                          :aria-current="isActive(item) ? 'page' : undefined" :title="item.code">
                     {{ item.label }}
-                    <span v-if="item.badge" class="ot-badge" :class="item.tone"
-                          :title="`${item.badge} ${item.badgeLabel}`">{{ item.badge }}</span>
+                    <span v-if="item.badge" class="ot-badge" :class="item.tone">{{ item.badge }}</span>
                 </NuxtLink>
             </div>
         </nav>
 
-        <main class="ot-page" id="ot-main">
-            <!-- A failure keeps the page it can still serve, names what broke, and offers a retry. -->
-            <div v-if="overviewError" class="ot-banner" role="alert">
-                <span class="glyph" aria-hidden="true">⚠</span>
-                <div>
-                    <strong>Firm status is unavailable</strong>
-                    {{ overviewError }}
-                    <template v-if="lastSuccessfulSync">
-                        Showing the last successful reading from {{ fmtTime(lastSuccessfulSync.toISOString()) }}.
-                    </template>
-                </div>
-                <div class="actions">
-                    <button class="ot-btn sm" :disabled="loadingOverview" @click="refreshOverview">Retry</button>
-                </div>
+        <main id="ot-main" class="ot-page">
+            <div v-if="bookPage && overviewError" class="ot-banner" role="alert">
+                <span class="glyph">⚠</span><strong>Firm status unavailable</strong><span class="muted">{{ overviewError }}</span>
+                <div class="actions"><button class="ot-btn sm" :disabled="loadingOverview" @click="refreshOverview">Retry</button></div>
             </div>
-
-            <!-- Blockers are shown on every page, not just Risk. A blocked platform that looks
-                 normal on nine of ten screens is exactly the failure this is meant to prevent. -->
-            <div v-if="overview && !overview.Health.TradingPermitted" class="ot-banner" role="alert">
-                <span class="glyph" aria-hidden="true">⛔</span>
-                <div>
-                    <strong>New automated exposure is blocked</strong>
-                    <ul>
-                        <li v-for="blocker in overview.Health.Blockers" :key="blocker">{{ blocker }}</li>
-                    </ul>
-                </div>
-                <div class="actions">
-                    <NuxtLink class="ot-btn sm ghost" to="/omnitrader/risk">Risk controls</NuxtLink>
-                </div>
+            <div v-if="bookPage && overview && !overview.Health.TradingPermitted" class="ot-banner" role="alert">
+                <span class="glyph">⛔</span><strong>Automated exposure blocked</strong>
+                <span class="muted">{{ overview.Health.Blockers.join(' · ') }}</span>
+                <div class="actions"><NuxtLink class="ot-btn sm ghost" to="/omnitrader/risk">Risk</NuxtLink></div>
             </div>
-
             <slot />
+            <footer class="ot-foot mono">
+                <span>Data: Binance · Coinbase · Kraken · Yahoo · SEC EDGAR · US Treasury · BLS · DBnomics · CBOE · Deribit · CoinGecko · DefiLlama · arXiv · OpenAlex</span>
+                <a href="https://www.tradingview.com/" target="_blank" rel="noopener">Charts: TradingView Lightweight Charts™</a>
+            </footer>
         </main>
-
-        <!-- Command palette: ten pages is enough that jumping beats hunting. -->
-        <div v-if="paletteOpen" class="ot-palette" @click.self="paletteOpen = false">
-            <div class="box" role="dialog" aria-modal="true" aria-label="Jump to">
-                <input ref="paletteInput" v-model="paletteQuery" placeholder="Jump to a page…"
-                       @keydown.down.prevent="movePalette(1)" @keydown.up.prevent="movePalette(-1)"
-                       @keydown.enter.prevent="choosePalette()" @keydown.esc="paletteOpen = false" />
-                <ul>
-                    <li v-for="(item, index) in paletteResults" :key="item.to"
-                        :class="{ active: index === paletteIndex }"
-                        @mouseenter="paletteIndex = index" @click="choosePalette(item)">
-                        {{ item.label }}
-                        <span class="group">{{ item.group }}</span>
-                    </li>
-                    <li v-if="!paletteResults.length" class="muted">No page matches “{{ paletteQuery }}”.</li>
-                </ul>
-            </div>
-        </div>
     </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import {
-    useOmniTrader, usePolling, fmtMoney, fmtAgo, fmtTime, envClass, type Environment,
-} from '~/composables/useOmniTrader';
+import { computed, onBeforeUnmount, onMounted, provide, ref } from 'vue';
+import { useRoute } from 'vue-router';
+import { useOmniTrader, usePolling, fmtMoney, fmtAgo, envClass, type Environment } from '~/composables/useOmniTrader';
+import { usePersisted } from '~/composables/useTerminal';
 
 const props = withDefaults(defineProps<{ pollMs?: number }>(), { pollMs: 15000 });
 
+provide('otTerminal', true);
+
 const route = useRoute();
-const router = useRouter();
 const {
-    environment, overview, overviewError, loadingOverview, lastSync, lastSuccessfulSync, density,
-    tradingPermitted, currency, refreshOverview,
+    environment, overview, overviewError, loadingOverview, lastSync, lastSuccessfulSync,
+    tradingPermitted, currency, refreshOverview, exceptionCount,
 } = useOmniTrader();
 
 const ENVIRONMENTS: Environment[] = ['Paper', 'Demo', 'Live', 'Historical'];
+const DENSITIES = ['compact', 'standard', 'comfortable'] as const;
 const scope = environment;
+const density = usePersisted<string>('terminal.density', 'standard');
+const tapeOn = usePersisted<boolean>('terminal.tape', true);
+const tapeText = usePersisted<string>('terminal.tapeSymbols', '^GSPC ^NDX ^RUT ^VIX ^TNX DX-Y.NYB EURUSD=X USDJPY=X GC=F CL=F BTCUSDT ETHUSDT SOLUSDT');
+const tapeSymbols = computed(() => tapeText.value.split(/[\s,]+/).map(s => s.trim().toUpperCase()).filter(Boolean).slice(0, 30));
 
-// "All" is a real scope, not an absence of one — so it gets its own unmistakable band
-// rather than borrowing the colour of whichever environment happens to be first.
 const mixedBand = {
     background: 'repeating-linear-gradient(90deg, var(--ot-env-live) 0 22px, var(--ot-env-demo) 22px 44px, var(--ot-env-paper) 44px 66px)',
 };
-
-const hasLiveVenue = computed(() => overview.value?.Venues.some(v => v.Environment === 'Live') ?? false);
 
 const tradingDot = computed(() => {
     if (!overview.value) return '';
@@ -156,134 +104,82 @@ const tradingDot = computed(() => {
     return overview.value.Controls.SafeModeActive ? 'warn' : 'ok';
 });
 
-// Freshness distinguishes "current", "getting old" and "we have not managed to
-// refresh since X" — three different facts that a single timestamp would blur.
-const now = ref(Date.now());
+// Null until mounted so the server-rendered clock never disagrees with the hydrating client.
+const now = ref<number | null>(null);
+const clock = computed(() => (now.value === null ? '--:--:--' : new Date(now.value).toISOString().slice(11, 19)));
 const freshness = computed(() => {
     void now.value;
-    if (loadingOverview.value && !overview.value) return { label: 'Loading…', tone: '', dot: '' };
-    if (overviewError.value) {
-        return {
-            label: lastSuccessfulSync.value
-                ? `Last good ${fmtAgo(lastSuccessfulSync.value.toISOString())}`
-                : 'Never updated',
-            tone: 'failed', dot: 'bad',
-        };
-    }
-    const ageMs = lastSuccessfulSync.value ? Date.now() - lastSuccessfulSync.value.getTime() : Infinity;
-    const stale = ageMs > props.pollMs * 3;
-    return {
-        label: `Updated ${lastSuccessfulSync.value ? fmtAgo(lastSuccessfulSync.value.toISOString()) : 'never'}`,
-        tone: stale ? 'stale' : '', dot: stale ? 'warn' : 'ok',
-    };
+    if (loadingOverview.value && !overview.value) return { label: '…', tone: '', dot: '' };
+    if (overviewError.value) return { label: lastSuccessfulSync.value ? fmtAgo(lastSuccessfulSync.value.toISOString()) : 'offline', tone: 'failed', dot: 'bad' };
+    const age = lastSuccessfulSync.value ? Date.now() - lastSuccessfulSync.value.getTime() : Infinity;
+    const stale = age > props.pollMs * 3;
+    return { label: lastSuccessfulSync.value ? fmtAgo(lastSuccessfulSync.value.toISOString()) : '—', tone: stale ? 'stale' : '', dot: stale ? 'warn' : 'ok' };
 });
 
-const navigation = computed(() => {
+interface NavItem { to: string; label: string; code: string; match?: string[]; badge?: number; tone?: string }
+
+const navigation = computed<{ label: string; items: NavItem[] }[]>(() => {
     const e = overview.value?.Exceptions;
     return [
         {
-            label: 'Now',
+            label: 'Mkt',
             items: [
-                { to: '/omnitrader', label: 'Command Centre', badge: e?.UnacknowledgedCritical ?? 0, tone: '', badgeLabel: 'unacknowledged critical alert(s)' },
-                { to: '/omnitrader/markets', label: 'Markets', badge: 0, tone: '', badgeLabel: '' },
-                { to: '/omnitrader/execution', label: 'Execution', badge: (e?.AwaitingApproval ?? 0) + (e?.UnknownOrders ?? 0), tone: e?.UnknownOrders ? '' : 'warn', badgeLabel: 'order(s) needing a decision' },
+                { to: '/omnitrader', label: 'Monitor', code: 'MON' },
+                { to: '/omnitrader/instrument', label: 'Security', code: 'GP / DES / FA' },
+                { to: '/omnitrader/screener', label: 'Screener', code: 'SCRN' },
+                { to: '/omnitrader/crypto', label: 'Crypto', code: 'CRYPTO' },
+                { to: '/omnitrader/macro', label: 'Macro', code: 'ECO' },
+                { to: '/omnitrader/news', label: 'News', code: 'N' },
+                { to: '/omnitrader/alerts', label: 'Alerts', code: 'ALERTS' },
+                { to: '/omnitrader/markets', label: 'Watchlists', code: 'WL' },
+            ],
+        },
+        {
+            label: 'Research',
+            items: [
+                { to: '/omnitrader/studio', label: 'Studio', code: 'STUDIO' },
+                { to: '/omnitrader/lab', label: 'Lab', code: 'LAB' },
+                { to: '/omnitrader/research', label: 'Alpha', code: 'ALPHA' },
+                { to: '/omnitrader/strategies', label: 'Deploy', code: 'DEPLOY' },
             ],
         },
         {
             label: 'Book',
             items: [
-                { to: '/omnitrader/portfolio', label: 'Portfolio', badge: e?.MaterialBreaks ?? 0, tone: '', badgeLabel: 'material reconciliation break(s)' },
-                { to: '/omnitrader/risk', label: 'Risk', badge: overview.value?.Controls.SafeModeActive ? 1 : 0, tone: '', badgeLabel: 'safe mode engaged' },
+                { to: '/omnitrader/desk', label: 'Desk', code: 'DESK', badge: e?.UnacknowledgedCritical ?? 0 },
+                { to: '/omnitrader/portfolio', label: 'Portfolio', code: 'PORT', badge: e?.MaterialBreaks ?? 0 },
+                { to: '/omnitrader/execution', label: 'Execution', code: 'EMSX', badge: (e?.AwaitingApproval ?? 0) + (e?.UnknownOrders ?? 0), tone: e?.UnknownOrders ? '' : 'warn' },
+                { to: '/omnitrader/risk', label: 'Risk', code: 'RISK', badge: overview.value?.Controls.SafeModeActive ? 1 : 0 },
+                { to: '/omnitrader/performance', label: 'Perf', code: 'PERF' },
+                { to: '/omnitrader/journal', label: 'Journal', code: 'JRNL' },
             ],
         },
         {
-            label: 'Edge',
-            items: [
-                { to: '/omnitrader/strategies', label: 'Strategies', badge: 0, tone: '', badgeLabel: '' },
-                { to: '/omnitrader/research', label: 'Research', badge: 0, tone: '', badgeLabel: '' },
-                { to: '/omnitrader/performance', label: 'Performance', badge: 0, tone: '', badgeLabel: '' },
-                { to: '/omnitrader/journal', label: 'Journal', badge: 0, tone: '', badgeLabel: '' },
-            ],
-        },
-        {
-            label: 'Platform',
-            items: [
-                { to: '/omnitrader/systems', label: 'Systems', badge: e?.CriticalAlerts ?? 0, tone: '', badgeLabel: 'critical alert(s)' },
-            ],
+            label: 'Sys',
+            items: [{ to: '/omnitrader/systems', label: 'Systems', code: 'SYS', badge: e?.CriticalAlerts ?? 0 }],
         },
     ];
 });
 
-function isActive(to: string): boolean {
-    return to === '/omnitrader' ? route.path === '/omnitrader' : route.path.startsWith(to);
+const BOOK = ['/omnitrader/desk', '/omnitrader/portfolio', '/omnitrader/execution', '/omnitrader/risk', '/omnitrader/strategies'];
+const bookPage = computed(() => BOOK.some(p => route.path.startsWith(p)));
+
+function isActive(item: NavItem): boolean {
+    return item.to === '/omnitrader' ? route.path === '/omnitrader' || route.path === '/omnitrader/' : route.path.startsWith(item.to);
 }
-
-// ── command palette ──────────────────────────────────────────────────────────
-
-const paletteOpen = ref(false);
-const paletteQuery = ref('');
-const paletteIndex = ref(0);
-const paletteInput = ref<HTMLInputElement | null>(null);
-
-const paletteItems = computed(() =>
-    navigation.value.flatMap(group => group.items.map(item => ({ ...item, group: group.label }))));
-
-const paletteResults = computed(() => {
-    const q = paletteQuery.value.trim().toLowerCase();
-    if (!q) return paletteItems.value;
-    return paletteItems.value.filter(i => i.label.toLowerCase().includes(q) || i.group.toLowerCase().includes(q));
-});
-
-function movePalette(delta: number) {
-    const count = paletteResults.value.length;
-    if (!count) return;
-    paletteIndex.value = (paletteIndex.value + delta + count) % count;
-}
-
-function choosePalette(item?: { to: string }) {
-    const target = item ?? paletteResults.value[paletteIndex.value];
-    if (!target) return;
-    paletteOpen.value = false;
-    void router.push(target.to);
-}
-
-function onKeydown(event: KeyboardEvent) {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        paletteOpen.value = !paletteOpen.value;
-    } else if (event.key === 'Escape') {
-        paletteOpen.value = false;
-    }
-}
-
-watch(paletteOpen, async open => {
-    if (!open) return;
-    paletteQuery.value = '';
-    paletteIndex.value = 0;
-    await nextTick();
-    paletteInput.value?.focus();
-});
 
 usePolling(refreshOverview, props.pollMs);
 
-let clock: ReturnType<typeof setInterval> | null = null;
-onMounted(() => {
-    window.addEventListener('keydown', onKeydown);
-    // Relative timestamps must keep counting; without this "2s ago" stays "2s ago".
-    clock = setInterval(() => { now.value = Date.now(); }, 5000);
-});
-onBeforeUnmount(() => {
-    window.removeEventListener('keydown', onKeydown);
-    if (clock) clearInterval(clock);
-});
+let timer: ReturnType<typeof setInterval> | null = null;
+onMounted(() => { now.value = Date.now(); timer = setInterval(() => { now.value = Date.now(); }, 1000); });
+onBeforeUnmount(() => { if (timer) clearInterval(timer); });
 </script>
 
 <style scoped>
-.ot-brand { text-decoration: none; color: inherit; }
-.envwrap { display: inline-flex; }
-.ot-envselect { appearance: none; padding-right: var(--ot-space-3); }
-.visually-hidden {
-    position: absolute; width: 1px; height: 1px; overflow: hidden;
-    clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
-}
+.ot-scope { padding: 0 6px; border-radius: 3px; height: 24px; }
+.ot-scope:hover { background: rgba(255, 255, 255, 0.04); }
+.ot-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 20px; padding-top: 8px; border-top: 1px solid var(--ot-line); font-size: 10px; color: var(--ot-disabled); }
+.ot-foot a { color: var(--ot-muted); }
+.ot-foot a:hover { color: var(--ot-accent); }
+.ot-menu .pop { min-width: 240px; }
 </style>

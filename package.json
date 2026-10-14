@@ -14,7 +14,16 @@
     "talk:assets": "node scripts/copy-talk-assets.mjs"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "6.20.3",
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/language": "6.12.4",
+    "@codemirror/legacy-modes": "6.5.4",
+    "@codemirror/lint": "6.9.7",
+    "@codemirror/search": "6.7.2",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.13",
     "@fortawesome/fontawesome-free": "^7.2.0",
+    "@lezer/highlight": "1.2.5",
     "@ricky0123/vad-web": "0.0.31",
     "@types/three": "^0.184.1",
     "axios": "^1.13.6",
@@ -23,7 +32,7 @@
     "cors": "^2.8.5",
     "highlight.js": "^11.11.1",
     "leaflet": "^1.9.4",
-    "lightweight-charts": "^4.2.3",
+    "lightweight-charts": "5.2.1",
     "markdown-it": "^14.2.0",
     "nuxt": "^3.12.4",
     "nuxt-helm": "^0.0.2",
@@ -41,5 +50,8 @@
     "@types/ws": "^8.18.1",
     "sass": "^1.77.8",
     "vue-tsc": "^2.2.12"
+  },
+  "overrides": {
+    "@lezer/lr": "1.4.10"
   }
 }

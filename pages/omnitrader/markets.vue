@@ -1,5 +1,6 @@
 <template>
     <OmniTraderShell>
+        <div class="ot-pagehead"><h1><span class="code">WL</span>Watchlists</h1></div>
         <!-- Global controls: everything here re-scopes the whole page. Anything that
              changes one card lives in that card's own header. -->
         <div class="ot-filterbar">
@@ -37,8 +38,7 @@
             <span class="glyph" aria-hidden="true">⚠</span>
             <div>
                 <strong>{{ staleCount }} instrument(s) are running on stale data</strong>
-                Their prices are underlined below with the reason. Automated actions on a stale
-                instrument are blocked by the data-integrity layer.
+                Stale prices are underlined; automation on them is blocked.
             </div>
         </div>
 
@@ -46,18 +46,16 @@
             <!-- Tone only once there is a reading: an unmeasured breadth is not a bad one. -->
             <OmniTraderKpi label="Advancing" :tone="breadth ? (breadth.AdvancingPercent >= 50 ? 'good' : 'bad') : ''"
                            :value="fmtPct(breadth?.AdvancingPercent, 0)" :loading="loading && !rows.length"
-                           :foot="`of ${breadth?.Members ?? 0} members, last session`"
-                           help="Share of the watchlist that closed up. Direction without participation is a narrow move." />
+                           :foot="`of ${breadth?.Members ?? 0} members, last session`" />
             <OmniTraderKpi label="Above trend" :tone="breadth ? (breadth.AboveTrendPercent >= 50 ? 'good' : 'warn') : ''"
-                           :value="fmtPct(breadth?.AboveTrendPercent, 0)" :loading="loading && !rows.length"
-                           foot="participation, not just direction" />
+                           :value="fmtPct(breadth?.AboveTrendPercent, 0)" :loading="loading && !rows.length" />
             <OmniTraderKpi label="Clean breakouts" tone="info" :value="String(breakoutCount)"
-                           :loading="loading && !rows.length" foot="quality above 0.5 on this bar" />
+                           :loading="loading && !rows.length" />
             <OmniTraderKpi label="Trending up" :value="String(regimeCounts.TrendingUp ?? 0)"
                            :loading="loading && !rows.length"
                            :foot="`${regimeCounts.RangeBound ?? 0} ranging · ${regimeCounts.Volatile ?? 0} volatile`" />
             <OmniTraderKpi label="Session" small :value="session?.LondonOpen ? 'London open' : 'London closed'"
-                           :loading="loading && !rows.length" foot="crypto trades 24/7; CFDs do not" />
+                           :loading="loading && !rows.length" />
         </div>
 
         <!-- Adding an instrument is one gesture, not a modal and a save: type, then drag the
@@ -90,11 +88,11 @@
 
             <OmniTraderStateBlock v-else-if="search.trim().length >= 2" compact kind="filtered"
                                   title="No matches"
-                                  detail="Search any stock, crypto pair or index. You can watch and chart something even if no venue mapping exists yet." />
+                                  detail="Any stock, crypto pair or index." />
 
             <OmniTraderStateBlock v-else compact
                                   title="Search to add"
-                                  detail="Type at least two characters. Drag a result onto the watchlist below, or press ＋ on it." />
+                                  detail="Drag a result onto the watchlist, or press ＋." />
         </OmniTraderCard>
 
         <div class="ot-grid sidebar">
@@ -104,8 +102,7 @@
                 <div v-if="dragOver" class="dropbanner" aria-hidden="true">Drop to add to “{{ watchlistName }}”</div>
                 <OmniTraderCard title="Watchlist" :subtitle="`Ranked by momentum on ${intervalLabel} bars`" flush
                                 :loading="loading" :empty="!rows.length"
-                                empty-title="Nothing to evaluate"
-                                empty-text="Search above, then drag an instrument here — or press ＋ on it.">
+                                empty-title="Nothing to evaluate">
                     <template #controls>
                         <span class="ot-chip">click a row to open its chart</span>
                     </template>
@@ -185,15 +182,11 @@
                 <OmniTraderCard title="Regime mix">
                     <OmniTraderBarList :items="regimeBars" :format="v => `${v}`" :signed="false"
                                        empty-title="Nothing evaluated yet" />
-                    <template #footer>
-                        Regime is classified from the same candles the strategies read.
-                    </template>
                 </OmniTraderCard>
 
                 <OmniTraderCard title="Liquidity risk">
                     <OmniTraderBarList :items="spreadBars" :format="v => `${v.toFixed(3)}%`" :signed="false"
                                        :limit="6" empty-title="Nothing evaluated yet" />
-                    <template #footer>Estimated spread, widest first. High spread erodes an edge before it starts.</template>
                 </OmniTraderCard>
             </div>
         </div>

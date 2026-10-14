@@ -18,9 +18,16 @@ export default defineNuxtConfig({
     '/klivetech': {ssr: false}, // Telemetry needs WebSocket, object URLs and ResizeObserver
     '/schemery/omnitumblr': {ssr: false}, // Authenticated blob previews, popups and local-time rendering
     '/schemery/omnitumblr/**': {ssr: false},
+    '/omnitrader': {ssr: false}, // Terminal: client-fetched behind auth, persisted per-browser layout, live charts
+    '/omnitrader/**': {ssr: false},
     '/*': {cors: true},
   },
   vite: {
+    // Pre-bundled so the first chart or editor does not trigger a dev-server re-optimise and reload.
+    optimizeDeps: {
+      include: ['lightweight-charts', '@codemirror/state', '@codemirror/view', '@codemirror/commands', '@codemirror/language',
+        '@codemirror/legacy-modes/mode/clike', '@codemirror/autocomplete', '@codemirror/lint', '@codemirror/search', '@lezer/highlight'],
+    },
     css: {
       preprocessorOptions: {
         scss: {
@@ -50,6 +57,7 @@ export default defineNuxtConfig({
     '~/assets/scss/klivetech-os.scss',
     '~/assets/scss/omniscience.scss',
     '~/assets/scss/omnitrader-os.scss',
+    '~/assets/scss/omnitrader-terminal.scss',
     '~/assets/scss/klivechat.scss',
     '~/assets/scss/access-ui.scss'],
   modules: [],

@@ -1998,6 +1998,91 @@ export const PERMISSIONS: FixturePermission[] = [
     "sensitive": true
   },
   {
+    "key": "omnitrader.terminal.read",
+    "service": "OmniTrader",
+    "serviceKey": "omnitrader",
+    "area": "Terminal",
+    "tier": "Read",
+    "tierValue": 2,
+    "title": "Use the terminal",
+    "description": "Market data, fundamentals, derivatives, macro, news, screens and indicators.",
+    "legacyRank": 1,
+    "implies": [],
+    "sensitive": false
+  },
+  {
+    "key": "omnitrader.screens.manage",
+    "service": "OmniTrader",
+    "serviceKey": "omnitrader",
+    "area": "Terminal",
+    "tier": "Act",
+    "tierValue": 3,
+    "title": "Save screens",
+    "description": "Create, edit and delete saved screens and layouts.",
+    "legacyRank": 5,
+    "implies": [
+      "omnitrader.terminal.read"
+    ],
+    "sensitive": false
+  },
+  {
+    "key": "omnitrader.studio.read",
+    "service": "OmniTrader",
+    "serviceKey": "omnitrader",
+    "area": "Studio",
+    "tier": "Read",
+    "tierValue": 2,
+    "title": "View studio strategies",
+    "description": "Blueprint and script strategies, their versions and runs.",
+    "legacyRank": 1,
+    "implies": [],
+    "sensitive": false
+  },
+  {
+    "key": "omnitrader.studio.write",
+    "service": "OmniTrader",
+    "serviceKey": "omnitrader",
+    "area": "Studio",
+    "tier": "Manage",
+    "tierValue": 4,
+    "title": "Write strategies",
+    "description": "Create, edit, compile, test and delete blueprint and script strategies.",
+    "legacyRank": 5,
+    "implies": [
+      "omnitrader.studio.read",
+      "omnitrader.backtests.run"
+    ],
+    "sensitive": true
+  },
+  {
+    "key": "omnitrader.alpha.read",
+    "service": "OmniTrader",
+    "serviceKey": "omnitrader",
+    "area": "Research",
+    "tier": "Read",
+    "tierValue": 2,
+    "title": "View alpha research",
+    "description": "Research papers, alpha candidates and their evaluations.",
+    "legacyRank": 1,
+    "implies": [],
+    "sensitive": false
+  },
+  {
+    "key": "omnitrader.alpha.manage",
+    "service": "OmniTrader",
+    "serviceKey": "omnitrader",
+    "area": "Research",
+    "tier": "Manage",
+    "tierValue": 4,
+    "title": "Run alpha research",
+    "description": "Ingest papers, dispatch analysis, judge candidates and change Alpha Lab settings.",
+    "legacyRank": 5,
+    "implies": [
+      "omnitrader.alpha.read"
+    ],
+    "sensitive": false
+  },
+  {
     "key": "omnitumblr.overview.view",
     "service": "OmniTumblr",
     "serviceKey": "omnitumblr",

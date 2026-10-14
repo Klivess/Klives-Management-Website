@@ -1,5 +1,6 @@
 <template>
     <OmniTraderShell>
+        <div class="ot-pagehead"><h1><span class="code">PERF</span>Performance</h1></div>
         <div class="ot-filterbar">
             <div class="ot-segment" role="group" aria-label="Reporting window">
                 <button v-for="w in WINDOWS" :key="w.days" type="button"
@@ -24,8 +25,7 @@
                            :value="fmtSigned(firm?.NetPnL, currency)" :loading="loading && !report"
                            :compare="compare(firm?.NetPnL, previous?.NetPnL)" :baseline="baselineLabel"
                            :compare-format="moneyChange"
-                           :foot="`realized ${fmtSigned(firm?.RealizedPnL, currency)} · costs ${fmtMoney(firm?.Costs, currency)}`"
-                           help="Realized P&L plus costs, from closed journal records in this window." />
+                           :foot="`realized ${fmtSigned(firm?.RealizedPnL, currency)} · costs ${fmtMoney(firm?.Costs, currency)}`" />
             <OmniTraderKpi label="Trades" :value="String(firm?.Trades ?? 0)" :loading="loading && !report"
                            :compare="compare(firm?.Trades, previous?.Trades)" :baseline="baselineLabel"
                            :good-direction="0" :foot="`${firm?.Wins ?? 0} winners`" />
@@ -33,15 +33,14 @@
                            :value="fmtPct(firm?.WinRate, 1)" :loading="loading && !report"
                            :compare="compare(firm?.WinRate, previous?.WinRate)" :baseline="baselineLabel"
                            :compare-format="pointChange"
-                           :foot="`payoff ${(firm?.PayoffRatio ?? 0).toFixed(2)}×`"
-                           help="Win rate alone decides nothing — read it with payoff ratio and expectancy." />
+                           :foot="`payoff ${(firm?.PayoffRatio ?? 0).toFixed(2)}×`" />
             <OmniTraderKpi label="Expectancy" :tone="valueTone(firm?.Expectancy)"
                            :value="fmtSigned(firm?.Expectancy, currency)" :loading="loading && !report"
                            :compare="compare(firm?.Expectancy, previous?.Expectancy)" :baseline="baselineLabel"
                            :compare-format="moneyChange" foot="per trade, this window" />
             <!-- Emphasis waits for a reading: a dash is not a drawdown. -->
             <OmniTraderKpi label="Max drawdown" :tone="report ? 'bad' : ''" :value="fmtPct(report?.MaxDrawdownPercent, 2)"
-                           :loading="loading && !report" foot="on the account value curve"
+                           :loading="loading && !report"
                            :good-direction="-1" />
             <OmniTraderKpi label="Fill rate" :tone="exec ? 'info' : ''" :value="fmtPct(exec?.FillRatePercent, 0)"
                            :loading="loading && !report"
@@ -65,19 +64,15 @@
         <div class="ot-grid two">
             <OmniTraderCard title="Cumulative P&L"
                             :loading="loading" :empty="!dailyPoints.length"
-                            empty-title="No closed trades in this window"
-                            empty-text="A record appears once an order reaches a terminal state and its position closes.">
+                            empty-title="No closed trades in this window">
                 <OmniTraderLineChart :series="cumulativeSeries" :height="280" zero-based
                                      :format="v => fmtMoney(v, currency, 0)" :threshold="0" threshold-label="break-even" />
-                <template #footer>One point per calendar day. Quiet days hold the running total rather than being skipped.</template>
             </OmniTraderCard>
 
             <OmniTraderCard title="Firm value" subtitle="Real money only"
                             :loading="loading" :empty="!equityPoints.length"
-                            empty-title="No value history yet"
-                            empty-text="The firm is valued every reconciliation sweep, about every 5 minutes.">
+                            empty-title="No value history yet">
                 <OmniTraderLineChart :series="equitySeries" :height="280" :format="v => fmtMoney(v, currency, 0)" />
-                <template #footer>Valued from broker state, independent of the journal — if these disagree, reconciliation is the place to look.</template>
             </OmniTraderCard>
         </div>
 
@@ -91,10 +86,9 @@
                 </template>
                 <OmniTraderBarList :items="sliceBars" :format="v => fmtSigned(v, currency)"
                                    :empty-title="`No closed trades by ${currentSlice.label.toLowerCase()} in this window`" />
-                <template #footer>Net P&amp;L including costs, largest absolute contribution first.</template>
             </OmniTraderCard>
 
-            <OmniTraderCard :title="`${currentSlice.label} detail`" subtitle="Read the numbers, not just the bars"
+            <OmniTraderCard :title="`${currentSlice.label} detail`"
                             flush :empty="!currentRows.length"
                             :empty-title="`Nothing to break down by ${currentSlice.label.toLowerCase()}`">
                 <OmniTraderDataTable :rows="currentRows" :columns="sliceColumns" bare
@@ -113,18 +107,14 @@
         <div class="ot-grid two" style="margin-top:16px">
             <OmniTraderCard title="Trade outcome distribution"
                             :empty="!pnlBuckets.length"
-                            empty-title="Not enough closed trades to describe a distribution"
-                            empty-text="A histogram of one or two identical values would imply a shape that is not there.">
+                            empty-title="Not enough closed trades to describe a distribution">
                 <OmniTraderBarList :items="pnlBuckets" :format="v => `${v} trade(s)`" :signed="false" :limit="12" />
-                <template #footer>Buckets are P&amp;L per closed trade, smallest to largest.</template>
             </OmniTraderCard>
 
             <OmniTraderCard title="Slippage distribution"
                             :empty="!slippageBuckets.length"
-                            empty-title="No slippage measurements in this window"
-                            empty-text="Slippage is recorded when a fill can be compared with a decision price.">
+                            empty-title="No slippage measurements in this window">
                 <OmniTraderBarList :items="slippageBuckets" :format="v => `${v} order(s)`" :signed="false" :limit="12" />
-                <template #footer>Positive basis points mean the fill was worse than the decision price.</template>
             </OmniTraderCard>
         </div>
 
@@ -163,9 +153,6 @@
                         {{ fmtSigned(behaviour?.PnLWithoutIntervention, currency) }}
                     </dd>
                 </dl>
-                <template #footer>
-                    Totals, not averages per trade — the verdict above compares the averages.
-                </template>
             </OmniTraderCard>
         </div>
     </OmniTraderShell>

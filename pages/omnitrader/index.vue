@@ -1,354 +1,312 @@
 <template>
     <OmniTraderShell>
         <div class="ot-pagehead">
+            <h1><span class="code">MON</span>Market monitor</h1>
             <div class="ot-actions">
-                <NuxtLink class="ot-btn ghost" to="/omnitrader/execution">Order ticket</NuxtLink>
-                <button class="ot-btn" :class="overview?.Controls.SafeModeActive ? 'primary' : 'warn'"
-                    :disabled="busy" @click="toggleSafeMode">
-                {{ overview?.Controls.SafeModeActive ? 'Clear safe mode' : 'Engage safe mode' }}
-                </button>
-            </div>
-        </div>
-
-        <!-- Exceptions outrank every number on the page: they are the only things that
-             cannot wait for the operator to go looking. -->
-        <section v-if="exceptionCount > 0" class="exceptions" aria-label="Items needing a decision">
-            <h2 class="ot-sectionhead">Needs a decision — {{ exceptionCount }} item(s)</h2>
-            <div class="ot-kpis tight">
-                <OmniTraderKpi v-if="ex.AwaitingApproval" label="Awaiting approval" attention-soft
-                               :value="String(ex.AwaitingApproval)" to="/omnitrader/execution"
-                               foot="orders held for a human decision" />
-                <OmniTraderKpi v-if="ex.UnknownOrders" label="Unknown outcome" attention
-                               :value="String(ex.UnknownOrders)" to="/omnitrader/execution"
-                               foot="never retried — resolve by reconciling" />
-                <OmniTraderKpi v-if="ex.MaterialBreaks" label="Reconciliation breaks" attention
-                               :value="String(ex.MaterialBreaks)" to="/omnitrader/portfolio"
-                               foot="internal and broker state disagree" />
-                <OmniTraderKpi v-if="ex.UnacknowledgedCritical" label="Critical alerts" attention
-                               :value="String(ex.UnacknowledgedCritical)" to="/omnitrader/systems"
-                               foot="unacknowledged" />
-            </div>
-        </section>
-
-        <!-- Simulated money is reported, never mixed in. A paper balance added to a real one
-             is not a number anybody can act on. -->
-        <div v-if="!overview?.Portfolio.HasRealAccounts && overview" class="ot-banner info">
-            <span class="glyph" aria-hidden="true">ℹ</span>
-            <div>
-                <strong>No live account is configured — every figure below is £0 because nothing real is connected</strong>
-                The paper trader holds
-                {{ fmtMoney(sim?.TotalValue, currency) }} of simulated value across
-                {{ sim?.Positions ?? 0 }} position(s). It is excluded from firm value on purpose.
-            </div>
-            <div class="actions">
-                <NuxtLink class="ot-btn sm ghost" to="/omnitrader/systems">Connect a venue</NuxtLink>
-            </div>
-        </div>
-
-        <!-- Owned inventory and CFD exposure are kept visually apart on purpose: one is an
-             asset, the other is a notional the firm does not own. -->
-        <div class="ot-kpis">
-            <OmniTraderKpi label="Firm value" :value="fmtMoney(p?.TotalValue, currency)"
-                           :loading="!overview" :compare="valueChange" baseline="vs 24 hours ago"
-                           :compare-format="formatMoneyChange" :spark="valueSpark"
-                           help="Cash plus marked owned inventory plus broker-reported CFD equity. CFD notional is excluded — it is exposure, not an asset."
-                           :foot="trendFoot" />
-            <OmniTraderKpi label="Cash" :value="fmtMoney(p?.Cash, currency)" :loading="!overview"
-                           foot="across all accounts, converted" />
-            <OmniTraderKpi label="Owned inventory" tone="info" :value="fmtMoney(p?.InventoryValue, currency)"
-                           :loading="!overview" foot="spot assets, marked to market" />
-            <OmniTraderKpi label="CFD notional" tone="violet" :value="fmtMoney(p?.DerivativeNotional, currency)"
-                           :loading="!overview" foot="exposure, not an owned asset"
-                           help="Derivative notional is never summed with owned inventory." />
-            <OmniTraderKpi label="Realized today" :tone="valueTone(p?.RealizedPnLToday)"
-                           :value="fmtSigned(p?.RealizedPnLToday, currency)" :loading="!overview"
-                           :foot="`costs ${fmtMoney(p?.CostsToday, currency)} · since 00:00 UTC`" />
-            <OmniTraderKpi label="Unrealized" :tone="valueTone(p?.UnrealizedPnL)"
-                           :value="fmtSigned(p?.UnrealizedPnL, currency)" :loading="!overview"
-                           :foot="`${p?.Positions ?? 0} open position(s)`" />
-        </div>
-
-        <div class="ot-grid sidebar">
-            <div class="ot-stack">
-                <OmniTraderCard title="Firm value" subtitle="Real money only"
-                                :empty="!valuePoints.length"
-                                empty-title="No value history yet"
-                                empty-text="The firm is valued every reconciliation sweep, about every 5 minutes. The first point appears shortly after startup.">
-                    <template #controls>
-                        <span class="ot-chip">{{ currency }}</span>
-                    </template>
-                    <OmniTraderLineChart :series="valueSeries" :height="260"
-                                         :format="v => fmtMoney(v, currency, 0)" x-label="Valuation" />
-                    <template #footer>
-                        The same figure as the headline above, valued every 5 minutes. Paper and demo
-                        balances are excluded, and a sweep where a venue could not be reached leaves a
-                        gap rather than a dip.
-                    </template>
-                </OmniTraderCard>
-
-                <OmniTraderCard title="Exposure against limits">
-                    <template #controls>
-                        <NuxtLink class="ot-btn ghost sm" to="/omnitrader/risk">Risk controls</NuxtLink>
-                    </template>
-                    <div class="ot-grid three">
-                        <OmniTraderMeter label="Gross exposure" :percent="util.gross"
-                                         :value="fmtMoney(p?.GrossExposure, currency)"
-                                         :limit="`limit ${fmtMoney(limits.MaxGrossExposure, currency, 0)}`" />
-                        <OmniTraderMeter label="Net exposure" :percent="util.net"
-                                         :value="fmtSigned(p?.NetExposure, currency)"
-                                         :limit="`limit ±${fmtMoney(limits.MaxNetExposure, currency, 0)}`" />
-                        <OmniTraderMeter label="Daily loss budget" :percent="util.loss"
-                                         :value="fmtSigned(p?.RealizedPnLToday, currency)"
-                                         :value-tone="signTone(p?.RealizedPnLToday)"
-                                         :limit="`limit ${fmtMoney(limits.MaxFirmDailyLoss, currency, 0)}`" />
+                <span class="ot-fresh" :class="{ stale: stale }"><span class="ot-dot" :class="error ? 'bad' : stale ? 'warn' : 'ok'"></span>{{ monitor ? fmtAge(monitor.AsOfUtc) : '—' }}</span>
+                <details class="ot-menu">
+                    <summary class="ot-btn sm">Panels</summary>
+                    <div class="pop">
+                        <label v-for="p in PANELS" :key="p.id" class="item"><input v-model="shown[p.id]" type="checkbox" /> {{ p.label }}</label>
                     </div>
-                    <div v-if="p?.Warnings?.length" class="warnings">
-                        <span v-for="w in p.Warnings" :key="w" class="ot-chip warn">
-                            <span class="glyph" aria-hidden="true">⚠</span> {{ w }}
-                        </span>
-                    </div>
-                </OmniTraderCard>
-
-                <OmniTraderCard title="Open alerts"
-                                flush :empty="!alerts.length" empty-kind="ok"
-                                empty-title="Nothing open" empty-text="No alert is currently raised.">
-                    <template #controls>
-                        <NuxtLink class="ot-btn ghost sm" to="/omnitrader/systems">All alerts</NuxtLink>
-                    </template>
-                    <OmniTraderDataTable :rows="alerts" :columns="alertColumns" label="alerts"
-                                         :row-key="a => a.Id" :row-class="a => a.NeedsAcknowledgement ? 'attention' : ''"
-                                         max-height="360px" default-sort="RaisedUtc">
-                        <template #cell-Severity="{ row }">
-                            <span class="ot-chip" :class="severityTone(row.Severity)">
-                                <span class="glyph" aria-hidden="true">{{ severityGlyph(row.Severity) }}</span>
-                                {{ row.Severity }}
-                            </span>
-                        </template>
-                        <template #cell-Title="{ row }">
-                            <span class="cellstack">
-                                <span>{{ row.Title }}</span>
-                                <span class="sub">{{ row.Message }}</span>
-                                <span v-if="row.RecoveryHint" class="sub" style="color:var(--ot-info)">
-                                    Next: {{ row.RecoveryHint }}
-                                </span>
-                            </span>
-                        </template>
-                        <template #cell-Scope="{ row }">
-                            {{ [row.Venue, row.Environment].filter(Boolean).join(' · ') || '—' }}
-                        </template>
-                        <template #cell-RaisedUtc="{ row }">
-                            <span class="cellstack">
-                                <span>{{ fmtAgo(row.RaisedUtc) }}</span>
-                                <span v-if="row.OccurrenceCount > 1" class="sub">×{{ row.OccurrenceCount }} occurrences</span>
-                            </span>
-                        </template>
-                        <template #cell-actions="{ row }">
-                            <button v-if="row.NeedsAcknowledgement" class="ot-btn sm warn"
-                                    :disabled="busy" @click.stop="acknowledge(row.Id)">Acknowledge</button>
-                            <span v-else-if="row.AcknowledgedBy" class="ot-chip">seen by {{ row.AcknowledgedBy }}</span>
-                        </template>
-                    </OmniTraderDataTable>
-                </OmniTraderCard>
+                </details>
+                <button class="ot-btn sm" :disabled="loading" @click="refresh">Refresh</button>
             </div>
+        </div>
 
-            <div class="ot-stack">
-                <OmniTraderCard title="Venues" flush>
+        <div class="ot-statbar">
+            <div v-for="k in headline" :key="k.label" class="ot-stat lg clickable" @click="k.symbol && openSymbol(k.symbol)">
+                <span class="k">{{ k.label }}</span>
+                <span class="v">{{ k.value }}</span>
+                <span class="s" :class="tone(k.change)">{{ k.changeText }}</span>
+            </div>
+        </div>
+
+        <div v-if="error && !monitor" class="ot-banner"><span class="glyph">⚠</span><strong>Monitor unavailable</strong><span class="muted">{{ error }}</span></div>
+
+        <div class="mon">
+            <OtPanel v-for="s in sections" v-show="shown[s.Id]" :key="s.Id" :title="s.Title" :code="CODES[s.Id]" flush :persist="`mon.${s.Id}`"
+                     :error="s.Error" :loading="loading && !monitor" :empty="!s.Rows.length" class="sec" :class="`s-${s.Id}`">
+                <OtQuotes :rows="s.Rows" :name-header="s.Title" :yearly="s.Id === 'indices' || s.Id === 'sectors'" :range="s.Id !== 'rates' && s.Id !== 'sectors'"
+                          :heat-scale="s.Id === 'crypto' ? 8 : s.Id === 'vol' ? 10 : 2.5" />
+            </OtPanel>
+        </div>
+
+        <div class="lower">
+            <div class="col">
+                <OtPanel v-show="shown.crypto" title="Crypto market" code="CRYPTO" persist="mon.cryptomkt" :loading="loading && !monitor" class="cm">
+                    <template #controls><NuxtLink class="ot-btn ghost xs" to="/omnitrader/crypto">more</NuxtLink></template>
+                    <div class="ot-statbar bare">
+                        <div class="ot-stat"><span class="k">Total mcap</span><span class="v">{{ fmtBig(g?.TotalMarketCapUsd) }}</span><span class="s" :class="tone(g?.MarketCapChange24hPct)">{{ fmtChg(g?.MarketCapChange24hPct) }}</span></div>
+                        <div class="ot-stat"><span class="k">24h volume</span><span class="v">{{ fmtBig(g?.TotalVolumeUsd) }}</span></div>
+                        <div class="ot-stat"><span class="k">BTC dom</span><span class="v">{{ fmtPctPlain(g?.BtcDominancePct) }}</span></div>
+                        <div class="ot-stat"><span class="k">ETH dom</span><span class="v">{{ fmtPctPlain(g?.EthDominancePct) }}</span></div>
+                        <div class="ot-stat"><span class="k">BTC DVOL</span><span class="v">{{ fmtN(monitor?.Dvol?.BTC, 1) }}</span></div>
+                        <div class="ot-stat"><span class="k">ETH DVOL</span><span class="v">{{ fmtN(monitor?.Dvol?.ETH, 1) }}</span></div>
+                    </div>
+                    <div class="fng">
+                        <div class="gauge">
+                            <span class="k">Fear &amp; Greed</span>
+                            <span class="v mono" :style="{ color: fngColour(monitor?.FearGreed?.Value) }">{{ monitor?.FearGreed?.Value ?? '—' }}</span>
+                            <span class="s">{{ monitor?.FearGreed?.Label ?? '' }}</span>
+                        </div>
+                        <svg class="fngspark" viewBox="0 0 100 24" preserveAspectRatio="none">
+                            <polyline :points="fngSpark" fill="none" stroke="var(--ot-accent)" stroke-width="1.2" vector-effect="non-scaling-stroke" />
+                        </svg>
+                    </div>
                     <table class="ot-table">
+                        <thead><tr><th>Perp</th><th class="num">Funding</th><th class="num">Ann.</th><th class="num">Basis</th><th class="num">24h</th></tr></thead>
                         <tbody>
-                            <tr v-for="venue in overview?.Venues ?? []" :key="venue.Venue + venue.Environment">
-                                <td>
-                                    <span class="cellstack">
-                                        <span>{{ venue.DisplayName }}</span>
-                                        <span class="sub">{{ venue.Exposure === 'Derivative' ? 'leveraged exposure' : 'owned inventory' }}</span>
-                                    </span>
-                                </td>
-                                <td><span class="ot-chip" :class="envClass(venue.Environment)">{{ venue.Environment }}</span></td>
-                                <td class="num">
-                                    <span class="ot-chip" :class="venue.OrderPathHealthy ? 'ok' : venue.IsConfigured ? 'warn' : ''">
-                                        <span class="glyph" aria-hidden="true">{{ venue.OrderPathHealthy ? '✓' : venue.IsConfigured ? '!' : '○' }}</span>
-                                        {{ venue.OrderPathHealthy ? 'order path up' : venue.IsConfigured ? 'degraded' : 'not configured' }}
-                                    </span>
-                                </td>
-                            </tr>
-                            <tr v-if="!overview?.Venues?.length">
-                                <td colspan="3"><OmniTraderStateBlock compact title="No venues registered"
-                                    detail="A venue with missing credentials is not registered. Set them in Omni settings." /></td>
+                            <tr v-for="f in monitor?.Funding ?? []" :key="f.Symbol" class="clickable" @click="openSymbol(f.Symbol, 'DER')">
+                                <td class="sym">{{ f.Symbol.replace('USDT', '') }}</td>
+                                <td class="num" :class="tone(f.FundingRate)">{{ (f.FundingRate * 100).toFixed(4) }}%</td>
+                                <td class="num" :class="tone(f.FundingAnnualPct)" :style="{ background: heat(f.FundingAnnualPct, 30) }">{{ fmtChg(f.FundingAnnualPct, 1) }}</td>
+                                <td class="num" :class="tone(f.BasisPct)">{{ fmtChg(f.BasisPct, 3) }}</td>
+                                <td class="num" :class="tone(f.PriceChangePct24h)">{{ fmtChg(f.PriceChangePct24h) }}</td>
                             </tr>
                         </tbody>
                     </table>
-                </OmniTraderCard>
+                </OtPanel>
 
-                <OmniTraderCard title="Controls">
-                    <dl class="ot-kv">
-                        <dt>Safe mode</dt>
-                        <dd>
-                            <span class="ot-chip" :class="overview?.Controls.SafeModeActive ? 'bad' : 'ok'">
-                                <span class="glyph" aria-hidden="true">{{ overview?.Controls.SafeModeActive ? '⛔' : '✓' }}</span>
-                                {{ overview?.Controls.SafeModeActive ? 'Active' : 'Clear' }}
-                            </span>
-                        </dd>
-                        <template v-if="overview?.Controls.SafeModeActive">
-                            <dt>Reason</dt><dd>{{ overview.Controls.SafeModeReason }}</dd>
-                            <dt>Since</dt><dd>{{ fmtAgo(overview.Controls.SafeModeSinceUtc) }}</dd>
-                        </template>
-                        <dt>Kill switches</dt>
-                        <dd>{{ overview?.Controls.KillSwitches.length ?? 0 }}</dd>
-                        <dt>Strategies</dt>
-                        <dd>{{ overview?.Strategies.Running ?? 0 }} running / {{ overview?.Strategies.Total ?? 0 }} available</dd>
-                    </dl>
-                    <div v-if="overview?.Controls.KillSwitches.length" class="switches">
-                        <span v-for="k in overview.Controls.KillSwitches" :key="k.Key"
-                              class="ot-chip bad" :title="`${k.Reason} — ${k.TriggeredBy}`">{{ k.Key }}</span>
-                    </div>
-                </OmniTraderCard>
-
-                <OmniTraderCard title="Today" subtitle="Since 00:00 UTC">
-                    <dl class="ot-kv">
-                        <dt>Realized</dt>
-                        <dd :class="signTone(p?.RealizedPnLToday)">{{ fmtSigned(p?.RealizedPnLToday, currency) }}</dd>
-                        <dt>Costs</dt><dd>{{ fmtMoney(p?.CostsToday, currency) }}</dd>
-                        <dt>Gross exposure</dt><dd>{{ fmtMoney(p?.GrossExposure, currency) }}</dd>
-                        <dt>Net exposure</dt><dd>{{ fmtSigned(p?.NetExposure, currency) }}</dd>
-                        <dt>Positions</dt><dd>{{ p?.Positions ?? 0 }}</dd>
-                        <dt>Peak (30d)</dt><dd>{{ fmtMoney(overview?.Trend?.PeakValue, currency, 0) }}</dd>
-                    </dl>
-                </OmniTraderCard>
-
-                <OmniTraderCard title="Simulated" subtitle="Paper and demo — excluded from every figure above">
-                    <dl class="ot-kv">
-                        <dt>Value</dt><dd>{{ fmtMoney(sim?.TotalValue, currency) }}</dd>
-                        <dt>Cash</dt><dd>{{ fmtMoney(sim?.Cash, currency) }}</dd>
-                        <dt>Unrealized</dt>
-                        <dd :class="signTone(sim?.UnrealizedPnL)">{{ fmtSigned(sim?.UnrealizedPnL, currency) }}</dd>
-                        <dt>Realized today</dt>
-                        <dd :class="signTone(sim?.RealizedPnLToday)">{{ fmtSigned(sim?.RealizedPnLToday, currency) }}</dd>
-                        <dt>Positions</dt><dd>{{ sim?.Positions ?? 0 }}</dd>
-                    </dl>
-                    <template #footer>
-                        Paper fills are simulated against live prices. They measure a strategy; they are
-                        not money, and never count toward firm value.
+                <OtPanel v-show="shown.curve" title="US Treasury curve" code="YC" persist="mon.curve" :loading="loading && !monitor" :empty="!curveSeries.length" class="curve">
+                    <template #controls>
+                        <span class="mono muted small">2s10s <b :class="tone(monitor?.Curve?.Spread2s10s)">{{ fmtSignedN(monitor?.Curve?.Spread2s10s, 2) }}</b></span>
+                        <span class="mono muted small">3m10y <b :class="tone(monitor?.Curve?.Spread3m10y)">{{ fmtSignedN(monitor?.Curve?.Spread3m10y, 2) }}</b></span>
                     </template>
-                </OmniTraderCard>
+                    <OtCurve :series="curveSeries" :height="170" />
+                </OtPanel>
+
+                <OtPanel v-show="shown.volterm" title="VIX term structure" code="VIX" persist="mon.volterm" :loading="loading && !monitor" :empty="!monitor?.VolTerm" class="vt">
+                    <template #controls>
+                        <span class="ot-chip" :class="(monitor?.VolTerm?.Ratio ?? 0) > 1 ? 'bad' : 'ok'">{{ (monitor?.VolTerm?.Ratio ?? 0) > 1 ? 'backwardation' : 'contango' }} {{ fmtN(monitor?.VolTerm?.Ratio, 2) }}</span>
+                    </template>
+                    <div class="bars">
+                        <div v-for="b in volBars" :key="b.label" class="vb">
+                            <span class="lbl mono">{{ b.label }}</span>
+                            <span class="track"><span class="fill" :style="{ width: `${b.pct}%` }"></span></span>
+                            <span class="val mono">{{ fmtN(b.value, 2) }}</span>
+                        </div>
+                    </div>
+                    <div class="ot-statbar bare">
+                        <div class="ot-stat"><span class="k">VVIX</span><span class="v">{{ fmtN(monitor?.VolTerm?.Vvix, 1) }}</span></div>
+                        <div class="ot-stat"><span class="k">SKEW</span><span class="v">{{ fmtN(monitor?.VolTerm?.Skew, 1) }}</span></div>
+                        <div class="ot-stat"><span class="k">As of</span><span class="v">{{ fmtDay10(monitor?.VolTerm?.Date) }}</span></div>
+                    </div>
+                </OtPanel>
+            </div>
+
+            <div class="col">
+                <OtPanel v-show="shown.breadth" title="Breadth" code="S&P 500" persist="mon.breadth" :loading="breadthLoading && !breadth" :empty="!breadth" :error="breadthError" refreshable class="br" @refresh="loadBreadth">
+                    <template #controls>
+                        <select v-model="breadthUniverse" class="ot-select sm auto" @change="loadBreadth">
+                            <option value="sp500">S&amp;P 500</option><option value="ftse100">FTSE 100</option><option value="megacaps">Mega caps</option>
+                        </select>
+                    </template>
+                    <template v-if="breadth">
+                        <div class="adv">
+                            <span class="pos mono">▲ {{ breadth.Advancers }}</span>
+                            <span class="advbar"><span class="up" :style="{ width: `${advPct}%` }"></span></span>
+                            <span class="neg mono">{{ breadth.Decliners }} ▼</span>
+                        </div>
+                        <div class="ot-statbar bare">
+                            <div class="ot-stat"><span class="k">&gt; 50d MA</span><span class="v">{{ fmtPctPlain(breadth.PctAbove50d) }}</span></div>
+                            <div class="ot-stat"><span class="k">&gt; 200d MA</span><span class="v">{{ fmtPctPlain(breadth.PctAbove200d) }}</span></div>
+                            <div class="ot-stat"><span class="k">Near 52w high</span><span class="v pos">{{ fmtPctPlain(breadth.PctNear52wHigh) }}</span></div>
+                            <div class="ot-stat"><span class="k">Near 52w low</span><span class="v neg">{{ fmtPctPlain(breadth.PctNear52wLow) }}</span></div>
+                            <div class="ot-stat"><span class="k">Median chg</span><span class="v" :class="tone(breadth.MedianChangePct)">{{ fmtChg(breadth.MedianChangePct) }}</span></div>
+                        </div>
+                        <div class="sectors">
+                            <div v-for="s in breadth.Sectors" :key="s.Sector" class="sct" :style="{ background: heat(s.ChangePct, 2) }" :title="`${s.Count} members`">
+                                <span class="n">{{ s.Sector }}</span><span class="mono" :class="tone(s.ChangePct)">{{ fmtChg(s.ChangePct) }}</span>
+                            </div>
+                        </div>
+                    </template>
+                </OtPanel>
+
+                <OtPanel v-show="shown.movers" title="Movers" code="MOST" flush persist="mon.movers" :loading="moversLoading" :error="moversError" class="mv">
+                    <template #controls>
+                        <div class="ot-segment sm">
+                            <button v-for="m in MOVERS" :key="m.id" type="button" :aria-pressed="moverScreen === m.id" @click="moverScreen = m.id; loadMovers()">{{ m.label }}</button>
+                        </div>
+                    </template>
+                    <OtQuotes :rows="movers" name-header="Equity" :range="false" :yearly="false" />
+                </OtPanel>
+            </div>
+
+            <div class="col">
+                <OtPanel v-show="shown.news" title="Headlines" code="N" flush persist="mon.news" :loading="newsLoading && !news.length" :empty="!news.length" max-height="660px" class="nw">
+                    <template #controls>
+                        <div class="ot-segment sm">
+                            <button v-for="c in NEWS" :key="c" type="button" :aria-pressed="newsCat === c" @click="newsCat = c; loadNews()">{{ c }}</button>
+                        </div>
+                    </template>
+                    <ul class="news">
+                        <li v-for="n in news" :key="n.Url">
+                            <span class="t mono">{{ fmtAge(n.PublishedUtc) }}</span>
+                            <a :href="n.Url" target="_blank" rel="noopener">{{ n.Title }}</a>
+                            <span class="src">{{ n.Source }}</span>
+                        </li>
+                    </ul>
+                </OtPanel>
             </div>
         </div>
     </OmniTraderShell>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import Swal from 'sweetalert2';
+import { computed, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import {
-    useOmniTrader, fmtMoney, fmtSigned, fmtAgo, envClass, severityTone, severityGlyph, changeVs, signTone, valueTone,
-    seriesColour, SWAL_THEME,
-} from '~/composables/useOmniTrader';
-import type { TableColumn } from '~/components/OmniTrader/DataTable.vue';
+    fmtAge, fmtBig, fmtChg, fmtDay10, fmtN, fmtPctPlain, fmtPrice, fmtSignedN, heat, tGet, tone, usePersisted, useTicker, type QuoteRow,
+} from '~/composables/useTerminal';
+import type { CurveSeries } from '~/components/Ot/Curve.vue';
 
 definePageMeta({ layout: 'navbar' });
 
-const { overview, exceptionCount, currency, environment, get, post, refreshOverview } = useOmniTrader();
-const busy = ref(false);
-
-const p = computed(() => overview.value?.Portfolio);
-const sim = computed(() => (overview.value as any)?.Simulated);
-const ex = computed(() => overview.value?.Exceptions ?? {
-    AwaitingApproval: 0, UnknownOrders: 0, MaterialBreaks: 0, CriticalAlerts: 0, UnacknowledgedCritical: 0,
-});
-const alerts = computed(() => overview.value?.Alerts ?? []);
-const scopeLabel = computed(() =>
-    environment.value === 'All' ? 'every environment' : `the ${environment.value.toLowerCase()} environment`);
-
-const alertColumns: TableColumn[] = [
-    { key: 'Severity', label: 'Severity', width: '110px' },
-    { key: 'Title', label: 'Alert', searchValue: r => `${r.Title} ${r.Message}` },
-    { key: 'Scope', label: 'Scope', width: '140px', sortValue: r => `${r.Venue ?? ''}${r.Environment ?? ''}` },
-    { key: 'RaisedUtc', label: 'Raised', num: true, width: '120px' },
-    { key: 'actions', label: '', num: true, sortable: false, width: '120px' },
+const router = useRouter();
+const PANELS = [
+    { id: 'indices', label: 'Indices' }, { id: 'fx', label: 'FX' }, { id: 'commodities', label: 'Commodities' }, { id: 'rates', label: 'Rates' },
+    { id: 'vol', label: 'Volatility' }, { id: 'crypto', label: 'Crypto' }, { id: 'sectors', label: 'Sectors' }, { id: 'curve', label: 'Yield curve' },
+    { id: 'volterm', label: 'VIX term' }, { id: 'breadth', label: 'Breadth' }, { id: 'movers', label: 'Movers' }, { id: 'news', label: 'Headlines' },
 ];
+const CODES: Record<string, string> = { indices: 'WEI', fx: 'FX', commodities: 'CMDTY', rates: 'GOVT', vol: 'VOL', crypto: 'CRYPTO', sectors: 'SECT' };
+const MOVERS = [{ id: 'day_gainers', label: 'Gainers' }, { id: 'day_losers', label: 'Losers' }, { id: 'most_actives', label: 'Active' }];
+const NEWS = ['markets', 'crypto', 'macro', 'all'];
 
-// The 30-day value trend arrives with the overview, so the headline has a baseline
-// without a second request.
-const valuePoints = computed(() => overview.value?.Trend?.Points ?? []);
-const valueSpark = computed(() => valuePoints.value.map(pt => pt.Value));
-const valueSeries = computed(() => [{
-    name: 'Firm value',
-    colour: seriesColour(0),
-    fill: 'rgba(57, 135, 229, 0.12)',
-    points: valuePoints.value.map(pt => ({ x: new Date(pt.Ts).getTime(), y: pt.Value })),
-}]);
+const shown = usePersisted<Record<string, boolean>>('monitor.panels', Object.fromEntries(PANELS.map(p => [p.id, true])));
+for (const p of PANELS) if (shown.value[p.id] === undefined) shown.value[p.id] = true;
 
-const valueChange = computed(() => {
-    const trend = overview.value?.Trend;
-    if (!trend || trend.Change24h === null || trend.Change24h === undefined) return null;
-    return { absolute: trend.Change24h, percent: trend.ChangePercent24h, direction: Math.sign(trend.Change24h) };
-});
+const monitor = ref<any>(null);
+const loading = ref(false);
+const error = ref('');
+const stale = computed(() => !!monitor.value && Date.now() - new Date(monitor.value.AsOfUtc).getTime() > 120_000);
 
-const trendFoot = computed(() => {
-    if (!overview.value) return undefined;
-    if (!valueChange.value) return 'No valuation from 24 hours ago to compare against';
-    return undefined;
-});
+const sections = computed<any[]>(() => monitor.value?.Sections ?? PANELS.slice(0, 7).map(p => ({ Id: p.id, Title: p.label, Rows: [] })));
+const g = computed(() => monitor.value?.CryptoGlobal);
 
-function formatMoneyChange(change: { absolute: number; percent: number | null }) {
-    const money = fmtSigned(change.absolute, currency.value);
-    return change.percent === null ? money : `${money} (${change.percent >= 0 ? '+' : ''}${change.percent.toFixed(2)}%)`;
+async function refresh() {
+    loading.value = true;
+    try { monitor.value = await tGet('/terminal/monitor'); error.value = ''; }
+    catch (e: any) { error.value = e?.message ?? 'failed'; }
+    finally { loading.value = false; }
 }
+useTicker(refresh, 30000);
 
-// Utilisation is measured against the configured budget, pulled once. Without the
-// real limits the meters would be measuring against an invented denominator.
-const limits = ref({ MaxGrossExposure: 0, MaxNetExposure: 0, MaxFirmDailyLoss: 0 });
-
-const util = computed(() => {
-    const portfolio = p.value;
-    if (!portfolio) return { gross: 0, net: 0, loss: 0 };
-    const pct = (value: number, limit: number) => (limit > 0 ? Math.min(100, (value / limit) * 100) : 0);
-    return {
-        gross: pct(portfolio.GrossExposure, limits.value.MaxGrossExposure),
-        net: pct(Math.abs(portfolio.NetExposure), limits.value.MaxNetExposure),
-        loss: pct(Math.abs(Math.min(0, portfolio.RealizedPnLToday)), limits.value.MaxFirmDailyLoss),
-    };
-});
-
-async function toggleSafeMode() {
-    const enabling = !overview.value?.Controls.SafeModeActive;
-    const confirmed = await Swal.fire({
-        title: enabling ? 'Engage safe mode?' : 'Clear safe mode?',
-        text: enabling
-            ? 'All new automated exposure stops firm-wide. Existing positions are untouched — reducing exposure is a separate action on the Risk page.'
-            : 'Automated proposals resume, subject to the risk engine.',
-        icon: 'warning', showCancelButton: true, ...SWAL_THEME,
-        confirmButtonColor: enabling ? '#ff6b6b' : '#6ddc4f',
+const HEAD = ['^GSPC', '^NDX', '^RUT', '^VIX', '^TNX', 'DX-Y.NYB', 'EURUSD=X', 'GC=F', 'CL=F', 'BTCUSDT', 'ETHUSDT'];
+const HEAD_LABEL: Record<string, string> = { '^GSPC': 'S&P 500', '^NDX': 'Nasdaq 100', '^RUT': 'Russell 2k', '^VIX': 'VIX', '^TNX': 'US 10Y', 'DX-Y.NYB': 'DXY', 'EURUSD=X': 'EURUSD', 'GC=F': 'Gold', 'CL=F': 'WTI', BTCUSDT: 'Bitcoin', ETHUSDT: 'Ether' };
+const headline = computed(() => {
+    const all: QuoteRow[] = (monitor.value?.Sections ?? []).flatMap((s: any) => s.Rows);
+    return HEAD.map(sym => {
+        const q = all.find(r => r.Symbol === sym);
+        return { label: HEAD_LABEL[sym] ?? sym, symbol: sym, value: fmtPrice(q?.Price), change: q?.ChangePct ?? null, changeText: fmtChg(q?.ChangePct) };
     });
-    if (!confirmed.isConfirmed) return;
-
-    busy.value = true;
-    try {
-        await post('/risk/safe-mode', { enable: enabling, reason: 'command centre' });
-        await refreshOverview();
-    } catch (e: any) {
-        Swal.fire({ title: 'Failed', text: e?.message, icon: 'error', ...SWAL_THEME });
-    } finally { busy.value = false; }
-}
-
-async function acknowledge(id: string) {
-    busy.value = true;
-    try {
-        await post('/alert/acknowledge', { id });
-        await refreshOverview();
-    } catch (e: any) {
-        Swal.fire({ title: 'Could not acknowledge', text: e?.message, icon: 'error', ...SWAL_THEME });
-    } finally { busy.value = false; }
-}
-
-onMounted(async () => {
-    try {
-        const risk = await get<any>('/risk');
-        if (risk?.Limits) limits.value = risk.Limits;
-    } catch { /* the meters show 0% of an unknown limit rather than a made-up one */ }
 });
+
+const curveSeries = computed<CurveSeries[]>(() => {
+    const m = monitor.value;
+    if (!m?.Curve) return [];
+    const toSeries = (c: any, name: string, color?: string, dashed = false): CurveSeries | null => c ? {
+        name, color, dashed, points: (c.Points ?? []).map((p: any) => ({ x: p.Years, y: p.Yield, label: p.Tenor.replace(' Mo', 'M').replace(' Yr', 'Y') })),
+    } : null;
+    return [toSeries(m.Curve, `Now ${fmtDay10(m.Curve.Date)}`, '#f5a524'), toSeries(m.CurveMonthAgo, '1M ago', '#4aa8ff', true), toSeries(m.CurveYearAgo, '1Y ago', '#7d8893', true)]
+        .filter((s): s is CurveSeries => !!s);
+});
+
+const volBars = computed(() => {
+    const v = monitor.value?.VolTerm;
+    if (!v) return [];
+    const rows = [{ label: 'VIX9D', value: v.Vix9d }, { label: 'VIX', value: v.Vix }, { label: 'VIX3M', value: v.Vix3m }, { label: 'VIX6M', value: v.Vix6m }];
+    const max = Math.max(...rows.map(r => r.value ?? 0), 1);
+    return rows.map(r => ({ ...r, pct: ((r.value ?? 0) / max) * 100 }));
+});
+
+const fngSpark = computed(() => {
+    const h = (monitor.value?.FearGreedHistory ?? []).map((p: any) => p.Value);
+    if (h.length < 2) return '';
+    return h.map((v: number, i: number) => `${(i / (h.length - 1)) * 100},${24 - (v / 100) * 22 - 1}`).join(' ');
+});
+function fngColour(v?: number) { if (v === undefined) return undefined; return v < 25 ? '#f2545b' : v < 45 ? '#e8a317' : v < 55 ? '#aab3bd' : v < 75 ? '#8fd16a' : '#26c281'; }
+
+// breadth
+const breadth = ref<any>(null);
+const breadthLoading = ref(false);
+const breadthError = ref<string | null>(null);
+const breadthUniverse = usePersisted('monitor.breadthUniverse', 'sp500');
+const advPct = computed(() => { const b = breadth.value; return b && b.Advancers + b.Decliners ? (b.Advancers / (b.Advancers + b.Decliners)) * 100 : 50; });
+async function loadBreadth() {
+    breadthLoading.value = true;
+    try { breadth.value = await tGet('/terminal/breadth', { universe: breadthUniverse.value }); breadthError.value = null; }
+    catch (e: any) { breadthError.value = e?.message ?? 'failed'; }
+    finally { breadthLoading.value = false; }
+}
+useTicker(loadBreadth, 10 * 60_000);
+
+// movers
+const movers = ref<QuoteRow[]>([]);
+const moversLoading = ref(false);
+const moversError = ref<string | null>(null);
+const moverScreen = usePersisted('monitor.movers', 'day_gainers');
+async function loadMovers() {
+    moversLoading.value = true;
+    try { const r = await tGet<any>('/terminal/movers', { screen: moverScreen.value, count: 15 }); movers.value = r?.Rows ?? []; moversError.value = null; }
+    catch (e: any) { moversError.value = e?.message ?? 'failed'; }
+    finally { moversLoading.value = false; }
+}
+useTicker(loadMovers, 120_000);
+
+// news
+const news = ref<any[]>([]);
+const newsLoading = ref(false);
+const newsCat = usePersisted('monitor.news', 'markets');
+async function loadNews() {
+    newsLoading.value = true;
+    try { news.value = await tGet<any[]>('/terminal/news', { category: newsCat.value === 'all' ? undefined : newsCat.value, limit: 40 }) ?? []; }
+    catch { /* headlines are optional */ }
+    finally { newsLoading.value = false; }
+}
+useTicker(loadNews, 180_000);
+
+function openSymbol(symbol: string, tab = 'GP') { void router.push(`/omnitrader/instrument?symbol=${encodeURIComponent(symbol)}&tab=${tab}`); }
 </script>
 
 <style scoped>
-.exceptions { margin-bottom: var(--ot-space-4); }
-.warnings { display: flex; flex-wrap: wrap; gap: var(--ot-space-2); margin-top: var(--ot-space-3); }
-.switches { display: flex; flex-wrap: wrap; gap: var(--ot-space-2); margin-top: var(--ot-space-3); }
+.mon { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--ot-gutter); align-items: start; margin-bottom: var(--ot-gutter); }
+.mon > * { grid-column: span 3; }
+.mon > .s-indices { grid-column: span 6; }
+/* Fixed columns keep every panel where muscle memory expects it; each column stacks without gaps. */
+.lower { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ot-gutter); align-items: start; }
+.lower > .col { display: flex; flex-direction: column; gap: var(--ot-gutter); min-width: 0; }
+@media (max-width: 1500px) {
+    .mon > *, .mon > .s-indices { grid-column: span 6; }
+    .lower { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .lower > .col:last-child { grid-column: 1 / -1; }
+}
+@media (max-width: 900px) { .mon > *, .mon > .s-indices { grid-column: span 12; } .lower { grid-template-columns: minmax(0, 1fr); } }
+.ot-stat.clickable { cursor: pointer; }
+.ot-stat.clickable:hover { background: var(--ot-surface-2); }
+.small { font-size: 10.5px; }
+.fng { display: flex; align-items: center; gap: 12px; padding: 6px 0; }
+.fng .gauge { display: flex; flex-direction: column; min-width: 110px; }
+.fng .k { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--ot-muted); font-weight: 650; }
+.fng .v { font-size: 22px; font-weight: 700; line-height: 26px; }
+.fng .s { font-size: 11px; color: var(--ot-text-2); }
+.fngspark { flex: 1 1 auto; height: 30px; }
+.bars { display: flex; flex-direction: column; gap: 5px; padding: 4px 0 8px; }
+.vb { display: grid; grid-template-columns: 54px 1fr 50px; gap: 8px; align-items: center; font-size: 11px; }
+.vb .track { height: 8px; background: rgba(255, 255, 255, 0.05); border-radius: 2px; overflow: hidden; }
+.vb .fill { display: block; height: 100%; background: var(--ot-info); }
+.vb .val { text-align: right; }
+.adv { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.advbar { flex: 1 1 auto; height: 6px; background: var(--ot-negative); border-radius: 2px; overflow: hidden; }
+.advbar .up { display: block; height: 100%; background: var(--ot-positive); }
+.sectors { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px; margin-top: 6px; }
+.sct { display: flex; justify-content: space-between; gap: 6px; padding: 3px 6px; font-size: 11px; border-radius: 2px; background: rgba(255, 255, 255, 0.02); }
+.sct .n { color: var(--ot-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.news { list-style: none; margin: 0; padding: 0; }
+.news li { display: grid; grid-template-columns: 34px 1fr auto; gap: 8px; padding: 3px 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.035); font-size: 12px; align-items: baseline; }
+.news li:hover { background: var(--ot-surface-3); }
+.news .t { color: var(--ot-muted); font-size: 10.5px; }
+.news a { color: var(--ot-text); }
+.news a:hover { color: var(--ot-accent); }
+.news .src { color: var(--ot-muted); font-size: 10.5px; white-space: nowrap; }
 </style>

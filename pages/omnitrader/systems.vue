@@ -1,6 +1,7 @@
 <template>
     <OmniTraderShell>
         <div class="ot-pagehead">
+            <h1><span class="code">SYS</span>Systems</h1>
             <div class="ot-actions">
                 <button class="ot-btn ghost" :disabled="busy" @click="reconnect">Reconnect venues</button>
                 <button class="ot-btn ghost" :disabled="busy" @click="refreshInstruments">Refresh instruments</button>
@@ -59,7 +60,7 @@
         <div class="ot-grid two">
             <OmniTraderCard title="Venue channels" flush
                             :loading="loading" :empty="!channelRows.length"
-                            empty-title="No venue channels" empty-text="No venue is registered yet.">
+                            empty-title="No venue channels">
                 <OmniTraderDataTable :rows="channelRows" :columns="channelColumns" label="channels"
                                      :row-key="c => c.key" :row-class="c => c.Connected ? '' : 'attention'"
                                      search-placeholder="Filter channels…">
@@ -99,7 +100,7 @@
             <OmniTraderCard title="Alerts" flush
                             :loading="loading" :empty="!alerts.length"
                             :empty-kind="showAll ? 'empty' : 'ok'"
-                            empty-title="Nothing raised" empty-text="No alert matches this filter.">
+                            empty-title="Nothing raised">
                 <template #controls>
                     <div class="ot-segment sm" role="group" aria-label="Alert filter">
                         <button type="button" :aria-pressed="!showAll" @click="showAll = false; loadAlerts()">Open</button>
@@ -136,18 +137,13 @@
                         <span v-else class="ot-chip ok">resolved</span>
                     </template>
                 </OmniTraderDataTable>
-                <template #footer>
-                    Alerts deduplicate on the condition, not the occurrence — a flapping feed is one alert
-                    with a rising count. Acknowledging says you have seen it; resolving says it is fixed.
-                </template>
             </OmniTraderCard>
         </div>
 
         <div class="ot-grid two" style="margin-top:16px">
             <OmniTraderCard title="Data freshness" flush
                             :loading="loading" :empty="!freshness.length"
-                            empty-title="No feeds observed yet"
-                            empty-text="Freshness fills in as instruments are evaluated or marked.">
+                            empty-title="No feeds observed yet">
                 <OmniTraderDataTable :rows="freshness" :columns="freshnessColumns" label="feeds"
                                      :row-key="f => f.InstrumentId" max-height="360px"
                                      :row-class="f => f.Stale ? 'attention' : ''"
@@ -161,13 +157,11 @@
                         </span>
                     </template>
                 </OmniTraderDataTable>
-                <template #footer>A stale instrument blocks automated actions on itself, not on the whole firm.</template>
             </OmniTraderCard>
 
             <OmniTraderCard title="Audit trail" flush
                             :loading="loading" :empty="!audit.length"
-                            empty-title="No audit events"
-                            empty-text="Configuration, authority and emergency actions are recorded here.">
+                            empty-title="No audit events">
                 <OmniTraderDataTable :rows="audit" :columns="auditColumns" label="events"
                                      :row-key="e => `${e.Ts}:${e.Action}:${e.Actor}`" max-height="360px"
                                      default-sort="Ts" search-placeholder="Filter audit…">
@@ -177,7 +171,6 @@
                     <template #cell-Action="{ row }"><span class="mono">{{ row.Action }}</span></template>
                     <template #cell-Detail="{ row }">{{ row.Detail ?? row.Scope }}</template>
                 </OmniTraderDataTable>
-                <template #footer>Append-only.</template>
             </OmniTraderCard>
         </div>
 
@@ -232,12 +225,6 @@
                     </span>
                 </template>
             </OmniTraderDataTable>
-            <template #footer>
-                Credentials live in Omni settings and are never returned by the API. A setting marked
-                <b>optional override</b> is only needed when that environment's credential genuinely
-                differs — IG issues one API key per account, while a Trading 212 key only works in the
-                environment it was generated in.
-            </template>
         </OmniTraderCard>
 
         <OmniTraderCard title="Service" style="margin-top:16px">

@@ -257,6 +257,15 @@ export function useUrlState<T extends Record<string, string>>(defaults: T) {
         if (typeof value === 'string') (state as Record<string, string>)[key] = value;
     }
 
+    // A navigation to the same page with a new query (command line, links) updates the view.
+    watch(() => route.query, query => {
+        for (const key of Object.keys(defaults)) {
+            const value = query[key];
+            const next = typeof value === 'string' ? value : defaults[key];
+            if ((state as Record<string, string>)[key] !== next) (state as Record<string, string>)[key] = next;
+        }
+    });
+
     watch(state, () => {
         const query: Record<string, string> = { ...(route.query as Record<string, string>) };
         for (const [key, value] of Object.entries(state)) {

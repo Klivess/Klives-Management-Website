@@ -1,6 +1,7 @@
 <template>
     <OmniTraderShell>
         <div class="ot-pagehead">
+            <h1><span class="code">JRNL</span>Journal</h1>
             <div class="ot-actions">
                 <button class="ot-btn ghost" :disabled="loading" @click="load">Refresh</button>
             </div>
@@ -62,18 +63,15 @@
             <OmniTraderKpi label="Interventions" tone="info" :value="String(interventions)"
                            :loading="loading && !records.length" foot="trades you touched" />
             <OmniTraderKpi label="Recorded P&L" :tone="netPnL >= 0 ? 'good' : 'bad'"
-                           :value="fmtSigned(netPnL, currency)" :loading="loading && !records.length"
-                           foot="closed trades in this view only"
-                           help="This is the sum over the filtered view, not the firm's P&L. Performance is the page for that." />
+                           :value="fmtSigned(netPnL, currency)" :loading="loading && !records.length" />
             <OmniTraderKpi label="Win rate" :value="fmtPct(winRate, 0)" :loading="loading && !records.length"
                            :foot="`${closedCount} closed in this view`" />
         </div>
 
-        <OmniTraderCard title="Trade records" subtitle="Click a row for the full decision trail" flush
+        <OmniTraderCard title="Trade records" flush
                         :loading="loading" :empty="!records.length" :error="error" @retry="load"
                         :empty-kind="activeCount ? 'filtered' : 'empty'"
-                        empty-title="No journal records"
-                        empty-text="Records are written automatically once orders reach a terminal state.">
+                        empty-title="No journal records">
             <OmniTraderDataTable :rows="records" :columns="columns" label="records" pinned selectable
                                  :row-key="r => r.Id" :selected-key="detail?.Id ?? null"
                                  :server-filtered="result.Filtered" :server-total="result.Total"

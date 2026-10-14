@@ -1,6 +1,7 @@
 <template>
     <OmniTraderShell>
         <div class="ot-pagehead">
+            <h1><span class="code">RISK</span>Risk</h1>
             <div class="ot-actions">
                 <button class="ot-btn" :class="risk?.Controls.SafeModeActive ? 'primary' : 'warn'"
                     :disabled="busy" @click="toggleSafeMode">
@@ -54,17 +55,11 @@
                         <button class="ot-btn primary" :disabled="busy || !dirty" @click="saveLimits">Save budget</button>
                         <button class="ot-btn ghost" :disabled="!dirty" @click="resetDraft">Discard changes</button>
                     </div>
-                    <template #footer>
-                        A hard limit blocks the order. A soft limit escalates it to approval instead.
-                        Firm daily loss and max drawdown additionally trip safe mode by themselves.
-                    </template>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Recent risk decisions"
-                                subtitle="Every proposal has one, approved or not" flush
+                <OmniTraderCard title="Recent risk decisions" flush
                                 :loading="loading && !risk" :empty="!decisions.length"
-                                empty-title="No decisions yet"
-                                empty-text="The record fills as proposals are evaluated.">
+                                empty-title="No decisions yet">
                     <OmniTraderDataTable :rows="decisions" :columns="decisionColumns" label="decisions"
                                          selectable :row-key="d => d.Id" :selected-key="selected?.Id ?? null"
                                          max-height="420px" default-sort="DecidedUtc"
@@ -104,22 +99,13 @@
                     </template>
                     <OmniTraderBarList :items="concentrationBars" :format="v => fmtMoney(v, currency, 0)"
                                        empty-title="No exposure to measure" />
-                    <template #footer>
-                        Measured against
-                        {{ concentration === 'instrument'
-                            ? `the ${fmtMoney(risk?.Limits?.MaxSingleInstrumentExposure, currency, 0)} per-instrument cap`
-                            : concentration === 'venue'
-                                ? `the ${fmtMoney(risk?.Limits?.MaxVenueExposure, currency, 0)} per-venue cap`
-                                : 'the per-strategy daily loss budget' }}.
-                    </template>
                 </OmniTraderCard>
             </div>
 
             <div class="ot-stack">
-                <OmniTraderCard title="Kill switches" subtitle="Stop new proposals in one scope">
+                <OmniTraderCard title="Kill switches">
                     <p class="note">
-                        A kill switch stops new automated proposals in its scope. Existing positions are
-                        untouched — reducing exposure is the separate action below.
+                        Stops new automated proposals in scope; positions are untouched.
                     </p>
                     <div class="ot-formgrid" style="margin-bottom:12px">
                         <div class="ot-field">
@@ -158,10 +144,9 @@
                     </div>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Reduce exposure" attention subtitle="Close positions through the risk engine">
+                <OmniTraderCard title="Reduce exposure" attention>
                     <p class="note">
-                        This submits real closing orders. It changes the firm's economic position, so it
-                        previews exactly what it would close and requires the token from that preview.
+                        Submits real closing orders. Preview first; the confirmation token is bound to it.
                     </p>
                     <div class="ot-field" style="margin-bottom:12px">
                         <label for="rv-venue">Venue filter</label>
@@ -268,8 +253,7 @@
                             <input id="reduce-token" class="ot-input mono" v-model="reduceToken"
                                    :placeholder="reducePreview.ConfirmToken" />
                             <span class="help">
-                                The token is derived from this exact preview. If the book moves before you
-                                confirm, it stops matching and you are asked to look again.
+                                If the book moves before you confirm, preview again.
                             </span>
                         </div>
                     </template>

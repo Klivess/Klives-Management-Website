@@ -1,6 +1,7 @@
 <template>
     <OmniTraderShell>
         <div class="ot-pagehead">
+            <h1><span class="code">EMSX</span>Execution</h1>
             <div class="ot-actions">
                 <button class="ot-btn ghost" :disabled="busy" @click="reconcile">Reconcile outstanding</button>
                 <button class="ot-btn" :disabled="loading" @click="load">Refresh</button>
@@ -13,8 +14,7 @@
             <span class="glyph" aria-hidden="true">⛔</span>
             <div>
                 <strong>{{ unknownCount }} submission(s) with an unproven outcome</strong>
-                These are <em>not</em> retried automatically. Reconcile against the broker; until every one
-                resolves, new automated exposure stays blocked.
+                These are <em>not</em> retried. Reconcile; automation stays blocked until resolved.
             </div>
             <div class="actions">
                 <button class="ot-btn sm" :disabled="busy" @click="reconcile">Reconcile now</button>
@@ -94,11 +94,10 @@
                     </table>
                 </OmniTraderCard>
 
-                <OmniTraderCard title="Order blotter" subtitle="Click a row for the full lifecycle and its risk decision"
+                <OmniTraderCard title="Order blotter"
                                 flush :loading="loading" :empty="!orders.length" :error="error" @retry="load"
                                 :empty-kind="activeCount ? 'filtered' : 'empty'"
-                                empty-title="No orders match"
-                                empty-text="Nothing in the recent set matches these filters.">
+                                empty-title="No orders match">
                     <OmniTraderDataTable :rows="orders" :columns="columns" label="orders" pinned selectable
                                          :row-key="o => o.Id" :selected-key="detail?.Order?.Id ?? null"
                                          :server-filtered="result.Filtered" :server-total="result.Total"
@@ -149,7 +148,7 @@
             </div>
 
             <!-- capability-driven order ticket -->
-            <OmniTraderCard title="Order ticket" subtitle="Venue-aware: it renders what this venue can do"
+            <OmniTraderCard title="Order ticket"
                             class="ticket">
                 <div class="ot-field" style="margin-bottom:12px">
                     <label for="tk-instrument">Instrument</label>
@@ -310,10 +309,6 @@
                         :disabled="busy || !!quantityIssue || !ticketForm.quantity" @click="propose">
                     {{ busy ? 'Evaluating…' : 'Run risk check & submit' }}
                 </button>
-                <p class="fineprint">
-                    Every ticket passes the risk engine first. Nothing reaches a broker without a recorded
-                    decision, and a proposal cannot skip straight to submission.
-                </p>
             </OmniTraderCard>
         </div>
 
@@ -365,8 +360,7 @@
                     <span class="glyph" aria-hidden="true">⛔</span>
                     <div>
                         <strong>Outcome unproven</strong>
-                        Do not resubmit. Query the broker by client reference — reconciliation is the only
-                        thing that can resolve this state.
+                        Do not resubmit — reconcile by client reference.
                     </div>
                 </div>
 
@@ -399,7 +393,7 @@
                 <h4 class="ot-sectionhead" style="margin-top:20px">Risk decision</h4>
                 <OmniTraderRuleList v-if="detail.Decision" :rules="detail.Decision.Rules" />
                 <OmniTraderStateBlock v-else compact title="No decision record"
-                                      detail="Every order should have one — this is worth investigating." />
+                                      detail="Missing — investigate." />
             </template>
 
             <template #footer>

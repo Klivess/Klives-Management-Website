@@ -1,6 +1,7 @@
 <template>
     <OmniTraderShell>
         <div class="ot-pagehead">
+            <h1><span class="code">PORT</span>Portfolio</h1>
             <div class="ot-actions">
                 <button class="ot-btn ghost" :disabled="busy" @click="runReconciliation">Reconcile now</button>
                 <button class="ot-btn" :disabled="loading" @click="loadAll">Refresh</button>
@@ -11,36 +12,31 @@
             <span class="glyph" aria-hidden="true">⚠</span>
             <div>
                 <strong>{{ materialBreaks }} unresolved reconciliation break(s)</strong>
-                The internal ledger and broker state disagree in a way the platform cannot explain.
-                New automated exposure stays blocked until each one is resolved or explained.
+                Ledger and broker disagree; automation is blocked until resolved.
             </div>
         </div>
 
         <div class="ot-kpis">
             <OmniTraderKpi label="Total value" :value="fmtMoney(view?.TotalValue, currency)" :loading="loading && !view"
-                           :spark="totalSpark" foot="cash + inventory + broker equity"
-                           help="Derivative notional is deliberately excluded: it is exposure, not an asset the firm owns." />
-            <OmniTraderKpi label="Cash" :value="fmtMoney(view?.Cash, currency)" :loading="loading && !view"
-                           foot="converted, native amounts preserved" />
+                           :spark="totalSpark" />
+            <OmniTraderKpi label="Cash" :value="fmtMoney(view?.Cash, currency)" :loading="loading && !view" />
             <OmniTraderKpi label="Owned inventory" tone="info" :value="fmtMoney(view?.InventoryValue, currency)"
                            :loading="loading && !view" foot="spot assets held outright" />
             <OmniTraderKpi label="CFD equity" :value="fmtMoney(view?.DerivativeEquity, currency)"
                            :loading="loading && !view" foot="as the broker reports it" />
             <OmniTraderKpi label="CFD notional" tone="violet" :value="fmtMoney(view?.DerivativeNotional, currency)"
-                           :loading="loading && !view" foot="exposure — excluded from value" />
+                           :loading="loading && !view" />
             <OmniTraderKpi label="Unrealized" :tone="valueTone(view?.UnrealizedPnL)"
                            :value="fmtSigned(view?.UnrealizedPnL, currency)" :loading="loading && !view"
                            :foot="`across ${view?.Real?.Positions ?? 0} real position(s)`" />
             <OmniTraderKpi label="Simulated" :value="fmtMoney(view?.Simulated?.TotalValue, currency)"
                            :loading="loading && !view" tone="info"
-                           :foot="`${view?.Simulated?.Positions ?? 0} paper position(s) — not firm value`"
-                           help="Paper and demo balances. Excluded from every real figure on this page, because they are not money." />
+                           :foot="`${view?.Simulated?.Positions ?? 0} paper position(s) — not firm value`" />
         </div>
 
         <OmniTraderCard title="Firm value" subtitle="Real money only"
                         :empty="!valueSeries.length" :loading="loading"
                         empty-title="No value history yet"
-                        empty-text="The firm is valued every reconciliation sweep, about every 5 minutes."
                         style="margin-bottom:16px">
             <template #controls>
                 <div class="ot-segment sm" role="group" aria-label="History window">
@@ -49,16 +45,12 @@
                 </div>
             </template>
             <OmniTraderLineChart :series="valueSeries" :height="280" :format="v => fmtMoney(v, currency, 0)" />
-            <template #footer>
-                Cash, owned inventory and broker-reported CFD equity add up to the total. Paper and
-                demo balances are excluded.
-            </template>
         </OmniTraderCard>
 
         <div class="ot-grid sidebar">
             <OmniTraderCard title="Positions"
                             flush :loading="loading" :empty="!view?.Lines?.length"
-                            empty-kind="ok" empty-title="Flat" empty-text="No open exposure anywhere.">
+                            empty-kind="ok" empty-title="Flat">
                 <OmniTraderDataTable :rows="view?.Lines ?? []" :columns="positionColumns" label="positions"
                                      pinned selectable default-sort="Notional"
                                      :row-key="l => `${l.InstrumentId}:${l.Venue}`"
@@ -120,7 +112,6 @@
                     </template>
                     <OmniTraderBarList :items="allocationBars" :format="v => fmtMoney(v, currency, 0)"
                                        empty-title="No exposure to allocate" />
-                    <template #footer>Absolute notional, largest first. Negative bars are short exposure.</template>
                 </OmniTraderCard>
 
                 <OmniTraderCard title="Valuation" :subtitle="`How native balances became ${currency}`" flush
@@ -143,7 +134,7 @@
 
         <div class="ot-grid two" style="margin-top:16px">
             <OmniTraderCard title="Reconciliation"
-                            :subtitle="`Last run ${fmtAgo(reconciliation?.LastRunUtc)} — holdings the platform did not trade are adopted, not flagged`" flush
+                            :subtitle="`Last run ${fmtAgo(reconciliation?.LastRunUtc)} `" flush
                             :empty="!reconciliation?.OpenBreaks?.length" empty-kind="ok"
                             empty-title="Internal and broker state agree"
                             empty-text="No open differences.">
@@ -174,23 +165,10 @@
                         <button class="ot-btn sm ghost" :disabled="busy" @click="resolveBreak(row)">Explain…</button>
                     </template>
                 </OmniTraderDataTable>
-                <template #footer>
-                    <span v-if="lastRun">
-                        Last sweep checked {{ lastRun.Checked }} item(s) ·
-                        adopted {{ lastRun.Adopted }} holding(s) the platform had not seen ·
-                        ignored {{ lastRun.DustIgnored }} dust fragment(s) ·
-                        auto-closed {{ lastRun.AutoResolved }} break(s) whose condition had gone.
-                        A break only survives while its difference does.
-                    </span>
-                    <span v-else>
-                        Resolving a break records the explanation. It never edits a ledger entry.
-                    </span>
-                </template>
             </OmniTraderCard>
 
             <OmniTraderCard title="Ledger" flush
-                            :empty="!ledger.length" empty-title="No entries"
-                            empty-text="The ledger fills as fills are booked.">
+                            :empty="!ledger.length" empty-title="No entries">
                 <OmniTraderDataTable :rows="ledger" :columns="ledgerColumns" label="entries"
                                      :row-key="e => e.Id" max-height="420px" default-sort="Ts"
                                      search-placeholder="Filter ledger…">
@@ -213,7 +191,6 @@
                         <span class="ot-chip" :class="row.Origin === 'Platform' ? '' : 'warn'">{{ row.Origin }}</span>
                     </template>
                 </OmniTraderDataTable>
-                <template #footer>Append-only. A correction is a new Adjustment referencing the original.</template>
             </OmniTraderCard>
         </div>
 

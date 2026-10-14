@@ -1,1 +1,1 @@
-[{"Id":"ae_f8d7bf375e15","AlertId":"al_b4baf5d3441f","AlertName":"BTC above 200d","Symbol":"BTCUSDT","Condition":"close > sma(close, 200)","BarUtc":"2026-10-12T00:00:00Z","TriggeredUtc":"2026-10-13T21:25:23.4902032Z","Close":32338.1881484457,"Message":null}]
+[{"Id":"ae_f15827da788d","AlertId":"al_581332b47e90","AlertName":"BTC above 200d","Symbol":"BTCUSDT","Condition":"close > sma(close, 200)","BarUtc":"2026-10-13T00:00:00Z","TriggeredUtc":"2026-10-14T15:42:57.3856018Z","Close":32338.1881484457,"Message":null}]

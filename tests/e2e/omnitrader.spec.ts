@@ -1,7 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 import {
-    BOOT, SHOTS, alphaCandidates, alphaPapers, labBacktests, load, mockApi, studioList,
+    BOOT, SHOTS, alphaCandidates, alphaIdeas, alphaPapers, labBacktests, load, mockApi, orderBook, studioList,
 } from './fixtures/omnitrader-api';
+
+const fixed = (v: number, d: number) => v.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 
 /** OmniTrader terminal pages against engine-generated fixtures; screenshots land in test-results/omnitrader/. */
 
@@ -83,6 +85,22 @@ test('monitor, command line and security tabs', async ({ page }) => {
     await page.getByRole('tab', { name: /DER/ }).click();
     await expect(page.locator('.ot-panel').filter({ hasText: 'Cross-venue funding' })).toContainText('OKX');
     await shot(page, 'security-der', true);
+
+    // Order book: a mirrored ladder at the engine's grouping, prices to the grouping's decimals, real spread.
+    await page.getByRole('tab', { name: /DES/ }).click();
+    const book = page.locator('.book');
+    await expect(book.locator('.side.bid .lvl')).toHaveCount(orderBook.Bids.length, BOOT);
+    await expect(book.locator('.side.ask .lvl')).toHaveCount(orderBook.Asks.length);
+    await expect(book.locator('.side.bid .lvl').first().locator('.p')).toHaveText(fixed(orderBook.Bids[0][0], 1));
+    await expect(book.locator('.side.ask .lvl').first().locator('.p')).toHaveText(fixed(orderBook.Asks[0][0], 1));
+    await expect(book.locator('.side.bid .lvl').nth(2).locator('.t')).toHaveText(fixed(orderBook.Bids[2][2], 5));
+    await expect(book.locator('.bookhead')).toContainText('Spread 0.01');
+    await expect(book.locator('.bookhead')).toContainText('0.0012 bps');
+    // ±0.5% is beyond what the snapshot reaches: a lower bound, marked as such.
+    await expect(book.locator('.bands td.partial').first()).toContainText('≥');
+    await shot(page, 'security-orderbook', true);
+    await page.locator('.ot-panel').filter({ hasText: 'Order book' }).locator('select').first().selectOption('1');
+    await expect.poll(() => state.requests.some(r => r.includes('/terminal/crypto/orderbook') && r.includes('group=1'))).toBe(true);
     expect(state.errors, state.errors.join('\n')).toEqual([]);
 });
 
@@ -206,5 +224,33 @@ test('alpha lab: papers, paper drawer, candidate evaluation', async ({ page }) =
     await expect(drawer).toContainText('Deflated SR');
     await expect(drawer.locator('.findings li').first()).toBeVisible();
     await shot(page, 'alpha-candidate');
+    await drawer.getByRole('button', { name: /Close/ }).click();
+
+    // A synthesis: a C# strategy drawing on two papers, measured against its single-paper part.
+    const synth = alphaCandidates.find((c: any) => c.Synthesis);
+    await expect(crow.filter({ hasText: synth.StrategyName })).toContainText(`⊕ ${synth.PaperIds.length} papers`);
+    await crow.filter({ hasText: synth.StrategyName }).click();
+    await expect(drawer).toContainText(`Synthesis of ${synth.PaperIds.length} papers`);
+    await expect(drawer).toContainText('C# strategy');
+    await expect(drawer).toContainText('Against its single-paper parts');
+    await expect(drawer.locator('.findings')).toContainText('vs parts:');
+    await shot(page, 'alpha-synthesis');
+    await drawer.getByRole('button', { name: /Close/ }).click();
+
+    // The idea library: pick ideas from two different papers and ask for a synthesis.
+    await page.getByRole('button', { name: 'ideas', exact: true }).click();
+    const irow = page.locator('.ot-panel').filter({ hasText: 'Idea library' }).locator('tbody tr');
+    await expect(irow).toHaveCount(alphaIdeas.Rows.length);
+    const firstPerPaper = new Map<string, any>();
+    for (const i of alphaIdeas.Rows) if (!firstPerPaper.has(i.PaperId)) firstPerPaper.set(i.PaperId, i);
+    const [a, b] = [...firstPerPaper.values()];
+    await page.getByRole('button', { name: `Combine ${a.Name}` }).click();
+    await page.getByRole('button', { name: `Combine ${b.Name}` }).click();
+    await expect(page.locator('.tray')).toContainText('2 papers');
+    await shot(page, 'alpha-ideas', true);
+    await page.locator('.tray').getByRole('button', { name: 'Synthesise' }).click();
+    await page.getByRole('button', { name: 'Send' }).click();
+    await expect.poll(() => state.posts.find(r => r.path.startsWith('/api/omnitrader/alpha/synthesise'))?.body?.IdeaIds).toEqual([a.Id, b.Id]);
+    await expect(page.locator('.tray')).toBeHidden();
     expect(state.errors, state.errors.join('\n')).toEqual([]);
 });

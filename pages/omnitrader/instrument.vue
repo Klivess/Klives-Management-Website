@@ -66,24 +66,61 @@
                         <div class="kv"><span class="k">From ATH</span><span class="v mono neg">{{ fmtChg(coin.AthChangePct) }}</span></div>
                     </div>
                 </OtPanel>
-                <OtPanel v-if="crypto" title="Order book" code="DOM" persist="sec.book.depth" :loading="loadingDepth" :empty="!depth" refreshable @refresh="loadDepth">
-                    <div v-if="depth" class="depth mono">
-                        <div class="side">
-                            <div v-for="(l, i) in (depth.Bids ?? []).slice(0, 15)" :key="`b${i}`" class="lvl bid">
-                                <span class="fill" :style="{ width: `${(l[1] / depthMax) * 100}%` }"></span><span>{{ fmtPrice(l[0]) }}</span><span>{{ fmtN(l[1], 4) }}</span>
+                <OtPanel v-if="crypto" title="Order book" code="DOM" persist="sec.book.depth" :loading="loadingDepth && !depth" :error="depthError" :empty="!depth" refreshable @refresh="loadDepth()">
+                    <template #controls>
+                        <select v-model="bookGroup" class="ot-select sm auto mono" title="Group price levels" aria-label="Price grouping">
+                            <option value="">auto · {{ depth ? fmtN(depth.Group, decimalsOf(depth.Group)) : '' }}</option>
+                            <option v-for="g in depth?.Groups ?? []" :key="g" :value="String(g)">{{ fmtN(g, decimalsOf(g)) }}</option>
+                        </select>
+                        <select v-model.number="bookPrefs.rows" class="ot-select sm auto mono" title="Rows per side" aria-label="Rows per side">
+                            <option v-for="n in [10, 20, 30]" :key="n" :value="n">{{ n }} rows</option>
+                        </select>
+                        <button class="ot-btn ghost sm" type="button" :aria-pressed="bookPrefs.live" title="Refresh every few seconds" @click="bookPrefs.live = !bookPrefs.live">
+                            <span class="ot-dot" :class="bookPrefs.live ? 'live' : ''"></span>live
+                        </button>
+                    </template>
+                    <div v-if="depth" class="book mono">
+                        <div class="bookhead">
+                            <span><span class="k">Spread</span> {{ fmtN(depth.Spread, tickDecimals) }} <span class="muted">· {{ fmtBps(depth.SpreadBps) }} bps</span></span>
+                            <span><span class="k">Mid</span> {{ fmtN(depth.Mid, tickDecimals + 1) }}</span>
+                            <span class="grow"></span>
+                            <span class="muted">{{ depth.Source }} · {{ fmtAge(depth.AsOfUtc) }} ago</span>
+                        </div>
+                        <div class="ladder" role="table" aria-label="Order book">
+                            <div class="lhead bid" role="row"><span role="columnheader">Total</span><span role="columnheader">Size</span><span role="columnheader">Bid</span></div>
+                            <div class="lhead ask" role="row"><span role="columnheader">Ask</span><span role="columnheader">Size</span><span role="columnheader">Total</span></div>
+                            <div class="side bid">
+                                <div v-for="l in depth.Bids" :key="`b${l[0]}`" class="lvl" :class="{ wall: isWall(l[1]) }" role="row"
+                                     :title="`${fmtN(l[0], groupDecimals)} · ${fmtN(l[1], sizeDecimals)} (≈ ${fmtBig(l[0] * l[1])}) · cumulative ${fmtN(l[2], sizeDecimals)}`">
+                                    <span class="cum" :style="{ width: barPct(l[2], cumMax) }"></span><span class="sz" :style="{ width: barPct(l[1], levelMax) }"></span>
+                                    <span class="t">{{ fmtN(l[2], sizeDecimals) }}</span><span class="s">{{ fmtN(l[1], sizeDecimals) }}</span><span class="p">{{ fmtN(l[0], groupDecimals) }}</span>
+                                </div>
+                            </div>
+                            <div class="side ask">
+                                <div v-for="l in depth.Asks" :key="`a${l[0]}`" class="lvl" :class="{ wall: isWall(l[1]) }" role="row"
+                                     :title="`${fmtN(l[0], groupDecimals)} · ${fmtN(l[1], sizeDecimals)} (≈ ${fmtBig(l[0] * l[1])}) · cumulative ${fmtN(l[2], sizeDecimals)}`">
+                                    <span class="cum" :style="{ width: barPct(l[2], cumMax) }"></span><span class="sz" :style="{ width: barPct(l[1], levelMax) }"></span>
+                                    <span class="p">{{ fmtN(l[0], groupDecimals) }}</span><span class="s">{{ fmtN(l[1], sizeDecimals) }}</span><span class="t">{{ fmtN(l[2], sizeDecimals) }}</span>
+                                </div>
                             </div>
                         </div>
-                        <div class="side">
-                            <div v-for="(l, i) in (depth.Asks ?? []).slice(0, 15)" :key="`a${i}`" class="lvl ask">
-                                <span class="fill" :style="{ width: `${(l[1] / depthMax) * 100}%` }"></span><span>{{ fmtPrice(l[0]) }}</span><span>{{ fmtN(l[1], 4) }}</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div v-if="depth" class="ot-statbar bare">
-                        <div class="ot-stat"><span class="k">Spread</span><span class="v">{{ fmtN(depth.SpreadBps, 2) }} bps</span></div>
-                        <div class="ot-stat"><span class="k">Bid depth ±1%</span><span class="v">{{ fmtBig(depth.BidDepth1Pct) }}</span></div>
-                        <div class="ot-stat"><span class="k">Ask depth ±1%</span><span class="v">{{ fmtBig(depth.AskDepth1Pct) }}</span></div>
-                        <div class="ot-stat"><span class="k">Imbalance</span><span class="v" :class="tone(depth.Imbalance)">{{ fmtN(depth.Imbalance, 3) }}</span></div>
+                        <table class="bands">
+                            <thead><tr><th>Depth</th><th v-for="b in depth.Bands ?? []" :key="b.Pct" class="num">±{{ b.Pct }}%</th></tr></thead>
+                            <tbody>
+                                <tr>
+                                    <td class="k">Bid</td>
+                                    <td v-for="b in depth.Bands ?? []" :key="b.Pct" class="num pos" :class="{ partial: !b.BidCovered }" :title="b.BidCovered ? '' : coverageNote('bid')">{{ b.BidCovered ? '' : '≥' }}{{ fmtBig(b.Bid) }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="k">Ask</td>
+                                    <td v-for="b in depth.Bands ?? []" :key="b.Pct" class="num neg" :class="{ partial: !b.AskCovered }" :title="b.AskCovered ? '' : coverageNote('ask')">{{ b.AskCovered ? '' : '≥' }}{{ fmtBig(b.Ask) }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="k">Imbalance</td>
+                                    <td v-for="b in depth.Bands ?? []" :key="b.Pct" class="num" :class="[tone(b.Imbalance), { partial: !b.BidCovered || !b.AskCovered }]">{{ fmtSignedN(b.Imbalance, 2) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </OtPanel>
             </div>
@@ -348,12 +385,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import Swal from 'sweetalert2';
 import { useOmniTrader, useUrlState } from '~/composables/useOmniTrader';
 import {
-    INTERVALS, SWAL_TERMINAL, baseAsset, downloadCsv, fmtBig, fmtChg, fmtDateTime, fmtDay10, fmtInt, fmtN, fmtPctPlain, fmtPrice, fmtSignedN,
-    heat, heatSeq, isCrypto, tGet, tPost, tone, useRecentSymbols, type ChartPayload,
+    INTERVALS, SWAL_TERMINAL, baseAsset, downloadCsv, fmtAge, fmtBig, fmtChg, fmtDateTime, fmtDay10, fmtInt, fmtN, fmtPctPlain, fmtPrice, fmtSignedN,
+    heat, heatSeq, isAbort, isCrypto, tGet, tPost, tone, useLatest, usePersisted, useRecentSymbols, type ChartPayload,
 } from '~/composables/useTerminal';
 import type { GridColumn } from '~/components/Ot/Grid.vue';
 import type { CurveSeries } from '~/components/Ot/Curve.vue';
@@ -440,14 +477,71 @@ async function loadDes() {
     void loadBook();
 }
 
+// Order book: rows are [price, size, cumulative size], best first, grouped server-side.
 const depth = ref<any>(null);
 const loadingDepth = ref(false);
-const depthMax = computed(() => Math.max(1e-9, ...[...(depth.value?.Bids ?? []).slice(0, 15), ...(depth.value?.Asks ?? []).slice(0, 15)].map((l: number[]) => l[1])));
-async function loadDepth() {
-    loadingDepth.value = true;
-    try { depth.value = await tGet<any>('/terminal/crypto/orderbook', { symbol: symbol.value, depth: 100 }); }
-    catch { depth.value = null; }
-    finally { loadingDepth.value = false; }
+const depthError = ref<string | null>(null);
+const bookPrefs = usePersisted<{ rows: number; live: boolean; groups: Record<string, string> }>('sec.book.prefs', { rows: 20, live: true, groups: {} });
+bookPrefs.value.groups ??= {};
+/** '' = the server's default grouping for the price; remembered per symbol. */
+const bookGroup = computed({
+    get: () => bookPrefs.value.groups[symbol.value] ?? '',
+    set: (v: string) => { bookPrefs.value.groups = { ...bookPrefs.value.groups, [symbol.value]: v }; },
+});
+const bookLatest = useLatest();
+async function loadDepth(silent = false) {
+    if (!crypto.value) return;
+    const signal = bookLatest.next();
+    if (!silent) loadingDepth.value = true;
+    try {
+        depth.value = await tGet<any>('/terminal/crypto/orderbook', { symbol: symbol.value, rows: bookPrefs.value.rows, group: bookGroup.value || undefined }, signal);
+        depthError.value = null;
+    } catch (e: any) {
+        if (!isAbort(e)) {
+            depthError.value = e?.message ?? 'order book unavailable';
+            if (!silent) depth.value = null;
+        }
+    } finally {
+        if (!silent) loadingDepth.value = false;
+    }
+}
+watch(() => [bookGroup.value, bookPrefs.value.rows], () => { if (state.tab === 'DES') void loadDepth(true); });
+let bookTimer: ReturnType<typeof setInterval> | null = null;
+function scheduleBook() {
+    if (bookTimer) clearInterval(bookTimer);
+    bookTimer = null;
+    if (!bookPrefs.value.live || state.tab !== 'DES' || !crypto.value) return;
+    bookTimer = setInterval(() => { if (!document.hidden) void loadDepth(true); }, 2500);
+}
+watch(() => [bookPrefs.value.live, state.tab, crypto.value, symbol.value], scheduleBook, { immediate: true });
+onBeforeUnmount(() => { if (bookTimer) clearInterval(bookTimer); bookLatest.abort(); });
+
+function decimalsOf(v: number | null | undefined): number {
+    if (v === null || v === undefined || !Number.isFinite(v) || v <= 0) return 0;
+    const s = v.toFixed(12).replace(/0+$/, '');
+    const dot = s.indexOf('.');
+    return dot < 0 ? 0 : s.length - dot - 1;
+}
+const groupDecimals = computed(() => decimalsOf(depth.value?.Group));
+const tickDecimals = computed(() => decimalsOf(depth.value?.TickSize));
+const sizeDecimals = computed(() => Math.min(5, decimalsOf(depth.value?.StepSize ?? 0.0001)));
+const bookLevels = computed<number[][]>(() => [...(depth.value?.Bids ?? []), ...(depth.value?.Asks ?? [])]);
+const levelMax = computed(() => Math.max(1e-12, ...bookLevels.value.map(l => l[1])));
+const cumMax = computed(() => Math.max(1e-12, ...bookLevels.value.map(l => l[2] ?? l[1])));
+/** A level several times the median visible level stands out as a wall. */
+const wallMin = computed(() => {
+    const sizes = bookLevels.value.map(l => l[1]).sort((a, b) => a - b);
+    return sizes.length < 6 ? Infinity : sizes[Math.floor(sizes.length / 2)] * 4;
+});
+function isWall(size: number) { return size >= wallMin.value; }
+function barPct(v: number, max: number) { return `${Math.min(100, (v / max) * 100).toFixed(1)}%`; }
+function fmtBps(v: number | null | undefined) {
+    if (v === null || v === undefined || !Number.isFinite(v)) return '—';
+    return v < 0.01 ? v.toFixed(4) : v < 1 ? v.toFixed(3) : v.toFixed(2);
+}
+function coverageNote(side: 'bid' | 'ask') {
+    const reach = side === 'bid' ? depth.value?.Coverage?.BidPct : depth.value?.Coverage?.AskPct;
+    return `The snapshot reaches ${fmtN(reach, 2)}% from mid on the ${side} side; liquidity beyond it is not counted.`;
 }
 
 const row = ref<any>(null);
@@ -840,14 +934,44 @@ table.chain th.side { text-align: center; color: var(--ot-text-2); }
 table.chain .strike { background: var(--ot-surface-2); text-align: center; font-weight: 700; color: var(--ot-accent-2); }
 table.chain td.itm { background: rgba(74, 168, 255, 0.06); }
 table.chain tr.atm td { border-top: 1px solid var(--ot-accent); border-bottom: 1px solid var(--ot-accent); }
-.depth { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 11px; }
-.depth .lvl { position: relative; display: flex; justify-content: space-between; padding: 1px 4px; }
-.depth .lvl .fill { position: absolute; top: 0; bottom: 0; right: 0; opacity: 0.18; }
-.depth .bid .fill { background: var(--ot-positive); }
-.depth .ask .fill { background: var(--ot-negative); left: 0; right: auto; }
-.depth .bid span:nth-child(2) { color: var(--ot-positive); }
-.depth .ask span:nth-child(2) { color: var(--ot-negative); }
-.depth .lvl span { position: relative; }
+/* Order book: bids mirror asks around the spread; the faint bar is cumulative depth, the strong one the level itself. */
+.book { display: flex; flex-direction: column; gap: 6px; font-size: 11px; }
+.book .bookhead { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; padding: 0 2px; }
+.book .bookhead .k { color: var(--ot-muted); margin-right: 4px; }
+.book .bookhead .grow { flex: 1 1 auto; }
+.book .ladder { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 2px; }
+.book .lhead, .book .lvl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 8px; padding: 1px 6px; }
+.book .lhead { color: var(--ot-muted); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; padding-bottom: 3px; border-bottom: 1px solid var(--ot-line); }
+.book .lhead span, .book .lvl span { text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.book .lhead.ask span:first-child, .book .ask .lvl .p { text-align: left; }
+.book .side { display: flex; flex-direction: column; }
+.book .lvl { position: relative; line-height: 17px; }
+.book .lvl > span:not(.cum):not(.sz) { position: relative; }
+.book .lvl .cum, .book .lvl .sz { position: absolute; top: 1px; bottom: 1px; pointer-events: none; }
+.book .bid .lvl .cum, .book .bid .lvl .sz { right: 0; }
+.book .ask .lvl .cum, .book .ask .lvl .sz { left: 0; }
+.book .bid .cum { background: rgba(38, 194, 129, 0.09); }
+.book .ask .cum { background: rgba(242, 84, 91, 0.09); }
+.book .bid .sz { background: rgba(38, 194, 129, 0.22); }
+.book .ask .sz { background: rgba(242, 84, 91, 0.22); }
+.book .bid .p { color: var(--ot-positive); }
+.book .ask .p { color: var(--ot-negative); }
+.book .lvl .t { color: var(--ot-muted); }
+.book .lvl.wall .s, .book .lvl.wall .p { font-weight: 700; }
+.book .lvl.wall .s { color: var(--ot-text); }
+.book .lvl:hover { background: var(--ot-surface-3); }
+.book .bands { border-collapse: collapse; width: 100%; font-size: 11px; margin-top: 2px; }
+.book .bands th { color: var(--ot-muted); font-weight: 500; font-size: 10px; text-align: left; padding: 3px 6px; border-top: 1px solid var(--ot-line); }
+.book .bands th.num, .book .bands td.num { text-align: right; }
+.book .bands td { padding: 2px 6px; }
+.book .bands td.k { color: var(--ot-muted); }
+.book .bands td.partial { opacity: 0.55; cursor: help; }
+@media (max-width: 700px) {
+    .book .lhead, .book .lvl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .book .lhead span:nth-child(1), .book .bid .lvl .t { display: none; }
+    .book .lhead.ask span:nth-child(3), .book .ask .lvl .t { display: none; }
+    .book .lhead.ask span:nth-child(1) { display: inline; }
+}
 .news { list-style: none; margin: 0; padding: 0; }
 .news li { display: grid; grid-template-columns: 120px 1fr auto; gap: 10px; padding: 4px 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.035); font-size: 12px; align-items: baseline; }
 .news li:hover { background: var(--ot-surface-3); }

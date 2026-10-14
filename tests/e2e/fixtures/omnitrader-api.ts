@@ -23,6 +23,8 @@ export const labBacktests = load('lab-backtests');
 export const labStudies = load('lab-studies');
 export const alphaPapers = load('alpha-papers');
 export const alphaCandidates = load('alpha-candidates');
+export const alphaIdeas = load('alpha-ideas');
+export const orderBook = load('orderbook-BTCUSDT');
 
 function overview() {
     return {
@@ -139,7 +141,12 @@ export async function mockApi(page: Page) {
             case `${T}/terminal/crypto/defi`: return json(load('crypto-defi'));
             case `${T}/terminal/crypto/trending`: return json(load('crypto-trending'));
             case `${T}/terminal/crypto/derivatives`: return json(load('crypto-derivatives'));
-            case `${T}/terminal/crypto/orderbook`: return json({ Symbol: 'BTCUSDT', Bids: [[64000, 1.2], [63990, 2.1]], Asks: [[64010, 0.8], [64020, 1.9]], Mid: 64005, SpreadBps: 1.56, BidDepth1Pct: 2.1e6, AskDepth1Pct: 1.8e6, Imbalance: 0.077 });
+            case `${T}/terminal/crypto/orderbook`: {
+                // The engine's own view of a synthetic book; rows and grouping echo the request.
+                const rows = Number(p.get('rows') ?? 20);
+                const group = p.get('group') ? Number(p.get('group')) : orderBook.Group;
+                return json({ ...orderBook, Group: group, Rows: rows, Bids: orderBook.Bids.slice(0, rows), Asks: orderBook.Asks.slice(0, rows), AsOfUtc: meta.GeneratedUtc });
+            }
             case `${T}/terminal/macro`: return json(load('macro'));
             case `${T}/terminal/macro/curve`: return json(load('macro-curve'));
             case `${T}/terminal/macro/volterm`: return json(load('macro-volterm'));
@@ -169,6 +176,8 @@ export async function mockApi(page: Page) {
             case `${T}/alpha/candidates`: return json(alphaCandidates);
             case `${T}/alpha/candidate`: return json(load(`alpha-candidate-${p.get('id')}`));
             case `${T}/alpha/runs`: return json(load('alpha-runs'));
+            case `${T}/alpha/ideas`: return json(alphaIdeas);
+            case `${T}/alpha/synthesise`: return json({ Started: true, Reason: null, Run: { Id: 'ar_e2e000000001', Kind: 'synthesise', Status: 'running', Trigger: 'manual', PaperIds: body?.PaperIds ?? [], IdeaIds: body?.IdeaIds ?? [] } });
             default: return json({});
         }
     });

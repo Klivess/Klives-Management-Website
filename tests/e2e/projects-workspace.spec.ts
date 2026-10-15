@@ -103,8 +103,19 @@ async function workspace(page: Page, extra: (path: string, url: URL) => any = ()
       ] } }, versions: [] });
       case '/projects/events': return json({ events: [
         { sequence: 10, eventID: 'e10', type: 'commander-message', author: 'commander', agentID: 'commander', text: 'Two listings are live; photos for the rest are uploading.', timestamp: iso(900_000) },
+        { sequence: 11, eventID: 'e11', type: 'klives-message', author: 'klives', agentID: 'commander', text: 'Is the about page done?', timestamp: iso(120_000) },
+        { sequence: 12, eventID: 'e12', type: 'commander-message', author: 'commander', agentID: 'commander', text: 'Not yet — it is queued right after the listings; I will report when it is up.', payloadJson: '{"instant":true,"directiveID":"d1"}', timestamp: iso(115_000) },
       ], lastSequence: 10 });
       case '/projects/playbooks': return json(state.playbooks);
+      case '/projects/schedule': return json({
+        now: new Date(now).toISOString(),
+        agents: [
+          { agentID: 'commander', label: 'Commander', state: 'waiting', detail: 'The Commander is waiting for LLM capacity (6 of 6 live conversations). It starts by itself the moment a slot frees.', nextWakeAt: null },
+          { agentID: 'w1', label: 'scraper', state: 'sleeping', detail: 'Between wakes; checks back in about 12 minutes unless the Commander, a hook or you wake it sooner.', nextWakeAt: iso(-12 * 60_000) },
+        ],
+        router: { inFlight: 3, slots: 3, waiting: 4, reservedSlots: 0, mode: 'Enforce' },
+        liveConversations: 6, conversationBudget: 6, budgetSource: 'measured', deferredWakes: 3,
+      });
       case '/projects/settings': return json(state.settings);
       default: return json([]);
     }
@@ -223,4 +234,35 @@ test('the shell links every Projects section', async ({ page }) => {
     await nav.getByRole('link', { name, exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`${path.replace(/\//g, '\\/')}$`));
   }
+});
+
+test('quiet agents say why, and instant replies are labelled', async ({ page }) => {
+  await workspace(page);
+  await page.goto('/projects/storefront');
+  const schedule = page.getByRole('list', { name: 'Agent schedule' });
+  await expect(schedule).toContainText('Waiting for LLM');
+  await expect(schedule).toContainText('waiting for LLM capacity');
+  await expect(schedule).toContainText('scraper');
+  await expect(page.getByText('3/3 slots busy', { exact: false })).toBeVisible();
+  await expect(page.getByText('Commander is waiting for an LLM slot')).toBeVisible();
+
+  await page.getByRole('tab', { name: 'Chat' }).click();
+  const status = page.locator('.cp-status');
+  await expect(status).toContainText('Waiting for LLM');
+  await expect(status).toContainText('starts by itself the moment a slot frees');
+  await expect(page.locator('.cp-type', { hasText: 'instant reply' })).toBeVisible();
+});
+
+test('timeline lanes sit on the dark surface, not a pale band', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await workspace(page);
+  await page.goto('/projects/storefront?tab=timeline');
+  const lane = page.locator('rect.lane-bg.lane-commander').first();
+  await expect(lane).toBeAttached();
+  // The Commander's lane is a faint accent tint over the dark card; the colour mapping had turned every
+  // lane into the light axis grey (rgb(111, 125, 106)), which read as a pale band across the timeline.
+  const fill = await lane.evaluate(el => getComputedStyle(el).fill);
+  expect(fill).toBe('rgba(109, 220, 79, 0.06)');
+  expect(fill).not.toBe('rgb(111, 125, 106)');
+  await page.screenshot({ path: testInfo.outputPath('timeline.png'), fullPage: true });
 });

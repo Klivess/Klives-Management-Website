@@ -46,6 +46,21 @@
             <ol v-if="nextSteps.length" class="po-queue">
               <li v-for="s in nextSteps" :key="s.key">{{ s.text }}</li>
             </ol>
+            <!-- Why each agent is or is not working right now, and when it next runs: the timeline shows
+                 what happened, this shows what is about to happen. -->
+            <ul v-if="scheduleRows.length" class="po-schedule" aria-label="Agent schedule">
+              <li v-for="row in scheduleRows" :key="row.agentID">
+                <span class="ot-chip" :class="stateOf(row).tone">{{ stateOf(row).label }}</span>
+                <strong>{{ row.label }}</strong>
+                <span class="pj-muted po-schedule-detail">{{ row.detail }}</span>
+                <span v-if="row.nextWakeAt && row.state !== 'working'" class="pj-mono pj-muted po-schedule-next">next {{ pjNextRun(row.nextWakeAt, now) }}</span>
+              </li>
+            </ul>
+            <p v-if="schedule" class="pj-muted po-capacity">
+              LLM: {{ schedule.router.inFlight }}/{{ schedule.router.slots }} slots busy · {{ schedule.router.waiting }} queued
+              · {{ schedule.liveConversations }}/{{ schedule.conversationBudget }} conversations live
+              <template v-if="schedule.deferredWakes"> · {{ schedule.deferredWakes }} wake{{ schedule.deferredWakes === 1 ? '' : 's' }} waiting fleet-wide</template>
+            </p>
           </div>
         </OmniTraderCard>
 
@@ -129,7 +144,7 @@ import ProjectsObservableSparkline from '~/components/Projects/ObservableSparkli
 import { renderMarkdown } from '~/scripts/agentMarkdown';
 import { RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import { useEventStream } from '~/composables/useEventStream';
-import { pjAgo, pjGet, pjMoney, type ProjectsComputer } from '~/composables/useProjectsUi';
+import { PJ_SCHEDULE_STATE, pjAgo, pjGet, pjMoney, pjNextRun, useProjectSchedule, type ProjectsComputer, type ProjectsScheduleEntry } from '~/composables/useProjectsUi';
 
 const props = defineProps<{
   projectId: string;
@@ -144,6 +159,10 @@ const props = defineProps<{
 const emit = defineEmits<{ navigate: [tab: string]; changed: [] }>();
 
 const steps = ref<any[]>([]);
+const SCHEDULE_EVENTS = new Set(['commander-wake', 'agent-wake', 'wake-completed', 'wake-waiting', 'wake-deferred', 'wake-failed', 'wake-cancelled']);
+const { schedule, reload: loadSchedule } = useProjectSchedule(() => props.projectId, 15000);
+const scheduleRows = computed<ProjectsScheduleEntry[]>(() => (schedule.value?.agents ?? []).slice(0, 8));
+function stateOf(row: ProjectsScheduleEntry) { return PJ_SCHEDULE_STATE[row.state] ?? { label: row.state, tone: '' }; }
 const gates = ref<any[]>([]);
 const computers = ref<ProjectsComputer[]>([]);
 const activity = ref<Record<string, any>>({});
@@ -159,6 +178,7 @@ const stream = useEventStream({
   onEvent: (e: any) => {
     if (e.type === 'commander-message' || e.type === 'klives-message') recent.value = [...recent.value, e].slice(-12);
     if (e.type === 'approval-requested' || e.type === 'approval-resolved') loadGates();
+    if (SCHEDULE_EVENTS.has(e.type)) loadSchedule();
   },
 });
 
@@ -178,9 +198,15 @@ const nextSteps = computed(() => {
 const liveAgents = computed(() => Object.values(activity.value)
   .filter((a: any) => now.value - new Date(a.updatedAt).getTime() < 10 * 60 * 1000));
 const workingAgents = computed(() => props.agents.filter(a => a.awake));
-const nowSubtitle = computed(() => liveAgents.value.length
-  ? `${liveAgents.value.length} agent${liveAgents.value.length === 1 ? '' : 's'} working right now`
-  : props.project.status === 'Active' ? 'Idle until the next stimulus or keepalive' : `Project is ${String(props.project.status).toLowerCase()}`);
+const nowSubtitle = computed(() => {
+  if (liveAgents.value.length) return `${liveAgents.value.length} agent${liveAgents.value.length === 1 ? '' : 's'} working right now`;
+  const commander = schedule.value?.agents.find(a => a.agentID === 'commander');
+  if (commander && commander.state !== 'working' && props.project.status === 'Active')
+    return commander.state === 'waiting' ? 'Commander is waiting for an LLM slot'
+      : commander.state === 'held' ? 'Commander is held by a provider backoff'
+      : commander.nextWakeAt ? `Commander asleep · next check-in ${pjNextRun(commander.nextWakeAt, now.value)}` : 'Commander asleep';
+  return props.project.status === 'Active' ? 'Idle until the next stimulus or keepalive' : `Project is ${String(props.project.status).toLowerCase()}`;
+});
 
 const messages = computed(() => {
   const merged = [...props.events.filter(e => e.type === 'commander-message' || e.type === 'klives-message'), ...recent.value];
@@ -247,6 +273,12 @@ onBeforeUnmount(() => { if (poll) clearInterval(poll); if (clock) clearInterval(
 </script>
 
 <style scoped>
+.po-schedule { list-style: none; margin: 0; padding: var(--ot-space-2) 0 0; border-top: 1px solid var(--ot-line); display: flex; flex-direction: column; gap: 6px; }
+.po-schedule li { display: grid; grid-template-columns: auto minmax(70px, auto) minmax(0, 1fr) auto; gap: var(--ot-space-2); align-items: baseline; font-size: 12.5px; }
+.po-schedule-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.po-schedule-next { font-size: 11.5px; white-space: nowrap; }
+.po-capacity { margin: 0; font-size: 11.5px; }
+@media (max-width: 720px) { .po-schedule li { grid-template-columns: auto minmax(0, 1fr); } .po-schedule-detail, .po-schedule-next { grid-column: 1 / -1; white-space: normal; } }
 .po-approvals { display: flex; flex-direction: column; gap: var(--ot-space-2); }
 .po-kpis { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
 .po-now { display: flex; flex-direction: column; gap: var(--ot-space-3); }

@@ -38,6 +38,9 @@ export const EVENT_TYPE_COLORS: Record<string, string> = {
   'grand-plan-approved': '#4d9e39',
   'grand-plan-revision-requested': '#d9c47f',
   'grand-plan-amended': '#5b9bd9',
+  // Why an agent is not working yet (waiting for LLM capacity, provider backoff): amber, so a quiet
+  // stretch of the timeline visibly carries its reason.
+  'wake-waiting': '#c98500',
   'status': '#888',
 };
 

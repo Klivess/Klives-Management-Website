@@ -53,6 +53,50 @@ export function pjShortId(id: string | null | undefined, n = 12): string {
   return (id || '').slice(0, n);
 }
 
+export interface ProjectsScheduleEntry {
+  agentID: string; label: string;
+  /** working · waiting (for LLM capacity) · held (provider backoff) · sleeping · done */
+  state: 'working' | 'waiting' | 'held' | 'sleeping' | 'done';
+  detail: string; nextWakeAt: string | null;
+}
+export interface ProjectsSchedule {
+  now: string; agents: ProjectsScheduleEntry[];
+  router: { inFlight: number; slots: number; waiting: number; reservedSlots: number; mode: string };
+  liveConversations: number; conversationBudget: number; budgetSource: string; deferredWakes: number;
+}
+
+export const PJ_SCHEDULE_STATE: Record<string, { label: string; tone: string }> = {
+  working: { label: 'Working', tone: 'ok' },
+  waiting: { label: 'Waiting for LLM', tone: 'warn' },
+  held: { label: 'Held', tone: 'bad' },
+  sleeping: { label: 'Asleep', tone: '' },
+  done: { label: 'Idle', tone: '' },
+};
+
+/** "in 9m", or "any moment" when the next run is due within half a minute. */
+export function pjNextRun(iso: string | null | undefined, now = Date.now()): string {
+  if (!iso) return '';
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '';
+  return t - now <= 30_000 ? 'any moment' : pjAgo(iso, now);
+}
+
+/** Why each agent of a project is or is not working, and when it next runs. Polled. */
+export function useProjectSchedule(projectId: () => string, intervalMs = 15000) {
+  const schedule = ref<ProjectsSchedule | null>(null);
+  let timer: ReturnType<typeof setInterval> | null = null;
+  async function load() {
+    const id = projectId();
+    if (!id) return;
+    const body = await pjGet<ProjectsSchedule>(`/projects/schedule?projectID=${encodeURIComponent(id)}`);
+    // An older server answers an unknown route with something else entirely; keep the last good copy.
+    if (body && Array.isArray(body.agents) && body.router) schedule.value = body;
+  }
+  onMounted(() => { load(); timer = setInterval(load, intervalMs); });
+  onBeforeUnmount(() => { if (timer) clearInterval(timer); });
+  return { schedule, reload: load };
+}
+
 /** An ot-os design token's value, for canvas painters (Chart.js cannot read var()). */
 export function pjToken(name: string, fallback: string): string {
   if (typeof window === 'undefined') return fallback;

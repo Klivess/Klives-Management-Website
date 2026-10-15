@@ -75,6 +75,16 @@
           <div v-if="a.phase === 'writing' && a.preview" class="cp-live-preview">{{ a.preview }}</div>
           <div v-else-if="a.detail" class="cp-live-detail">{{ toolArgs(a) }}</div>
         </div>
+
+        <!-- When the Commander is not mid-turn, say why and when it runs next, so a quiet chat never
+             reads as being ignored. -->
+        <div v-if="commanderStatus" class="cp-status" role="status">
+          <span class="ot-dot" :class="commanderStatus.tone" aria-hidden="true"></span>
+          <span class="cp-who">Commander</span>
+          <span class="cp-status-label">{{ commanderStatus.label }}</span>
+          <span class="cp-status-detail">{{ commanderStatus.detail }}</span>
+          <span v-if="commanderStatus.next" class="cp-status-next">next {{ commanderStatus.next }}</span>
+        </div>
       </div>
     </div>
 
@@ -115,6 +125,7 @@ import { useEventStream } from '~/composables/useEventStream';
 import { renderMarkdown } from '~/scripts/agentMarkdown';
 import ApprovalCard from '~/components/Projects/ApprovalCard.vue';
 import ProjectsArtifactImage from '~/components/Projects/ArtifactImage.vue';
+import { PJ_SCHEDULE_STATE, pjNextRun, useProjectSchedule } from '~/composables/useProjectsUi';
 
 const props = defineProps<{ projectId: string }>();
 const emit = defineEmits<{ (e: 'events', events: any[]): void; (e: 'select', ev: any): void }>();
@@ -151,10 +162,16 @@ const now = ref(Date.now());
 let clock: ReturnType<typeof setInterval> | null = null;
 let ro: ResizeObserver | null = null;
 
+const SCHEDULE_EVENTS = new Set(['commander-wake', 'wake-completed', 'wake-waiting', 'wake-deferred', 'wake-failed', 'wake-cancelled']);
+const { schedule, reload: reloadSchedule } = useProjectSchedule(() => props.projectId, 15000);
+
 const stream = useEventStream({
   projectId: props.projectId,
   sinceRef: since,
-  onEvent: (e: any) => { appendEvents([e]); },
+  onEvent: (e: any) => {
+    appendEvents([e]);
+    if (SCHEDULE_EVENTS.has(e.type) && (!e.agentID || e.agentID === 'commander')) reloadSchedule();
+  },
   onActivity: (a: any) => { activity.value = { ...activity.value, [a.agentID]: a }; },
   onActivityEnded: (agentID: string) => {
     const next = { ...activity.value };
@@ -170,6 +187,17 @@ const liveAgents = computed(() => Object.values(activity.value)
     if (b.agentID === 'commander') return 1;
     return new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime();
   }));
+
+const commanderStatus = computed(() => {
+  if (liveAgents.value.some((a: any) => a.agentID === 'commander')) return null;
+  const entry = schedule.value?.agents.find(a => a.agentID === 'commander');
+  if (!entry || entry.state === 'working') return null;
+  const state = PJ_SCHEDULE_STATE[entry.state] ?? { label: entry.state, tone: '' };
+  return {
+    label: state.label, tone: state.tone, detail: entry.detail,
+    next: entry.state === 'done' ? '' : pjNextRun(entry.nextWakeAt, now.value),
+  };
+});
 
 function agentLabel(a: any) {
   if (a.agentID === 'commander') return 'Commander';
@@ -320,6 +348,8 @@ function whoLabel(e: any) {
   return 'System';
 }
 function typeLabel(e: any) {
+  if (e.type === 'commander-message' && typeof e.payloadJson === 'string' && e.payloadJson.includes('"instant":true'))
+    return 'instant reply';
   return ({ stimulus: 'stimulus', 'approval-requested': 'approval requested', 'approval-resolved': 'approval resolved', 'agent-handover': 'handover' } as Record<string, string>)[e.type] ?? '';
 }
 function time(iso: string) { const d = new Date(iso); return isNaN(d.getTime()) ? '' : d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }); }
@@ -443,6 +473,11 @@ onBeforeUnmount(() => {
 .cp-thought { font-style: italic; color: var(--ot-text-2); }
 .cp-tool-text { white-space: pre-wrap; }
 
+.cp-status { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px var(--ot-space-2); padding: 6px var(--ot-space-3); font-size: 12px; color: var(--ot-muted); border-top: 1px dashed var(--ot-line); }
+.cp-status .ot-dot { align-self: center; }
+.cp-status-label { color: var(--ot-text-2); font-weight: 600; }
+.cp-status-detail { min-width: 0; overflow-wrap: anywhere; }
+.cp-status-next { margin-left: auto; font-family: var(--ot-mono); font-size: 11px; }
 .cp-live { min-width: 0; padding: 7px var(--ot-space-3); border-radius: var(--ot-radius-sm); background: rgba(255,255,255,0.015); border: 1px dashed var(--ot-line-strong); border-left: 3px solid var(--ot-line-strong); }
 .cp-live.a-commander { border-left-color: var(--ot-accent); }
 .cp-live.a-agent { border-left-color: var(--ot-violet); }

@@ -42,6 +42,14 @@
           <span class="sp-label">Live activity<span class="sp-hint">stream model output so the conversation shows who is generating, and what</span></span>
           <input type="checkbox" v-model="form.liveActivityStreaming" />
         </label>
+        <label class="sp-row sp-toggle">
+          <span class="sp-label">Instant chat replies<span class="sp-hint">answer your messages within seconds in the Commander's voice while it gets to them</span></span>
+          <input type="checkbox" v-model="form.instantRepliesEnabled" />
+        </label>
+        <label class="sp-row sp-toggle">
+          <span class="sp-label">Keep working between wakes<span class="sp-hint">a productive Commander with open steps continues within a minute instead of waiting for its next check-in</span></span>
+          <input type="checkbox" v-model="form.momentumEnabled" />
+        </label>
         <label class="sp-row">
           <span class="sp-label">Desktop image</span>
           <input v-model="form.desktopImage" class="sp-input" placeholder="omnipotent/projects-desktop:latest" />
@@ -124,6 +132,8 @@ form.routeParameters = emptyRouteParameters();
 form.visionEnabled = true;
 form.containersEnabled = true;
 form.liveActivityStreaming = true;
+form.instantRepliesEnabled = true;
+form.momentumEnabled = true;
 form.desktopImage = 'omnipotent/projects-desktop:latest';
 form.desktopAllocation = 'PerAgentContainers';
 form.blockedDomainsText = '';
@@ -132,7 +142,7 @@ form.allowHostShell = true;
 form.allowOutboundEmail = true;
 form.allowAccountCreation = true;
 const EDITABLE = [...modelFields.map(f => f.key), 'routeParameters', 'visionEnabled', 'containersEnabled',
-  'liveActivityStreaming', 'desktopImage', ...(props.system ? [] : ['desktopAllocation']),
+  'liveActivityStreaming', 'instantRepliesEnabled', 'momentumEnabled', 'desktopImage', ...(props.system ? [] : ['desktopAllocation']),
   'blockedDomainsText', 'askFirstDomainsText', 'allowHostShell', 'allowOutboundEmail', 'allowAccountCreation'];
 // UI field → server setting name. Domain lists are edited as text and sent as arrays.
 const SERVER_KEY: Record<string, string> = { blockedDomainsText: 'blockedDomains', askFirstDomainsText: 'askFirstDomains' };
@@ -165,6 +175,7 @@ function applySettings(s: Record<string, any>, desktopAllocation?: string) {
   form.routeParameters = Object.fromEntries(
     modelFields.map(f => [f.route, { ...(saved[f.route] ?? {}) }]));
   for (const k of ['visionEnabled', 'containersEnabled', 'liveActivityStreaming', 'desktopImage']) form[k] = s[k];
+  for (const k of ['instantRepliesEnabled', 'momentumEnabled']) form[k] = s[k] ?? true;
   form.blockedDomainsText = (s.blockedDomains ?? []).join('\n');
   form.askFirstDomainsText = (s.askFirstDomains ?? []).join('\n');
   for (const k of ['allowHostShell', 'allowOutboundEmail', 'allowAccountCreation']) form[k] = s[k] ?? true;

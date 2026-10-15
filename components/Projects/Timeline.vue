@@ -346,16 +346,16 @@ onBeforeUnmount(() => {
 .tl-canvas-wrap { width: 100%; overflow: hidden; cursor: crosshair; touch-action: none; }
 .tl-canvas-wrap.grabbing { cursor: grabbing; }
 .tl-svg { display: block; user-select: none; }
-.lane-bg { fill: var(--ot-axis); }
-.lane-commander { fill: var(--ot-axis); }
-.lane-name { fill: var(--ot-text-2); font-size: 10px; }
-.grid { stroke: var(--ot-axis); stroke-width: 1; }
-.tick-label { fill: var(--ot-axis); font-size: 9px; }
-.marker { stroke: var(--ot-axis); stroke-width: 1; cursor: pointer; transition: r 0.1s; }
-.marker:hover { stroke: var(--ot-text-2); stroke-width: 1.5; }
+.lane-bg { fill: var(--ot-surface-2); }
+.lane-commander { fill: rgba(109, 220, 79, 0.06); }
+.lane-name { fill: var(--ot-muted); font-size: 10px; }
+.grid { stroke: var(--ot-grid); stroke-width: 1; }
+.tick-label { fill: var(--ot-muted); font-size: 9px; }
+.marker { stroke: var(--ot-bg); stroke-width: 1; cursor: pointer; transition: r 0.1s; }
+.marker:hover { stroke: var(--ot-text); stroke-width: 1.5; }
 .spend-line { fill: none; stroke: var(--ot-positive); stroke-width: 1.5; opacity: 0.75; }
 .hair { stroke: var(--ot-axis); stroke-width: 1; stroke-dasharray: 2 3; pointer-events: none; }
-.hair-bg { fill: var(--ot-info); opacity: 0.92; }
+.hair-bg { fill: var(--ot-surface-2); stroke: var(--ot-line-strong); opacity: 0.95; }
 .hair-label { fill: var(--ot-info); font-size: 9px; font-variant-numeric: tabular-nums; pointer-events: none; }
 .now-edge { stroke: var(--ot-negative); stroke-width: 1; stroke-dasharray: 3 3; }
 .now-pulse { fill: var(--ot-negative); animation: pulse 1.6s ease-out infinite; }

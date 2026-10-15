@@ -1,114 +1,133 @@
 <template>
-  <div class="project-workspace">
-    <div v-if="loadError" class="error-banner">{{ loadError }} <button class="ae-dismiss" @click="refresh">Retry</button></div>
+  <ProjectsShell :status="shellStatus" :status-tone="shellTone" :working="liveCount > 0" :crumb="project?.name">
+    <div v-if="loadError" class="ot-banner" role="alert">
+      <span class="glyph" aria-hidden="true">⚠</span>
+      <div><strong>This project could not be loaded</strong>{{ loadError }}</div>
+      <div class="actions"><button class="ot-btn sm" @click="refresh">Retry</button></div>
+    </div>
 
     <template v-else-if="project">
-      <div class="pw-header">
-        <div class="pw-head-left">
-          <NuxtLink to="/projects" class="back">← Projects</NuxtLink>
+      <header class="pw-head">
+        <div class="pw-titles">
           <div class="pw-title-row">
             <template v-if="!renaming">
               <h1 class="pw-title">{{ project.name }}</h1>
-              <button class="rename-btn" title="Rename project" @click="startRename">✎</button>
+              <button class="ot-btn ghost sm pw-rename" title="Rename project" aria-label="Rename project" @click="startRename">✎</button>
             </template>
             <template v-else>
-              <input ref="renameInput" v-model="renameValue" class="rename-input" @keyup.enter="commitRename" @keyup.esc="cancelRename" />
-              <button class="rename-save" :disabled="renameSaving" @click="commitRename">{{ renameSaving ? '…' : 'Save' }}</button>
-              <button class="rename-cancel" @click="cancelRename">Cancel</button>
+              <input ref="renameInput" v-model="renameValue" class="ot-input pw-rename-input" aria-label="Project name"
+                @keyup.enter="commitRename" @keyup.esc="cancelRename" />
+              <button class="ot-btn primary sm" :disabled="renameSaving" @click="commitRename">{{ renameSaving ? '…' : 'Save' }}</button>
+              <button class="ot-btn ghost sm" @click="cancelRename">Cancel</button>
             </template>
-          </div>
-          <p class="pw-goal">{{ project.goal }}</p>
-        </div>
-        <div class="pw-controls">
-          <span v-if="pendingGates" class="approval-badge" @click="tab = 'conversation'">{{ pendingGates }} approval{{ pendingGates === 1 ? '' : 's' }}</span>
-          <ProjectsHistoryExport :project-id="projectId" />
-          <ProjectsStatusPill :status="project.status" />
-          <button v-if="project.status === 'Active'" class="ctrl" :disabled="actionBusy" @click="pause" title="Halt the fleet — stops the in-flight wake too">Halt</button>
-          <button v-else-if="project.status === 'Paused' || project.status === 'BudgetPaused'" class="ctrl ctrl-go" :disabled="actionBusy" @click="resume">Resume</button>
-          <button v-else-if="project.status === 'Blocked'" class="ctrl ctrl-go" :disabled="actionBusy" @click="unblock" title="Clear the block and resume — do this once you've remediated the cause">Unblock</button>
-          <button v-if="project.status === 'Archived'" class="ctrl ctrl-go" :disabled="actionBusy" @click="unarchive">Unshelve</button>
-          <button v-else class="ctrl" :disabled="actionBusy" @click="archive" title="Shelve this project">Archive</button>
-        </div>
-      </div>
-      <div v-if="actionError" class="action-error">{{ actionError }} <button class="ae-dismiss" @click="actionError = ''">✕</button></div>
-      <div v-if="detailsLoading" class="info-banner loading-banner" role="status"><span class="project-loading-spinner" aria-hidden="true"></span>{{ detailsLoading }}</div>
-
-      <div v-if="project.status === 'Blocked'" class="blocked-banner">
-        <span class="bb-icon">⛔</span>
-        <div class="bb-body">
-          <div class="bb-title">Blocked — action required</div>
-          <div v-if="project.blockedReason" class="bb-reason">{{ project.blockedReason }}</div>
-          <div class="bb-hint">Remediate the cause, then Unblock to clear it and set the fleet back to work.</div>
-        </div>
-        <button class="ctrl ctrl-go bb-btn" :disabled="actionBusy" @click="unblock">Unblock</button>
-      </div>
-
-      <div class="pw-grid" :class="{ 'pw-grid-wide': tab === 'analytics' }">
-        <div class="pw-main">
-          <div class="pw-tabs">
-            <button v-for="t in tabs" :key="t.id" :class="{ active: tab === t.id }" @click="tab = t.id">
-              {{ t.label }}<span v-if="t.id === 'conversation' && pendingGates" class="tab-dot"></span>
+            <span class="ot-chip" :class="pjStatusTone(project.status)" data-testid="project-status">{{ pjStatusLabel(project.status) }}</span>
+            <span v-if="liveCount" class="ot-chip ok">● {{ liveCount }} working</span>
+            <button v-if="pendingGates > 0" class="ot-chip warn pw-approvals" @click="setTab('overview')">
+              {{ pendingGates }} approval{{ pendingGates === 1 ? '' : 's' }} waiting
             </button>
           </div>
-
-          <div class="pw-panel">
-            <div v-show="tab === 'conversation'" class="panel-conversation">
-              <ProjectsConversationPanel :project-id="projectId" @events="onEvents" @select="selectEvent" />
-            </div>
-            <ProjectsTimeline v-show="tab === 'timeline'" :events="events" :agent-labels="agentLabels" @select="selectEvent" />
-            <ProjectsAnalyticsDashboard v-if="tab === 'analytics'" :project-id="projectId" />
-            <ProjectsFilesPanel v-if="tab === 'files'" :project-id="projectId" :status="project.status" />
-            <!-- The Grand Plan is the north star; the step ledger is the linear path being walked toward
-                 it right now. They belong together rather than in separate tabs. -->
-            <template v-if="tab === 'plan'">
-              <ProjectsStepsPanel :project-id="projectId" />
-              <hr class="plan-divider" />
-              <ProjectsGrandPlanPanel :project-id="projectId" :grand-plan="grandPlan" />
-            </template>
-            <ProjectsCouncilsPanel v-if="tab === 'councils'" :project-id="projectId" :councils="councils" />
-            <ProjectsLiveDesktopWall v-if="tab === 'desktops'" :project-id="projectId" />
-            <ProjectsAgentsPanel
-              v-if="tab === 'agents'"
-              :project-id="projectId"
-              :cap="project.subAgentCap"
-              @watch="watchDesktop"
-              @roster-changed="loadAgents"
-            />
-            <ProjectsObservablesPanel v-if="tab === 'observables'" :project-id="projectId" :observables="observables" @changed="loadObservables" />
-            <ProjectsHooksPanel v-if="tab === 'hooks'" :project-id="projectId" />
-            <ProjectsSettingsPanel v-if="tab === 'settings'" :project-id="projectId" />
-          </div>
+          <p class="pw-goal" :class="{ open: goalOpen }" :title="goalOpen ? '' : 'Show the full goal'" @click="goalOpen = !goalOpen">{{ project.goal }}</p>
         </div>
+        <div class="ot-actions">
+          <ProjectsHistoryExport :project-id="projectId" />
+          <button v-if="project.status === 'Active' || project.status === 'Planning'" class="ot-btn warn" :disabled="actionBusy"
+            title="Halt the fleet — stops the in-flight wake too" @click="pause">Halt</button>
+          <button v-else-if="project.status === 'Paused' || project.status === 'BudgetPaused'" class="ot-btn primary" :disabled="actionBusy" @click="resume">Resume</button>
+          <button v-else-if="project.status === 'Blocked'" class="ot-btn primary" :disabled="actionBusy"
+            title="Clear the block and resume — do this once you've remediated the cause" @click="unblock">Unblock</button>
+          <button v-if="project.status === 'Archived'" class="ot-btn" :disabled="actionBusy" @click="unarchive">Unshelve</button>
+          <button v-else class="ot-btn ghost" :disabled="actionBusy" title="Shelve this project" @click="archive">Archive</button>
+        </div>
+      </header>
 
-        <div v-if="tab !== 'analytics'" class="pw-side">
-          <div class="side-card">
-            <div class="side-card-head">
-              <h3>Budget</h3>
-              <button class="budget-edit-btn" :title="editingBudget ? 'Cancel' : 'Edit budgets'" @click="toggleBudgetEdit">{{ editingBudget ? '✕' : '✎' }}</button>
+      <div v-if="actionError" class="ot-banner" role="alert">
+        <span class="glyph" aria-hidden="true">⚠</span><div>{{ actionError }}</div>
+        <div class="actions"><button class="ot-btn ghost sm" @click="actionError = ''">Dismiss</button></div>
+      </div>
+      <div v-if="project.status === 'Blocked'" class="ot-banner warn blocked-banner" role="alert">
+        <span class="glyph" aria-hidden="true">⛔</span>
+        <div>
+          <strong>Blocked — action required</strong>
+          <span v-if="project.blockedReason">{{ project.blockedReason }}</span>
+          <span class="pj-muted"> Remediate the cause, then Unblock to set the fleet back to work.</span>
+        </div>
+        <div class="actions"><button class="ot-btn primary sm" :disabled="actionBusy" @click="unblock">Unblock</button></div>
+      </div>
+      <div v-if="detailsLoading" class="ot-banner info" role="status">
+        <span class="glyph" aria-hidden="true">↻</span><div>{{ detailsLoading }}</div>
+      </div>
+
+      <nav class="pw-tabs" role="tablist" aria-label="Project sections">
+        <button v-for="t in tabs" :key="t.id" type="button" role="tab" :aria-selected="tab === t.id" :class="{ active: tab === t.id }" @click="setTab(t.id)">
+          {{ t.label }}
+          <span v-if="t.id === 'overview' && pendingGates > 0" class="ot-badge warn">{{ pendingGates }}</span>
+          <span v-if="t.id === 'agents' && agents.length" class="pw-tab-count">{{ agents.length }}</span>
+        </button>
+      </nav>
+
+      <div class="pw-body" :class="{ 'with-rail': showRail }">
+        <section class="pw-main" :aria-label="currentTabLabel">
+          <ProjectsOverviewTab v-if="tab === 'overview'" :project-id="projectId" :project="project" :digest="digest" :ledger="ledger"
+            :agents="agents" :observables="observables" :grand-plan="grandPlan" :events="events"
+            @navigate="setTab" @changed="refresh" />
+          <div v-show="tab === 'conversation'" class="ot-card pw-chat">
+            <ProjectsConversationPanel :project-id="projectId" @events="onEvents" @select="selectEvent" />
+          </div>
+          <OmniTraderCard v-if="tab === 'timeline'" title="Timeline" subtitle="Every event, by agent lane. Click a marker for its details." flush>
+            <ProjectsTimeline :events="events" :agent-labels="agentLabels" @select="selectEvent" />
+          </OmniTraderCard>
+          <div v-if="tab === 'plan'" class="ot-stack">
+            <OmniTraderCard title="Step ledger" subtitle="The linear path the Commander is walking right now"><ProjectsStepsPanel :project-id="projectId" /></OmniTraderCard>
+            <OmniTraderCard title="Grand Plan" subtitle="The approved north star — mission, milestones, risks and success criteria">
+              <ProjectsGrandPlanPanel :project-id="projectId" :grand-plan="grandPlan" />
+            </OmniTraderCard>
+            <OmniTraderCard title="Councils" subtitle="Adversarial reviews the Commander convened before big decisions" :empty="!councils.length"
+              empty-title="No councils yet" empty-text="The Commander convenes one before a plan, a pivot or an irreversible spend.">
+              <ProjectsCouncilsPanel :project-id="projectId" :councils="councils" />
+            </OmniTraderCard>
+          </div>
+          <OmniTraderCard v-if="tab === 'agents'" title="Agents" :subtitle="`The task force · cap ${project.subAgentCap}`">
+            <ProjectsAgentsPanel :project-id="projectId" :cap="project.subAgentCap" @watch="() => setTab('computers')" @roster-changed="loadAgents" />
+          </OmniTraderCard>
+          <ProjectsComputersPanel v-if="tab === 'computers'" :project-id="projectId" />
+          <OmniTraderCard v-if="tab === 'files'" title="Files" subtitle="/project — shared by you and every agent"><ProjectsFilesPanel :project-id="projectId" :status="project.status" /></OmniTraderCard>
+          <OmniTraderCard v-if="tab === 'observables'" title="Observables" subtitle="Live values the agents maintain for you">
+            <ProjectsObservablesPanel :project-id="projectId" :observables="observables" @changed="loadObservables" />
+          </OmniTraderCard>
+          <ProjectsAnalyticsDashboard v-if="tab === 'analytics'" :project-id="projectId" />
+          <div v-if="tab === 'settings'" class="ot-stack">
+            <OmniTraderCard title="Settings" subtitle="This project's own configuration — independent of every other project">
+              <ProjectsSettingsPanel :project-id="projectId" />
+            </OmniTraderCard>
+            <OmniTraderCard title="Wake triggers" subtitle="Timers, webhooks, email and screen watches that wake the agents">
+              <ProjectsHooksPanel :project-id="projectId" />
+            </OmniTraderCard>
+          </div>
+        </section>
+
+        <aside v-if="showRail" class="pw-rail ot-stack" aria-label="Project at a glance">
+          <OmniTraderCard title="Budget">
+            <template #controls>
+              <button class="ot-btn ghost sm budget-edit-btn" :title="editingBudget ? 'Cancel' : 'Edit budgets'" @click="toggleBudgetEdit">{{ editingBudget ? 'Cancel' : 'Edit' }}</button>
+            </template>
+            <div class="pw-budget">
+              <div class="ot-meter" :class="{ warn: tokenPct >= 80 && tokenPct < 100, bad: tokenPct >= 100 }">
+                <div class="row"><span class="lbl">Model</span><span class="val">{{ pjMoney(ledger.tokenSpendUsd) }} / {{ pjMoney(project.tokenBudgetUsd) }}</span></div>
+                <div class="track"><div class="fill" :style="{ width: Math.min(100, tokenPct) + '%' }"></div></div>
+              </div>
+              <div class="ot-meter">
+                <div class="row"><span class="lbl">External</span><span class="val">{{ pjMoney(ledger.moneySpendUsd) }} / {{ pjMoney(project.moneyBudgetUsd) }}</span></div>
+                <div class="track"><div class="fill" :style="{ width: Math.min(100, moneyPct) + '%' }"></div></div>
+                <div class="foot"><span>Autonomous ≤ {{ pjMoney(project.moneyAutonomousThresholdUsd) }} per action</span><span>cap {{ project.subAgentCap }} agents</span></div>
+              </div>
             </div>
-            <ProjectsSpendOverlay
-              :token-spent="ledger.tokenSpendUsd || 0"
-              :token-budget="project.tokenBudgetUsd"
-              :money-spent="ledger.moneySpendUsd || 0"
-              :money-budget="project.moneyBudgetUsd"
-            />
             <div v-if="editingBudget" class="budget-form">
-              <label class="bf-field">
-                <span>Token budget ($)</span>
-                <input v-model.number="budgetDraft.tokenBudgetUsd" type="number" min="0.01" step="1" class="bf-input" />
-              </label>
-              <label class="bf-field">
-                <span>Money budget ($)</span>
-                <input v-model.number="budgetDraft.moneyBudgetUsd" type="number" min="0" step="1" class="bf-input" />
-              </label>
-              <label class="bf-field">
-                <span>Autonomous spend ≤ ($)</span>
-                <input v-model.number="budgetDraft.moneyAutonomousThresholdUsd" type="number" min="0" step="0.5" class="bf-input" />
-              </label>
-              <label class="bf-field">
-                <span>Agent cap</span>
-                <input v-model.number="budgetDraft.subAgentCap" type="number" min="1" step="1" class="bf-input" />
-              </label>
+              <div class="ot-formgrid">
+                <div class="ot-field"><label for="bf-token">Model budget ($)</label><input id="bf-token" v-model.number="budgetDraft.tokenBudgetUsd" type="number" min="0.01" step="1" class="ot-input mono" /></div>
+                <div class="ot-field"><label for="bf-money">External budget ($)</label><input id="bf-money" v-model.number="budgetDraft.moneyBudgetUsd" type="number" min="0" step="1" class="ot-input mono" /></div>
+                <div class="ot-field"><label for="bf-auto">Autonomous ≤ ($)</label><input id="bf-auto" v-model.number="budgetDraft.moneyAutonomousThresholdUsd" type="number" min="0" step="0.5" class="ot-input mono" /></div>
+                <div class="ot-field"><label for="bf-cap">Agent cap</label><input id="bf-cap" v-model.number="budgetDraft.subAgentCap" type="number" min="1" step="1" class="ot-input mono" /></div>
+              </div>
               <!-- Lowering the cap under the live roster retires agents the moment you save, so the
                    cost is stated before the click rather than discovered after it. -->
               <p v-if="capReduction > 0" class="bf-warn">
@@ -117,79 +136,67 @@
                 The Commander picks the least disruptive ones and is handed everything they were working on —
                 objectives, milestones and their exact next action — so no work is lost.
               </p>
-              <div v-if="budgetError" class="bf-error">{{ budgetError }}</div>
+              <p v-if="budgetError" class="bf-error">{{ budgetError }}</p>
               <div class="bf-actions">
-                <button class="bf-save" :class="{ destructive: capReduction > 0 }" :disabled="budgetSaving" @click="saveBudgets">
+                <button class="ot-btn sm" :class="capReduction > 0 ? 'danger' : 'primary'" :disabled="budgetSaving" @click="saveBudgets">
                   {{ budgetSaving ? 'Saving…' : (capReduction > 0 ? `Save and retire ${capReduction}` : 'Save budgets') }}
                 </button>
               </div>
               <p v-if="retiredSummary" class="bf-retired">{{ retiredSummary }}</p>
-              <p v-if="project.status === 'BudgetPaused'" class="bf-hint">Raising the token budget above current spend resumes the project.</p>
+              <p v-if="project.status === 'BudgetPaused'" class="bf-hint">Raising the model budget above current spend resumes the project.</p>
             </div>
-          </div>
-          <div v-if="grandPlan.current" class="side-card">
-            <div class="side-card-head">
-              <h3>Grand Plan v{{ grandPlan.current.version }}</h3>
-              <button class="obs-all-btn" @click="tab = 'plan'">view →</button>
-            </div>
-            <p class="digest-text">{{ grandPlan.current.summary }}</p>
-          </div>
-          <div v-else-if="project.status === 'Planning'" class="side-card">
-            <div class="side-card-head">
-              <h3>Grand Plan</h3>
-              <button class="obs-all-btn" @click="tab = 'plan'">view →</button>
-            </div>
-            <p class="digest-text">Drafting — awaiting your approval before work begins.</p>
-          </div>
-          <div v-if="observables.length" class="side-card">
-            <div class="side-card-head">
-              <h3>Observables</h3>
-              <button class="obs-all-btn" @click="tab = 'observables'">all →</button>
-            </div>
-            <ul class="obs-mini-list">
-              <li v-for="o in topObservables" :key="o.observableID" class="obs-mini-row">
-                <span class="obs-mini-name" :title="o.name">{{ o.name }}</span>
-                <ProjectsObservableSparkline
-                  v-if="o.type === 'Numeric' && o.history && o.history.length > 1"
-                  :samples="o.history" :width="52" :height="16" />
-                <span class="obs-mini-value">{{ o.displayValue }}</span>
-              </li>
-            </ul>
-          </div>
-          <div class="side-card">
-            <h3>Plan</h3>
+          </OmniTraderCard>
+
+          <OmniTraderCard title="Plan" :subtitle="grandPlan.current ? `Grand Plan v${grandPlan.current.version}` : project.status === 'Planning' ? 'Drafting — awaiting your approval' : ''">
+            <template #controls><button class="ot-btn ghost sm" @click="setTab('plan')">View →</button></template>
             <template v-if="digest.currentFocus || (digest.nextSteps && digest.nextSteps.length)">
-              <p v-if="digest.currentFocus" class="digest-focus"><span class="df-label">Focus</span>{{ digest.currentFocus }}</p>
+              <p v-if="digest.currentFocus" class="digest-focus"><span class="ot-chip info">Focus</span> {{ digest.currentFocus }}</p>
               <ol v-if="digest.nextSteps && digest.nextSteps.length" class="digest-steps">
                 <li v-for="(s, i) in digest.nextSteps" :key="i">{{ s }}</li>
               </ol>
             </template>
-            <p v-else class="digest-text">{{ digest.currentPlan || '(no plan yet)' }}</p>
-            <h3>Org chart</h3>
-            <p class="digest-text">{{ digest.orgChart || '(commander only)' }}</p>
-            <h3>Open threads</h3>
-            <p class="digest-text">{{ digest.openThreads || '(none)' }}</p>
-          </div>
-        </div>
+            <p v-else class="digest-text">{{ digest.currentPlan || 'No plan yet.' }}</p>
+            <template v-if="digest.openThreads">
+              <h3 class="ot-sectionhead pw-rail-sub">Open threads</h3>
+              <p class="digest-text">{{ digest.openThreads }}</p>
+            </template>
+          </OmniTraderCard>
+
+          <OmniTraderCard v-if="observables.length" title="Observables">
+            <template #controls><button class="ot-btn ghost sm" @click="setTab('observables')">All →</button></template>
+            <ul class="obs-mini-list">
+              <li v-for="o in topObservables" :key="o.observableID" class="obs-mini-row">
+                <span class="obs-mini-name" :title="o.name">{{ o.name }}</span>
+                <ProjectsObservableSparkline v-if="o.type === 'Numeric' && o.history && o.history.length > 1" :samples="o.history" :width="52" :height="16" />
+                <span class="obs-mini-value">{{ o.displayValue }}</span>
+              </li>
+            </ul>
+          </OmniTraderCard>
+        </aside>
       </div>
 
       <ProjectsEventDetail :project-id="projectId" :event="selectedEvent" @close="selectedEvent = null" />
     </template>
 
-    <div v-else class="info-banner project-loading" role="status"><span class="project-loading-spinner" aria-hidden="true"></span><div><strong>{{ loadingStage }}</strong><small>The workspace will open automatically as soon as this step finishes.</small></div></div>
-  </div>
+    <div v-else class="pw-loading" role="status">
+      <span class="pw-spinner" aria-hidden="true"></span>
+      <div><strong>{{ loadingStage }}</strong><small>The workspace opens as soon as this step finishes.</small></div>
+    </div>
+  </ProjectsShell>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
-import { useRoute } from 'vue-router';
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import { useEventStream } from '~/composables/useEventStream';
+import { pjMoney, pjStatusLabel, pjStatusTone } from '~/composables/useProjectsUi';
+import ProjectsShell from '~/components/Projects/Shell.vue';
+import ProjectsOverviewTab from '~/components/Projects/OverviewTab.vue';
 import ProjectsTimeline from '~/components/Projects/Timeline.vue';
 import ProjectsConversationPanel from '~/components/Projects/ConversationPanel.vue';
 import ProjectsAnalyticsDashboard from '~/components/Projects/AnalyticsDashboard.vue';
-import ProjectsSpendOverlay from '~/components/Projects/SpendOverlay.vue';
-import ProjectsLiveDesktopWall from '~/components/Projects/LiveDesktopWall.vue';
+import ProjectsComputersPanel from '~/components/Projects/ComputersPanel.vue';
 import ProjectsAgentsPanel from '~/components/Projects/AgentsPanel.vue';
 import ProjectsObservablesPanel from '~/components/Projects/ObservablesPanel.vue';
 import ProjectsObservableSparkline from '~/components/Projects/ObservableSparkline.vue';
@@ -198,7 +205,6 @@ import ProjectsGrandPlanPanel from '~/components/Projects/GrandPlanPanel.vue';
 import ProjectsStepsPanel from '~/components/Projects/StepsPanel.vue';
 import ProjectsHooksPanel from '~/components/Projects/HooksPanel.vue';
 import ProjectsSettingsPanel from '~/components/Projects/SettingsPanel.vue';
-import ProjectsStatusPill from '~/components/Projects/StatusPill.vue';
 import ProjectsEventDetail from '~/components/Projects/EventDetail.vue';
 import ProjectsFilesPanel from '~/components/Projects/FilesPanel.vue';
 import ProjectsHistoryExport from '~/components/Projects/HistoryExport.vue';
@@ -206,22 +212,36 @@ import ProjectsHistoryExport from '~/components/Projects/HistoryExport.vue';
 definePageMeta({ layout: 'navbar' });
 
 const route = useRoute();
+const router = useRouter();
 const projectId = String(route.params.projectId);
 
 const tabs = [
-  { id: 'conversation', label: 'Conversation' },
+  { id: 'overview', label: 'Overview' },
+  { id: 'conversation', label: 'Chat' },
   { id: 'timeline', label: 'Timeline' },
-  { id: 'analytics', label: 'Analytics' },
-  { id: 'files', label: 'Files' },
-  { id: 'plan', label: 'Grand Plan' },
-  { id: 'councils', label: 'Councils' },
-  { id: 'desktops', label: 'Desktops' },
+  { id: 'plan', label: 'Plan' },
   { id: 'agents', label: 'Agents' },
+  { id: 'computers', label: 'Computers' },
+  { id: 'files', label: 'Files' },
   { id: 'observables', label: 'Observables' },
-  { id: 'hooks', label: 'Hooks' },
+  { id: 'analytics', label: 'Analytics' },
   { id: 'settings', label: 'Settings' },
 ];
-const tab = ref('conversation');
+// Older links name tabs that were folded into others.
+const TAB_ALIASES: Record<string, string> = { desktops: 'computers', councils: 'plan', hooks: 'settings', chat: 'conversation' };
+function normalTab(value: unknown) {
+  const raw = String(value ?? '');
+  const id = TAB_ALIASES[raw] ?? raw;
+  return tabs.some(t => t.id === id) ? id : 'overview';
+}
+const tab = ref(normalTab(route.query.tab));
+function setTab(id: string) {
+  tab.value = normalTab(id);
+  router.replace({ query: { ...route.query, tab: tab.value === 'overview' ? undefined : tab.value } });
+}
+watch(() => route.query.tab, value => { tab.value = normalTab(value); });
+const currentTabLabel = computed(() => tabs.find(t => t.id === tab.value)?.label ?? '');
+const showRail = computed(() => ['conversation', 'timeline', 'plan', 'agents', 'files', 'observables'].includes(tab.value));
 
 const project = ref<any>(null);
 const digest = ref<any>({});
@@ -231,16 +251,32 @@ const agents = ref<any[]>([]);
 const observables = ref<any[]>([]);
 const councils = ref<any[]>([]);
 const grandPlan = ref<any>({ current: null, versions: [] });
+const activity = ref<Record<string, any>>({});
 const loadError = ref('');
 const loadingStage = ref('Connecting to Omnipotent…');
 const detailsLoading = ref('');
 const selectedEvent = ref<any>(null);
+const goalOpen = ref(false);
 let poll: ReturnType<typeof setInterval> | null = null;
 let projectRetry: ReturnType<typeof setTimeout> | null = null;
 
 const pendingGates = computed(() =>
-  events.value.filter(e => e.type === 'approval-requested').length -
-  events.value.filter(e => e.type === 'approval-resolved').length);
+  Math.max(0, events.value.filter(e => e.type === 'approval-requested').length -
+  events.value.filter(e => e.type === 'approval-resolved').length));
+const liveCount = computed(() => Object.keys(activity.value).length);
+const tokenPct = computed(() => project.value?.tokenBudgetUsd > 0 ? 100 * (ledger.value.tokenSpendUsd || 0) / project.value.tokenBudgetUsd : 0);
+const moneyPct = computed(() => project.value?.moneyBudgetUsd > 0 ? 100 * (ledger.value.moneySpendUsd || 0) / project.value.moneyBudgetUsd : 0);
+
+const shellStatus = computed(() => {
+  if (!project.value) return '';
+  if (project.value.status === 'Blocked') return `Blocked${project.value.blockedReason ? ': ' + project.value.blockedReason : ''}`;
+  if (pendingGates.value) return `${pendingGates.value} approval${pendingGates.value === 1 ? '' : 's'} waiting for you`;
+  if (liveCount.value) return `${liveCount.value} agent${liveCount.value === 1 ? '' : 's'} working`;
+  return pjStatusLabel(project.value.status);
+});
+useHead({ title: computed(() => project.value?.name ? `${project.value.name} · Projects` : 'Project · Projects') });
+const shellTone = computed(() => !project.value ? '' : project.value.status === 'Blocked' ? 'bad'
+  : pendingGates.value || ['Paused', 'BudgetPaused'].includes(project.value.status) ? 'warn' : 'ok');
 
 const agentLabels = computed(() => {
   const m: Record<string, string> = {};
@@ -250,8 +286,14 @@ const agentLabels = computed(() => {
 
 function onEvents(all: any[]) { events.value = all; }
 function selectEvent(ev: any) { selectedEvent.value = ev; }
-// Clicking an agent in the Agents tab jumps to the Desktops CCTV wall (which shows every screen).
-function watchDesktop(_containerId: string) { tab.value = 'desktops'; }
+
+// The rail and header need to know who is mid-turn, cheaply: one socket for the whole page.
+const activityStream = useEventStream({
+  projectId,
+  onEvent: () => scheduleRefresh(),
+  onActivity: (a: any) => { activity.value = { ...activity.value, [a.agentID]: a }; },
+  onActivityEnded: (id: string) => { const next = { ...activity.value }; delete next[id]; activity.value = next; },
+});
 
 function retryProjectSoon(delay = 1000) {
   if (projectRetry) clearTimeout(projectRetry);
@@ -289,42 +331,34 @@ async function loadProject(): Promise<boolean> {
     loadError.value = '';
     loadingStage.value = '';
     return true;
-  } catch (err: any) {
+  } catch {
     loadingStage.value = 'Reconnecting to Omnipotent…';
     loadError.value = '';
     retryProjectSoon(1000);
     return false;
   }
 }
-async function loadDigest() {
-  try { const r = await RequestGETFromKliveAPI(`/projects/digest?projectID=${projectId}`, false, false); if (r.ok) digest.value = await r.json(); } catch { /* transient */ }
+async function loadJson(path: string, target: { value: any }) {
+  try { const r = await RequestGETFromKliveAPI(path, false, false); if (r.ok) target.value = await r.json(); } catch { /* transient */ }
 }
-async function loadLedger() {
-  try { const r = await RequestGETFromKliveAPI(`/projects/ledger?projectID=${projectId}`, false, false); if (r.ok) ledger.value = await r.json(); } catch { /* transient */ }
-}
-async function loadAgents() {
-  try { const r = await RequestGETFromKliveAPI(`/projects/agents?projectID=${projectId}`, false, false); if (r.ok) agents.value = await r.json(); } catch { /* transient */ }
-}
-async function loadObservables() {
-  try { const r = await RequestGETFromKliveAPI(`/projects/observables?projectID=${projectId}&history=120`, false, false); if (r.ok) observables.value = await r.json(); } catch { /* transient */ }
-}
-async function loadCouncils() {
-  try { const r = await RequestGETFromKliveAPI(`/projects/councils?projectID=${projectId}`, false, false); if (r.ok) councils.value = await r.json(); } catch { /* transient */ }
-}
-async function loadGrandPlan() {
-  try { const r = await RequestGETFromKliveAPI(`/projects/grandplan?projectID=${projectId}`, false, false); if (r.ok) grandPlan.value = await r.json(); } catch { /* transient */ }
+const loadDigest = () => loadJson(`/projects/digest?projectID=${projectId}`, digest);
+const loadLedger = () => loadJson(`/projects/ledger?projectID=${projectId}`, ledger);
+const loadAgents = () => loadJson(`/projects/agents?projectID=${projectId}`, agents);
+const loadObservables = () => loadJson(`/projects/observables?projectID=${projectId}&history=120`, observables);
+const loadCouncils = () => loadJson(`/projects/councils?projectID=${projectId}`, councils);
+const loadGrandPlan = () => loadJson(`/projects/grandplan?projectID=${projectId}`, grandPlan);
+async function loadActivity() {
+  try {
+    const r = await RequestGETFromKliveAPI(`/projects/activity?projectID=${projectId}`, false, false);
+    if (!r.ok) return;
+    const list = await r.json();
+    if (Array.isArray(list)) activity.value = Object.fromEntries(list.map((a: any) => [a.agentID, a]));
+  } catch { /* transient */ }
 }
 
-// Top observables for the always-visible side card: most-recently-updated first (agents signal
-// relevance by touching a value), capped so the rail stays compact.
 const topObservables = computed(() =>
-  [...observables.value]
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-    .slice(0, 6));
+  [...observables.value].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 6));
 
-// Control actions used to fire-and-forget with no error handling and no button disabling — a failed
-// POST left the user with no feedback and double-clicks were possible. Route them through a guarded
-// helper that disables the buttons and surfaces failures.
 const actionBusy = ref(false);
 const actionError = ref('');
 async function runAction(url: string) {
@@ -343,8 +377,6 @@ async function runAction(url: string) {
 }
 async function pause() { await runAction('/projects/pause'); }
 async function resume() { await runAction('/projects/resume'); }
-// Unblock is the resume path: /projects/resume clears BlockedAt/BlockedReason, logs a
-// ProjectUnblocked event, and re-wakes the Commander to continue after remediation.
 async function unblock() { await runAction('/projects/resume'); }
 async function archive() { await runAction('/projects/archive'); }
 async function unarchive() { await runAction('/projects/unarchive'); }
@@ -355,16 +387,13 @@ const budgetSaving = ref(false);
 const budgetError = ref('');
 const budgetDraft = ref({ tokenBudgetUsd: 0, moneyBudgetUsd: 0, moneyAutonomousThresholdUsd: 0, subAgentCap: 1 });
 const retiredSummary = ref('');
-
-// How many agents a save at the drafted cap would retire. The backend chooses WHICH — replicating
-// its ranking here would drift out of sync with it — so this only ever states the count.
+// How many agents a save at the drafted cap would retire. The backend chooses WHICH; this only states the count.
 const capReduction = computed(() => {
   if (!editingBudget.value) return 0;
   const drafted = Number(budgetDraft.value.subAgentCap);
   if (!(drafted >= 1)) return 0;
   return Math.max(0, agents.value.length - drafted);
 });
-
 function toggleBudgetEdit() {
   budgetError.value = '';
   retiredSummary.value = '';
@@ -378,24 +407,20 @@ function toggleBudgetEdit() {
   }
   editingBudget.value = !editingBudget.value;
 }
-
 async function saveBudgets() {
   const d = budgetDraft.value;
-  if (!(d.tokenBudgetUsd > 0)) { budgetError.value = 'Token budget must be greater than 0.'; return; }
+  if (!(d.tokenBudgetUsd > 0)) { budgetError.value = 'Model budget must be greater than 0.'; return; }
   if (d.moneyBudgetUsd < 0 || d.moneyAutonomousThresholdUsd < 0) { budgetError.value = 'Money values cannot be negative.'; return; }
   if (!(d.subAgentCap >= 1)) { budgetError.value = 'Agent cap must be at least 1.'; return; }
   budgetSaving.value = true;
   budgetError.value = '';
   try {
-    const res = await RequestPOSTFromKliveAPI('/projects/budget/update',
-      JSON.stringify({ projectID: projectId, ...d }), false, true);
+    const res = await RequestPOSTFromKliveAPI('/projects/budget/update', JSON.stringify({ projectID: projectId, ...d }), false, true);
     if (!res.ok) { budgetError.value = `Save failed (HTTP ${res.status}).`; return; }
     const saved = await res.json();
     project.value = saved;
     const retired: any[] = Array.isArray(saved.retiredAgents) ? saved.retiredAgents : [];
     if (retired.length) {
-      // Name who actually lost their slot. A cap that silently drops by four is a destructive
-      // action with no receipt; the roster and timeline below carry the detail.
       const unowned = retired.reduce((n, h) => n + (h.activeMilestoneIDs?.length || 0), 0);
       retiredSummary.value =
         `Retired ${retired.map(h => `${h.role} (${h.agentID})`).join(', ')}. `
@@ -442,106 +467,71 @@ async function refresh() {
   const loaded = await loadProject();
   if (!loaded && !project.value) return;
   if (firstLoad) detailsLoading.value = 'Loading budget, plan, agents and live measurements…';
-  await Promise.allSettled([loadDigest(), loadLedger(), loadAgents(), loadObservables(), loadCouncils(), loadGrandPlan()]);
+  await Promise.allSettled([loadDigest(), loadLedger(), loadAgents(), loadObservables(), loadCouncils(), loadGrandPlan(), loadActivity()]);
   detailsLoading.value = '';
 }
 
-// Live push (Phase 3): refresh the side-rail data on any project event (debounced) instead of a
-// tight 5s poll. ConversationPanel streams its own events; this keeps status/budget/agents fresh.
+// Live push refreshes the rail on any project event (debounced) instead of a tight poll.
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleRefresh() { if (refreshTimer) return; refreshTimer = setTimeout(() => { refreshTimer = null; refresh(); }, 1000); }
-const wsStream = useEventStream({ projectId, onEvent: () => scheduleRefresh() });
 
 onMounted(() => {
   refresh();
-  wsStream.connect();
+  activityStream.connect();
   poll = setInterval(refresh, 30000); // safety net only
 });
 onBeforeUnmount(() => {
   if (poll) clearInterval(poll);
   if (refreshTimer) clearTimeout(refreshTimer);
   if (projectRetry) clearTimeout(projectRetry);
-  wsStream.disconnect();
+  activityStream.disconnect();
 });
 </script>
 
 <style scoped>
-.project-workspace { padding: 24px; color: #e6e6e6; }
-.project-loading { min-height:260px; display:flex; align-items:center; justify-content:center; gap:14px; }.project-loading>div { display:flex; flex-direction:column; gap:5px; }.project-loading strong { font-weight:500; }.project-loading small { color:#888; }.project-loading-spinner { width:16px; height:16px; border:2px solid #4a4a4f; border-top-color:#71bd59; border-radius:50%; animation:project-spin .8s linear infinite; flex:0 0 auto; }.project-loading .project-loading-spinner { width:28px; height:28px; border-width:3px; }.loading-banner { display:flex; align-items:center; gap:9px; }
-@keyframes project-spin { to { transform:rotate(360deg); } }
-.action-error { background: #3a1717; border: 1px solid #5a2424; color: #e08a8a; padding: 8px 12px; border-radius: 8px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
-.ae-dismiss { background: none; border: none; color: #e08a8a; cursor: pointer; }
-.blocked-banner { display: flex; align-items: center; gap: 12px; background: #3a1f17; border: 1px solid #6a3a22; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
-.bb-icon { font-size: 18px; flex-shrink: 0; }
-.bb-body { flex: 1; min-width: 0; }
-.bb-title { font-weight: 600; color: #e8a877; font-size: 14px; }
-.bb-reason { color: #e6c6b4; font-size: 13px; margin-top: 3px; overflow-wrap: anywhere; }
-.bb-hint { color: #b08870; font-size: 12px; margin-top: 4px; }
-.bb-btn { flex-shrink: 0; }
-.ctrl:disabled { opacity: 0.5; cursor: default; }
-.pw-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; gap: 16px; }
-.back { color: #7fb0d9; text-decoration: none; font-size: 13px; }
-.pw-title-row { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px; }
-.pw-title { margin: 0; font-size: 26px; }
-.rename-btn { background: none; border: none; color: #666; cursor: pointer; font-size: 15px; padding: 2px 6px; border-radius: 4px; }
-.rename-btn:hover { color: #ccc; background: #26262b; }
-.rename-input { background: #14141a; color: #fff; border: 1px solid #4d9e39; border-radius: 6px; padding: 6px 10px; font-size: 22px; min-width: 320px; }
-.rename-save { background: #4d9e39; color: #fff; border: none; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
-.rename-save:disabled { opacity: 0.5; }
-.rename-cancel { background: #26262b; color: #ccc; border: none; padding: 7px 12px; border-radius: 6px; cursor: pointer; }
-.pw-goal { margin: 0; color: #999; font-size: 14px; max-width: 720px; }
-.pw-controls { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
-.ctrl { background: #26262b; color: #ccc; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; }
-.ctrl-go { background: #2e5426; color: #fff; }
-.approval-badge { background: #3a2f17; color: #d9b872; font-size: 12px; padding: 4px 10px; border-radius: 10px; cursor: pointer; font-weight: 600; }
-.pw-grid { display: grid; grid-template-columns: 1fr 340px; gap: 18px; align-items: start; }
-.pw-grid.pw-grid-wide { grid-template-columns: minmax(0, 1fr); }
+.pw-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--ot-space-4); flex-wrap: wrap; margin-bottom: var(--ot-space-3); }
+.pw-titles { min-width: 0; flex: 1 1 520px; }
+.pw-title-row { display: flex; align-items: center; gap: var(--ot-space-2); flex-wrap: wrap; }
+.pw-title { margin: 0; font-size: 24px; line-height: 32px; font-weight: 620; letter-spacing: -0.2px; overflow-wrap: anywhere; }
+.pw-rename { color: var(--ot-muted); }
+.pw-rename-input { max-width: 420px; height: 34px; font-size: 18px; }
+.pw-approvals { cursor: pointer; }
+.pw-goal { margin: var(--ot-space-1) 0 0; color: var(--ot-text-2); font-size: 13px; line-height: 19px; max-width: 110ch; cursor: pointer;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
+.pw-goal.open { display: block; -webkit-line-clamp: unset; }
+.blocked-banner strong { display: block; }
+.pw-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--ot-line); margin-bottom: var(--ot-gutter); overflow-x: auto; scrollbar-width: none; }
+.pw-tabs::-webkit-scrollbar { height: 0; }
+.pw-tabs button { display: inline-flex; align-items: center; gap: 6px; padding: 10px 14px; font-size: 13px; font-weight: 550; color: var(--ot-text-2);
+  border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; cursor: pointer; }
+.pw-tabs button:hover { color: var(--ot-text); }
+.pw-tabs button.active { color: var(--ot-accent); border-bottom-color: var(--ot-accent); }
+.pw-tab-count { font-size: 10.5px; color: var(--ot-muted); font-family: var(--ot-mono); }
+.pw-body { display: grid; gap: var(--ot-gutter); grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 1240px) { .pw-body.with-rail { grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); } }
 .pw-main { min-width: 0; }
-.pw-tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid #2a2a2e; overflow-x: auto; }
-.pw-tabs button { position: relative; background: none; border: none; color: #999; padding: 10px 14px; cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent; margin-bottom: -1px; }
-.pw-tabs button.active { color: #fff; border-bottom-color: #4d9e39; }
-.tab-dot { position: absolute; top: 6px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: #d9b872; }
-.panel-conversation { height: clamp(420px, calc(100vh - 250px), 760px); background: #161519; border-radius: 8px; overflow: hidden; }
-.plan-divider { border: none; border-top: 1px solid #2a2a2e; margin: 24px 0; }
-.pw-side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 16px; }
-.side-card { background: #161519; border-radius: 8px; padding: 14px; }
-.side-card-head { display: flex; justify-content: space-between; align-items: center; }
-.budget-edit-btn { background: none; border: none; color: #666; cursor: pointer; font-size: 13px; padding: 2px 6px; border-radius: 4px; }
-.budget-edit-btn:hover { color: #ccc; background: #26262b; }
-.budget-form { margin-top: 12px; border-top: 1px solid #2a2a2e; padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
-.bf-field { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: #aaa; }
-.bf-input { width: 110px; background: #1a1a1e; color: #eee; border: 1px solid #333; border-radius: 6px; padding: 5px 8px; font-size: 13px; text-align: right; }
-.bf-error { font-size: 12px; color: #e08a8a; }
+.pw-chat { height: clamp(460px, calc(100vh - 290px), 900px); overflow: hidden; }
+.pw-rail { position: sticky; top: 108px; }
+@media (max-width: 1239px) { .pw-rail { position: static; } }
+.pw-budget { display: flex; flex-direction: column; gap: var(--ot-space-3); }
+.budget-form { margin-top: var(--ot-space-3); border-top: 1px solid var(--ot-line); padding-top: var(--ot-space-3); display: flex; flex-direction: column; gap: var(--ot-space-2); }
+.bf-error { font-size: 12px; color: var(--ot-negative); margin: 0; }
 .bf-actions { display: flex; justify-content: flex-end; }
-.bf-save { background: #4d9e39; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; }
-.bf-save:disabled { opacity: 0.5; }
-.bf-save.destructive { background: #7a3a3a; }
-.bf-hint { font-size: 11px; color: #d9c47f; margin: 4px 0 0; }
-.bf-warn { font-size: 11px; color: #d9c47f; line-height: 1.5; margin: 0; background: #241f14; border-left: 2px solid #7a6a2a; border-radius: 4px; padding: 8px 10px; }
-.bf-retired { font-size: 11px; color: #9ac48a; line-height: 1.5; margin: 6px 0 0; }
-.side-card h3 { margin: 0 0 8px; font-size: 13px; color: #bbb; }
-.side-card h3:not(:first-child) { margin-top: 14px; }
-.obs-all-btn { background: none; border: none; color: #7fb0d9; cursor: pointer; font-size: 12px; padding: 2px 4px; }
-.obs-all-btn:hover { color: #a8ccec; }
-.obs-mini-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.obs-mini-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-.obs-mini-name { color: #999; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.obs-mini-value { color: #e6e6e6; font-weight: 600; font-variant-numeric: tabular-nums; flex-shrink: 0; }
-.digest-text { font-size: 12px; color: #aaa; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; margin: 0; line-height: 1.5; }
-.digest-focus { font-size: 12px; color: #cfcfd6; margin: 0 0 6px; line-height: 1.45; overflow-wrap: anywhere; }
-.df-label { font-size: 9px; letter-spacing: 0.05em; text-transform: uppercase; color: #7fd97f; background: #1d3a1d; padding: 1px 6px; border-radius: 6px; margin-right: 6px; }
+.bf-hint { font-size: 11.5px; color: var(--ot-warning); margin: 0; }
+.bf-warn { font-size: 11.5px; color: #ffe6b0; line-height: 1.5; margin: 0; background: var(--ot-warning-soft); border-left: 2px solid var(--ot-warning); border-radius: 4px; padding: 8px 10px; }
+.bf-retired { font-size: 11.5px; color: var(--ot-positive); line-height: 1.5; margin: 0; }
+.pw-rail-sub { margin-top: var(--ot-space-3); }
+.digest-text { font-size: 12.5px; color: var(--ot-text-2); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; line-height: 1.5; }
+.digest-focus { font-size: 12.5px; color: var(--ot-text); margin: 0 0 var(--ot-space-2); line-height: 1.5; overflow-wrap: anywhere; }
 .digest-steps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
-.digest-steps li { font-size: 12px; color: #aaa; line-height: 1.45; overflow-wrap: anywhere; }
-.side-card { min-width: 0; overflow: hidden; }
-.side-hint { font-size: 11px; color: #666; margin: 8px 0 0; }
-.info-banner, .error-banner { padding: 16px; border-radius: 6px; background: #1f1f23; }
-.error-banner { color: #ff8484; background: #2a1818; }
-.status-pill { font-size: 11px; padding: 3px 10px; border-radius: 10px; display: inline-flex; align-items: center; gap: 5px; }
-.live-dot { width: 6px; height: 6px; border-radius: 50%; background: #7fd97f; animation: blink 1.6s ease-in-out infinite; }
-@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-.s-active { background: #1d3a1d; color: #7fd97f; }
-.s-paused, .s-budgetpaused { background: #3a331d; color: #d9c47f; }
-.s-completed { background: #1d2a3a; color: #7fb0d9; }
-.s-archived { background: #2a2a2e; color: #999; }
-@media (max-width: 900px) { .pw-grid { grid-template-columns: 1fr; } .pw-side { position: static; } }
+.digest-steps li { font-size: 12.5px; color: var(--ot-text-2); line-height: 1.45; overflow-wrap: anywhere; }
+.obs-mini-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.obs-mini-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.obs-mini-name { color: var(--ot-text-2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.obs-mini-value { font-weight: 600; font-family: var(--ot-mono); flex-shrink: 0; }
+.pw-loading { min-height: 300px; display: flex; align-items: center; justify-content: center; gap: 14px; }
+.pw-loading > div { display: flex; flex-direction: column; gap: 4px; }
+.pw-loading small { color: var(--ot-muted); }
+.pw-spinner { width: 26px; height: 26px; border: 3px solid var(--ot-line-strong); border-top-color: var(--ot-accent); border-radius: 50%; animation: pw-spin .8s linear infinite; }
+@keyframes pw-spin { to { transform: rotate(360deg); } }
 </style>

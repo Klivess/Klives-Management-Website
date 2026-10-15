@@ -1,9 +1,11 @@
 <template>
+  <ProjectsShell>
   <div class="np-page">
-    <div class="np-head">
-      <NuxtLink to="/projects" class="np-back">← Projects</NuxtLink>
-      <h1 class="np-title">Deploy a new project</h1>
-      <p class="np-sub">A project is a goal <em>and</em> a budget, pursued 24/7 by a Commander and its sub-agents. Configure it deliberately — once deployed it starts working immediately.</p>
+    <div class="ot-pagehead">
+      <div>
+        <h1>Deploy a new project</h1>
+        <p class="subtitle">A project is a goal <em>and</em> a budget, pursued 24/7 by a Commander and its sub-agents. Configure it deliberately — once deployed it starts working immediately.</p>
+      </div>
     </div>
 
     <div class="np-body">
@@ -142,6 +144,7 @@
       </aside>
     </div>
   </div>
+  </ProjectsShell>
 </template>
 
 <script setup lang="ts">
@@ -150,8 +153,10 @@ import { useRouter } from 'vue-router';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import ProjectsFileUploader from '~/components/Projects/FileUploader.vue';
 import ModelRouteList from '~/components/Projects/ModelRouteList.vue';
+import ProjectsShell from '~/components/Projects/Shell.vue';
 
 definePageMeta({ layout: 'navbar' });
+useHead({ title: 'Projects · New project' });
 
 const router = useRouter();
 
@@ -294,59 +299,54 @@ onMounted(loadDefaults);
 </script>
 
 <style scoped>
-.np-page { padding: 24px; color: #e6e6e6; max-width: 1180px; margin: 0 auto; }
-.np-head { margin-bottom: 22px; }
-.np-back { color: #7fb0d9; text-decoration: none; font-size: 13px; }
-.np-back:hover { text-decoration: underline; }
-.np-title { margin: 10px 0 6px; font-size: 28px; }
-.np-sub { margin: 0; color: #999; font-size: 14px; max-width: 720px; line-height: 1.5; }
-.np-sub em { color: #cbcbcb; font-style: italic; }
+.np-page { color: var(--ot-text); max-width: 1180px; }
+.ot-pagehead .subtitle em { color: var(--ot-text-2); font-style: italic; }
 
 .np-body { display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: start; }
 @media (max-width: 900px) { .np-body { grid-template-columns: 1fr; } }
 
 .np-main { display: flex; flex-direction: column; gap: 16px; }
-.np-card { background: #161519; border: 1px solid #2a2a2e; border-radius: 10px; padding: 18px 20px; }
-.np-card-title { margin: 0 0 14px; font-size: 15px; color: #eee; }
-.np-optional { color: #666; font-size: 10px; font-weight: 400; margin-left: 6px; }
+.np-card { background: var(--ot-surface); border: 1px solid var(--ot-line); border-radius: 10px; padding: 18px 20px; }
+.np-card-title { margin: 0 0 14px; font-size: 15px; color: var(--ot-text); }
+.np-optional { color: var(--ot-muted); font-size: 10px; font-weight: 400; margin-left: 6px; }
 .np-card-title-row { display: flex; justify-content: space-between; align-items: center; }
 .np-cardnote { margin: -8px 0 12px; }
-.np-linkbtn { background: none; border: none; color: #7fb0d9; cursor: pointer; font-size: 13px; padding: 0; }
+.np-linkbtn { background: none; border: none; color: var(--ot-info); cursor: pointer; font-size: 13px; padding: 0; }
 .np-linkbtn:hover { text-decoration: underline; }
 
 .np-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 .np-field:last-child { margin-bottom: 0; }
 .np-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; }
 @media (max-width: 620px) { .np-grid2 { grid-template-columns: 1fr; } }
-.np-label { font-size: 13px; color: #ddd; font-weight: 500; }
-.np-hint { color: #666; font-weight: 400; font-size: 11px; margin-left: 6px; }
-.np-req { color: #d98c2b; font-weight: 400; font-size: 11px; margin-left: 6px; }
-.np-sublabel { font-size: 11px; color: #777; line-height: 1.4; }
-.np-input, .np-textarea { background: #14141a; color: #eee; border: 1px solid #333; border-radius: 6px; padding: 9px 11px; font-size: 13px; width: 100%; box-sizing: border-box; }
-.np-input:focus, .np-textarea:focus { outline: none; border-color: #4d9e39; }
+.np-label { font-size: 13px; color: var(--ot-text); font-weight: 500; }
+.np-hint { color: var(--ot-muted); font-weight: 400; font-size: 11px; margin-left: 6px; }
+.np-req { color: var(--ot-warning); font-weight: 400; font-size: 11px; margin-left: 6px; }
+.np-sublabel { font-size: 11px; color: var(--ot-muted); line-height: 1.4; }
+.np-input, .np-textarea { background: var(--ot-surface); color: var(--ot-text); border: 1px solid var(--ot-line-strong); border-radius: 6px; padding: 9px 11px; font-size: 13px; width: 100%; box-sizing: border-box; }
+.np-input:focus, .np-textarea:focus { outline: none; border-color: var(--ot-accent); }
 .np-textarea { resize: vertical; line-height: 1.5; font-family: inherit; }
-.mono { font-family: ui-monospace, monospace; }
+.mono { font-family: var(--ot-mono); }
 
-.np-toggle { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 8px 0; border-bottom: 1px solid #242428; }
+.np-toggle { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--ot-line); }
 .np-toggle:last-of-type { border-bottom: none; }
 .np-toggle > span { display: flex; flex-direction: column; gap: 3px; }
-.np-toggle input { width: 20px; height: 20px; accent-color: #4d9e39; flex-shrink: 0; }
+.np-toggle input { width: 20px; height: 20px; accent-color: var(--ot-positive); flex-shrink: 0; }
 .np-models { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
 .np-modelrow { margin-bottom: 8px; }
 
 .np-rail { position: sticky; top: 16px; }
-.np-summary { background: #161519; border: 1px solid #2a2a2e; border-radius: 10px; padding: 18px; }
-.np-summary h3 { margin: 0 0 12px; font-size: 15px; color: #eee; }
-.np-check { list-style: none; padding: 0; margin: 0 0 14px; font-size: 12px; color: #888; }
+.np-summary { background: var(--ot-surface); border: 1px solid var(--ot-line); border-radius: 10px; padding: 18px; }
+.np-summary h3 { margin: 0 0 12px; font-size: 15px; color: var(--ot-text); }
+.np-check { list-style: none; padding: 0; margin: 0 0 14px; font-size: 12px; color: var(--ot-muted); }
 .np-check li { padding: 3px 0; }
-.np-check li.ok { color: #7fd97f; }
-.np-recap { border-top: 1px solid #242428; padding-top: 12px; margin-bottom: 14px; }
-.np-recap-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: #aaa; padding: 3px 0; }
+.np-check li.ok { color: var(--ot-positive); }
+.np-recap { border-top: 1px solid var(--ot-line); padding-top: 12px; margin-bottom: 14px; }
+.np-recap-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--ot-text-2); padding: 3px 0; }
 .np-recap-row .ellip { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.np-error { color: #ff8484; font-size: 12px; background: #2a1818; padding: 8px 10px; border-radius: 6px; margin: 0 0 12px; }
-.np-deploy { width: 100%; background: #4d9e39; color: #fff; border: none; padding: 11px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; }
-.np-deploy:hover:not(:disabled) { background: #5cb947; }
+.np-error { color: var(--ot-negative); font-size: 12px; background: var(--ot-negative-soft); padding: 8px 10px; border-radius: 6px; margin: 0 0 12px; }
+.np-deploy { width: 100%; background: var(--ot-accent); color: var(--ot-on-accent); border: none; padding: 11px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; }
+.np-deploy:hover:not(:disabled) { background: #7ee85f; }
 .np-deploy:disabled { opacity: 0.45; cursor: default; }
-.np-cancel { width: 100%; background: none; color: #888; border: none; padding: 9px; margin-top: 6px; cursor: pointer; font-size: 13px; }
-.np-cancel:hover:not(:disabled) { color: #ccc; }
+.np-cancel { width: 100%; background: none; color: var(--ot-muted); border: none; padding: 9px; margin-top: 6px; cursor: pointer; font-size: 13px; }
+.np-cancel:hover:not(:disabled) { color: var(--ot-text-2); }
 </style>

@@ -99,8 +99,15 @@ async function setup(page: Page, options: {
 }
 
 async function openAgentsTab(page: Page) {
-  await page.getByRole('button', { name: 'Agents', exact: true }).click();
+  await page.getByRole('tab', { name: 'Agents' }).click();
   await expect(page.locator('.ap-list')).toBeVisible();
+}
+
+/** Budgets live in the workspace rail, which the Agents tab shows (cap changes are roster changes). */
+async function openBudgetEditor(page: Page) {
+  await openAgentsTab(page);
+  await page.locator('.budget-edit-btn').click();
+  return page.getByLabel('Agent cap', { exact: true });
 }
 
 test('the roster shows slot arithmetic and offers Retire on workers but never the Commander', async ({ page }) => {
@@ -183,8 +190,7 @@ test('lowering the cap below the roster warns first, then reports who was retire
     cap: 4,
   });
 
-  await page.locator('.budget-edit-btn').click();
-  const capInput = page.locator('.bf-field', { hasText: 'Agent cap' }).locator('input');
+  const capInput = await openBudgetEditor(page);
   await capInput.fill('1');
 
   // The warning has to appear BEFORE saving — this is the whole point of the affordance.
@@ -207,8 +213,7 @@ test('lowering the cap below the roster warns first, then reports who was retire
 test('raising the cap retires nobody and shows no warning', async ({ page }) => {
   await setup(page, { agents: [commander, agent()], cap: 4 });
 
-  await page.locator('.budget-edit-btn').click();
-  await page.locator('.bf-field', { hasText: 'Agent cap' }).locator('input').fill('8');
+  await (await openBudgetEditor(page)).fill('8');
 
   await expect(page.locator('.bf-warn')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Save budgets' })).toBeVisible();

@@ -48,10 +48,36 @@
         </label>
       </section>
 
+      <section class="sp-group">
+        <h4>Autonomy limits</h4>
+        <p class="sp-route-note">Hard limits enforced when an agent calls a tool, whatever it decides. Everything else stays under the agents' own judgement and the approval rules.</p>
+        <label class="sp-row sp-stack">
+          <span class="sp-label">Never use these sites<span class="sp-hint">One host per line. Navigation, fetches and HTTP calls to them (and their subdomains) are refused.</span></span>
+          <textarea v-model="form.blockedDomainsText" class="ot-input sp-domains" rows="3" placeholder="facebook.com" aria-label="Blocked sites"></textarea>
+        </label>
+        <label class="sp-row sp-stack">
+          <span class="sp-label">Ask me first<span class="sp-hint">One host per line. An agent's first visit opens an approval card; your approval lasts 24 hours.</span></span>
+          <textarea v-model="form.askFirstDomainsText" class="ot-input sp-domains" rows="3" placeholder="paypal.com" aria-label="Ask-first sites"></textarea>
+        </label>
+        <label class="sp-row sp-toggle">
+          <span class="sp-label">Host shell and scripts<span class="sp-hint">PowerShell, Bash and C# on Omnipotent's own machine. Off keeps agents inside their computers.</span></span>
+          <input type="checkbox" v-model="form.allowHostShell" />
+        </label>
+        <label class="sp-row sp-toggle">
+          <span class="sp-label">Send email<span class="sp-hint">Off means agents draft messages for you instead of sending them.</span></span>
+          <input type="checkbox" v-model="form.allowOutboundEmail" />
+        </label>
+        <label class="sp-row sp-toggle">
+          <span class="sp-label">Create new accounts<span class="sp-hint">Off means agents reuse registered accounts or ask you.</span></span>
+          <input type="checkbox" v-model="form.allowAccountCreation" />
+        </label>
+      </section>
+
       <p v-if="invalidRoutes" class="sp-error">Every route entry must contain a provider/model value.</p>
       <div class="sp-actions">
-        <button class="sp-save" :disabled="saving || !dirty || invalidRoutes" @click="save">{{ saving ? 'Saving…' : (dirty ? 'Save changes' : 'Saved') }}</button>
-        <button class="sp-reset" :disabled="!dirty" @click="reset">Reset</button>
+        <button class="ot-btn primary sp-save" :disabled="saving || !dirty || invalidRoutes" @click="save">{{ saving ? 'Saving…' : (dirty ? 'Save changes' : 'Saved') }}</button>
+        <button class="ot-btn ghost sp-reset" :disabled="!dirty" @click="reset">Reset</button>
+        <span v-if="saveError" class="sp-error sp-save-error" role="alert">{{ saveError }}</span>
       </div>
     </template>
   </div>
@@ -100,8 +126,18 @@ form.containersEnabled = true;
 form.liveActivityStreaming = true;
 form.desktopImage = 'omnipotent/projects-desktop:latest';
 form.desktopAllocation = 'PerAgentContainers';
+form.blockedDomainsText = '';
+form.askFirstDomainsText = '';
+form.allowHostShell = true;
+form.allowOutboundEmail = true;
+form.allowAccountCreation = true;
 const EDITABLE = [...modelFields.map(f => f.key), 'routeParameters', 'visionEnabled', 'containersEnabled',
-  'liveActivityStreaming', 'desktopImage', ...(props.system ? [] : ['desktopAllocation'])];
+  'liveActivityStreaming', 'desktopImage', ...(props.system ? [] : ['desktopAllocation']),
+  'blockedDomainsText', 'askFirstDomainsText', 'allowHostShell', 'allowOutboundEmail', 'allowAccountCreation'];
+// UI field → server setting name. Domain lists are edited as text and sent as arrays.
+const SERVER_KEY: Record<string, string> = { blockedDomainsText: 'blockedDomains', askFirstDomainsText: 'askFirstDomains' };
+const domainLines = (text: string) => String(text || '').split(/[\n,;\s]+/).map(x => x.trim()).filter(Boolean);
+const saveError = ref('');
 
 // Every route gets a (possibly empty) bag so v-model:parameters always has a target. Empty bags are
 // dropped again on save, which is exactly how the server clears a route back to model defaults.
@@ -129,6 +165,9 @@ function applySettings(s: Record<string, any>, desktopAllocation?: string) {
   form.routeParameters = Object.fromEntries(
     modelFields.map(f => [f.route, { ...(saved[f.route] ?? {}) }]));
   for (const k of ['visionEnabled', 'containersEnabled', 'liveActivityStreaming', 'desktopImage']) form[k] = s[k];
+  form.blockedDomainsText = (s.blockedDomains ?? []).join('\n');
+  form.askFirstDomainsText = (s.askFirstDomains ?? []).join('\n');
+  for (const k of ['allowHostShell', 'allowOutboundEmail', 'allowAccountCreation']) form[k] = s[k] ?? true;
   if (!props.system) form.desktopAllocation = desktopAllocation ?? form.desktopAllocation ?? 'PerAgentContainers';
 }
 
@@ -154,9 +193,11 @@ async function save() {
   if (invalidRoutes.value) return;
   saving.value = true;
   try {
+    saveError.value = '';
     const patch: Record<string, any> = {};
     for (const k of EDITABLE) if (!same(form[k], original.value[k]))
-      patch[k] = k.endsWith('Routes') ? cleanRoutes(form[k])
+      patch[SERVER_KEY[k] ?? k] = SERVER_KEY[k] ? domainLines(form[k])
+        : k.endsWith('Routes') ? cleanRoutes(form[k])
         // Routes with nothing pinned are sent as absent rather than empty, which is how the server
         // clears a route back to its models' own defaults.
         : k === 'routeParameters' ? Object.fromEntries(Object.entries(form[k])
@@ -165,32 +206,34 @@ async function save() {
     const res = await RequestPOSTFromKliveAPI(updateUrl(), updateBody(patch), false, true);
     if (res.ok) {
       const body = await res.json();
-      applySettings(body.settings ?? form, body.desktopAllocation);
+      if (body.settings) applySettings(body.settings, body.desktopAllocation);
       original.value = clone(form);
-    }
-  } finally { saving.value = false; }
+      if (Array.isArray(body.unknown) && body.unknown.length)
+        saveError.value = `This server does not know: ${body.unknown.join(', ')}. Update Omnipotent to use them.`;
+    } else saveError.value = `Save failed (HTTP ${res.status}).`;
+  } catch (e: any) { saveError.value = e?.message || 'Save failed.'; }
+  finally { saving.value = false; }
 }
 
 onMounted(load);
 </script>
 
 <style scoped>
-.settings-panel { padding: 4px 2px; }
-.sp-note, .sp-route-note { font-size: 12px; color: #888; margin: 0 0 16px; }
-.sp-route-note { margin: -4px 0 6px; color: #737373; }
-.sp-group { margin-bottom: 20px; }
-.sp-group h4 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #7fb0d9; }
-.sp-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-.sp-label { font-size: 13px; color: #ccc; display: flex; flex-direction: column; }
-.sp-hint { font-size: 11px; color: #666; font-weight: 400; }
-.sp-input, .sp-select { flex: 1; max-width: 320px; background: #14141a; color: #eee; border: 1px solid #333; border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: ui-monospace, monospace; }
-.sp-input:focus, .sp-select:focus { outline: none; border-color: #4d9e39; }
-.sp-toggle input { width: 18px; height: 18px; accent-color: #4d9e39; }
-.sp-error { color: #ff9a8c; font-size: 11px; margin: 0 0 8px; }
-.sp-actions { display: flex; gap: 8px; margin-top: 8px; }
-.sp-save { background: #4d9e39; color: #fff; border: none; padding: 9px 18px; border-radius: 6px; cursor: pointer; font-weight: 600; }
-.sp-save:disabled { opacity: 0.5; cursor: default; }
-.sp-reset { background: #26262b; color: #ccc; border: none; padding: 9px 16px; border-radius: 6px; cursor: pointer; }
-.sp-reset:disabled { opacity: 0.4; cursor: default; }
-.sp-info { color: #888; padding: 20px; text-align: center; }
+.settings-panel { padding: 0; }
+.sp-note, .sp-route-note { font-size: 12px; color: var(--ot-muted); margin: 0 0 var(--ot-space-4); }
+.sp-route-note { margin: -4px 0 var(--ot-space-2); }
+.sp-group { margin-bottom: var(--ot-space-6); }
+.sp-group h4 { margin: 0 0 var(--ot-space-3); font-size: 11px; text-transform: uppercase; letter-spacing: 0.9px; color: var(--ot-muted); font-weight: 650; }
+.sp-row { display: flex; align-items: center; justify-content: space-between; gap: var(--ot-space-3); margin-bottom: var(--ot-space-2); }
+.sp-row.sp-stack { flex-direction: column; align-items: stretch; }
+.sp-label { font-size: 13px; color: var(--ot-text); display: flex; flex-direction: column; gap: 2px; }
+.sp-hint { font-size: 11.5px; color: var(--ot-muted); font-weight: 400; }
+.sp-input, .sp-select { flex: 1; max-width: 340px; background: rgba(0, 0, 0, 0.3); color: var(--ot-text); border: 1px solid var(--ot-line); border-radius: var(--ot-radius-sm); padding: 7px 10px; font-size: 13px; font-family: var(--ot-mono); }
+.sp-input:focus, .sp-select:focus { outline: none; border-color: var(--ot-accent); }
+.sp-domains { font-family: var(--ot-mono); font-size: 12.5px; }
+.sp-toggle input { width: 18px; height: 18px; accent-color: var(--ot-accent); flex: 0 0 auto; }
+.sp-error { color: var(--ot-negative); font-size: 12px; margin: 0 0 var(--ot-space-2); }
+.sp-save-error { margin: 0; align-self: center; }
+.sp-actions { display: flex; gap: var(--ot-space-2); margin-top: var(--ot-space-2); flex-wrap: wrap; position: sticky; bottom: 0; padding: var(--ot-space-2) 0; background: var(--ot-surface); }
+.sp-info { color: var(--ot-muted); padding: 20px; text-align: center; }
 </style>

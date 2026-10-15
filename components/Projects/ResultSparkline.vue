@@ -17,5 +17,7 @@ const path = computed(() => {
 });
 </script>
 <style scoped>
-.result-spark { width:84px; height:28px; flex-shrink:0; }.result-spark path { fill:none; stroke:currentColor; stroke-width:1.6; }.no-trend { color:#929096; font-size:11px; }
+.result-spark { width: 84px; height: 28px; flex-shrink: 0; }
+.result-spark path { fill: none; stroke: currentColor; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.no-trend { color: var(--ot-muted); font-size: 11px; white-space: nowrap; }
 </style>

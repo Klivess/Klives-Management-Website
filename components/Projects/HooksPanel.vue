@@ -130,35 +130,35 @@ onMounted(load);
 <style scoped>
 .hooks-panel { padding: 4px 2px; }
 .hp-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
-.hp-note { font-size: 12px; color: #888; margin: 0; flex: 1; }
-.hp-add { background: #26262b; color: #ccc; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
-.hp-form { background: #14141a; border: 1px solid #2a2a2e; border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+.hp-note { font-size: 12px; color: var(--ot-muted); margin: 0; flex: 1; }
+.hp-add { background: var(--ot-surface-2); color: var(--ot-text-2); border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+.hp-form { background: var(--ot-surface); border: 1px solid var(--ot-line); border-radius: 8px; padding: 14px; margin-bottom: 14px; }
 .hp-field { margin-bottom: 10px; }
-.hp-field label { display: block; font-size: 12px; color: #aaa; margin-bottom: 4px; }
-.hp-hint { color: #666; }
-.hp-input { width: 100%; box-sizing: border-box; background: #1a1a1e; color: #eee; border: 1px solid #333; border-radius: 6px; padding: 8px 10px; font-size: 13px; }
-.hp-mono { font-family: ui-monospace, monospace; }
-.hp-create { background: #4d9e39; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+.hp-field label { display: block; font-size: 12px; color: var(--ot-text-2); margin-bottom: 4px; }
+.hp-hint { color: var(--ot-muted); }
+.hp-input { width: 100%; box-sizing: border-box; background: var(--ot-surface-2); color: var(--ot-text); border: 1px solid var(--ot-line-strong); border-radius: 6px; padding: 8px 10px; font-size: 13px; }
+.hp-mono { font-family: var(--ot-mono); }
+.hp-create { background: var(--ot-accent); color: var(--ot-on-accent); border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
 .hp-create:disabled { opacity: 0.5; }
 .hp-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
-.hp-item { position: relative; background: #1c1c20; border-radius: 8px; padding: 10px 12px; }
+.hp-item { position: relative; background: var(--ot-surface-2); border-radius: 8px; padding: 10px 12px; }
 .hp-item-main { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.hp-kind { font-size: 11px; padding: 2px 8px; border-radius: 8px; background: #2a2a2e; color: #ccc; }
-.k-timer { background: #17303a; color: #7fb0d9; }
-.k-screen-diff { background: #3a2f17; color: #d9b872; }
-.k-script { background: #2f173a; color: #b78fd9; }
-.k-email { background: #17313a; color: #7fd9c8; }
-.k-discord { background: #23233a; color: #9aa0e0; }
-.k-process-exit { background: #3a1717; color: #d99a7f; }
-.hp-dest { font-size: 12px; color: #888; }
-.hp-disabled { font-size: 11px; color: #d95b5b; }
+.hp-kind { font-size: 11px; padding: 2px 8px; border-radius: 8px; background: var(--ot-surface-3); color: var(--ot-text-2); }
+.k-timer { background: var(--ot-info-soft); color: var(--ot-info); }
+.k-screen-diff { background: var(--ot-warning-soft); color: var(--ot-warning); }
+.k-script { background: var(--ot-violet-soft); color: var(--ot-violet); }
+.k-email { background: var(--ot-info-soft); color: var(--ot-info); }
+.k-discord { background: var(--ot-info-soft); color: var(--ot-info); }
+.k-process-exit { background: var(--ot-negative-soft); color: var(--ot-warning); }
+.hp-dest { font-size: 12px; color: var(--ot-muted); }
+.hp-disabled { font-size: 11px; color: var(--ot-negative); }
 .hp-arm { font-size: 11px; padding: 2px 7px; border-radius: 8px; white-space: nowrap; }
-.a-armed { background: #16301f; color: #5fca86; }
-.a-passive { background: #21262b; color: #8aa0b0; }
-.a-error { background: #3a1717; color: #e08a8a; }
-.hp-crit { font-size: 12px; color: #aaa; }
-.hp-armdetail { font-size: 11px; color: #d98c8c; margin-top: 3px; }
-.hp-del { position: absolute; top: 8px; right: 8px; background: none; border: none; color: #666; cursor: pointer; font-size: 13px; }
-.hp-del:hover { color: #d95b5b; }
-.hp-info, .hp-empty { color: #777; font-size: 13px; padding: 16px; text-align: center; }
+.a-armed { background: var(--ot-positive-soft); color: var(--ot-positive); }
+.a-passive { background: var(--ot-surface-2); color: var(--ot-muted); }
+.a-error { background: var(--ot-negative-soft); color: var(--ot-negative); }
+.hp-crit { font-size: 12px; color: var(--ot-text-2); }
+.hp-armdetail { font-size: 11px; color: var(--ot-negative); margin-top: 3px; }
+.hp-del { position: absolute; top: 8px; right: 8px; background: none; border: none; color: var(--ot-muted); cursor: pointer; font-size: 13px; }
+.hp-del:hover { color: var(--ot-negative); }
+.hp-info, .hp-empty { color: var(--ot-muted); font-size: 13px; padding: 16px; text-align: center; }
 </style>

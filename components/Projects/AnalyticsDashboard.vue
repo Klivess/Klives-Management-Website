@@ -1755,9 +1755,9 @@ function renderCharts() {
 
   const series = analytics.value.series;
   const labels = series.map(point => formatSeriesDate(point.date));
-  const gridColor = 'rgba(255,255,255,0.055)';
-  const tickColor = '#777780';
-  const legendColor = '#a7a7af';
+  const gridColor = 'rgba(146, 196, 130, 0.10)';
+  const tickColor = '#93a48d';
+  const legendColor = '#b3c2ad';
 
   const cacheSeries = promptCache.value.series;
   if (cacheSeries.some(point => numeric(point.requests) > 0)) {
@@ -1770,8 +1770,8 @@ function renderCharts() {
             type: 'bar',
             label: 'Cached prompt tokens',
             data: cacheSeries.map(point => numeric(point.cachedTokens)),
-            backgroundColor: 'rgba(98,206,71,0.72)',
-            borderColor: '#62ce47',
+            backgroundColor: 'rgba(78, 201, 138, 0.72)',
+            borderColor: '#4ec98a',
             borderWidth: 1,
             borderRadius: 2,
             stack: 'prompt',
@@ -1781,8 +1781,8 @@ function renderCharts() {
             type: 'bar',
             label: 'Uncached prompt tokens',
             data: cacheSeries.map(point => numeric(point.uncachedTokens)),
-            backgroundColor: 'rgba(224,88,75,0.68)',
-            borderColor: '#e0584b',
+            backgroundColor: 'rgba(255, 123, 123, 0.68)',
+            borderColor: '#ff7b7b',
             borderWidth: 1,
             borderRadius: 2,
             stack: 'prompt',
@@ -1792,8 +1792,8 @@ function renderCharts() {
             type: 'line',
             label: 'Cache hit rate',
             data: cacheSeries.map(point => numeric(point.cacheHitRatePct)),
-            borderColor: '#7fb0d9',
-            backgroundColor: '#7fb0d9',
+            borderColor: '#63c8ea',
+            backgroundColor: '#63c8ea',
             pointRadius: cacheSeries.length > 45 ? 0 : 2.5,
             pointHoverRadius: 4,
             borderWidth: 2,
@@ -1844,9 +1844,9 @@ function renderCharts() {
         {
           label: 'Model spend',
           data: series.map(point => numeric(point.spendUsd)),
-          borderColor: '#62ce47',
+          borderColor: '#4ec98a',
           backgroundColor: 'rgba(77,158,57,0.16)',
-          pointBackgroundColor: '#62ce47',
+          pointBackgroundColor: '#4ec98a',
           pointBorderWidth: 0,
           pointRadius: series.length > 45 ? 0 : 2.5,
           pointHoverRadius: 4,
@@ -1857,9 +1857,9 @@ function renderCharts() {
         {
           label: 'Real-money spend',
           data: series.map(point => numeric(point.moneySpendUsd)),
-          borderColor: '#e7a543',
+          borderColor: '#f0b429',
           backgroundColor: 'rgba(231,165,67,0.08)',
-          pointBackgroundColor: '#e7a543',
+          pointBackgroundColor: '#f0b429',
           pointBorderWidth: 0,
           pointRadius: series.length > 45 ? 0 : 2.5,
           pointHoverRadius: 4,
@@ -1902,8 +1902,8 @@ function renderCharts() {
           numeric(summary.value.rangeCompletionTokens),
           numeric(summary.value.rangeUnclassifiedTokens),
         ],
-        backgroundColor: ['#4d9e39', '#3b82f6', '#55555f'],
-        borderColor: '#1a1a1e',
+        backgroundColor: ['#6ddc4f', '#3987e5', '#6b7a66'],
+        borderColor: '#12150f',
         borderWidth: 3,
         hoverOffset: 5,
       }],
@@ -1921,7 +1921,7 @@ function renderCharts() {
           label: 'Events',
           data: series.map(point => numeric(point.events)),
           backgroundColor: 'rgba(77,158,57,0.55)',
-          borderColor: '#4d9e39',
+          borderColor: '#6ddc4f',
           borderWidth: 1,
           borderRadius: 3,
           yAxisID: 'y',
@@ -1930,8 +1930,8 @@ function renderCharts() {
           type: 'line',
           label: 'Wakes',
           data: series.map(point => numeric(point.wakes)),
-          borderColor: '#7fb0d9',
-          backgroundColor: '#7fb0d9',
+          borderColor: '#63c8ea',
+          backgroundColor: '#63c8ea',
           pointRadius: series.length > 45 ? 0 : 2.5,
           pointHoverRadius: 4,
           borderWidth: 2,
@@ -1977,7 +1977,7 @@ function renderCharts() {
             label: 'Operating',
             data: series.map(point => numeric(point.activeDurationMs)),
             backgroundColor: 'rgba(77,158,57,0.72)',
-            borderColor: '#62ce47',
+            borderColor: '#4ec98a',
             borderWidth: 1,
             borderRadius: 2,
             stack: 'lifecycle',
@@ -1988,7 +1988,7 @@ function renderCharts() {
             label: 'Paused',
             data: series.map(point => numeric(point.pausedDurationMs)),
             backgroundColor: 'rgba(217,184,114,0.76)',
-            borderColor: '#d9b872',
+            borderColor: '#c98500',
             borderWidth: 1,
             borderRadius: 2,
             stack: 'lifecycle',
@@ -1999,7 +1999,7 @@ function renderCharts() {
             label: 'Inactive',
             data: series.map(point => numeric(point.inactiveDurationMs)),
             backgroundColor: 'rgba(85,85,95,0.68)',
-            borderColor: '#74747d',
+            borderColor: '#93a48d',
             borderWidth: 1,
             borderRadius: 2,
             stack: 'lifecycle',
@@ -2009,8 +2009,8 @@ function renderCharts() {
             type: 'line',
             label: 'Availability',
             data: series.map(point => numeric(point.availabilityPct)),
-            borderColor: '#7fb0d9',
-            backgroundColor: '#7fb0d9',
+            borderColor: '#63c8ea',
+            backgroundColor: '#63c8ea',
             pointRadius: series.length > 45 ? 0 : 2,
             pointHoverRadius: 4,
             borderWidth: 2,
@@ -2074,8 +2074,8 @@ function renderCharts() {
               numeric(summary.value.rangePausedDurationMs),
               numeric(summary.value.rangeInactiveDurationMs),
             ],
-            backgroundColor: ['#4d9e39', '#d9b872', '#55555f'],
-            borderColor: '#1a1a1e',
+            backgroundColor: ['#6ddc4f', '#c98500', '#6b7a66'],
+            borderColor: '#12150f',
             borderWidth: 3,
             hoverOffset: 5,
           }],
@@ -2093,10 +2093,10 @@ function renderCharts() {
         datasets: [{
           data: analytics.value.outcomes.map(item => numeric(item.count)),
           backgroundColor: analytics.value.outcomes.map(item => ({
-            'wake-completed': '#69bd83', 'wake-failed': '#e7646d',
-            'wake-deferred': '#f2ad3f', 'wake-cancelled': '#ae83ef',
-          }[item.key] ?? '#8794a6')),
-          borderColor: '#1a1a1e',
+            'wake-completed': '#4ec98a', 'wake-failed': '#ff7b7b',
+            'wake-deferred': '#f0b429', 'wake-cancelled': '#a89bf0',
+          }[item.key] ?? '#93a48d')),
+          borderColor: '#12150f',
           borderWidth: 3,
           hoverOffset: 5,
         }],
@@ -2163,7 +2163,7 @@ function renderCharts() {
           label: 'Events',
           data: eventRows.map(item => numeric(item.count)),
           backgroundColor: 'rgba(127,176,217,0.68)',
-          borderColor: '#7fb0d9',
+          borderColor: '#63c8ea',
           borderWidth: 1,
           borderRadius: 4,
         }],
@@ -2195,8 +2195,8 @@ function renderCharts() {
         labels: budgetLabels,
         datasets: [{
           data: budgetValues,
-          backgroundColor: overBudget > 0 ? ['#d98c2b', '#e0584b'] : ['#4d9e39', '#303038'],
-          borderColor: '#1a1a1e',
+          backgroundColor: overBudget > 0 ? ['#d95926', '#ff7b7b'] : ['#6ddc4f', '#20261d'],
+          borderColor: '#12150f',
           borderWidth: 3,
           hoverOffset: 5,
         }],
@@ -2219,7 +2219,7 @@ function renderCharts() {
             label: 'Range spend',
             data: projectRows.map(item => numeric(item.rangeSpendUsd)),
             backgroundColor: 'rgba(77,158,57,0.72)',
-            borderColor: '#4d9e39',
+            borderColor: '#6ddc4f',
             borderWidth: 1,
             borderRadius: 3,
           },
@@ -2227,7 +2227,7 @@ function renderCharts() {
             label: 'Budget',
             data: projectRows.map(item => numeric(item.budgetUsd)),
             backgroundColor: 'rgba(127,176,217,0.24)',
-            borderColor: '#7fb0d9',
+            borderColor: '#63c8ea',
             borderWidth: 1,
             borderRadius: 3,
           },
@@ -2263,7 +2263,7 @@ function renderCharts() {
         datasets: [{
           data: analytics.value.statuses.map(item => numeric(item.count)),
           backgroundColor: statusPalette(analytics.value.statuses),
-          borderColor: '#1a1a1e',
+          borderColor: '#12150f',
           borderWidth: 3,
           hoverOffset: 5,
         }],
@@ -2293,19 +2293,19 @@ function doughnutOptions(legendColor: string, formatter: (value: number) => stri
 }
 
 function palette(count: number) {
-  const colors = ['#4d9e39', '#3b82f6', '#f59e0b', '#a855f7', '#e0584b', '#14b8a6', '#7fb0d9', '#d9b872'];
+  const colors = ['#6ddc4f', '#3987e5', '#c98500', '#9085e9', '#ff7b7b', '#199e70', '#63c8ea', '#c98500'];
   return Array.from({ length: count }, (_, index) => colors[index % colors.length]);
 }
 
 function statusPalette(statuses: AnalyticsStatus[]) {
   const colors: Record<string, string> = {
-    active: '#4d9e39',
-    planning: '#7fb0d9',
-    paused: '#d9b872',
-    budgetpaused: '#d98c2b',
-    blocked: '#e0584b',
-    completed: '#3b82f6',
-    archived: '#55555f',
+    active: '#6ddc4f',
+    planning: '#63c8ea',
+    paused: '#c98500',
+    budgetpaused: '#d95926',
+    blocked: '#ff7b7b',
+    completed: '#3987e5',
+    archived: '#6b7a66',
   };
   return statuses.map((status, index) => colors[String(status.key || status.label).toLowerCase()] ?? palette(statuses.length)[index]);
 }
@@ -2479,14 +2479,14 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .analytics-dashboard {
-  --surface: #161519;
-  --surface-raised: #1a1a1e;
-  --surface-soft: #1f1f23;
-  --border: #2a2a30;
-  --muted: #85858f;
-  --text: #e6e6eb;
-  --green: #4d9e39;
-  --green-bright: #62ce47;
+  --surface: var(--ot-surface);
+  --surface-raised: var(--ot-surface-2);
+  --surface-soft: var(--ot-surface-2);
+  --border: var(--ot-line);
+  --muted: var(--ot-muted);
+  --text: var(--ot-text);
+  --green: var(--ot-positive);
+  --green-bright: var(--ot-positive);
   color: var(--text);
   min-width: 0;
 }
@@ -2516,7 +2516,7 @@ onBeforeUnmount(() => {
 }
 
 .analytics-subtitle {
-  color: #8f8f98;
+  color: var(--ot-muted);
   font-size: 12px;
   line-height: 1.5;
   margin: 5px 0 0;
@@ -2524,7 +2524,7 @@ onBeforeUnmount(() => {
 }
 
 .generated-at {
-  color: #65656d;
+  color: var(--ot-muted);
   white-space: nowrap;
 }
 
@@ -2543,7 +2543,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 2px;
-  background: #111114;
+  background: var(--ot-surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 3px;
@@ -2561,7 +2561,7 @@ onBeforeUnmount(() => {
 
 .range-button {
   background: transparent;
-  color: #777780;
+  color: var(--ot-muted);
   font-size: 11px;
   font-weight: 700;
   min-width: 38px;
@@ -2569,13 +2569,13 @@ onBeforeUnmount(() => {
 }
 
 .range-button:hover:not(:disabled) {
-  color: #d8d8dc;
-  background: #222228;
+  color: var(--ot-text);
+  background: var(--ot-surface-2);
 }
 
 .range-button.active {
-  color: #fff;
-  background: var(--green);
+  color: var(--ot-accent);
+  background: var(--ot-accent-soft);
 }
 
 .range-button:focus-visible,
@@ -2595,16 +2595,16 @@ onBeforeUnmount(() => {
 
 .refresh-button,
 .retry-button {
-  background: #26262b;
-  color: #c7c7cc;
+  background: var(--ot-surface-2);
+  color: var(--ot-text-2);
   font-size: 12px;
   padding: 10px 13px;
 }
 
 .refresh-button:hover:not(:disabled),
 .retry-button:hover {
-  background: #303036;
-  color: #fff;
+  background: var(--ot-surface-3);
+  color: var(--ot-text);
 }
 
 .state-card {
@@ -2616,7 +2616,7 @@ onBeforeUnmount(() => {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  color: #b7b7bf;
+  color: var(--ot-text-2);
   padding: 24px;
   text-align: left;
 }
@@ -2638,7 +2638,7 @@ onBeforeUnmount(() => {
 .loading-spinner {
   width: 20px;
   height: 20px;
-  border: 2px solid #303036;
+  border: 2px solid var(--ot-line-strong);
   border-top-color: var(--green-bright);
   border-radius: 50%;
   animation: analytics-spin 0.8s linear infinite;
@@ -2651,8 +2651,8 @@ onBeforeUnmount(() => {
 
 .error-state {
   justify-content: space-between;
-  border-color: #5a2b2b;
-  background: #261718;
+  border-color: var(--ot-negative);
+  background: var(--ot-negative-soft);
 }
 
 .empty-state {
@@ -2670,15 +2670,15 @@ onBeforeUnmount(() => {
 }
 
 .inline-error {
-  color: #e8a0a0;
-  background: #2a1818;
-  border: 1px solid #4d2525;
+  color: var(--ot-negative);
+  background: var(--ot-negative-soft);
+  border: 1px solid var(--ot-negative);
 }
 
 .refresh-progress {
-  color: #a9cfa1;
-  background: #182417;
-  border: 1px solid #2a4426;
+  color: var(--ot-positive);
+  background: var(--ot-positive-soft);
+  border: 1px solid var(--ot-accent);
 }
 
 .metrics-section,
@@ -2700,14 +2700,14 @@ onBeforeUnmount(() => {
 
 .section-heading h3,
 .card-heading h3 {
-  color: #d9d9de;
+  color: var(--ot-text);
   font-size: 13px;
   margin: 0;
 }
 
 .section-heading p,
 .card-heading p {
-  color: #686871;
+  color: var(--ot-muted);
   font-size: 11px;
   line-height: 1.4;
   margin: 3px 0 0;
@@ -2719,7 +2719,7 @@ onBeforeUnmount(() => {
 }
 
 .coverage-note {
-  color: #8b8b94 !important;
+  color: var(--ot-muted) !important;
   font-size: 10px !important;
   line-height: 1.4;
   margin: 0 0 5px !important;
@@ -2734,9 +2734,9 @@ onBeforeUnmount(() => {
 
 .coverage-badge,
 .table-count {
-  color: #8ca884;
-  background: #1b2819;
-  border: 1px solid #2d4428;
+  color: var(--ot-muted);
+  background: var(--ot-positive-soft);
+  border: 1px solid var(--ot-accent);
   border-radius: 999px;
   font-size: 10px;
   padding: 4px 9px;
@@ -2752,19 +2752,19 @@ onBeforeUnmount(() => {
 .metric-card {
   min-width: 0;
   background: var(--surface-raised);
-  border: 1px solid rgba(255, 255, 255, 0.055);
+  border: 1px solid var(--ot-line);
   border-radius: 9px;
   padding: 12px;
   box-shadow: inset 0 2px 0 transparent;
 }
 
-.metric-card.tone-green { box-shadow: inset 0 2px 0 rgba(98, 206, 71, 0.72); }
-.metric-card.tone-blue { box-shadow: inset 0 2px 0 rgba(127, 176, 217, 0.72); }
-.metric-card.tone-amber { box-shadow: inset 0 2px 0 rgba(217, 184, 114, 0.72); }
-.metric-card.tone-purple { box-shadow: inset 0 2px 0 rgba(168, 85, 247, 0.58); }
+.metric-card.tone-green { box-shadow: inset 0 2px 0 rgba(109, 220, 79, 0.72); }
+.metric-card.tone-blue { box-shadow: inset 0 2px 0 rgba(99, 200, 234, 0.72); }
+.metric-card.tone-amber { box-shadow: inset 0 2px 0 rgba(240, 180, 41, 0.72); }
+.metric-card.tone-purple { box-shadow: inset 0 2px 0 rgba(168, 155, 240, 0.58); }
 
 .metric-label {
-  color: #73737c;
+  color: var(--ot-muted);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.055em;
@@ -2775,7 +2775,7 @@ onBeforeUnmount(() => {
 }
 
 .metric-value {
-  color: #e9e9ed;
+  color: var(--ot-text);
   font-size: clamp(17px, 1.45vw, 23px);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
@@ -2784,7 +2784,7 @@ onBeforeUnmount(() => {
 }
 
 .metric-detail {
-  color: #696972;
+  color: var(--ot-muted);
   font-size: 10px;
   line-height: 1.35;
   margin-top: 4px;
@@ -2794,7 +2794,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   margin-bottom: 16px;
   background: linear-gradient(145deg, rgba(31, 42, 31, 0.42), rgba(22, 21, 25, 0.96) 42%);
-  border: 1px solid #30402d;
+  border: 1px solid var(--ot-line-strong);
   border-radius: 10px;
   padding: 14px;
 }
@@ -2811,9 +2811,9 @@ onBeforeUnmount(() => {
 }
 
 .cache-status {
-  border: 1px solid #4b4b52;
+  border: 1px solid var(--ot-line-strong);
   border-radius: 999px;
-  color: #b8b8bf;
+  color: var(--ot-text-2);
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.045em;
@@ -2821,32 +2821,32 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
 }
 
-.cache-status-healthy { color: #8be376; background: #183016; border-color: #376632; }
-.cache-status-degraded { color: #f09a91; background: #321918; border-color: #6b312d; }
-.cache-status-warming { color: #dfc581; background: #302917; border-color: #65572d; }
-.cache-status-no-data { color: #a2a2aa; background: #25252a; border-color: #46464e; }
+.cache-status-healthy { color: var(--ot-positive); background: var(--ot-positive-soft); border-color: var(--ot-accent); }
+.cache-status-degraded { color: var(--ot-negative); background: var(--ot-negative-soft); border-color: var(--ot-negative); }
+.cache-status-warming { color: var(--ot-warning); background: var(--ot-warning-soft); border-color: var(--ot-warning); }
+.cache-status-no-data { color: var(--ot-text-2); background: var(--ot-surface-2); border-color: var(--ot-line-strong); }
 
 .cache-verdict {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  border: 1px solid #34343a;
+  border: 1px solid var(--ot-line-strong);
   border-radius: 7px;
   background: rgba(17, 17, 20, 0.72);
-  color: #92929b;
+  color: var(--ot-muted);
   font-size: 11px;
   line-height: 1.45;
   padding: 9px 11px;
 }
 
 .cache-verdict strong {
-  color: #d7d7dc;
+  color: var(--ot-text);
   flex-shrink: 0;
 }
 
-.cache-verdict-healthy { border-color: #355e30; background: rgba(24, 48, 22, 0.58); }
-.cache-verdict-degraded { border-color: #67302d; background: rgba(50, 25, 24, 0.58); }
-.cache-verdict-warming { border-color: #5d502b; background: rgba(48, 41, 23, 0.48); }
+.cache-verdict-healthy { border-color: var(--ot-accent); background: rgba(109, 220, 79, 0.58); }
+.cache-verdict-degraded { border-color: var(--ot-negative); background: rgba(255, 123, 123, 0.58); }
+.cache-verdict-warming { border-color: var(--ot-warning); background: rgba(240, 180, 41, 0.48); }
 
 .cache-metric-grid {
   display: grid;
@@ -2857,7 +2857,7 @@ onBeforeUnmount(() => {
 
 .cache-metric {
   min-width: 0;
-  border: 1px solid rgba(255, 255, 255, 0.055);
+  border: 1px solid var(--ot-line);
   border-radius: 7px;
   background: rgba(21, 21, 25, 0.82);
   padding: 10px;
@@ -2869,7 +2869,7 @@ onBeforeUnmount(() => {
 }
 
 .cache-metric span {
-  color: #777780;
+  color: var(--ot-muted);
   font-size: 8px;
   font-weight: 800;
   letter-spacing: 0.055em;
@@ -2878,14 +2878,14 @@ onBeforeUnmount(() => {
 
 .cache-metric strong {
   display: block;
-  color: #e9e9ed;
+  color: var(--ot-text);
   font-size: 17px;
   font-variant-numeric: tabular-nums;
   margin-top: 5px;
 }
 
 .cache-metric small {
-  color: #686871;
+  color: var(--ot-muted);
   font-size: 9px;
   line-height: 1.35;
   margin-top: 3px;
@@ -2903,7 +2903,7 @@ onBeforeUnmount(() => {
 .cache-table-card {
   min-width: 0;
   background: rgba(18, 18, 21, 0.74);
-  border: 1px solid #2d2d33;
+  border: 1px solid var(--ot-line);
   border-radius: 8px;
   padding: 12px;
 }
@@ -2919,8 +2919,8 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.045);
-  color: #898992;
+  border-top: 1px solid var(--ot-line);
+  color: var(--ot-muted);
   font-size: 10px;
   padding: 7px 0 7px 16px;
   position: relative;
@@ -2931,11 +2931,11 @@ onBeforeUnmount(() => {
   position: absolute;
   left: 0;
   content: '○';
-  color: #d9b872;
+  color: var(--ot-warning);
 }
 .cache-gates li.gate-pass::before { content: '✓'; color: var(--green-bright); }
-.cache-gates li.gate-pass strong { color: #9dce92; }
-.cache-gates li.gate-pending strong { color: #d6ad6f; }
+.cache-gates li.gate-pass strong { color: var(--ot-positive); }
+.cache-gates li.gate-pending strong { color: var(--ot-warning); }
 .cache-gates strong { font-variant-numeric: tabular-nums; text-align: right; }
 
 .cache-table-card {
@@ -2956,9 +2956,9 @@ onBeforeUnmount(() => {
 
 .sample-flag {
   display: inline-flex;
-  border: 1px solid #414148;
+  border: 1px solid var(--ot-line-strong);
   border-radius: 999px;
-  color: #a1a1a9;
+  color: var(--ot-muted);
   font-size: 8px;
   margin: 1px 2px 1px 0;
   padding: 2px 5px;
@@ -3014,7 +3014,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #65656d;
+  color: var(--ot-muted);
   font-size: 12px;
   text-align: center;
 }
@@ -3027,7 +3027,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 4px;
-  color: #65656d;
+  color: var(--ot-muted);
   font-size: 9px;
   white-space: nowrap;
 }
@@ -3058,7 +3058,7 @@ onBeforeUnmount(() => {
 }
 
 .heatmap-head span {
-  color: #5f5f67;
+  color: var(--ot-muted);
   font-size: 8px;
   text-align: center;
 }
@@ -3069,20 +3069,20 @@ onBeforeUnmount(() => {
 
 .heat-day {
   align-self: center;
-  color: #777780;
+  color: var(--ot-muted);
   font-size: 9px;
   text-align: left;
 }
 
 .heat-cell {
   aspect-ratio: 1.35;
-  border: 1px solid rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--ot-line);
   border-radius: 2px;
   min-height: 12px;
 }
 
 .heat-cell:focus-visible {
-  outline: 1px solid #fff;
+  outline: 1px solid var(--ot-line-strong);
 }
 
 .scope-section {
@@ -3103,13 +3103,13 @@ table {
   width: 100%;
   min-width: 940px;
   border-collapse: collapse;
-  color: #c5c5cb;
+  color: var(--ot-text-2);
   font-size: 11px;
 }
 
 th,
 td {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+  border-bottom: 1px solid var(--ot-line);
   padding: 10px 12px;
   text-align: left;
   vertical-align: middle;
@@ -3119,8 +3119,8 @@ th {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: #18181c;
-  color: #74747d;
+  background: var(--ot-surface-2);
+  color: var(--ot-muted);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.045em;
@@ -3164,7 +3164,7 @@ th:nth-child(2) .sort-button {
 }
 
 .sort-button:hover {
-  color: #bdbdc4;
+  color: var(--ot-text-2);
 }
 
 .sort-indicator {
@@ -3175,7 +3175,7 @@ th:nth-child(2) .sort-button {
 .project-link {
   display: block;
   width: fit-content;
-  color: #dcdce1;
+  color: var(--ot-text);
   font-size: 12px;
   font-weight: 600;
   text-decoration: none;
@@ -3189,13 +3189,13 @@ th:nth-child(2) .sort-button {
 .cell-sub,
 .agent-id {
   display: block;
-  color: #606069;
+  color: var(--ot-muted);
   font-size: 9px;
   margin-top: 3px;
 }
 
 .agent-name {
-  color: #dcdce1;
+  color: var(--ot-text);
   font-size: 12px;
   font-weight: 600;
 }
@@ -3204,20 +3204,20 @@ th:nth-child(2) .sort-button {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  background: #2a2a2e;
-  color: #aaa;
+  background: var(--ot-surface-3);
+  color: var(--ot-text-2);
   font-size: 10px;
   padding: 3px 8px;
   text-transform: capitalize;
 }
 
-.status-active { background: #1d3a1d; color: #7fd97f; }
-.status-planning { background: #1d2a3a; color: #7fb0d9; }
+.status-active { background: var(--ot-positive-soft); color: var(--ot-positive); }
+.status-planning { background: var(--ot-info-soft); color: var(--ot-info); }
 .status-paused,
-.status-budgetpaused { background: #3a331d; color: #d9c47f; }
-.status-blocked { background: #3a1f1d; color: #e08a8a; }
-.status-completed { background: #1d2a3a; color: #7fb0d9; }
-.status-archived { background: #2a2a2e; color: #999; }
+.status-budgetpaused { background: var(--ot-warning-soft); color: var(--ot-warning); }
+.status-blocked { background: var(--ot-negative-soft); color: var(--ot-negative); }
+.status-completed { background: var(--ot-info-soft); color: var(--ot-info); }
+.status-archived { background: var(--ot-surface-3); color: var(--ot-muted); }
 
 .sr-only {
   position: absolute;
@@ -3361,9 +3361,9 @@ th:nth-child(2) .sort-button {
 }
 
 .precision-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 14px 0 22px; }
-.precision-controls label { display: flex; flex-direction: column; gap: 6px; color: #aab4c2; font-size: 12px; }
-.precision-controls input, .precision-controls select { background: #1c2027; color: #e6ebf2; border: 1px solid #3b4553; border-radius: 7px; padding: 8px 10px; color-scheme: dark; max-width: 100%; }
-.precision-controls span { color: #909aa9; font-size: 12px; padding-bottom: 8px; }
+.precision-controls label { display: flex; flex-direction: column; gap: 6px; color: var(--ot-text-2); font-size: 12px; }
+.precision-controls input, .precision-controls select { background: var(--ot-surface-2); color: var(--ot-text); border: 1px solid var(--ot-line-strong); border-radius: 7px; padding: 8px 10px; color-scheme: dark; max-width: 100%; }
+.precision-controls span { color: var(--ot-muted); font-size: 12px; padding-bottom: 8px; }
 .range-control { flex-wrap: wrap; }
 .range-button { flex: 0 0 auto; min-width: max-content; letter-spacing: normal; }
 @media(max-width: 600px) { .precision-controls label { width: 100%; } }

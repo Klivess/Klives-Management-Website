@@ -68,18 +68,18 @@ onBeforeUnmount(() => { disconnect(); if (lastUrl) URL.revokeObjectURL(lastUrl);
 </script>
 
 <style scoped>
-.live-desktop { background: #161519; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+.live-desktop { background: var(--ot-surface); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
 .live-desktop.clickable { cursor: pointer; border: 1px solid transparent; transition: border-color 0.1s; }
-.live-desktop.clickable:hover { border-color: #4d9e39; }
-.ld-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; font-size: 12px; color: #ccc; border-bottom: 1px solid #2a2a2e; }
+.live-desktop.clickable:hover { border-color: var(--ot-accent); }
+.ld-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; font-size: 12px; color: var(--ot-text-2); border-bottom: 1px solid var(--ot-line); }
 .ld-label { font-weight: 600; text-transform: capitalize; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ld-status { font-size: 10px; color: #888; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
-.ld-status.on { color: #7fd97f; }
-.ld-status.on::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #7fd97f; animation: ld-blink 1.6s ease-in-out infinite; }
+.ld-status { font-size: 10px; color: var(--ot-muted); display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.ld-status.on { color: var(--ot-positive); }
+.ld-status.on::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--ot-accent); animation: ld-blink 1.6s ease-in-out infinite; }
 @keyframes ld-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-.ld-frame { position: relative; flex: 1; min-height: 120px; display: flex; align-items: center; justify-content: center; background: #0e0e11; }
+.ld-frame { position: relative; flex: 1; min-height: 120px; display: flex; align-items: center; justify-content: center; background: var(--ot-surface); }
 .ld-frame img { max-width: 100%; max-height: 100%; display: block; }
-.ld-empty { color: #666; font-size: 12px; padding: 20px; text-align: center; }
-.ld-maximise { position: absolute; top: 6px; right: 8px; color: #fff; opacity: 0; background: rgba(0,0,0,0.45); border-radius: 5px; padding: 2px 6px; font-size: 13px; transition: opacity 0.1s; }
+.ld-empty { color: var(--ot-muted); font-size: 12px; padding: 20px; text-align: center; }
+.ld-maximise { position: absolute; top: 6px; right: 8px; color: var(--ot-text); opacity: 0; background: rgba(0,0,0,0.45); border-radius: 5px; padding: 2px 6px; font-size: 13px; transition: opacity 0.1s; }
 .live-desktop.clickable:hover .ld-maximise { opacity: 1; }
 </style>

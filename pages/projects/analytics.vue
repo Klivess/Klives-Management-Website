@@ -1,80 +1,23 @@
 <template>
-  <div class="fleet-analytics-page">
-    <div class="page-header">
+  <ProjectsShell>
+    <div class="ot-pagehead">
       <div>
-        <NuxtLink to="/projects" class="back-link">Back to projects</NuxtLink>
-        <h1>Project analytics</h1>
-        <p>Spend, token usage, activity, and delivery performance across the complete KliveAgent fleet.</p>
+        <h1>Analytics</h1>
+        <p class="subtitle">Spend, token usage, activity and delivery performance across every project.</p>
       </div>
-      <NuxtLink to="/projects/cost-simulator" class="side-link">Cost simulator ↗</NuxtLink>
+      <div class="ot-actions">
+        <NuxtLink to="/projects/cost-simulator" class="ot-btn ghost">Re-price usage in the cost simulator →</NuxtLink>
+      </div>
     </div>
 
     <ProjectsAnalyticsDashboard all-projects />
-  </div>
+  </ProjectsShell>
 </template>
 
 <script setup lang="ts">
+import ProjectsShell from '~/components/Projects/Shell.vue';
 import ProjectsAnalyticsDashboard from '~/components/Projects/AnalyticsDashboard.vue';
 
 definePageMeta({ layout: 'navbar' });
+useHead({ title: 'Projects · Analytics' });
 </script>
-
-<style scoped>
-.fleet-analytics-page {
-  min-height: 100vh;
-  padding: 24px;
-  color: #e6e6e6;
-}
-
-.page-header {
-  align-items: flex-start;
-  display: flex;
-  gap: 20px;
-  justify-content: space-between;
-  margin-bottom: 22px;
-}
-
-.side-link {
-  background: #26262b;
-  border-radius: 6px;
-  color: #c7c7cc;
-  flex-shrink: 0;
-  font-size: 12px;
-  padding: 9px 14px;
-  text-decoration: none;
-}
-
-.side-link:hover { background: #303036; color: #e6e6eb; }
-
-.back-link {
-  display: inline-block;
-  color: #7fb0d9;
-  font-size: 12px;
-  margin-bottom: 7px;
-  text-decoration: none;
-}
-
-.back-link:hover {
-  color: #a8ccec;
-}
-
-h1 {
-  color: #e6e6e6;
-  font-size: 28px;
-  line-height: 1.2;
-  margin: 0;
-}
-
-p {
-  color: #888;
-  font-size: 14px;
-  line-height: 1.5;
-  margin: 5px 0 0;
-}
-
-@media (max-width: 680px) {
-  .fleet-analytics-page {
-    padding: 16px 16px 16px 72px;
-  }
-}
-</style>

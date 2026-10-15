@@ -55,6 +55,9 @@ async function setup(page: Page, count = 9, options: { waitForReady?: boolean; s
       await route.fulfill({ contentType:'application/json', body:JSON.stringify({ halt:state.cacheHalt,
         window:{ weightedHitRatePct:78.3, measuredRequests:20 }, settings:{} }) }); return;
     }
+    if (url.pathname === '/projects/computers/health') {
+      await route.fulfill({ contentType:'application/json', body:JSON.stringify({ available:true, daemonProblem:false, restartRequired:false }) }); return;
+    }
     if (route.request().method() === 'POST') {
       const body = route.request().postDataJSON(); state.mutations.push({ path:url.pathname, body });
       if (url.pathname === '/projects/cache-health/clear') {
@@ -75,35 +78,37 @@ async function setup(page: Page, count = 9, options: { waitForReady?: boolean; s
   if (options.waitForReady !== false) await expect(page.getByRole('region', { name:'Fleet summary' })).toBeAttached();
   return state;
 }
-async function fits(page: Page) {
-  await expect.poll(() => page.evaluate(() => ({ x:document.documentElement.scrollWidth-innerWidth, y:document.documentElement.scrollHeight-innerHeight }))).toEqual({ x:0, y:0 });
-  const clipped = await page.locator('.project-lane').evaluateAll(rows => rows.some(row => row.getBoundingClientRect().bottom > row.parentElement!.getBoundingClientRect().bottom + 1));
-  expect(clipped).toBe(false);
+
+/** The page scrolls normally now; what must never happen is sideways overflow or the rail covering content. */
+async function reflows(page: Page) {
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
   const occluded = await page.evaluate(() => {
     if (innerWidth >= 768) return false;
     const rail = document.querySelector('.vnav')!.getBoundingClientRect();
-    const heading = document.querySelector('.projects-overview h1')!.getBoundingClientRect();
+    const heading = document.querySelector('.ot-pagehead h1')!.getBoundingClientRect();
     return heading.left < rail.right;
   });
   expect(occluded, 'The mobile sidebar must not cover dashboard content').toBe(false);
 }
 
+const notice = (page: Page) => page.locator('.ov-notice');
+const inspector = (page: Page) => page.getByRole('dialog', { name:'Project result' });
+
 for (const size of [{ width:1920,height:1080 }, { width:1366,height:768 }]) {
-  test(`nine projects fit at ${size.width}×${size.height}`, async ({ page }, testInfo) => {
+  test(`nine projects render cleanly at ${size.width}×${size.height}`, async ({ page }, testInfo) => {
     await page.setViewportSize(size); const errors:string[]=[]; page.on('pageerror',e=>errors.push(e.message)); await setup(page);
     await expect(page.getByRole('group',{name:'Model and external spend, and completed steps over time'})).toBeVisible();
-    await fits(page);
-    expect(await page.locator('.project-lane').count()).toBeGreaterThanOrEqual(size.width===1920?9:4);
+    await expect(page.locator('.project-lane')).toHaveCount(9);
+    await reflows(page);
+    await expect(page.getByRole('region',{name:'Fleet summary'})).toContainText('$64.20');
     await page.screenshot({ path:testInfo.outputPath('overview.png'),fullPage:true });
     expect(errors).toEqual([]);
   });
 }
-test('fleet totals survive pagination, searching, shelving and stable refresh', async ({ page }) => {
+
+test('searching, shelving and live refresh keep rows stable', async ({ page }) => {
   const state=await setup(page,30); const initial=await page.locator('.project-lane').first().getAttribute('data-project-id');
-  await page.getByRole('button',{name:'Next project page'}).click();
-  expect(await page.locator('.project-lane').first().getAttribute('data-project-id')).not.toBe(initial);
-  await expect(page.getByRole('region',{name:'Fleet summary'})).toContainText('$64.20');
-  await page.getByRole('button',{name:'Previous project page'}).click();
+  await expect(page.locator('.project-lane')).toHaveCount(30);
   state.snapshot.projects[0].pendingApprovals=20; await page.getByRole('button',{name:'Refresh overview'}).click();
   await expect(page.getByRole('button',{name:'Refresh overview'})).toBeEnabled();
   expect(await page.locator('.project-lane').first().getAttribute('data-project-id')).toBe(initial);
@@ -112,46 +117,73 @@ test('fleet totals survive pagination, searching, shelving and stable refresh', 
   await expect(page.locator('.project-lane')).toHaveCount(1); await page.getByRole('button',{name:'Unshelve',exact:true}).click();
   await expect.poll(()=>state.mutations.at(-1)?.path).toBe('/projects/unarchive');
 });
+
+test('attention is surfaced in the summary, the queue card and per row', async ({ page }) => {
+  await setup(page);
+  await expect(page.getByRole('list',{name:'Attention queue'})).toContainText('Payment account needs verification');
+  await page.getByRole('button',{name:/Needs attention/}).first().click();
+  const drawer = page.getByRole('dialog',{name:'Needs attention'});
+  await expect(drawer).toContainText('2 approvals pending'); await expect(drawer).toContainText('Payment account needs verification');
+  await page.keyboard.press('Escape'); await expect(drawer).toBeHidden();
+  await page.getByRole('button',{name:'Attention for AI freelance services'}).click();
+  await expect(drawer).toContainText('2 approvals pending'); await expect(drawer).not.toContainText('Payment account needs verification');
+});
+
 test('inspector pins results, restores Commander choice, supports grouped chart points', async ({ page }) => {
   const state=await setup(page); await page.getByRole('button',{name:'Inspect result for AI freelance services',exact:true}).click();
-  const dialog=page.locator('dialog'); await expect(dialog).toBeVisible(); await expect(dialog).toContainText('Event #123');
+  await expect(inspector(page)).toBeVisible(); await expect(inspector(page)).toContainText('Event #123');
   await page.getByLabel('Primary result', {exact:true}).selectOption('alternative-1'); await page.getByLabel('Favourable direction').selectOption('lower');
   await page.getByRole('button',{name:'Save selection'}).click(); await expect.poll(()=>state.mutations.at(-1)?.body).toEqual({projectID:'project-1',observableID:'alternative-1',direction:'lower'});
   await page.getByLabel('Primary result',{exact:true}).selectOption(''); await page.getByRole('button',{name:'Save selection'}).click(); await expect.poll(()=>state.mutations.at(-1)?.body.observableID).toBe(null);
-  await page.keyboard.press('Escape'); await expect(dialog).not.toBeVisible();
-  const point=page.getByRole('img',{name:'Project cost and delivery chart. Left and right arrows select a point; Enter opens its result.'}); await point.focus(); await page.keyboard.press('Enter'); await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape'); await expect(inspector(page)).toBeHidden();
+  const point=page.getByRole('img',{name:'Project cost and delivery chart. Left and right arrows select a point; Enter opens its result.'}); await point.focus(); await page.keyboard.press('Enter'); await expect(inspector(page)).toBeVisible();
 });
+
 test('live events refresh without row movement and failed refresh retains data', async ({ page }) => {
   const state=await setup(page); const before=state.calls.length;
   state.snapshot.projects[1].currentWork='Delivering the approved client report';
   await expect.poll(()=>!!state.socket).toBe(true); state.socket.send(JSON.stringify({kind:'project-event',projectID:'project-1',type:'activity-changed'}));
   await expect.poll(()=>state.calls.length).toBeGreaterThan(before); await expect(page.getByText('Delivering the approved client report')).toBeVisible();
-  state.fail=true; await page.getByRole('button',{name:'Refresh overview'}).click(); await expect(page.locator('.notice[role=status]')).toContainText('last successful snapshot');
+  state.fail=true; await page.getByRole('button',{name:'Refresh overview'}).click(); await expect(notice(page)).toContainText('last successful snapshot');
   await expect(page.getByText('Delivering the approved client report')).toBeVisible();
   state.fail=false; await page.getByRole('button',{name:'1H',exact:true}).click(); await expect.poll(()=>state.calls.at(-1)).toBe('1h');
-  await expect(page.getByRole('button',{name:'Refresh overview'})).toBeEnabled(); await fits(page);
+  await expect(page.getByRole('button',{name:'Refresh overview'})).toBeEnabled(); await reflows(page);
 });
+
 test('broadcast and fleet controls preserve mutation contracts', async ({ page }) => {
   const state=await setup(page); await page.getByRole('button',{name:'Broadcast',exact:true}).click(); await page.getByLabel('Message',{exact:true}).fill('Report the next measurable result.');
   await page.getByRole('button',{name:'Send to all',exact:true}).click(); await expect.poll(()=>state.mutations.at(-1)).toEqual({path:'/projects/broadcast',body:{text:'Report the next measurable result.'}});
+  await expect(notice(page)).toContainText('Broadcast delivered');
   await page.getByRole('button',{name:'▶ Unhalt all (1)',exact:true}).click(); await expect.poll(()=>state.mutations.at(-1)?.path).toBe('/projects/unhalt-all');
   await expect(page.getByRole('button',{name:'Ⅱ Halt all',exact:true})).toBeEnabled(); await page.getByRole('button',{name:'Ⅱ Halt all',exact:true}).click(); await expect.poll(()=>state.mutations.at(-1)?.path).toBe('/projects/halt-all');
 });
-test('mobile tabs and empty fleet remain usable', async ({ page }, testInfo) => {
-  await page.setViewportSize({width:390,height:844}); await setup(page,30); await fits(page); await page.screenshot({path:testInfo.outputPath('mobile-overview.png')});
-  await page.getByRole('tab',{name:'projects',exact:true}).click(); await expect(page.locator('.project-lane').first()).toBeVisible(); await fits(page); await page.screenshot({path:testInfo.outputPath('mobile-projects.png')});
-  await page.getByRole('tab',{name:'attention (2)',exact:true}).click(); await expect(page.getByRole('region',{name:'Mobile attention queue'})).toBeVisible(); await fits(page);
+
+test('system defaults open in a drawer from the page header', async ({ page }) => {
+  await setup(page);
+  await page.getByRole('button',{name:'Defaults',exact:true}).click();
+  await expect(page.getByRole('dialog',{name:'System defaults'})).toBeVisible();
 });
+
+test('mobile layout reflows without sideways scrolling', async ({ page }, testInfo) => {
+  await page.setViewportSize({width:390,height:844}); await setup(page,30); await reflows(page);
+  await expect(page.locator('.project-lane').first()).toBeVisible();
+  await page.screenshot({path:testInfo.outputPath('mobile-overview.png')});
+  await page.locator('.project-lane').first().scrollIntoViewIfNeeded();
+  await page.screenshot({path:testInfo.outputPath('mobile-projects.png')});
+});
+
 test('empty fleet and accessibility reflow do not clip controls', async ({ page }) => {
-  await setup(page,0); await expect(page.getByText('No unshelved projects. Create a project or restore one from Shelved.')).toBeVisible(); await fits(page);
-  await page.setViewportSize({width:640,height:450}); await page.getByRole('tab',{name:'projects',exact:true}).click();
+  await setup(page,0); await expect(page.getByText('No unshelved projects')).toBeVisible();
+  await expect(page.getByText('Create a project or restore one from Shelved.')).toBeVisible(); await reflows(page);
+  await page.setViewportSize({width:640,height:450});
   await expect(page.getByLabel('Search projects')).toBeVisible(); expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);
 });
+
 test('server error details and degraded project warnings remain visible', async ({ page }) => {
   const state = await setup(page);
   state.failureBody = 'Observable history is invalid.';
   await page.getByRole('button',{name:'Refresh overview'}).click();
-  await expect(page.locator('.notice[role=status]').first()).toContainText('Observable history is invalid.');
+  await expect(notice(page)).toContainText('Observable history is invalid.');
   state.failureBody = null;
   state.snapshot.degraded = true;
   state.snapshot.warnings = ['project-1: project results unavailable (legacy history was null)'];
@@ -162,21 +194,21 @@ test('server error details and degraded project warnings remain visible', async 
 
 test('service startup stays on a descriptive loading screen and retries automatically', async ({ page }) => {
   const state = await setup(page, 9, { waitForReady:false, startupResponses:2 });
-  await expect(page.getByRole('status')).toContainText('Opening project history and runtime state');
-  await expect(page.locator('.loading-state')).toContainText('The page will open automatically');
+  await expect(page.locator('.ov-loading')).toContainText('Opening project history and runtime state');
+  await expect(page.locator('.ov-loading')).toContainText('The page opens automatically');
   await expect(page.getByRole('region', { name:'Fleet summary' })).toBeVisible({ timeout:5_000 });
   expect(state.calls.length).toBeGreaterThanOrEqual(3);
 });
 
 test('cold historical analytics never blocks live project status', async ({ page }) => {
   const state = await setup(page, 9, { historicalLoading:true });
-  await expect(page.locator('.loading-notice')).toContainText('Building historical activity for 9 projects');
+  await expect(page.locator('.ov-historical')).toContainText('Building historical activity for 9 projects');
   await expect(page.locator('.project-lane').first()).toBeVisible();
   await expect(page.locator('.project-lane').first()).toContainText('Building activity');
   state.snapshot.historicalLoading = false;
   state.snapshot.historicalLoadingMessage = null;
   state.snapshot.projects.forEach(project => { project.historicalReady = true; });
-  await expect(page.locator('.loading-notice')).toHaveCount(0, { timeout:5_000 });
+  await expect(page.locator('.ov-historical')).toHaveCount(0, { timeout:5_000 });
 });
 
 test('Chart.js legends, aligned zoom, hover tooltips and project selection are interactive', async ({ page }) => {
@@ -191,6 +223,7 @@ test('Chart.js legends, aligned zoom, hover tooltips and project selection are i
   await expect(reset).toBeEnabled(); await expect(page.locator('.range-caption[data-zoomed="true"]')).toBeVisible();
   await reset.click(); await expect(reset).toBeDisabled();
   const canvas = legend.locator('canvas').first();
+  await canvas.scrollIntoViewIfNeeded();
   const bounds = await canvas.boundingBox(); expect(bounds).not.toBeNull();
   await page.mouse.move(bounds!.x + bounds!.width * .25, bounds!.y + bounds!.height * .5);
   await page.mouse.down(); await page.mouse.move(bounds!.x + bounds!.width * .65, bounds!.y + bounds!.height * .5, {steps:8}); await page.mouse.up();
@@ -200,7 +233,7 @@ test('Chart.js legends, aligned zoom, hover tooltips and project selection are i
   await page.getByRole('button',{name:'Next project point'}).click();
   await expect(page.locator('.overview-charts [role="status"]')).toContainText('completed steps');
   await page.getByRole('button',{name:'Inspect selected project point'}).click();
-  await expect(page.locator('dialog')).toBeVisible();
+  await expect(inspector(page)).toBeVisible();
 });
 
 test('an engaged prompt-cache halt is announced and can be cleared from the dashboard', async ({ page }) => {
@@ -218,7 +251,7 @@ test('an engaged prompt-cache halt is announced and can be cleared from the dash
     { path:'/projects/cache-health/clear', body:{ unhalt:true } },
   ]);
   await expect(banner).toBeHidden();
-  await expect(page.locator('.notice')).toContainText('5 project(s) restored');
+  await expect(notice(page)).toContainText('5 project(s) restored');
 });
 
 test('clearing the latch alone leaves the projects halted', async ({ page }) => {
@@ -226,7 +259,7 @@ test('clearing the latch alone leaves the projects halted', async ({ page }) => 
     reason:'Weighted hit rate 41%.', haltedProjectIDs:['project-0'] } });
   await page.getByRole('button', { name:'Clear latch only' }).click();
   await expect.poll(() => state.mutations.at(-1)).toEqual({ path:'/projects/cache-health/clear', body:{ unhalt:false } });
-  await expect(page.locator('.notice')).toContainText('Projects stay halted');
+  await expect(notice(page)).toContainText('Projects stay halted');
 });
 
 test('a healthy fleet shows no prompt-cache banner', async ({ page }) => {

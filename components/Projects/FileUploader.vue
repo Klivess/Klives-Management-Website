@@ -248,32 +248,32 @@ notify();
 
 <style scoped>
 .fu-wrap { display: flex; flex-direction: column; gap: 12px; }
-.fu-picker { display: flex; justify-content: space-between; gap: 16px; align-items: center; border: 1px dashed #3a3a42; border-radius: 8px; padding: 14px; background: #121217; }
+.fu-picker { display: flex; justify-content: space-between; gap: 16px; align-items: center; border: 1px dashed var(--ot-line-strong); border-radius: 8px; padding: 14px; background: var(--ot-surface); }
 .fu-picker.disabled { opacity: .55; }
-.fu-picker strong { color: #e8e8e8; font-size: 13px; }
-.fu-picker p { color: #777; font-size: 11px; margin: 4px 0 0; line-height: 1.4; max-width: 560px; }
+.fu-picker strong { color: var(--ot-text); font-size: 13px; }
+.fu-picker p { color: var(--ot-muted); font-size: 11px; margin: 4px 0 0; line-height: 1.4; max-width: 560px; }
 .fu-buttons, .fu-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.fu-button { border: 1px solid #3a3a42; background: #222228; color: #ccc; padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
-.fu-button:hover { border-color: #4d9e39; color: #fff; }
+.fu-button { border: 1px solid var(--ot-line-strong); background: var(--ot-surface-2); color: var(--ot-text-2); padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+.fu-button:hover { border-color: var(--ot-accent); color: var(--ot-text); }
 .fu-button input { display: none; }
-.fu-list { border: 1px solid #29292f; border-radius: 7px; overflow: hidden; max-height: 230px; overflow-y: auto; }
-.fu-item { display: grid; grid-template-columns: minmax(180px, 1fr) 100px minmax(72px, auto); gap: 10px; align-items: center; padding: 8px 10px; border-bottom: 1px solid #24242a; font-size: 11px; }
+.fu-list { border: 1px solid var(--ot-line); border-radius: 7px; overflow: hidden; max-height: 230px; overflow-y: auto; }
+.fu-item { display: grid; grid-template-columns: minmax(180px, 1fr) 100px minmax(72px, auto); gap: 10px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--ot-line); font-size: 11px; }
 .fu-item:last-child { border-bottom: none; }
 .fu-file { min-width: 0; display: flex; gap: 8px; }
-.fu-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ccc; }
-.fu-size { color: #666; flex-shrink: 0; }
-.fu-progress { height: 4px; border-radius: 4px; background: #2d2d33; overflow: hidden; }
-.fu-progress span { display: block; height: 100%; background: #4d9e39; transition: width .15s; }
-.fu-status { color: #777; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
-.fu-status.done { color: #7fd97f; }
-.fu-status.failed { color: #ff8484; }
-.fu-error { color: #ff9a9a; font-size: 11px; background: #2a1818; padding: 8px 10px; border-radius: 6px; overflow-wrap: anywhere; }
-.fu-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #777; font-size: 11px; }
+.fu-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ot-text-2); }
+.fu-size { color: var(--ot-muted); flex-shrink: 0; }
+.fu-progress { height: 4px; border-radius: 4px; background: var(--ot-surface-3); overflow: hidden; }
+.fu-progress span { display: block; height: 100%; background: var(--ot-accent); transition: width .15s; }
+.fu-status { color: var(--ot-muted); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
+.fu-status.done { color: var(--ot-positive); }
+.fu-status.failed { color: var(--ot-negative); }
+.fu-error { color: var(--ot-negative); font-size: 11px; background: var(--ot-negative-soft); padding: 8px 10px; border-radius: 6px; overflow-wrap: anywhere; }
+.fu-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--ot-muted); font-size: 11px; }
 .fu-primary, .fu-secondary, .fu-danger, .fu-select { border-radius: 6px; padding: 7px 10px; font-size: 11px; }
-.fu-primary { border: 0; background: #4d9e39; color: #fff; cursor: pointer; }
-.fu-secondary, .fu-danger { border: 1px solid #383840; background: #222228; color: #bbb; cursor: pointer; }
-.fu-danger { color: #c98989; }
-.fu-select { background: #1b1b20; border: 1px solid #383840; color: #ccc; }
+.fu-primary { border: 0; background: var(--ot-accent); color: var(--ot-on-accent); cursor: pointer; }
+.fu-secondary, .fu-danger { border: 1px solid var(--ot-line-strong); background: var(--ot-surface-2); color: var(--ot-text-2); cursor: pointer; }
+.fu-danger { color: var(--ot-negative); }
+.fu-select { background: var(--ot-surface-2); border: 1px solid var(--ot-line-strong); color: var(--ot-text-2); }
 button:disabled { opacity: .45; cursor: default; }
 @media (max-width: 700px) { .fu-picker, .fu-footer { align-items: stretch; flex-direction: column; } .fu-buttons, .fu-actions { flex-wrap: wrap; } .fu-item { grid-template-columns: 1fr 70px; } .fu-status { grid-column: 1 / -1; text-align: left; } }
 </style>

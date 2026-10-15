@@ -329,39 +329,39 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.timeline { background: #161519; border-radius: 8px; padding: 12px; }
+.timeline { background: var(--ot-surface); border-radius: 8px; padding: 12px; }
 .tl-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 12px; flex-wrap: wrap; }
 .tl-left { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-.tl-label { font-weight: 600; color: #ccc; }
-.tl-range { font-size: 11px; color: #777; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tl-label { font-weight: 600; color: var(--ot-text-2); }
+.tl-range { font-size: 11px; color: var(--ot-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tl-controls { display: flex; align-items: center; gap: 4px; }
-.tl-btn { background: #26262b; color: #ccc; border: none; padding: 4px 9px; border-radius: 5px; cursor: pointer; font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
-.tl-btn:hover { background: #33333a; }
-.tl-btn.active { background: #4d9e39; color: #fff; }
-.tl-btn.live { background: #2a1f1f; color: #d98c8c; }
-.tl-btn.live:hover { background: #3a2626; }
-.tl-sep { width: 1px; height: 16px; background: #303036; margin: 0 3px; }
-.tl-livedot { width: 6px; height: 6px; border-radius: 50%; background: #555; }
-.tl-livedot.on { background: #d95b5b; animation: blink 1.6s ease-in-out infinite; }
+.tl-btn { background: var(--ot-surface-2); color: var(--ot-text-2); border: none; padding: 4px 9px; border-radius: 5px; cursor: pointer; font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
+.tl-btn:hover { background: var(--ot-surface-3); }
+.tl-btn.active { background: var(--ot-accent); color: var(--ot-on-accent); }
+.tl-btn.live { background: var(--ot-surface-2); color: var(--ot-negative); }
+.tl-btn.live:hover { background: var(--ot-negative-soft); }
+.tl-sep { width: 1px; height: 16px; background: var(--ot-surface-3); margin: 0 3px; }
+.tl-livedot { width: 6px; height: 6px; border-radius: 50%; background: var(--ot-surface-3); }
+.tl-livedot.on { background: var(--ot-negative); animation: blink 1.6s ease-in-out infinite; }
 .tl-canvas-wrap { width: 100%; overflow: hidden; cursor: crosshair; touch-action: none; }
 .tl-canvas-wrap.grabbing { cursor: grabbing; }
 .tl-svg { display: block; user-select: none; }
-.lane-bg { fill: #1c1c20; }
-.lane-commander { fill: #1a231a; }
-.lane-name { fill: #7a7a7a; font-size: 10px; }
-.grid { stroke: #26262b; stroke-width: 1; }
-.tick-label { fill: #666; font-size: 9px; }
-.marker { stroke: #111; stroke-width: 1; cursor: pointer; transition: r 0.1s; }
-.marker:hover { stroke: #fff; stroke-width: 1.5; }
-.spend-line { fill: none; stroke: #4d9e39; stroke-width: 1.5; opacity: 0.75; }
-.hair { stroke: #5a6b7a; stroke-width: 1; stroke-dasharray: 2 3; pointer-events: none; }
-.hair-bg { fill: #0d1b28; opacity: 0.92; }
-.hair-label { fill: #9fc4e0; font-size: 9px; font-variant-numeric: tabular-nums; pointer-events: none; }
-.now-edge { stroke: #d95b5b; stroke-width: 1; stroke-dasharray: 3 3; }
-.now-pulse { fill: #d95b5b; animation: pulse 1.6s ease-out infinite; }
+.lane-bg { fill: var(--ot-axis); }
+.lane-commander { fill: var(--ot-axis); }
+.lane-name { fill: var(--ot-text-2); font-size: 10px; }
+.grid { stroke: var(--ot-axis); stroke-width: 1; }
+.tick-label { fill: var(--ot-axis); font-size: 9px; }
+.marker { stroke: var(--ot-axis); stroke-width: 1; cursor: pointer; transition: r 0.1s; }
+.marker:hover { stroke: var(--ot-text-2); stroke-width: 1.5; }
+.spend-line { fill: none; stroke: var(--ot-positive); stroke-width: 1.5; opacity: 0.75; }
+.hair { stroke: var(--ot-axis); stroke-width: 1; stroke-dasharray: 2 3; pointer-events: none; }
+.hair-bg { fill: var(--ot-info); opacity: 0.92; }
+.hair-label { fill: var(--ot-info); font-size: 9px; font-variant-numeric: tabular-nums; pointer-events: none; }
+.now-edge { stroke: var(--ot-negative); stroke-width: 1; stroke-dasharray: 3 3; }
+.now-pulse { fill: var(--ot-negative); animation: pulse 1.6s ease-out infinite; }
 @keyframes pulse { 0% { opacity: 1; r: 4; } 70% { opacity: 0.15; r: 9; } 100% { opacity: 0; r: 9; } }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-.tl-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 11px; color: #999; }
+.tl-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 11px; color: var(--ot-muted); }
 .lg { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
 .lg.dim { opacity: 0.35; }
 .lg i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }

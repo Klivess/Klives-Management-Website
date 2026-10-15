@@ -62,7 +62,7 @@ let charts: Chart[] = [];
 let mounted = false;
 const percent = (value: number | null | undefined) => value == null ? '—' : `${value.toFixed(1)}%`;
 const humanize = (value: string) => value.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, c => c.toUpperCase());
-const colors = { completed: '#69bd83', failed: '#e7646d', deferred: '#f2ad3f', cancelled: '#ae83ef' };
+const colors = { completed: '#4ec98a', failed: '#ff7b7b', deferred: '#f0b429', cancelled: '#a89bf0' };
 function destroy() { charts.forEach(chart => chart.destroy()); charts = []; }
 function render() {
   if (!mounted) return;
@@ -73,9 +73,9 @@ function render() {
   const options: any = {
     responsive: true, maintainAspectRatio: false, animation: false,
     interaction: { mode: 'index', intersect: false },
-    plugins: { legend: { labels: { color: '#bfc6d1', usePointStyle: true, boxWidth: 9 } } },
-    scales: { x: { ticks: { color: '#8e98a7', maxTicksLimit: 7, maxRotation: 0 }, grid: { display: false } },
-      y: { beginAtZero: true, ticks: { color: '#8e98a7' }, grid: { color: '#ffffff0a' } } },
+    plugins: { legend: { labels: { color: '#b3c2ad', usePointStyle: true, boxWidth: 9 } } },
+    scales: { x: { ticks: { color: '#93a48d', maxTicksLimit: 7, maxRotation: 0 }, grid: { display: false } },
+      y: { beginAtZero: true, ticks: { color: '#93a48d' }, grid: { color: 'rgba(146, 196, 130, 0.10)' } } },
   };
   if (outcomesCanvas.value) {
     const fields = ['successfulWakes', 'failedWakes', 'deferredWakes', 'cancelledWakes'] as const;
@@ -101,8 +101,8 @@ function render() {
     charts.push(new Chart(ratesCanvas.value, { type: 'line', options: rateOptions,
       data: { labels, datasets: [
         { label: 'Active execution %', data: props.series.map(p => p.execution?.activeRate ?? null), borderColor: colors.completed, pointRadius: 2, spanGaps: false },
-        { label: 'Productive wakes %', data: props.series.map(p => p.execution?.productiveRate ?? null), borderColor: '#74b9ef', pointRadius: 2, spanGaps: false },
-        { label: '99% target', data: props.series.map(() => 99), borderColor: '#b0b9c8', borderDash: [5, 5], pointRadius: 0, borderWidth: 1 },
+        { label: 'Productive wakes %', data: props.series.map(p => p.execution?.productiveRate ?? null), borderColor: '#63c8ea', pointRadius: 2, spanGaps: false },
+        { label: '99% target', data: props.series.map(() => 99), borderColor: '#93a48d', borderDash: [5, 5], pointRadius: 0, borderWidth: 1 },
       ] },
     }));
   }
@@ -113,25 +113,25 @@ onBeforeUnmount(() => { mounted = false; destroy(); });
 </script>
 
 <style scoped>
-.execution-trends { padding: 22px; margin: 22px 0; background: #15191f; border: 1px solid #303843; border-radius: 14px; }
+.execution-trends { padding: 22px; margin: 22px 0; background: var(--ot-surface-2); border: 1px solid var(--ot-line-strong); border-radius: 14px; }
 .heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-h3, h4 { color: #edf1f6; margin: 0 0 8px; }
-p, small, .coverage, label, .empty { color: #a2acba; font-size: 12px; line-height: 1.6; }
+h3, h4 { color: var(--ot-text); margin: 0 0 8px; }
+p, small, .coverage, label, .empty { color: var(--ot-text-2); font-size: 12px; line-height: 1.6; }
 p { margin: 4px 0; }
 .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 20px 0; }
-.metrics article { display: flex; flex-direction: column; gap: 8px; padding: 16px; background: #1b2028; border-radius: 10px; }
-.metrics span { color: #bac3d0; font-size: 12px; }
-strong { font-size: 27px; color: #edf1f6; }
-.good { color: #69bd83; } .warning { color: #f2ad3f; }
+.metrics article { display: flex; flex-direction: column; gap: 8px; padding: 16px; background: var(--ot-surface-2); border-radius: 10px; }
+.metrics span { color: var(--ot-text-2); font-size: 12px; }
+strong { font-size: 27px; color: var(--ot-text); }
+.good { color: var(--ot-positive); } .warning { color: var(--ot-warning); }
 .charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
 .charts > article, .metrics > article { min-width: 0; }
 .chart { position: relative; height: 270px; margin-top: 15px; min-width: 0; max-width: 100%; }
 .chart canvas { max-width: 100%; }
-select { color: #dae2ee; background: #202731; border: 1px solid #3a4656; border-radius: 6px; padding: 5px 8px; }
+select { color: var(--ot-text); background: var(--ot-info-soft); border: 1px solid var(--ot-line-strong); border-radius: 6px; padding: 5px 8px; }
 .reasons { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 22px; font-size: 12px; }
 .reasons h4 { margin: 0 10px 0 0; }
-.reasons span { background: #242b35; color: #c7d0dc; padding: 7px 10px; border-radius: 7px; }
-.reasons b { color: #f2ad3f; margin-left: 7px; }
+.reasons span { background: var(--ot-surface-3); color: var(--ot-text-2); padding: 7px 10px; border-radius: 7px; }
+.reasons b { color: var(--ot-warning); margin-left: 7px; }
 .coverage-note { margin-top: 16px; }
 @media(max-width: 1100px) { .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .charts { grid-template-columns: 1fr; } }
 @media(max-width: 540px) { .execution-trends { padding: 14px; } .metrics { grid-template-columns: 1fr; } }

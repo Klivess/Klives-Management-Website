@@ -1,90 +1,104 @@
 <template>
-  <div class="accounts-page">
-    <div class="page-header">
+  <ProjectsShell>
+    <div class="ot-pagehead">
       <div>
-        <h1 class="page-title">Shared Accounts</h1>
-        <p class="page-subtitle">Global registry — accounts agents created on external services, shared across every project + KliveAgent</p>
+        <h1>Shared accounts</h1>
+        <p class="subtitle">Accounts agents created on external services — one registry shared by every project and KliveAgent. Secrets stay encrypted; agents use them through placeholders.</p>
       </div>
-      <div class="header-actions">
-        <label class="reveal-toggle">
-          <input type="checkbox" v-model="reveal" @change="load" />
-          <span>Reveal secrets</span>
-        </label>
-        <button class="ghost-btn" @click="load">↻ Refresh</button>
-        <NuxtLink to="/projects" class="ghost-btn">← Projects</NuxtLink>
+      <div class="ot-actions">
+        <label class="ot-check"><input v-model="reveal" type="checkbox" @change="load" /> Reveal secrets</label>
+        <button class="ot-btn ghost" :disabled="loading" @click="load">↻ Refresh</button>
       </div>
     </div>
 
-    <div v-if="loading" class="info-banner">Loading accounts…</div>
-    <div v-else-if="loadError" class="error-banner">{{ loadError }}</div>
-    <div v-else-if="!accounts.length" class="empty-banner">
-      No accounts registered yet. Agents record accounts here as they sign up on external services.
+    <section class="ot-kpis tight" aria-label="Account summary">
+      <OmniTraderKpi label="Accounts" :value="String(accounts.length)" :loading="loading && !accounts.length" />
+      <OmniTraderKpi label="Active" :value="String(countBy('Active'))" tone="good" :loading="loading && !accounts.length" />
+      <OmniTraderKpi label="Dead or banned" :value="String(countBy('Dead') + countBy('Banned'))" :tone="countBy('Banned') ? 'bad' : ''" :loading="loading && !accounts.length" />
+      <OmniTraderKpi label="Services" :value="String(services)" :loading="loading && !accounts.length" />
+    </section>
+
+    <div class="ot-filterbar">
+      <div class="ot-search"><span class="glyph" aria-hidden="true">⌕</span><input v-model="search" class="ot-input" type="search" placeholder="Service, username, email or owner…" aria-label="Search accounts" /></div>
+      <div class="ot-segment sm" role="group" aria-label="Account status">
+        <button v-for="s in ['All', 'Active', 'Dead', 'Banned']" :key="s" type="button" :aria-pressed="status === s" @click="status = s">{{ s }}</button>
+      </div>
+      <span class="grow"></span>
+      <span class="summary"><b>{{ filtered.length }}</b> of {{ accounts.length }}</span>
     </div>
 
-    <div v-else class="accounts-grid">
-      <div v-for="a in accounts" :key="a.accountID" class="account-card" :class="statusClass(a.status)">
-        <div class="card-head">
-          <div class="svc">
-            <span class="svc-name">{{ a.serviceDisplay || a.serviceKey }}</span>
-            <span class="svc-key">{{ a.serviceKey }}</span>
+    <div v-if="loadError" class="ot-banner warn" role="alert"><span class="glyph" aria-hidden="true">⚠</span><div>{{ loadError }}</div></div>
+
+    <div v-if="loading && !accounts.length" class="ot-card"><div class="ot-skelrows"><div v-for="n in 4" :key="n" class="ot-skel"></div></div></div>
+    <OmniTraderStateBlock v-else-if="!accounts.length && !loadError" kind="empty" title="No accounts registered yet"
+      detail="Agents record accounts here as they sign up on external services." />
+    <OmniTraderStateBlock v-else-if="!filtered.length && accounts.length" kind="filtered" title="No matching accounts" />
+
+    <div v-else class="ac-grid">
+      <article v-for="a in filtered" :key="a.accountID" class="ot-card ac-card" :class="statusClass(a.status)">
+        <header>
+          <div class="titles">
+            <h2>{{ a.serviceDisplay || a.serviceKey }}</h2>
+            <p class="subtitle pj-mono">{{ a.serviceKey }}</p>
           </div>
-          <span class="status-pill" :class="statusClass(a.status)">{{ a.status }}</span>
-        </div>
+          <span class="ot-chip" :class="statusTone(a.status)">{{ a.status }}</span>
+        </header>
+        <div class="body">
+          <dl class="ot-kv">
+            <dt>Username</dt><dd class="pj-mono">{{ a.username }}</dd>
+            <template v-if="a.email">
+              <dt>Email</dt>
+              <dd>
+                <NuxtLink v-if="isKliveMail(a.email)" :to="`/klivemail?mailbox=${encodeURIComponent(a.email)}`" class="pj-link">{{ a.email }} ✉</NuxtLink>
+                <template v-else>{{ a.email }}</template>
+              </dd>
+            </template>
+            <template v-if="a.description"><dt>Purpose</dt><dd>{{ a.description }}</dd></template>
+          </dl>
 
-        <div class="row"><span class="k">Username</span><span class="v">{{ a.username }}</span></div>
-        <div class="row" v-if="a.email">
-          <span class="k">Email</span>
-          <span class="v">
-            <NuxtLink v-if="isKliveMail(a.email)" :to="`/klivemail?mailbox=${encodeURIComponent(a.email)}`" class="mail-link">{{ a.email }} ✉</NuxtLink>
-            <template v-else>{{ a.email }}</template>
-          </span>
-        </div>
-        <div class="row" v-if="a.description"><span class="k">Purpose</span><span class="v">{{ a.description }}</span></div>
-
-        <div class="secrets" v-if="a.secrets && a.secrets.length">
-          <div v-for="s in a.secrets" :key="s.name" class="secret-row">
-            <span class="s-name">{{ s.name }}</span>
-            <code class="s-val">{{ reveal ? s.value : '••••••' }}</code>
-            <button class="copy-btn" title="Copy placeholder" @click="copy(s.placeholder)">{{ copied === s.placeholder ? '✓' : '⧉' }}</button>
+          <div v-if="a.secrets && a.secrets.length" class="ac-secrets">
+            <div v-for="s in a.secrets" :key="s.name" class="ac-secret">
+              <span class="ac-secret-name">{{ s.name }}</span>
+              <code class="ac-secret-val">{{ reveal ? s.value : '••••••' }}</code>
+              <button class="ot-btn ghost sm" :aria-label="`Copy the ${s.name} placeholder`" title="Copy placeholder" @click="copy(s.placeholder)">{{ copied === s.placeholder ? '✓ Copied' : '⧉' }}</button>
+            </div>
           </div>
+
+          <div v-if="a.owners && a.owners.length" class="ac-owners">
+            <span v-for="o in a.owners" :key="o" class="ot-chip">
+              <NuxtLink v-if="o.startsWith('project:')" :to="`/projects/${o.slice(8)}`" class="pj-link">{{ o }}</NuxtLink>
+              <NuxtLink v-else-if="o === 'KliveAgent'" to="/kliveagent" class="pj-link">KliveAgent</NuxtLink>
+              <template v-else>{{ o }}</template>
+            </span>
+          </div>
+
+          <p class="ac-meta">
+            created {{ fmt(a.createdAt) }}<span v-if="a.lastUsedAt"> · last used {{ fmt(a.lastUsedAt) }}</span><span v-if="a.createdBy"> · by {{ a.createdBy }}</span>
+          </p>
+          <p v-if="a.notes" class="ac-notes">{{ a.notes }}</p>
         </div>
-
-        <div class="owners" v-if="a.owners && a.owners.length">
-          <span v-for="o in a.owners" :key="o" class="owner-chip">
-            <NuxtLink v-if="o.startsWith('project:')" :to="`/projects/${o.slice(8)}`">{{ o }}</NuxtLink>
-            <NuxtLink v-else-if="o === 'KliveAgent'" to="/kliveagent">KliveAgent</NuxtLink>
-            <template v-else>{{ o }}</template>
-          </span>
-        </div>
-
-        <div class="meta">
-          <span>created {{ fmt(a.createdAt) }}</span>
-          <span v-if="a.lastUsedAt">· last used {{ fmt(a.lastUsedAt) }}</span>
-          <span v-if="a.createdBy">· by {{ a.createdBy }}</span>
-        </div>
-
-        <div v-if="a.notes" class="notes">{{ a.notes }}</div>
-
-        <div class="card-actions">
-          <select :value="a.status" @change="setStatus(a, ($event.target as HTMLSelectElement).value)">
+        <footer class="ac-actions">
+          <select class="ot-select auto" :value="a.status" :aria-label="`Status of ${a.serviceKey} account ${a.username}`" @change="setStatus(a, ($event.target as HTMLSelectElement).value)">
             <option value="Active">Active</option>
             <option value="Dead">Dead</option>
             <option value="Banned">Banned</option>
           </select>
-          <button class="ghost-btn" @click="editNotes(a)">Notes</button>
-          <button class="danger-btn" @click="del(a)">Delete</button>
-        </div>
-      </div>
+          <button class="ot-btn ghost sm" @click="editNotes(a)">Notes</button>
+          <button class="ot-btn danger sm" @click="del(a)">Delete</button>
+        </footer>
+      </article>
     </div>
-  </div>
+  </ProjectsShell>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import Swal from 'sweetalert2';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import ProjectsShell from '~/components/Projects/Shell.vue';
 
 definePageMeta({ layout: 'navbar' });
+useHead({ title: 'Projects · Accounts' });
 
 interface AccountSecret { name: string; value: string; placeholder: string; updatedAt: string; }
 interface Account {
@@ -98,29 +112,42 @@ const loading = ref(true);
 const loadError = ref('');
 const reveal = ref(false);
 const copied = ref('');
+const search = ref('');
+const status = ref('All');
+
+const countBy = (s: string) => accounts.value.filter(a => a.status === s).length;
+const services = computed(() => new Set(accounts.value.map(a => a.serviceKey)).size);
+const filtered = computed(() => {
+  const q = search.value.trim().toLowerCase();
+  return accounts.value.filter(a => (status.value === 'All' || a.status === status.value)
+    && (!q || [a.serviceKey, a.serviceDisplay, a.username, a.email, a.description, ...(a.owners ?? [])]
+      .some(v => (v || '').toLowerCase().includes(q))));
+});
 
 async function load() {
   loading.value = true;
   loadError.value = '';
   try {
     const r = await RequestGETFromKliveAPI(`/accounts/list${reveal.value ? '?revealSensitive=true' : ''}`, false, false);
-    if (r.ok) accounts.value = await r.json();
-    else loadError.value = `Couldn't load accounts (HTTP ${r.status}).`;
+    const body = r.ok ? await r.json() : null;
+    if (Array.isArray(body)) accounts.value = body;
+    else loadError.value = r.ok ? 'The server returned something other than an account list.' : `Couldn't load accounts (HTTP ${r.status}).`;
   } catch { loadError.value = 'Network error loading accounts.'; }
   finally { loading.value = false; }
 }
 
 function isKliveMail(email?: string) { return !!email && email.toLowerCase().endsWith('@klive.dev'); }
 function statusClass(s: string) { return 's-' + (s || '').toLowerCase(); }
+function statusTone(s: string) { return s === 'Active' ? 'ok' : s === 'Banned' ? 'bad' : ''; }
 function fmt(d?: string) { return d ? new Date(d).toLocaleDateString() : ''; }
 
 async function copy(text: string) {
   try { await navigator.clipboard.writeText(text); copied.value = text; setTimeout(() => { if (copied.value === text) copied.value = ''; }, 1200); } catch { /* clipboard blocked */ }
 }
 
-async function setStatus(a: Account, status: string) {
-  const res = await RequestPOSTFromKliveAPI('/accounts/update', JSON.stringify({ accountID: a.accountID, status }), false, true);
-  if (res.ok) a.status = status; else Swal.fire('Update failed', `HTTP ${res.status}`, 'error');
+async function setStatus(a: Account, next: string) {
+  const res = await RequestPOSTFromKliveAPI('/accounts/update', JSON.stringify({ accountID: a.accountID, status: next }), false, true);
+  if (res.ok) a.status = next; else Swal.fire('Update failed', `HTTP ${res.status}`, 'error');
 }
 
 async function editNotes(a: Account) {
@@ -147,53 +174,20 @@ async function del(a: Account) {
 onMounted(load);
 </script>
 
-<style scoped lang="scss">
-.accounts-page { padding: 24px; max-width: 1200px; margin: 0 auto; }
-.page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
-.page-title { font-size: 1.6rem; margin: 0; }
-.page-subtitle { color: #888; margin: 4px 0 0; font-size: 0.9rem; }
-.header-actions { display: flex; gap: 10px; align-items: center; }
-.reveal-toggle { display: flex; gap: 6px; align-items: center; color: #aaa; font-size: 0.85rem; cursor: pointer; }
-.ghost-btn, .danger-btn { background: #1f1f23; border: 1px solid #333; color: #ddd; padding: 6px 12px; border-radius: 8px; cursor: pointer; text-decoration: none; font-size: 0.85rem; }
-.ghost-btn:hover { border-color: #4d9e39; }
-.danger-btn { border-color: #5a2a2a; color: #e08585; }
-.danger-btn:hover { background: #3a1e1e; }
-
-.info-banner, .error-banner, .empty-banner { padding: 16px; border-radius: 10px; background: #161519; color: #aaa; }
-.error-banner { color: #e08585; }
-
-.accounts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
-.account-card { background: #161519; border: 1px solid #26262c; border-left: 3px solid #4d9e39; border-radius: 12px; padding: 16px; }
-.account-card.s-dead { border-left-color: #777; opacity: 0.75; }
-.account-card.s-banned { border-left-color: #c0392b; }
-
-.card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-.svc-name { font-weight: 600; font-size: 1.05rem; }
-.svc-key { display: block; color: #777; font-size: 0.78rem; }
-.status-pill { font-size: 0.72rem; padding: 2px 8px; border-radius: 20px; background: #24351e; color: #7fc35f; text-transform: uppercase; letter-spacing: 0.04em; }
-.status-pill.s-dead { background: #2a2a2a; color: #999; }
-.status-pill.s-banned { background: #3a1e1e; color: #e08585; }
-
-.row { display: flex; gap: 8px; font-size: 0.88rem; margin: 3px 0; }
-.row .k { color: #777; min-width: 72px; }
-.row .v { color: #ddd; word-break: break-word; }
-.mail-link { color: #6cc0e0; text-decoration: none; }
-.mail-link:hover { text-decoration: underline; }
-
-.secrets { margin: 10px 0; border-top: 1px solid #24242a; padding-top: 8px; }
-.secret-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
-.s-name { color: #999; font-size: 0.8rem; min-width: 72px; }
-.s-val { background: #0f0f12; padding: 2px 8px; border-radius: 6px; color: #cbb; font-size: 0.82rem; flex: 1; overflow-x: auto; white-space: nowrap; }
-.copy-btn { background: none; border: none; color: #888; cursor: pointer; font-size: 0.95rem; }
-.copy-btn:hover { color: #4d9e39; }
-
-.owners { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
-.owner-chip { background: #1f1f23; border: 1px solid #303036; border-radius: 20px; padding: 2px 10px; font-size: 0.75rem; }
-.owner-chip a { color: #9ac; text-decoration: none; }
-
-.meta { color: #666; font-size: 0.76rem; display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
-.notes { margin-top: 8px; padding: 8px; background: #0f0f12; border-radius: 8px; color: #b0b0b0; font-size: 0.83rem; white-space: pre-wrap; }
-
-.card-actions { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
-.card-actions select { background: #1f1f23; border: 1px solid #333; color: #ddd; padding: 5px 8px; border-radius: 8px; font-size: 0.82rem; }
+<style scoped>
+.grow { flex: 1 1 auto; }
+.ac-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: var(--ot-gutter); }
+.ac-card { border-left: 3px solid var(--ot-accent); }
+.ac-card.s-dead { border-left-color: var(--ot-line-strong); opacity: 0.78; }
+.ac-card.s-banned { border-left-color: var(--ot-negative); }
+.ac-card > .body { display: flex; flex-direction: column; gap: var(--ot-space-3); }
+.ac-card :deep(.ot-kv) dd { overflow-wrap: anywhere; }
+.ac-secrets { display: flex; flex-direction: column; gap: var(--ot-space-1); border-top: 1px solid var(--ot-line); padding-top: var(--ot-space-2); }
+.ac-secret { display: flex; align-items: center; gap: var(--ot-space-2); }
+.ac-secret-name { color: var(--ot-muted); font-size: 12px; min-width: 76px; }
+.ac-secret-val { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font-family: var(--ot-mono); font-size: 12px; color: var(--ot-text-2); background: rgba(0, 0, 0, 0.3); border: 1px solid var(--ot-line); border-radius: var(--ot-radius-sm); padding: 2px 8px; }
+.ac-owners { display: flex; flex-wrap: wrap; gap: var(--ot-space-1); }
+.ac-meta { margin: 0; color: var(--ot-muted); font-size: 11.5px; }
+.ac-notes { margin: 0; padding: var(--ot-space-2); background: rgba(0, 0, 0, 0.25); border-radius: var(--ot-radius-sm); color: var(--ot-text-2); font-size: 12.5px; white-space: pre-wrap; }
+.ac-actions { display: flex; gap: var(--ot-space-2); align-items: center; }
 </style>

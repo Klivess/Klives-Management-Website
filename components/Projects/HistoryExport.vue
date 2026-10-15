@@ -1,6 +1,6 @@
 <template>
   <span class="he-wrap">
-    <button class="ctrl" title="Download the full lossless conversation history as CSV" @click="openDialog">
+    <button class="ot-btn ghost" title="Download the full lossless conversation history as CSV" @click="openDialog">
       ⤓ Export history
     </button>
 
@@ -147,34 +147,34 @@ async function downloadCsv() {
 
 <style scoped>
 .he-wrap { display: inline-flex; }
-.ctrl { background: #26262b; color: #ccc; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; }
-.ctrl:hover { background: #303036; color: #fff; }
+.ctrl { background: var(--ot-surface-2); color: var(--ot-text-2); border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+.ctrl:hover { background: var(--ot-surface-3); color: var(--ot-text); }
 
 .he-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; }
-.he-modal { width: min(460px, 94vw); background: #161519; border: 1px solid #2a2a2e; border-radius: 10px; padding: 20px; color: #e6e6e6; box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
+.he-modal { width: min(460px, 94vw); background: var(--ot-surface); border: 1px solid var(--ot-line); border-radius: 10px; padding: 20px; color: var(--ot-text); box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
 .he-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .he-head h3 { margin: 0; font-size: 17px; }
-.he-close { background: none; border: none; color: #888; font-size: 16px; cursor: pointer; }
-.he-close:hover { color: #fff; }
-.he-sub { font-size: 12px; color: #999; line-height: 1.5; margin: 0 0 14px; }
+.he-close { background: none; border: none; color: var(--ot-muted); font-size: 16px; cursor: pointer; }
+.he-close:hover { color: var(--ot-text); }
+.he-sub { font-size: 12px; color: var(--ot-muted); line-height: 1.5; margin: 0 0 14px; }
 
 .he-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
-.he-chip { background: #1c1c20; border: 1px solid #2a2a2e; color: #bbb; padding: 6px 12px; border-radius: 16px; cursor: pointer; font-size: 12px; }
-.he-chip:hover { border-color: #3a3a40; color: #eee; }
-.he-chip.active { background: #1d3a1d; border-color: #4d9e39; color: #7fd97f; }
+.he-chip { background: var(--ot-surface-2); border: 1px solid var(--ot-line); color: var(--ot-text-2); padding: 6px 12px; border-radius: 16px; cursor: pointer; font-size: 12px; }
+.he-chip:hover { border-color: var(--ot-line-strong); color: var(--ot-text); }
+.he-chip.active { background: var(--ot-positive-soft); border-color: var(--ot-accent); color: var(--ot-positive); }
 
 .he-range { display: flex; gap: 12px; }
 .he-range.disabled { opacity: 0.4; }
-.he-field { flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 0.03em; }
-.he-field input { background: #1a1a1e; color: #eee; border: 1px solid #333; border-radius: 6px; padding: 7px 8px; font-size: 13px; color-scheme: dark; }
+.he-field { flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--ot-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.he-field input { background: var(--ot-surface-2); color: var(--ot-text); border: 1px solid var(--ot-line-strong); border-radius: 6px; padding: 7px 8px; font-size: 13px; color-scheme: dark; }
 .he-field input:disabled { cursor: not-allowed; }
 
-.he-hint { font-size: 12px; color: #8aa; margin: 10px 0 0; }
-.he-error { font-size: 12px; color: #e08a8a; margin: 10px 0 0; }
+.he-hint { font-size: 12px; color: var(--ot-muted); margin: 10px 0 0; }
+.he-error { font-size: 12px; color: var(--ot-negative); margin: 10px 0 0; }
 
 .he-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-.he-cancel { background: #26262b; color: #ccc; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
-.he-go { background: #4d9e39; color: #fff; border: none; padding: 8px 18px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+.he-cancel { background: var(--ot-surface-2); color: var(--ot-text-2); border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+.he-go { background: var(--ot-accent); color: var(--ot-on-accent); border: none; padding: 8px 18px; border-radius: 6px; cursor: pointer; font-weight: 600; }
 .he-go:disabled { opacity: 0.5; cursor: default; }
 
 .he-fade-enter-active, .he-fade-leave-active { transition: opacity 0.15s; }

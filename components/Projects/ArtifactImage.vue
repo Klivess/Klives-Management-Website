@@ -65,19 +65,19 @@ onBeforeUnmount(cleanup);
 
 <style scoped>
 .artifact { margin-top: 8px; }
-.art-img { max-width: 100%; border-radius: 6px; border: 1px solid #2a2a2e; display: block; }
+.art-img { max-width: 100%; border-radius: 6px; border: 1px solid var(--ot-line); display: block; }
 /* Screenshots are landscape and tall; cap the height and letterbox rather than scaling the width
    down to a stamp, so the thumbnail is still readable at a glance. */
 .art-thumb { max-height: 180px; width: auto; object-fit: contain; object-position: left top; }
 .art-link { display: inline-block; position: relative; max-width: 100%; }
-.art-expand { position: absolute; right: 6px; bottom: 6px; font-size: 10px; color: #ddd; background: rgba(0, 0, 0, 0.6); border-radius: 4px; padding: 2px 6px; opacity: 0; transition: opacity 0.12s; }
+.art-expand { position: absolute; right: 6px; bottom: 6px; font-size: 10px; color: var(--ot-text); background: rgba(0, 0, 0, 0.6); border-radius: 4px; padding: 2px 6px; opacity: 0; transition: opacity 0.12s; }
 .art-link:hover .art-expand { opacity: 1; }
-.art-skeleton { padding: 24px; text-align: center; color: #666; background: #16161a; border-radius: 6px; font-size: 12px; }
+.art-skeleton { padding: 24px; text-align: center; color: var(--ot-muted); background: var(--ot-surface); border-radius: 6px; font-size: 12px; }
 /* 16:9 of the 180px cap — the size a desktop screenshot resolves to, so the row barely moves. */
 .art-skeleton-thumb { display: flex; align-items: center; justify-content: center; width: 320px; max-width: 100%; height: 180px; padding: 0; }
-.art-error { padding: 12px; color: #ff8484; font-size: 12px; }
-.art-degraded { display: flex; gap: 10px; align-items: flex-start; padding: 12px; background: #16161a; border: 1px dashed #333; border-radius: 6px; }
+.art-error { padding: 12px; color: var(--ot-negative); font-size: 12px; }
+.art-degraded { display: flex; gap: 10px; align-items: flex-start; padding: 12px; background: var(--ot-surface); border: 1px dashed var(--ot-line-strong); border-radius: 6px; }
 .art-icon { font-size: 20px; }
-.art-deg-title { font-size: 12px; color: #b7a98a; font-weight: 600; }
-.art-deg-desc { font-size: 12px; color: #999; margin-top: 2px; }
+.art-deg-title { font-size: 12px; color: var(--ot-warning); font-weight: 600; }
+.art-deg-desc { font-size: 12px; color: var(--ot-muted); margin-top: 2px; }
 </style>

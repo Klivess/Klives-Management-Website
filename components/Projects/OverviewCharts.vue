@@ -27,6 +27,7 @@
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import Chart from 'chart.js/auto';
 import type { OverviewPoint, OverviewProject } from '~/composables/useProjectsOverview';
+import { pjToken } from '~/composables/useProjectsUi';
 const props = defineProps<{ series: OverviewPoint[]; projects: OverviewProject[]; range: string }>();
 const emit = defineEmits<{ select: [ids: string[]] }>();
 const spendCanvas = ref<HTMLCanvasElement | null>(null), stepsCanvas = ref<HTMLCanvasElement | null>(null), scatterCanvas = ref<HTMLCanvasElement | null>(null);
@@ -52,6 +53,18 @@ const windowLabel = computed(() => {
   return `${time(props.series[start]?.date)} – ${time(props.series[end]?.date)}`;
 });
 
+// Canvas cannot paint var(--…); charts resolve the ot-os tokens at build time (fixed categorical
+// order: model spend, external spend, steps).
+const token = pjToken;
+function palette() {
+  return {
+    text: token('--ot-text', '#e9f1e5'), text2: token('--ot-text-2', '#b3c2ad'), muted: token('--ot-muted', '#93a48d'),
+    grid: token('--ot-grid', 'rgba(146, 196, 130, 0.10)'), axis: token('--ot-axis', '#6f7d6a'),
+    surface: token('--ot-surface', '#12150f'), raised: token('--ot-surface-2', '#191d16'),
+    lineStrong: token('--ot-line-strong', 'rgba(146, 196, 130, 0.30)'), accent: token('--ot-accent', '#6ddc4f'),
+    model: token('--ot-cat-1', '#3987e5'), external: token('--ot-cat-2', '#d95926'), steps: token('--ot-cat-3', '#199e70'),
+  };
+}
 function destroy() { charts.forEach(chart => chart.destroy()); charts = []; }
 function build() {
   if (!mounted || !spendCanvas.value || !stepsCanvas.value || !scatterCanvas.value) return;
@@ -59,12 +72,13 @@ function build() {
   if (zoom.value && zoom.value.to >= props.series.length) zoom.value = null;
   focused.value = Math.min(focused.value, Math.max(0, groups.value.length - 1));
   const labels = props.series.map(p => p.date);
+  const c = palette();
   const tooltip = {
-    backgroundColor: '#151417', borderColor: '#68616e', borderWidth: 1,
-    titleColor: '#f0edf4', bodyColor: '#e0d9e9', padding: 10, displayColors: true,
+    backgroundColor: c.raised, borderColor: c.lineStrong, borderWidth: 1,
+    titleColor: c.text, bodyColor: c.text2, padding: 10, displayColors: true,
     titleFont: { size: 11 }, bodyFont: { size: 11 },
   };
-  const axis = { ticks: { color: '#a9a0b4', font: { size: 10 }, maxTicksLimit: 3 }, grid: { color: '#ffffff0b' }, border: { color: '#514959' } };
+  const axis = { ticks: { color: c.muted, font: { size: 10 }, maxTicksLimit: 3 }, grid: { color: c.grid }, border: { color: c.axis } };
   const trendOptions = (isSteps: boolean): any => ({
     responsive: true, maintainAspectRatio: false, animation: false,
     interaction: { mode: 'index', intersect: false },
@@ -75,12 +89,12 @@ function build() {
     layout: { padding: { right: 5, top: 3 } },
     scales: {
       x: { ...axis, type: 'category', offset: true, min: zoom.value?.from, max: zoom.value?.to,
-        display: isSteps, grid: { display: false }, ticks: { color: '#a9a0b4', font: { size: 10 }, maxTicksLimit: 5, maxRotation: 0,
+        display: isSteps, grid: { display: false }, ticks: { color: c.muted, font: { size: 10 }, maxTicksLimit: 5, maxRotation: 0,
           callback: (value: number) => { const date = new Date(labels[value]); return props.range === '7d' ? date.toLocaleDateString(undefined, { month:'short', day:'numeric' }) : date.toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' }); } } },
       y: { ...axis, beginAtZero: true, suggestedMax: isSteps ? 1 : 0.01,
         afterFit: (scale: any) => { scale.width = 58; },
         ticks: { ...axis.ticks, precision: isSteps ? 0 : undefined, callback: (n: number) => isSteps ? n : money(n) },
-        title: { display: true, text: isSteps ? 'Steps' : 'USD', color: '#b7adbf', font: { size: 10 } } },
+        title: { display: true, text: isSteps ? 'Steps' : 'USD', color: c.text2, font: { size: 10 } } },
     },
   });
   const selection = { id: 'overview-selection', afterDraw(chart: Chart) {
@@ -88,19 +102,19 @@ function build() {
     const { ctx, chartArea } = chart;
     const left = Math.max(chartArea.left, Math.min(drag.value.start, drag.value.end));
     const right = Math.min(chartArea.right, Math.max(drag.value.start, drag.value.end));
-    ctx.save(); ctx.fillStyle = '#87cd6b33'; ctx.strokeStyle = '#a0dc88';
-    ctx.fillRect(left, chartArea.top, Math.max(0, right - left), chartArea.height);
-    ctx.strokeRect(left, chartArea.top, Math.max(0, right - left), chartArea.height); ctx.restore();
+    ctx.save(); ctx.fillStyle = c.accent; ctx.strokeStyle = c.accent;
+    ctx.globalAlpha = 0.16; ctx.fillRect(left, chartArea.top, Math.max(0, right - left), chartArea.height);
+    ctx.globalAlpha = 1; ctx.strokeRect(left, chartArea.top, Math.max(0, right - left), chartArea.height); ctx.restore();
   } };
   charts.push(new Chart(spendCanvas.value, { type: 'line', options: trendOptions(false), plugins: [selection], data: { labels, datasets: [
-    { label:'Model spend', data:props.series.map(p=>p.spendUsd), borderColor:'#84cf65', backgroundColor:'#84cf65', borderWidth:2, pointRadius:1, pointHoverRadius:4, hidden:!showModel.value },
-    { label:'External spend', data:props.series.map(p=>p.moneySpendUsd), borderColor:'#c9bfd3', backgroundColor:'#c9bfd3', borderDash:[4,3], borderWidth:1.5, pointRadius:1, pointHoverRadius:4, hidden:!showExternal.value },
+    { label:'Model spend', data:props.series.map(p=>p.spendUsd), borderColor:c.model, backgroundColor:c.model, borderWidth:2, pointRadius:1, pointHoverRadius:4, hidden:!showModel.value },
+    { label:'External spend', data:props.series.map(p=>p.moneySpendUsd), borderColor:c.external, backgroundColor:c.external, borderDash:[4,3], borderWidth:1.5, pointRadius:1, pointHoverRadius:4, hidden:!showExternal.value },
   ] } }));
   charts.push(new Chart(stepsCanvas.value, { type: 'bar', options: trendOptions(true), plugins: [selection], data: { labels, datasets: [
-    { label:'Completed steps', data:props.series.map(p=>p.completedSteps), backgroundColor:'#66ad49', hoverBackgroundColor:'#a1dc87', maxBarThickness:18, hidden:!showSteps.value },
+    { label:'Completed steps', data:props.series.map(p=>p.completedSteps), backgroundColor:c.steps, hoverBackgroundColor:c.accent, maxBarThickness:18, hidden:!showSteps.value },
   ] } }));
   charts.push(new Chart(scatterCanvas.value, { type: 'scatter', data: { datasets: [{ label:'Projects',
-    data:groups.value.map(g=>({x:g.cost,y:g.steps})), backgroundColor:'#84cf65', borderColor:'#172011', borderWidth:1,
+    data:groups.value.map(g=>({x:g.cost,y:g.steps})), backgroundColor:c.model, borderColor:c.surface, borderWidth:1,
     pointRadius:groups.value.map(g=>g.ids.length > 1 ? 8 : 5), pointHoverRadius:9, pointHitRadius:8,
   }] }, options: {
     responsive:true, maintainAspectRatio:false, animation:false,
@@ -111,7 +125,7 @@ function build() {
       footer:()=> 'Click to inspect result',
     } } },
     scales:{ x:{...axis,beginAtZero:true,suggestedMax:0.01,ticks:{...axis.ticks,callback:(n:any)=>money(Number(n))}},
-      y:{...axis,beginAtZero:true,suggestedMax:1,ticks:{...axis.ticks,precision:0},title:{display:true,text:'Steps completed',color:'#b7adbf',font:{size:10}}} },
+      y:{...axis,beginAtZero:true,suggestedMax:1,ticks:{...axis.ticks,precision:0},title:{display:true,text:'Steps completed',color:c.text2,font:{size:10}}} },
     onHover:(_event, items, chart)=>{chart.canvas.style.cursor = items.length ? 'pointer' : 'default';},
     onClick:(_event,items)=>{ if (items.length) { focused.value=items[0].index; openFocused(); } },
   } }));
@@ -162,21 +176,39 @@ onBeforeUnmount(()=>{mounted=false;destroy();});
 </script>
 
 <style scoped>
-.overview-charts { display:grid; grid-template-columns:1.9fr 1fr; gap:28px; border-bottom:1px solid #353437; padding:10px 0; min-width:0; flex-shrink:0; }
-.trend,.comparison { min-width:0; }.comparison { padding-left:24px; border-left:1px solid #353437; }
-.chart-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:5px; }
-h2 { color:#dedee0; font-size:14px; font-weight:500; }.chart-heading span { font-size:11px; color:#a2a1a6; }
-.trend-plots { height:clamp(120px,14vh,150px); display:grid; grid-template-rows:1fr 1.15fr; position:relative; }
-.plot { position:relative; min-width:0; min-height:0; }.plot canvas { touch-action:none; cursor:crosshair; }
-.scatter-plot { height:clamp(120px,14vh,150px); position:relative; min-width:0; }
-canvas { max-width:100%; } canvas:focus-visible { outline:2px solid #b0dd9e; outline-offset:2px; }
-.chart-controls { display:flex; justify-content:space-between; align-items:center; gap:10px; min-height:23px; }
-.legend,.zoom-controls,.point-controls { display:flex; align-items:center; gap:6px; }.legend { flex-wrap:wrap; }
-button { display:inline-flex; align-items:center; gap:5px; font-size:10px; line-height:1.2; text-transform:none; letter-spacing:normal; border:1px solid transparent; border-radius:3px; padding:3px 4px; color:#bdb3c8; background:transparent; cursor:pointer; box-shadow:none; }
-button:hover:not(:disabled),button:focus-visible { border-color:#9bb889; color:#f0eaf6; outline:none; } button[aria-pressed=false] { opacity:.45; text-decoration:line-through; } button:disabled { opacity:.4; cursor:default; }
-.legend i { width:10px; height:2px; display:block; }.model-key { background:#84cf65; }.external-key { border-top:2px dashed #c9bfd3; }.legend .steps-key { height:7px; background:#66ad49; }
-.drag-hint,.comparison-note,.range-caption { color:#a398af; font-size:10px; }.range-caption { min-height:13px; }.no-data { position:absolute; top:40%; left:15%; right:5%; text-align:center; color:#9f94aa; font-size:12px; pointer-events:none; }
-.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
-@media(max-width:1100px) { .drag-hint,.comparison-note { display:none; }.comparison { padding-left:12px; }.chart-controls { gap:3px; }.legend,.zoom-controls,.point-controls { gap:2px; } }
-@media(max-width:800px) { .overview-charts { grid-template-columns:1fr; gap:8px; border:0; }.comparison { border:0; border-top:1px solid #353437; padding:10px 0 0; }.trend-plots,.scatter-plot { height:clamp(115px,16vh,140px); }.chart-heading span { max-width:47%; text-align:right; font-size:10px; }.chart-heading h2 { font-size:12px; }.range-caption { font-size:9px; }.chart-controls { flex-wrap:wrap; }.point-controls { margin-left:auto; } }
+.overview-charts { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr); gap: var(--ot-space-6); min-width: 0; }
+.trend, .comparison { min-width: 0; display: flex; flex-direction: column; gap: var(--ot-space-1); }
+.comparison { padding-left: var(--ot-space-6); border-left: 1px solid var(--ot-line); }
+.chart-heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--ot-space-2); }
+.chart-heading h2 { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--ot-text); }
+.chart-heading span { font-size: 11.5px; color: var(--ot-muted); }
+.trend-plots { height: 190px; display: grid; grid-template-rows: 1fr 1.15fr; position: relative; }
+.plot { position: relative; min-width: 0; min-height: 0; }
+.plot canvas { touch-action: none; cursor: crosshair; }
+.scatter-plot { height: 190px; position: relative; min-width: 0; }
+canvas { max-width: 100%; }
+canvas:focus-visible { outline: var(--ot-focus) solid var(--ot-accent); outline-offset: var(--ot-focus-offset); }
+.chart-controls { display: flex; justify-content: space-between; align-items: center; gap: var(--ot-space-2); min-height: 26px; }
+.legend, .zoom-controls, .point-controls { display: flex; align-items: center; gap: var(--ot-space-1); }
+.legend { flex-wrap: wrap; }
+.overview-charts button { display: inline-flex; align-items: center; gap: 6px; height: var(--ot-control-sm); padding: 0 var(--ot-space-2); font-size: 11.5px; font-weight: 600; border: 1px solid transparent; border-radius: var(--ot-radius-sm); color: var(--ot-text-2); background: transparent; cursor: pointer; }
+.overview-charts button:hover:not(:disabled) { border-color: var(--ot-line-strong); color: var(--ot-text); }
+.overview-charts button[aria-pressed='false'] { opacity: 0.5; text-decoration: line-through; }
+.overview-charts button:disabled { opacity: 0.4; cursor: default; }
+.legend i { width: 12px; height: 2px; display: block; }
+.model-key { background: var(--ot-cat-1); }
+.legend i.external-key { height: 0; border-top: 2px dashed var(--ot-cat-2); }
+.legend .steps-key { height: 8px; background: var(--ot-cat-3); }
+.drag-hint, .comparison-note, .range-caption { color: var(--ot-muted); font-size: 11px; }
+.range-caption { min-height: 14px; }
+.no-data { position: absolute; top: 40%; left: 15%; right: 5%; text-align: center; color: var(--ot-muted); font-size: 12.5px; pointer-events: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+@media (max-width: 1100px) { .drag-hint, .comparison-note { display: none; } .comparison { padding-left: var(--ot-space-3); } }
+@media (max-width: 800px) {
+  .overview-charts { grid-template-columns: minmax(0, 1fr); gap: var(--ot-space-3); }
+  .comparison { border-left: 0; border-top: 1px solid var(--ot-line); padding: var(--ot-space-3) 0 0; }
+  .trend-plots, .scatter-plot { height: 160px; }
+  .chart-controls { flex-wrap: wrap; }
+  .point-controls { margin-left: auto; }
+}
 </style>

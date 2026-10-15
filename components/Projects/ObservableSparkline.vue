@@ -8,9 +8,9 @@
     preserveAspectRatio="none"
     aria-hidden="true"
   >
-    <polyline :points="polyline" fill="none" :stroke="lineColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+    <polyline :points="polyline" fill="none" :style="{ stroke: lineColor }" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
     <!-- End dot: a 2px surface ring keeps it legible where the line doubles back on it. -->
-    <circle :cx="last.x" :cy="last.y" r="3" :fill="dotColor" :stroke="surface" stroke-width="2" />
+    <circle :cx="last.x" :cy="last.y" r="3" :style="{ fill: dotColor, stroke: surface }" stroke-width="2" />
   </svg>
 </template>
 
@@ -29,9 +29,9 @@ const props = withDefaults(defineProps<{
 }>(), {
   width: 60,
   height: 18,
-  lineColor: '#4a4a50',
-  dotColor: '#4d9e39',
-  surface: '#161519',
+  lineColor: 'var(--ot-axis)',
+  dotColor: 'var(--ot-accent)',
+  surface: 'var(--ot-surface)',
 });
 
 const values = computed(() =>

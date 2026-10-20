@@ -1,5 +1,6 @@
 import { useState } from '#imports';
 import { fmtCount, loadMediaUrl, q, tumblrGet, tumblrPost, type ApiResult } from '~/composables/useOmniTumblr';
+import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 
 // Every export is prefixed (blox/Blox/BLOX): Nuxt auto-imports all composable exports site-wide,
 // and a name shared with another composable silently resolves to the wrong one.
@@ -42,6 +43,8 @@ export interface BloxGameSummary {
     UniverseId: number | null;
     BuildRevision: number;
     LastBuildOk: boolean;
+    /** It has a world to play (from Build on). */
+    Playable: boolean;
     TestPassed: boolean | null;
     Cycles: Partial<Record<BloxStage, number>>;
     StageCycles: number;
@@ -196,6 +199,74 @@ export interface BloxCycle {
     CompletionTokens: number;
 }
 
+/** A playtest build sent to Roblox (PlaytestPublish in OmniBloxModels.cs). */
+export interface BloxPlaytestPublish {
+    Utc: string;
+    UniverseId: number;
+    PlaceId: number;
+    Version: number;
+    /** "r12" is the clean build r12, "r12+" the files past it, "wip" before the first clean build. */
+    Build: string;
+    Revision: number;
+    /** The game's own experience (private until launch) rather than the studio's playtest experience. */
+    OwnExperience: boolean;
+    Fingerprint: string;
+    /** Published by Follow after a clean build. */
+    Followed: boolean;
+    ServersRestarted: boolean;
+    Note: string | null;
+}
+
+/** One playtest server: a Roblox server or one run in Studio. */
+export interface BloxPlaytestSession {
+    Server: string;
+    Where: 'roblox' | 'studio';
+    Build: string;
+    StartedUtc: string;
+    LastEventUtc: string;
+    Players: number;
+    Joins: number;
+    PlayedSeconds: number;
+    Events: number;
+    Deaths: number;
+    FurthestStep: number | null;
+    FurthestStepName: string | null;
+    Completed: boolean;
+    Earned: number;
+    Actions: Record<string, number>;
+    TestPurchases: string[];
+    Errors: { Message: string; Source: string | null; Count: number }[];
+    Feedback: { Utc: string; Rating: number; Reason: string }[];
+}
+
+/** How the owner can play the game now (OmniBloxViews.Playtest). */
+export interface BloxPlaytestView {
+    Playable: boolean;
+    Roblox: { Available: boolean; OwnExperience: boolean; UniverseId: number | null; PlaceId: number | null; Reason: string | null };
+    /** The last build sent to Roblox is still what its experience runs. */
+    InExperience: boolean;
+    JoinUrl: string | null;
+    /** Another game the playtest experience runs now (playing this one replaces it). */
+    OtherGame: { GameId: string; Title: string; Build: string } | null;
+    /** Someone is in this game's Roblox playtest now. */
+    Playing: boolean;
+}
+
+/** POST /omniblox/games/playtest. */
+export interface BloxPlaytestResult {
+    ok: boolean;
+    build: string;
+    version: number;
+    reused: boolean;
+    joinUrl: string;
+    gameUrl: string;
+    universeId: number;
+    placeId: number;
+    ownExperience: boolean;
+    serversRestarted: boolean;
+    warnings: string[];
+}
+
 export interface BloxDossier {
     GameId: string;
     WorkingTitle: string;
@@ -236,6 +307,13 @@ export interface BloxDossier {
         ComplianceNotes: string[];
     };
     Products: BloxProduct[];
+    Playtest: {
+        Follow: boolean;
+        SaveSlot: number;
+        LastPublish: BloxPlaytestPublish | null;
+        /** Newest last. */
+        Sessions: BloxPlaytestSession[];
+    };
     Publish: {
         LastSavedVersion: number | null;
         LastPublishedVersion: number | null;
@@ -283,6 +361,7 @@ export interface BloxGameDetail {
     OwnerTasks: BloxTask[];
     Revisions: number[];
     Media: string[];
+    Playtest: BloxPlaytestView;
 }
 
 export interface BloxTelemetry {
@@ -413,6 +492,46 @@ export async function bloxDownload(path: string, fileName: string): Promise<bool
     a.click();
     a.remove();
     return true;
+}
+
+/** A game's page with its Play panel open. */
+export const bloxPlayPath = (gameId: string) => `/schemery/omniblox/game/${gameId}?play=1`;
+
+export type BloxPlaceDownload =
+    | { ok: true; build: string; note: string | null; fileName: string }
+    | { ok: false; error: string };
+
+/**
+ * Saves a playtest build as a place file for Roblox Studio. `build` is "latest" or a revision ("r12"); the
+ * answer says which build it was (latest falls back to the last clean build when the files do not compile,
+ * and the note says so).
+ */
+export async function bloxDownloadPlace(gameId: string, build: string): Promise<BloxPlaceDownload> {
+    const response = await RequestGETFromKliveAPI(`/omniblox/game/place${q({ id: gameId, build })}`, false, false);
+    if (!response.ok) {
+        let error = `Request failed (${response.status})`;
+        try {
+            const body = await response.json();
+            if (typeof body?.error === 'string') error = body.error;
+        } catch { /* not JSON */ }
+        return { ok: false, error };
+    }
+    const label = response.headers.get('X-OmniBlox-Build') ?? build;
+    const rawNote = response.headers.get('X-OmniBlox-Note');
+    let note: string | null = null;
+    if (rawNote) {
+        try { note = decodeURIComponent(rawNote); } catch { note = rawNote; }
+    }
+    const fileName = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '')?.[1] ?? `${gameId} ${label}.rbxlx`;
+    const url = URL.createObjectURL(await response.blob());
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return { ok: true, build: label, note, fileName };
 }
 
 /** One overview fetch shared by the shell (status, nav) and the pages, so nothing double-polls. */

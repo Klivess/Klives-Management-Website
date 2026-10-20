@@ -13,7 +13,7 @@ import { catalogPayload, mePayload } from './fixtures/permissions';
 const apiOrigin = 'https://klive.dev';
 const FIXTURES = fileURLToPath(new URL('./fixtures/omniblox/', import.meta.url));
 const load = (name: string) => JSON.parse(readFileSync(`${FIXTURES}${name}.json`, 'utf8'));
-const meta = load('meta') as { NowUtc: string; Live: string; Building: string; Abandoned: string; PineTree: number };
+const meta = load('meta') as { NowUtc: string; Live: string; Building: string; Abandoned: string; PineTree: number; PlaytestPlaceId: number };
 const NOW = new Date(meta.NowUtc).getTime() + 60_000;
 const SHOTS = 'test-results/omniblox';
 /** The first page a cold dev server serves compiles the whole app. */
@@ -71,6 +71,22 @@ async function mockApi(page: Page, options: MockOptions = {}) {
                 return text == null ? json({ error: 'No such file.' }, 404) : json({ Path: p.get('path'), Content: text });
             }
             case '/omniblox/game/telemetry': return fixture(`telemetry-${p.get('id')}-${p.get('days') ?? '7'}`);
+            case '/omniblox/game/place': {
+                // A playtest build for Studio; "latest" plays r2 here because (say) the files are mid-edit.
+                const build = p.get('build') === 'latest' ? 'r2' : p.get('build') ?? 'r2';
+                const title = load(`game-${p.get('id')}`).Summary.Title;
+                return route.fulfill({
+                    status: 200,
+                    headers: {
+                        ...cors,
+                        'content-disposition': `attachment; filename="${title} ${build}.rbxlx"`,
+                        'x-omniblox-build': build,
+                        ...(p.get('build') === 'latest' ? { 'x-omniblox-note': encodeURIComponent('The files do not compile right now (src/server/Rebirth.server.luau:12:1: expected an expression), so this is r2, the last clean build.') } : {}),
+                    },
+                    contentType: 'application/xml',
+                    body: '<roblox version="4"></roblox>',
+                });
+            }
             case '/omniblox/events': return p.get('gameId') ? fixture(`events-${p.get('gameId')}`) : fixture('events');
             case '/omniblox/assets': {
                 if (p.get('q')) return p.get('q')!.includes('tree') ? fixture('assets-search-tree') : json({ Assets: [], Stats: load('assets').Stats });
@@ -100,6 +116,15 @@ async function mockApi(page: Page, options: MockOptions = {}) {
                 state.overview.OwnerTasks = state.overview.OwnerTasks.filter((t: any) => !(t.Kind === 'LaunchApproval' && t.GameId === body?.gameId));
                 return json({ ok: true });
             }
+            case '/omniblox/games/playtest': {
+                const place = meta.PlaytestPlaceId;
+                return json({
+                    ok: true, build: body?.build === 'latest' ? 'r2' : body?.build, version: 5, reused: false,
+                    joinUrl: `https://www.roblox.com/games/start?placeId=${place}`, gameUrl: `https://www.roblox.com/games/${place}`,
+                    universeId: 3003, placeId: place, ownExperience: false, serversRestarted: true, warnings: [],
+                });
+            }
+            case '/omniblox/games/playtest/follow': return json({ ok: true, follow: body?.follow });
             case '/omniblox/games/pause':
             case '/omniblox/games/steer':
             case '/omniblox/games/maintain':
@@ -279,6 +304,82 @@ test('game in production: exit criteria, steering and pausing', async ({ page })
     await page.screenshot({ path: `${SHOTS}/game-building-world.png`, fullPage: true });
 });
 
+test('playing a game mid-build: Roblox in one click, Studio, Follow and what playtests reported', async ({ page, context }) => {
+    const state = await mockApi(page);
+    // The join link opens Roblox's site, which hands over to the Roblox app; stand in for it.
+    await context.route('https://www.roblox.com/**', route => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Roblox</title><p>Launching Roblox…</p>' }));
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.goto('/schemery/omniblox');
+    await expect(page.getByRole('heading', { name: 'Game studio' })).toBeVisible(BOOT);
+
+    // The game in production can be played from the studio's header and from its card; a game still in research cannot.
+    await expect(page.getByRole('link', { name: '▶ Play Candy Factory Tycoon' })).toBeVisible();
+    await expect(page.locator('.bx-game').filter({ hasText: 'Space Station Simulator' }).getByRole('link', { name: /^Play / })).toHaveCount(0);
+    await page.locator('.bx-game').filter({ hasText: 'Candy Factory Tycoon' }).getByRole('link', { name: 'Play Candy Factory Tycoon', exact: true }).click();
+
+    await expect(page).toHaveURL(/play=1/);
+    const panel = page.locator('.bx-play');
+    await expect(panel.getByRole('heading', { name: 'Play Candy Factory Tycoon' })).toBeVisible();
+    await expect(panel).toContainText('Plays in your private playtest experience (3003).');
+    await expect(panel).toContainText('In a playtest now');
+    await expect(panel.getByRole('link', { name: 'Join ↗' })).toHaveAttribute('href', `https://www.roblox.com/games/start?placeId=${meta.PlaytestPlaceId}`);
+    const sessions = panel.locator('.sessions > li');
+    await expect(sessions).toHaveCount(2);
+    await expect(sessions.first()).toContainText('playing now');
+    await expect(sessions.first()).toContainText('test-bought 2x Candy');
+    await expect(sessions.first()).toContainText('rated it Okay: confusing');
+    await expect(sessions.first().locator('.errors')).toContainText('attempt to compare number <= nil');
+    await expect(sessions.nth(1)).toContainText('Studio');
+    await expect(sessions.nth(1)).toContainText('test-bought 500 Candy');
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${SHOTS}/play-panel.png`, fullPage: true });
+
+    // Play in Roblox: a tab opens on the click and lands on the join link once the build is in Roblox.
+    const [tab] = await Promise.all([context.waitForEvent('page'), panel.getByRole('button', { name: '▶ Play in Roblox' }).click()]);
+    await expect(tab).toHaveURL(new RegExp(`roblox\\.com/games/start\\?placeId=${meta.PlaytestPlaceId}`));
+    expect(state.mutations.find(m => m.path === '/omniblox/games/playtest')?.body).toEqual({ gameId: meta.Building, build: 'latest', fresh: false });
+    await expect(panel.getByRole('status')).toContainText('r2 is in Roblox (version 5).');
+    await tab.close();
+
+    // An earlier build, with fresh saves.
+    await panel.getByLabel('Build', { exact: true }).selectOption('r1');
+    await panel.getByLabel('Start with fresh saves').check();
+    const [tab2] = await Promise.all([context.waitForEvent('page'), panel.getByRole('button', { name: '▶ Play in Roblox' }).click()]);
+    await expect.poll(() => state.mutations.filter(m => m.path === '/omniblox/games/playtest').at(-1)?.body)
+        .toEqual({ gameId: meta.Building, build: 'r1', fresh: true });
+    await tab2.close();
+
+    // Studio: the place file downloads, named after the build it is, and says when it is not the one asked for.
+    await panel.getByLabel('Build', { exact: true }).selectOption('latest');
+    const [download] = await Promise.all([page.waitForEvent('download'), panel.getByRole('button', { name: '⤓ Open in Roblox Studio' }).click()]);
+    expect(download.suggestedFilename()).toBe('Candy Factory Tycoon r2.rbxlx');
+    await expect(panel.getByRole('status')).toContainText('Open it in Roblox Studio and press Play (F5).');
+    await expect(panel.getByRole('status')).toContainText('so this is r2, the last clean build');
+
+    // Follow is on; switching it off posts.
+    const follow = panel.getByRole('checkbox', { name: /Follow the build/ });
+    await expect(follow).toBeChecked();
+    await follow.click();
+    await expect.poll(() => state.mutations.find(m => m.path === '/omniblox/games/playtest/follow')?.body).toEqual({ gameId: meta.Building, follow: false });
+
+    await panel.getByRole('button', { name: 'Close the Play panel' }).click();
+    await expect(page).not.toHaveURL(/play=1/);
+    await expect(panel).toHaveCount(0);
+});
+
+test('a live game is played in the playtest experience, never its own', async ({ page }) => {
+    await mockApi(page);
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.goto(`/schemery/omniblox/game/${meta.Live}?tab=world`);
+    await expect(page.getByRole('heading', { name: 'Lava Forest Obby' })).toBeVisible(BOOT);
+
+    await page.getByRole('button', { name: '▶ Play this world' }).click();
+    const panel = page.locator('.bx-play');
+    await expect(panel).toContainText('It is running "Candy Factory Tycoon" (r2) now; playing this game replaces it.');
+    await expect(panel.getByRole('link', { name: 'Join ↗' })).toHaveCount(0);
+    await expect(panel).toContainText('None yet.');
+});
+
 test('asset library: filter, search and the model drawer', async ({ page }) => {
     await mockApi(page);
     await page.setViewportSize({ width: 1500, height: 1100 });
@@ -357,4 +458,9 @@ test('phone width keeps the studio and a game usable', async ({ page }) => {
     await expect(page.getByRole('heading', { name: 'Lava Forest Obby' })).toBeVisible();
     expect(await pageOverflow(page)).toEqual([]);
     await page.screenshot({ path: `${SHOTS}/game-phone.png`, fullPage: true });
+
+    await page.getByRole('button', { name: '▶ Play', exact: true }).click();
+    await expect(page.locator('.bx-play')).toBeVisible();
+    expect(await pageOverflow(page)).toEqual([]);
+    await page.screenshot({ path: `${SHOTS}/play-phone.png`, fullPage: true });
 });

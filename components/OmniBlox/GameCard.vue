@@ -1,15 +1,17 @@
 <template>
-    <NuxtLink class="ot-card bx-game" :class="{ dim: retired }" :to="`/schemery/omniblox/game/${game.GameId}`">
+    <article class="ot-card bx-game" :class="{ dim: retired }">
         <div class="art">
             <OmniBloxImg v-if="game.HasIcon" :path="bloxMediaPath(game.GameId, 'icon.png', game.UpdatedUtc)" ratio="1 / 1" :alt="`${game.Title} icon`" />
             <div v-else class="noart" aria-hidden="true">{{ initials }}</div>
         </div>
         <div class="main">
             <div class="head">
-                <strong class="title">{{ game.Title }}</strong>
+                <!-- The title's link covers the whole card; Play sits above it. -->
+                <NuxtLink class="title" :to="`/schemery/omniblox/game/${game.GameId}`">{{ game.Title }}</NuxtLink>
                 <span class="ot-chip" :class="bloxStageTone(game.Stage)">{{ game.Stage }}</span>
                 <span v-if="game.Paused" class="ot-chip">Paused</span>
                 <span v-if="game.UrgentMaintenance" class="ot-chip bad">Urgent</span>
+                <NuxtLink v-if="game.Playable" class="ot-btn sm play" :to="bloxPlayPath(game.GameId)" :aria-label="`Play ${game.Title}`">▶ Play</NuxtLink>
             </div>
             <OmniBloxStageTrack :stage="game.Stage" :reached="reached" compact />
             <p class="state" :class="{ warn: !!game.WaitingReason, bad: game.Stage === 'Abandoned' }">{{ stateLine }}</p>
@@ -32,13 +34,13 @@
                 </template>
             </dl>
         </div>
-    </NuxtLink>
+    </article>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
 import { fmtCount, fmtDate, fmtRelative, useNow } from '~/composables/useOmniTumblr';
-import { BLOX_STAGES, bloxMediaPath, bloxRobux, bloxStageTone, type BloxGameSummary, type BloxStage } from '~/composables/useOmniBlox';
+import { BLOX_STAGES, bloxMediaPath, bloxPlayPath, bloxRobux, bloxStageTone, type BloxGameSummary, type BloxStage } from '~/composables/useOmniBlox';
 
 const props = defineProps<{ game: BloxGameSummary }>();
 const now = useNow();
@@ -60,8 +62,9 @@ const stateLine = computed(() => {
 </script>
 
 <style scoped>
-.bx-game { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: var(--ot-space-3); padding: var(--ot-card-pad); text-decoration: none; transition: border-color var(--ot-fast); }
+.bx-game { position: relative; display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: var(--ot-space-3); padding: var(--ot-card-pad); transition: border-color var(--ot-fast); }
 .bx-game:hover { border-color: var(--ot-line-strong); }
+.bx-game:has(.title:focus-visible) { outline: var(--ot-focus) solid var(--ot-accent); outline-offset: 2px; }
 .bx-game.dim { opacity: 0.72; }
 .art { width: 76px; }
 .noart {
@@ -73,7 +76,10 @@ const stateLine = computed(() => {
 }
 .main { display: flex; flex-direction: column; gap: var(--ot-space-2); min-width: 0; }
 .head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
-.title { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.title { font-size: 14px; font-weight: 700; color: inherit; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.title::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
+.title:focus-visible { outline: none; }
+.play { position: relative; z-index: 1; margin-left: auto; text-decoration: none; }
 .state { margin: 0; font-size: 12px; line-height: 17px; color: var(--ot-text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .state.warn { color: var(--ot-warning); }
 .state.bad { color: #ffc9c9; }

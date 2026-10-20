@@ -5,6 +5,7 @@
                 <div class="ot-segment sm" role="group" aria-label="Camera">
                     <button v-for="v in VIEWS" :key="v.id" type="button" :aria-pressed="view === v.id" @click="view = v.id">{{ v.label }}</button>
                 </div>
+                <button v-if="playable" type="button" class="ot-btn sm" @click="emit('play')">▶ Play this world</button>
             </template>
             <OmniBloxImg v-if="drawable" :path="bloxRenderPath(game.GameId, view, game.Build.Revision)" ratio="1280 / 760" contain
                          :alt="`${game.Store.Title || game.WorkingTitle}: ${view} view`" fallback="Nothing to draw yet." />
@@ -50,7 +51,8 @@ import { computed, ref } from 'vue';
 import { fmtCount, fmtRelative, useNow } from '~/composables/useOmniTumblr';
 import { bloxAssetImagePath, bloxBytes, bloxRenderPath, type BloxDossier } from '~/composables/useOmniBlox';
 
-const props = defineProps<{ game: BloxDossier }>();
+const props = defineProps<{ game: BloxDossier; playable?: boolean }>();
+const emit = defineEmits<{ play: [] }>();
 const now = useNow();
 
 const VIEWS = [

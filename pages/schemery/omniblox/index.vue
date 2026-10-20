@@ -6,6 +6,11 @@
                 <p class="subtitle">{{ subtitle }}</p>
             </div>
             <div class="ot-actions">
+                <!-- Jump into the game being built, at whatever stage it is. -->
+                <NuxtLink v-if="production?.Playable" class="ot-btn sm bx-playnow" :class="{ primary: overview?.Enabled }" :to="bloxPlayPath(production.GameId)"
+                          :title="`Play ${production.Title} as it is now`">
+                    ▶ Play {{ production.Title }}
+                </NuxtLink>
                 <template v-if="overview && can('omniblox.studio.manage')">
                     <button class="ot-btn sm" :class="{ active: overview.HarvesterEnabled }" :aria-pressed="overview.HarvesterEnabled" :disabled="switching"
                             @click="toggle('harvester', !overview.HarvesterEnabled)">
@@ -140,7 +145,7 @@
 import { computed, ref } from 'vue';
 import { useAccess } from '~/composables/useAccess';
 import { fmtCount, fmtRelative, notify, useNow } from '~/composables/useOmniTumblr';
-import { bloxCacheRate, bloxPct, bloxPost, bloxReuseRate, bloxRobux, bloxTokens, useBloxOverview, type BloxGameSummary } from '~/composables/useOmniBlox';
+import { bloxCacheRate, bloxPct, bloxPlayPath, bloxPost, bloxReuseRate, bloxRobux, bloxTokens, useBloxOverview, type BloxGameSummary } from '~/composables/useOmniBlox';
 
 definePageMeta({ layout: 'navbar' });
 useHead({ title: 'OmniBlox · Klives Management' });
@@ -266,6 +271,7 @@ async function startGame() {
 
 <style scoped>
 .bx-games { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(330px, 100%), 1fr)); gap: var(--ot-gutter); }
+.bx-playnow { display: inline-block; max-width: 280px; overflow: hidden; text-overflow: ellipsis; line-height: var(--ot-control-sm); text-decoration: none; }
 .ot-kpis { margin-bottom: var(--ot-space-6); }
 .bx-new { display: flex; gap: var(--ot-space-2); align-items: center; flex-wrap: wrap; padding: var(--ot-card-pad); }
 .bx-new .ot-input { flex: 1 1 260px; }

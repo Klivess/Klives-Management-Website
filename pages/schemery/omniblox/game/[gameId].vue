@@ -23,6 +23,9 @@
                     </div>
                 </div>
                 <div v-if="game" class="ot-actions">
+                    <button v-if="detail?.Playtest.Playable" class="ot-btn sm" :class="awaitingApproval ? '' : 'primary'" :aria-expanded="playOpen" @click="setPlay(!playOpen)">
+                        ▶ Play
+                    </button>
                     <a v-if="game.Slot && game.Publish.IsPublic" class="ot-btn ghost sm" :href="bloxRobloxGameUrl(game.Slot.PlaceId)" target="_blank" rel="noopener">Open on Roblox ↗</a>
                     <template v-if="can('omniblox.studio.act') && active">
                         <button class="ot-btn ghost sm" :aria-expanded="steerOpen" @click="steerOpen = !steerOpen">Steer</button>
@@ -42,6 +45,10 @@
                     <button class="ot-btn primary sm" :disabled="busy || !note.trim()">Send</button>
                 </div>
             </form>
+
+            <div v-if="playOpen && game && detail" ref="playPanel" class="bx-section">
+                <OmniBloxPlayPanel :game="game" :view="detail.Playtest" :revisions="detail.Revisions" :title="title" @close="setPlay(false)" @changed="load" />
+            </div>
 
             <div v-if="game?.WaitingReason" class="ot-banner warn" role="status">
                 <span class="glyph" aria-hidden="true">!</span>
@@ -171,7 +178,7 @@
                     </div>
                 </div>
 
-                <OmniBloxGameWorld v-else-if="tab === 'world'" :game="game" />
+                <OmniBloxGameWorld v-else-if="tab === 'world'" :game="game" :playable="detail.Playtest.Playable" @play="setPlay(true)" />
                 <OmniBloxGameStore v-else-if="tab === 'store'" :game="game" :media="detail.Media" />
                 <OmniBloxGameNumbers v-else-if="tab === 'numbers'" :game="game" />
                 <OmniBloxGameBrain v-else-if="tab === 'brain'" :game="game" />
@@ -185,7 +192,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAccess } from '~/composables/useAccess';
 import { confirmAction, fmtDate, fmtRelative, notify, useNow, usePoll } from '~/composables/useOmniTumblr';
@@ -293,6 +300,18 @@ const tab = computed<TabId>(() => {
 function setTab(id: TabId) {
     void router.replace({ query: { ...route.query, tab: id === 'overview' ? undefined : id } });
 }
+
+// ── play (kept in the URL, so a game card can link straight to it) ──
+const playOpen = computed(() => route.query.play === '1');
+const playPanel = ref<HTMLElement | null>(null);
+function setPlay(open: boolean) {
+    void router.replace({ query: { ...route.query, play: open ? '1' : undefined } });
+}
+watch(() => playOpen.value && !!detail.value, async visible => {
+    if (!visible) return;
+    await nextTick();
+    playPanel.value?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+});
 
 const events = ref<BloxEvent[] | null>(null);
 async function loadEvents() {

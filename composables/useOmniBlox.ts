@@ -12,7 +12,16 @@ export type BloxTaskKind = 'ApiKey' | 'Creator' | 'ExperienceSlot' | 'LaunchAppr
 export type BloxTaskStatus = 'Open' | 'Done' | 'Dismissed';
 export type BloxProductKind = 'GamePass' | 'DeveloperProduct';
 
-export interface BloxUsage { Calls: number; PromptTokens: number; CachedTokens: number; CompletionTokens: number }
+export interface BloxUsage {
+    Calls: number;
+    PromptTokens: number;
+    CachedTokens: number;
+    CompletionTokens: number;
+    /** Prompt a continuation turn sent again (the previous request of its session): all of it could come from cache. */
+    ResentTokens?: number;
+    /** How much of ResentTokens the cache served; the gap is a prefix that expired or was rewritten. */
+    ResentCachedTokens?: number;
+}
 
 export interface BloxGameSummary {
     GameId: string;
@@ -95,13 +104,29 @@ export interface BloxOverview {
         Discovered: number;
         Downloaded: number;
         Labeled: number;
+        /** Labels from before the calibrated quality scale, re-rated against its anchors. */
+        Relabeled?: number;
         LastRunUtc: string | null;
         LastError: string | null;
         PriorityQueries: string[];
         Last: string | null;
         LastHarvestUtc: string | null;
     };
-    Usage: { Today: BloxUsage; Week: BloxUsage; Labeler: BloxUsage; Daily: (BloxUsage & { Day: string })[] };
+    Usage: {
+        Today: BloxUsage;
+        Week: BloxUsage;
+        /** Week's agent cycles (and their one-shot reviews), recorded since the split existed. */
+        WeekAgents?: BloxUsage;
+        /** Week's asset labelling (one-shot vision calls), recorded since the split existed. */
+        WeekLabeler?: BloxUsage;
+        Labeler: BloxUsage;
+        /**
+         * The labeller's frozen reference examples: models scored side by side, kept at four levels of that
+         * calibrated scale (Anchors, best first) so every label is judged against the same comparisons.
+         */
+        LabelerReference?: { Version: number; CreatedUtc: string; Examples: number; Anchors?: number[] } | null;
+        Daily: (BloxUsage & { Day: string })[];
+    };
     Money: { Spent: number; Revenue7dRobux: number; Revenue30dRobux: number; DevExRate: number; Cash30dEstimateUsd: number };
     Daily: { Day: string; Robux: number; Players: number; Visits: number }[];
     GamesLaunched: number;
@@ -484,6 +509,17 @@ export function bloxTokens(value: number | null | undefined): string {
 export function bloxCacheRate(usage: BloxUsage | null | undefined): number | null {
     if (!usage || usage.PromptTokens <= 0) return null;
     return usage.CachedTokens / usage.PromptTokens;
+}
+
+/**
+ * Share of re-sent prompt (a turn's earlier turns, sent again) that came from the cache. 100% means nothing
+ * was prefilled twice; what the hit rate still misses is new content no cache can serve. Null when nothing
+ * was re-sent yet.
+ */
+export function bloxReuseRate(usage: BloxUsage | null | undefined): number | null {
+    const resent = usage?.ResentTokens ?? 0;
+    if (!usage || resent <= 0) return null;
+    return (usage.ResentCachedTokens ?? 0) / resent;
 }
 
 /** 0.213 → "21%"; values already in percent (> 1) are shown as they are. */

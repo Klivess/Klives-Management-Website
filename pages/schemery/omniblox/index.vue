@@ -98,8 +98,15 @@
                                      :format="(v: number) => fmtCount(v)" />
                 <dl class="ot-kv bx-usage">
                     <dt>Today</dt><dd>{{ fmtCount(usage?.Today.Calls) }} calls · {{ bloxTokens(usage?.Today.PromptTokens) }} prompt tokens</dd>
-                    <dt>Cache hits, 7 days</dt><dd>{{ bloxPct(bloxCacheRate(usage?.Week)) }}</dd>
-                    <dt>Asset labelling</dt><dd>{{ fmtCount(usage?.Labeler.Calls) }} call{{ usage?.Labeler.Calls === 1 ? '' : 's' }} in total</dd>
+                    <dt>Cache hits, 7 days</dt><dd>{{ bloxPct(bloxCacheRate(usage?.Week)) }}<template v-if="cacheSplit"> · {{ cacheSplit }}</template></dd>
+                    <dt>Re-sent prompt</dt>
+                    <dd title="Each agent turn sends its earlier turns again. This is how much of that AIRouter served from its cache: 100% means nothing was prefilled twice, and the hit rate's shortfall is new content no cache can serve.">
+                        {{ reuseText }}
+                    </dd>
+                    <dt>Asset labelling</dt>
+                    <dd>
+                        {{ fmtCount(usage?.Labeler.Calls) }} call{{ usage?.Labeler.Calls === 1 ? '' : 's' }} in total<template v-if="anchorsText"> · {{ anchorsText }}</template>
+                    </dd>
                 </dl>
             </OmniTraderCard>
             <OmniTraderCard title="Asset harvester" :subtitle="overview?.HarvesterEnabled ? 'Collecting and labelling free models' : 'Switched off'" :loading="!overview">
@@ -107,6 +114,10 @@
                     <dt>Found</dt><dd>{{ fmtCount(overview?.Harvester.Discovered) }}</dd>
                     <dt>Downloaded</dt><dd>{{ fmtCount(overview?.Harvester.Downloaded) }}</dd>
                     <dt>Labelled</dt><dd>{{ fmtCount(overview?.Harvester.Labeled) }}</dd>
+                    <template v-if="overview?.Harvester.Relabeled">
+                        <dt>Re-rated</dt>
+                        <dd title="Labels scored before the calibrated scale existed, scored again against its reference examples.">{{ fmtCount(overview.Harvester.Relabeled) }}</dd>
+                    </template>
                     <dt>Last run</dt><dd>{{ overview?.Harvester.LastHarvestUtc ? fmtRelative(overview.Harvester.LastHarvestUtc, now) : 'never' }}<template v-if="overview?.Harvester.Last"> · {{ overview.Harvester.Last }}</template></dd>
                     <template v-if="overview?.Harvester.LastError"><dt>Last error</dt><dd class="bad">{{ overview.Harvester.LastError }}</dd></template>
                 </dl>
@@ -129,7 +140,7 @@
 import { computed, ref } from 'vue';
 import { useAccess } from '~/composables/useAccess';
 import { fmtCount, fmtRelative, notify, useNow } from '~/composables/useOmniTumblr';
-import { bloxCacheRate, bloxPct, bloxPost, bloxRobux, bloxTokens, useBloxOverview, type BloxGameSummary } from '~/composables/useOmniBlox';
+import { bloxCacheRate, bloxPct, bloxPost, bloxReuseRate, bloxRobux, bloxTokens, useBloxOverview, type BloxGameSummary } from '~/composables/useOmniBlox';
 
 definePageMeta({ layout: 'navbar' });
 useHead({ title: 'OmniBlox · Klives Management' });
@@ -170,6 +181,32 @@ const cacheTone = computed(() => {
     const rate = bloxCacheRate(usage.value?.Week);
     if (rate == null) return '';
     return rate < 0.5 ? 'bad' : rate < 0.7 ? 'warn' : '';
+});
+
+// The two kinds of traffic hit the cache very differently: agent turns re-send their transcript, labelling
+// sends new pictures every call. Shown once either has been recorded on its own.
+const cacheSplit = computed(() => {
+    const parts: string[] = [];
+    const agents = bloxCacheRate(usage.value?.WeekAgents);
+    const labelling = bloxCacheRate(usage.value?.WeekLabeler);
+    if (agents != null) parts.push(`agents ${bloxPct(agents)}`);
+    if (labelling != null) parts.push(`labelling ${bloxPct(labelling)}`);
+    return parts.join(' · ');
+});
+
+// Every label is scored against the same reference examples, kept at these calibrated scores.
+const anchorsText = computed(() => {
+    const reference = usage.value?.LabelerReference;
+    if (!reference) return '';
+    const anchors = reference.Anchors ?? [];
+    return anchors.length ? `scored against anchors at ${anchors.map(a => a.toFixed(a % 1 ? 1 : 0)).join(' · ')}` : `${reference.Examples} reference examples`;
+});
+
+const reuseText = computed(() => {
+    const rate = bloxReuseRate(usage.value?.Week);
+    if (rate == null) return 'nothing re-sent yet';
+    const missed = (usage.value!.Week.ResentTokens ?? 0) - (usage.value!.Week.ResentCachedTokens ?? 0);
+    return `${bloxPct(rate, rate < 0.995 ? 1 : 0)} served from cache` + (missed > 0 ? ` · ${bloxTokens(missed)} tokens prefilled twice` : '');
 });
 
 const measure = ref<'players' | 'robux'>('players');

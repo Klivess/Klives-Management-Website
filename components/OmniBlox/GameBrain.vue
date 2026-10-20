@@ -4,7 +4,7 @@
             <OmniTraderKpi label="Work cycles" :value="String(game.Cycles.length)" :foot="cyclesFoot" />
             <OmniTraderKpi label="Model calls" :value="fmtCount(game.Usage.Calls)" :foot="`${bloxTokens(game.Usage.CompletionTokens)} tokens written`" />
             <OmniTraderKpi label="Prompt tokens" :value="bloxTokens(game.Usage.PromptTokens)" foot="all cycles, all stages" />
-            <OmniTraderKpi label="Cache hits" :value="bloxPct(bloxCacheRate(game.Usage))" :tone="cacheTone" foot="share of prompt tokens served from AIRouter's cache" />
+            <OmniTraderKpi label="Cache hits" :value="bloxPct(bloxCacheRate(game.Usage))" :tone="cacheTone" :foot="cacheFoot" />
         </div>
 
         <OmniTraderCard title="Hand-overs" subtitle="Each cycle ends with a report the next one starts from" :empty="!game.Cycles.length" empty-title="No cycles yet" flush>
@@ -41,7 +41,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { fmtCount, fmtRelative, useNow } from '~/composables/useOmniTumblr';
-import { BLOX_STAGES, bloxCacheRate, bloxPct, bloxStageTone, bloxTokens, type BloxDossier, type BloxStage } from '~/composables/useOmniBlox';
+import { BLOX_STAGES, bloxCacheRate, bloxPct, bloxReuseRate, bloxStageTone, bloxTokens, type BloxDossier, type BloxStage } from '~/composables/useOmniBlox';
 
 const props = defineProps<{ game: BloxDossier }>();
 const now = useNow();
@@ -60,6 +60,11 @@ const cyclesFoot = computed(() => Object.entries(props.game.StageCycles)
 const cacheTone = computed(() => {
     const rate = bloxCacheRate(props.game.Usage);
     return rate == null ? '' : rate < 0.5 ? 'bad' : rate < 0.7 ? 'warn' : '';
+});
+
+const cacheFoot = computed(() => {
+    const reuse = bloxReuseRate(props.game.Usage);
+    return reuse == null ? "share of prompt tokens served from AIRouter's cache" : `${bloxPct(reuse)} of re-sent prompt came from cache`;
 });
 </script>
 

@@ -2491,6 +2491,64 @@ export const PERMISSIONS: FixturePermission[] = [
       "tripwires.wires.read"
     ],
     "sensitive": false
+  },
+  {
+    "key": "omniblox.overview.view",
+    "service": "OmniBlox",
+    "serviceKey": "omniblox",
+    "area": "Overview",
+    "tier": "Glance",
+    "tierValue": 1,
+    "title": "View the OmniBlox studio overview",
+    "description": "What the studio is doing, its games, owner tasks and headline numbers.",
+    "legacyRank": 4,
+    "implies": [],
+    "sensitive": false
+  },
+  {
+    "key": "omniblox.studio.read",
+    "service": "OmniBlox",
+    "serviceKey": "omniblox",
+    "area": "Studio",
+    "tier": "Read",
+    "tierValue": 2,
+    "title": "View games, assets and the Playbook",
+    "description": "Game dossiers, renders, media, the Asset Library, events and lessons.",
+    "legacyRank": 4,
+    "implies": [
+      "omniblox.overview.view"
+    ],
+    "sensitive": false
+  },
+  {
+    "key": "omniblox.studio.act",
+    "service": "OmniBlox",
+    "serviceKey": "omniblox",
+    "area": "Studio",
+    "tier": "Act",
+    "tierValue": 3,
+    "title": "Steer the studio",
+    "description": "Resolve owner tasks, pause or steer games, start a new game, request maintenance.",
+    "legacyRank": 4,
+    "implies": [
+      "omniblox.studio.read"
+    ],
+    "sensitive": false
+  },
+  {
+    "key": "omniblox.studio.manage",
+    "service": "OmniBlox",
+    "serviceKey": "omniblox",
+    "area": "Studio",
+    "tier": "Critical",
+    "tierValue": 5,
+    "title": "Run the studio and approve launches",
+    "description": "Switch the studio and the asset harvester on or off, approve games going public, abandon games.",
+    "legacyRank": 4,
+    "implies": [
+      "omniblox.studio.act"
+    ],
+    "sensitive": true
   }
 ];
 

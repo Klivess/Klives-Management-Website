@@ -18,6 +18,8 @@ export default defineNuxtConfig({
     '/klivetech': {ssr: false}, // Telemetry needs WebSocket, object URLs and ResizeObserver
     '/schemery/omnitumblr': {ssr: false}, // Authenticated blob previews, popups and local-time rendering
     '/schemery/omnitumblr/**': {ssr: false},
+    '/schemery/omniblox': {ssr: false}, // Authenticated renders and media are fetched as blobs
+    '/schemery/omniblox/**': {ssr: false},
     '/omnitrader': {ssr: false}, // Terminal: client-fetched behind auth, persisted per-browser layout, live charts
     '/omnitrader/**': {ssr: false},
     '/*': {cors: true},

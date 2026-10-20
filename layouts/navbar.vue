@@ -99,6 +99,7 @@ const NAV_GROUPS = [
       { to: '/schemery/omnigram', label: 'OmniGram', icon: '◐' },
       { to: '/schemery/omnitumblr', label: 'OmniTumblr', icon: '◑' },
       { to: '/schemery/omnitube', label: 'OmniTube', icon: '▶' },
+      { to: '/schemery/omniblox', label: 'OmniBlox', icon: '▣' },
     ],
   },
   {

@@ -47,7 +47,7 @@ const ENTRIES: Entry[] = [
     { prefix: '/storage', label: 'Storage', rule: SIGNED_IN },
     { prefix: '/botnets', label: 'Botnets', rule: SIGNED_IN },
 
-    { prefix: '/schemes', label: 'Schemes', rule: anyOf('omnitrader.', 'cs2.', 'memescraper.', 'omnigram.', 'omnitumblr.') },
+    { prefix: '/schemes', label: 'Schemes', rule: anyOf('omnitrader.', 'cs2.', 'memescraper.', 'omnigram.', 'omnitumblr.', 'omniblox.') },
     { prefix: '/omnitrader', label: 'OmniTrader', rule: anyOf('omnitrader.') },
     { prefix: '/schemery/omnitrader', label: 'OmniTrader', rule: anyOf('omnitrader.') },
     { prefix: '/schemery/cs2arbitragebot', label: 'CS2 Arbitrage', rule: anyOf('cs2.') },
@@ -55,6 +55,7 @@ const ENTRIES: Entry[] = [
     { prefix: '/schemery/omnigram', label: 'OmniGram', rule: anyOf('omnigram.') },
     { prefix: '/schemery/omnitumblr', label: 'OmniTumblr', rule: anyOf('omnitumblr.') },
     { prefix: '/schemery/omnitube', label: 'OmniTube', rule: SIGNED_IN },
+    { prefix: '/schemery/omniblox', label: 'OmniBlox', rule: anyOf('omniblox.') },
 
     { prefix: '/omniscience', label: 'Omniscience', rule: anyOf('omniscience.') },
     { prefix: '/omniscience-search', label: 'Omniscience', rule: anyOf('omniscience.') },

@@ -149,6 +149,40 @@
                 </div>
             </div>
 
+            <div class="scheme-card active" @click="$router.push('/schemery/omniblox')">
+                <div class="card-accent accent-blox"></div>
+                <div class="card-body">
+                    <div class="card-top">
+                        <span class="card-icon">🧱</span>
+                        <span class="card-badge badge-active">{{ omnibloxStats.enabled ? 'Active' : 'Off' }}</span>
+                    </div>
+                    <h2 class="card-title">OmniBlox</h2>
+                    <p class="card-desc">An autonomous Roblox studio: researches what is trending, builds the game from labelled free models, tests, publishes and markets it, then maintains it from its own analytics. Spends nothing.</p>
+
+                    <div v-if="!omnibloxStats.loading" class="omnigram-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Live games</span>
+                            <span class="stat-value blox-val">{{ omnibloxStats.live }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">In production</span>
+                            <span class="stat-value blox-val">{{ omnibloxStats.production }}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Robux (30d)</span>
+                            <span class="stat-value blox-val">{{ omnibloxStats.robux30d.toLocaleString() }}</span>
+                        </div>
+                    </div>
+                    <div v-else class="omnigram-stats">
+                        <span class="stat-loading">Loading stats...</span>
+                    </div>
+
+                    <div class="card-footer">
+                        <span class="card-action">View Dashboard →</span>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
         <!-- Simulator & In Development -->
@@ -255,6 +289,7 @@ const omnigramStats = ref({ accounts: 0, followers: 0, postsThisWeek: 0, loading
 const omnitumblrStats = ref({ accounts: 0, autopilot: 0, followers: 0, postsThisWeek: 0, loading: true });
 const cs2Stats = ref({ valued: 0, opportunities: 0, purchases: 0, loading: true });
 const memescraperStats = ref({ totalSources: 0, totalMemes: 0, todayDownloads: 0, loading: true });
+const omnibloxStats = ref({ enabled: false, live: 0, production: 0, robux30d: 0, loading: true });
 const omnitraderStats = ref({ paperCount: 0, liveCount: 0, liveArmed: 0, paperPnL: 0, backtestCount: 0, krakenOn: false, loading: true });
 
 const fetchOmnigramStats = async () => {
@@ -274,6 +309,28 @@ const fetchOmnigramStats = async () => {
     } catch (error) {
         console.error('Failed to fetch OmniGram stats:', error);
         omnigramStats.value.loading = false;
+    }
+};
+
+const fetchOmniBloxStats = async () => {
+    try {
+        const response = await RequestGETFromKliveAPI('/omniblox/overview', false, false);
+        if (response.ok) {
+            const data = await response.json();
+            const stages = data.StageCounts ?? {};
+            omnibloxStats.value = {
+                enabled: !!data.Enabled,
+                live: stages.Live ?? 0,
+                production: (stages.Research ?? 0) + (stages.Build ?? 0) + (stages.Test ?? 0) + (stages.Launch ?? 0),
+                robux30d: Math.round(data.Money?.Revenue30dRobux ?? 0),
+                loading: false
+            };
+        } else {
+            omnibloxStats.value.loading = false;
+        }
+    } catch (error) {
+        console.error('Failed to fetch OmniBlox stats:', error);
+        omnibloxStats.value.loading = false;
     }
 };
 
@@ -377,6 +434,7 @@ const fetchOmniTraderStats = async () => {
 onMounted(() => {
     fetchOmnigramStats();
     fetchOmniTumblrStats();
+    fetchOmniBloxStats();
     fetchCS2Stats();
     fetchMemescraperStats();
     fetchOmniTraderStats();
@@ -484,6 +542,8 @@ onMounted(() => {
 .accent-instagram { background: linear-gradient(to bottom, #f97316, #fb7185); }
 .accent-tumblr { background: linear-gradient(to bottom, #35465c, #001935); }
 .tumblr-val { color: #5b8dd9; }
+.accent-blox { background: linear-gradient(to bottom, #e2231a, #ff9f43); }
+.blox-val { color: #ff8a65; }
 .accent-tumblr { background: linear-gradient(to bottom, #2ab8ff, #4ade80); }
 
 /* Card Body */

@@ -21,7 +21,14 @@ const BOOT = { timeout: 45_000 };
 
 test.describe.configure({ timeout: 120_000 });
 
-interface MockOptions { rank?: number; permissions?: string[]; extraTasks?: any[]; newGameConflict?: boolean }
+interface MockOptions {
+    rank?: number;
+    permissions?: string[];
+    extraTasks?: any[];
+    newGameConflict?: boolean;
+    /** Edits a game's detail before it is served (e.g. a paused watchdog, a cycle still running). */
+    patchGame?: (id: string, detail: any) => void;
+}
 
 async function mockApi(page: Page, options: MockOptions = {}) {
     const rank = options.rank ?? 5;
@@ -61,9 +68,26 @@ async function mockApi(page: Page, options: MockOptions = {}) {
 
             case '/omniblox/overview': return json(state.overview);
             case '/omniblox/games': return json({ Games: state.overview.Games });
-            case '/omniblox/game': return fixture(`game-${p.get('id')}`);
+            case '/omniblox/game': {
+                const name = `game-${p.get('id')}`;
+                if (!existsSync(`${FIXTURES}${name}.json`)) return json({ error: 'No such game.' }, 404);
+                const detail = load(name);
+                options.patchGame?.(p.get('id')!, detail);
+                return json(detail);
+            }
             case '/omniblox/game/media': return file(`media/${p.get('id')}/${p.get('file')}`, 'image/png');
-            case '/omniblox/game/render': return file(`render/${p.get('id')}-${p.get('view')}.png`, 'image/png');
+            case '/omniblox/game/render': return file(`render/${p.get('id')}-${(p.get('view') ?? '').replace(':', '-')}.png`, 'image/png');
+            case '/omniblox/game/live': {
+                const name = `live-${p.get('id')}`;
+                if (!existsSync(`${FIXTURES}${name}.json`)) return json({ Live: null });
+                const live = load(name);
+                const detail = { Live: live.Live };
+                options.patchGame?.(p.get('id')!, detail);
+                return json({ Live: detail.Live });
+            }
+            case '/omniblox/game/cycle': return fixture(`cycle-${p.get('id')}-${p.get('cycle')}`);
+            case '/omniblox/game/cycle/image': return file(`cycle/${p.get('id')}/${p.get('cycle')}/${p.get('file')}`, 'image/png');
+            case '/omniblox/game/map': return fixture(`map-${p.get('id')}`);
             case '/omniblox/game/files': return fixture(`files-${p.get('id')}`);
             case '/omniblox/game/file': {
                 const contents = existsSync(`${FIXTURES}filecontents-${p.get('id')}.json`) ? load(`filecontents-${p.get('id')}`) : {};
@@ -125,8 +149,14 @@ async function mockApi(page: Page, options: MockOptions = {}) {
                 });
             }
             case '/omniblox/games/playtest/follow': return json({ ok: true, follow: body?.follow });
+            case '/omniblox/games/steer': return json({ ok: true, directiveId: 'd3', resumed: false });
+            case '/omniblox/games/build':
+                return json({ ok: true, revision: 2, mapScore: 54, report: 'BUILD OK — revision 2 (no file changed since it was built): 308 instances, 28 scripts.\nMap: score 54/100 — The play area is only 280×280 studs.' });
+            case '/omniblox/games/test': return json({ ok: true, started: true });
             case '/omniblox/games/pause':
-            case '/omniblox/games/steer':
+            case '/omniblox/games/resume':
+            case '/omniblox/games/revive':
+            case '/omniblox/games/directive':
             case '/omniblox/games/maintain':
             case '/omniblox/games/abandon':
                 return json({ ok: true });
@@ -290,8 +320,8 @@ test('game in production: exit criteria, steering and pausing', async ({ page })
     await page.screenshot({ path: `${SHOTS}/game-building.png`, fullPage: true });
 
     await page.getByRole('button', { name: 'Steer' }).click();
-    await page.getByLabel('Direction').fill('Add a candy machine finale');
-    await page.getByRole('button', { name: 'Send' }).click();
+    await page.getByLabel('New direction').fill('Add a candy machine finale');
+    await page.getByRole('button', { name: 'Send direction' }).click();
     await expect.poll(() => state.mutations.find(m => m.path === '/omniblox/games/steer')?.body)
         .toEqual({ gameId: meta.Building, note: 'Add a candy machine finale' });
 
@@ -302,6 +332,116 @@ test('game in production: exit criteria, steering and pausing', async ({ page })
     await expect(page.locator('.bx-img img').first()).toBeVisible();
     await page.waitForTimeout(400);
     await page.screenshot({ path: `${SHOTS}/game-building-world.png`, fullPage: true });
+});
+
+test('a game at work: every step live, the owner\'s directions, the engine run and the map', async ({ page }) => {
+    // The builder is mid-cycle: the live view follows it closely.
+    const state = await mockApi(page, {
+        patchGame: (id, detail) => {
+            if (id !== meta.Building || !detail.Live) return;
+            detail.Live.Running = true;
+            detail.Live.Status = 'running run_tests';
+        },
+    });
+    await page.setViewportSize({ width: 1500, height: 1100 });
+    await page.goto(`/schemery/omniblox/game/${meta.Building}`);
+    await expect(page.getByRole('heading', { name: 'Candy Factory Tycoon' })).toBeVisible(BOOT);
+
+    const live = page.locator('.bx-live');
+    await expect(live).toContainText('Working now');
+    await expect(live).toContainText('running run_tests');
+    await expect(live.locator('.bx-entries > li').filter({ hasText: 'BUILD OK' })).toBeVisible();
+    await expect(live.locator('.bx-entries > li').filter({ hasText: 'scatter_assets' }).first()).toBeVisible();
+    await expect(live.locator('.pic img').first()).toBeVisible(); // the map the builder looked at
+    await live.locator('.pic').first().click();
+    await expect(live.locator('.pic.big')).toHaveCount(1);
+
+    // The owner's directions: the open one leads, the finished one says what was done.
+    const directions = page.locator('.ot-card').filter({ hasText: 'Your directions' });
+    await expect(directions).toContainText('Add a candy machine finale that unlocks after the first rebirth.');
+    await expect(directions).toContainText('Open · delivered');
+    await expect(directions).toContainText('Doubled the plot to 100×100');
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: `${SHOTS}/game-at-work.png`, fullPage: true });
+    await directions.locator('li').filter({ hasText: 'candy machine finale' }).getByRole('button', { name: 'Drop' }).click();
+    await expect.poll(() => state.mutations.find(m => m.path === '/omniblox/games/directive')?.body)
+        .toEqual({ gameId: meta.Building, directiveId: 'd2', action: 'drop' });
+
+    // Key facts read as facts, not as raw objects.
+    await expect(page.locator('.facts').first()).not.toContainText('[object Object]');
+
+    // Tests: the engine run's failing check and boot error, located in the game's files.
+    await page.getByRole('tab', { name: /Tests/ }).click();
+    const cases = page.locator('.cases');
+    await expect(cases.getByText('Factory · the first dropper is affordable')).toBeVisible();
+    await expect(cases.locator('.detail').filter({ hasText: 'starting candy 50 < first dropper 60' })).toBeVisible();
+    await expect(page.locator('.cases code').filter({ hasText: 'src/server/Welcome.server.luau:4' })).toBeVisible();
+    await expect(page.locator('.checks li').filter({ hasText: 'Roblox\'s engine' })).toHaveClass(/bad/);
+    await page.getByRole('button', { name: 'Build now' }).click();
+    await expect(page.locator('pre.report')).toContainText('BUILD OK');
+    expect(state.mutations.find(m => m.path === '/omniblox/games/build')?.body).toEqual({ gameId: meta.Building });
+    await page.getByRole('button', { name: 'Run in Roblox' }).click();
+    await expect.poll(() => state.mutations.find(m => m.path === '/omniblox/games/test')?.body).toEqual({ gameId: meta.Building });
+    await expect(page.locator('.swal2-popup')).toContainText('Running in Roblox');
+    await page.locator('.swal2-confirm').click();
+    await expect(page.locator('.swal2-popup')).toHaveCount(0);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${SHOTS}/game-tests.png`, fullPage: true });
+
+    // World: the map with its plan, the map report, and a zone's own view.
+    await page.getByRole('tab', { name: 'World' }).click();
+    const report = page.locator('.ot-card').filter({ hasText: 'Map report' });
+    await expect(report.locator('.score .value')).toHaveText(/\d+/);
+    await expect(page.locator('.zones')).toContainText('Candy Grove');
+    await page.locator('.zone').filter({ hasText: 'Candy Grove' }).click();
+    await expect.poll(() => page.locator('.bx-world .bx-img img').first().getAttribute('src')).toBeTruthy();
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: `${SHOTS}/game-world-map.png`, fullPage: true });
+});
+
+test('a game the watchdog paused waits for the owner, and resumes', async ({ page }) => {
+    const state = await mockApi(page, {
+        patchGame: (id, detail) => {
+            if (id !== meta.Building || !detail.Game) return;
+            detail.Game.Paused = true;
+            detail.Game.Progress.Level = 3;
+            detail.Watchdog = { ...detail.Watchdog, Level: 3, Name: 'waiting for the owner', StalledCycles: 8, History: ['10-20 09:12 level 1 after a test run: engine game: Factory · the first dropper is affordable', '10-20 11:40 level 3 after a builder cycle'] };
+        },
+    });
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.goto(`/schemery/omniblox/game/${meta.Building}`);
+    await expect(page.getByRole('heading', { name: 'Candy Factory Tycoon' })).toBeVisible(BOOT);
+    const banner = page.locator('.ot-banner').filter({ hasText: 'Watchdog' });
+    await expect(banner).toContainText('waiting for the owner');
+    await expect(banner).toContainText('Nothing is lost while it waits');
+    await page.screenshot({ path: `${SHOTS}/game-watchdog.png`, fullPage: true });
+    await banner.getByRole('button', { name: 'Resume' }).click();
+    await expect.poll(() => state.mutations.find(m => m.path === '/omniblox/games/resume')?.body).toEqual({ gameId: meta.Building });
+});
+
+test('an abandoned game can be revived where it stopped', async ({ page }) => {
+    const state = await mockApi(page);
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.goto(`/schemery/omniblox/game/${meta.Abandoned}`);
+    await expect(page.getByRole('heading', { name: 'Space Station Simulator' })).toBeVisible(BOOT);
+    await page.locator('.ot-pagehead').getByRole('button', { name: 'Revive' }).click();
+    await expect(page.locator('.swal2-popup')).toContainText('It goes back to Research');
+    await page.locator('.swal2-confirm').click();
+    await expect.poll(() => state.mutations.find(m => m.path === '/omniblox/games/revive')?.body).toEqual({ gameId: meta.Abandoned });
+});
+
+test('the brain keeps every step of recent cycles', async ({ page }) => {
+    await mockApi(page);
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.goto(`/schemery/omniblox/game/${meta.Building}?tab=brain`);
+    await expect(page.getByRole('heading', { name: 'Candy Factory Tycoon' })).toBeVisible(BOOT);
+    // (Keyed on the button's class: its label changes once the log is open.)
+    const first = page.locator('.cycles > li').filter({ has: page.locator('.logbtn') }).first();
+    await first.getByRole('button', { name: 'Show every step' }).click();
+    await expect(first.getByRole('button', { name: 'Hide the full log' })).toBeVisible();
+    await expect(first.locator('.bx-entries > li').first()).toBeVisible();
+    await expect(first.locator('.bx-entries')).toContainText('finish_cycle');
+    await page.screenshot({ path: `${SHOTS}/game-brain-log.png`, fullPage: true });
 });
 
 test('playing a game mid-build: Roblox in one click, Studio, Follow and what playtests reported', async ({ page, context }) => {

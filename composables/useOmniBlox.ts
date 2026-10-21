@@ -47,8 +47,17 @@ export interface BloxGameSummary {
     Playable: boolean;
     TestPassed: boolean | null;
     Cycles: Partial<Record<BloxStage, number>>;
+    /** Cycles in the current stage: a statistic, never a budget (there is no cycle limit). */
     StageCycles: number;
-    StageCycleBudget: number | null;
+    /** The map report's score at the last build (0-100; 60 is the bar for non-obbies). */
+    MapScore: number | null;
+    TypeChecked: boolean;
+    /** The newest run in Roblox's engine; Current means it ran on the current build. */
+    Engine: { Utc: string; Revision: number; Ok: boolean; Passed: number; Failed: number; KitFailed: boolean; Summary: string; Current: boolean } | null;
+    OpenDirectives: number;
+    Watchdog: { Level: number; Name: string; StalledCycles: number; LastProgressUtc: string | null };
+    /** The cycle running now (or the last one since the server started), without its steps. */
+    Live: { CycleId: string; Role: string; Running: boolean; Status: string; StartedUtc: string; LastUtc: string; Turns: number; ToolCalls: number; ToolErrors: number; ContextTokens: number } | null;
     ChecklistMet: number;
     ChecklistTotal: number;
     MilestonesDone: number;
@@ -157,7 +166,30 @@ export interface BloxBrief {
     Evidence: string[];
 }
 export interface BloxMilestone { MilestoneId: string; Title: string; Done: boolean; Notes: string | null }
+/** Severity: error, warning or info. */
 export interface BloxTestIssue { Severity: string; Area: string; Message: string }
+
+/** One check of an engine run. Phase: kit (the kit's own control, before game code), load, boot, world, game, run. */
+export interface BloxEngineCase { Name: string; Ok: boolean; Detail: string | null; Phase: string; Owner: string; Seconds: number; Skipped: boolean; Warnings: string[] }
+/** A runtime error while the game ran, located in the game's files when possible. */
+export interface BloxEngineError { Message: string; Source: string | null; Trace: string | null; Phase: string; File: string | null; Line: number | null }
+/** The game run in Roblox's real engine (run_tests, the Test stage or a launch). */
+export interface BloxEngineRun {
+    Utc: string;
+    Revision: number;
+    Ran: boolean;
+    Ok: boolean;
+    Version: number | null;
+    Passed: number;
+    Failed: number;
+    /** The kit's own control checks failed: the studio's bug, not the game's. */
+    KitFailed: boolean;
+    Summary: string;
+    Results: BloxEngineCase[];
+    Errors: BloxEngineError[];
+    Warnings: string[];
+}
+
 export interface BloxTestReport {
     Utc: string;
     BuildRevision: number;
@@ -169,6 +201,69 @@ export interface BloxTestReport {
     EngineVersion: number | null;
     Issues: BloxTestIssue[];
     Summary: string;
+    /** The run learned nothing about the game (Roblox or the model unreachable); it is retried. */
+    Infrastructure?: boolean;
+    Engine?: BloxEngineRun | null;
+    MapScore?: number | null;
+}
+
+/** A kept fact: a fact with a key replaces the older one with that key. Source: agent, owner or studio. */
+export interface BloxKeyFact { Key: string; Text: string; Utc: string; Stage: BloxStage | null; Source: 'agent' | 'owner' | 'studio' | string }
+
+export type BloxDirectiveStatus = 'Open' | 'Done' | 'Dropped';
+/** A direction from the owner: delivered to a running cycle, at the top of every briefing until an agent reports it done. */
+export interface BloxDirective { DirectiveId: string; Utc: string; Text: string; Status: BloxDirectiveStatus; Response: string | null; ResolvedUtc: string | null; Delivered: boolean }
+
+/** The watchdog: whether the game is moving. Level 0 moving, 1 rethink, 2 deep dive, 3 waiting for the owner. */
+export interface BloxProgress {
+    StalledCycles: number;
+    LastFailureSignature: string | null;
+    SameFailureCount: number;
+    LastProgressUtc: string | null;
+    Level: number;
+    Directive: string | null;
+    History: string[];
+}
+
+/** One step of a cycle. Kind: text (the agent's words), call, result, note. Images are file names in the cycle's folder. */
+export interface BloxLiveEntry { Utc: string; Kind: 'text' | 'call' | 'result' | 'note' | string; Tool: string | null; Text: string; Error: boolean; Images: string[] }
+export interface BloxLiveCycle {
+    CycleId: string;
+    GameId: string;
+    Role: string;
+    Stage: BloxStage;
+    StartedUtc: string;
+    LastUtc: string;
+    Running: boolean;
+    Outcome: string | null;
+    Status: string;
+    Turns: number;
+    ToolCalls: number;
+    ToolErrors: number;
+    PromptTokens: number;
+    CachedTokens: number;
+    CompletionTokens: number;
+    ContextTokens: number;
+    Entries: BloxLiveEntry[];
+}
+
+/** GET /omniblox/game/map: the map report on the game's current files. */
+export interface BloxMapReport {
+    Score: number;
+    AreaWidth: number;
+    AreaDepth: number;
+    Objects: number;
+    DistinctModels: number;
+    DressedShare: number;
+    Findings: { Severity: 'error' | 'warning' | 'info' | string; Area: string; Message: string }[];
+    Facts: string[];
+    Zones: { Id: string; Name: string; Purpose: string; Area: number[]; Order: number; Theme: string }[];
+    Landmarks: { Name: string; Position: number[]; ObjectId: string | null; Note: string }[];
+    Concept: string;
+    Bounds: number[] | null;
+    Terrain: { OriginX: number; OriginZ: number; MaxX: number; MaxZ: number; Biome: string | null } | null;
+    Compiled: boolean;
+    Errors: string[];
 }
 export interface BloxProduct extends BloxProductIdea { RobloxId: number | null; SyncedUtc: string | null }
 export interface BloxDailyMetrics {
@@ -185,15 +280,24 @@ export interface BloxDailyMetrics {
     ClickThrough: number | null;
 }
 export interface BloxCycle {
+    /** Names the cycle's full log (GET /omniblox/game/cycle) while it is kept. Empty for cycles from before logs. */
+    CycleId?: string;
+    StartedUtc?: string | null;
     Utc: string;
     Stage: BloxStage;
     Role: string;
+    /** finished, handed over (its context filled), cut short, error. */
     Outcome: string;
     Done: string;
     Decisions: string[];
     Problems: string[];
     NextSteps: string[];
     Turns: number;
+    ToolCalls?: number;
+    ToolErrors?: number;
+    /** Replies cut off by the output limit (their tool calls were not run). */
+    Truncations?: number;
+    Error?: string | null;
     PromptTokens: number;
     CachedTokens: number;
     CompletionTokens: number;
@@ -291,6 +395,12 @@ export interface BloxDossier {
         Warnings: string[];
         FeatureComplete: boolean;
         AssetsUsed: number[];
+        TypeChecked?: boolean;
+        TypeCheckNote?: string | null;
+        MapScore?: number | null;
+        /** "[error] area: …" / "[warning] area: …" lines from the map report at the last build. */
+        MapFindings?: string[];
+        LastEngineRun?: BloxEngineRun | null;
     };
     LastTest: BloxTestReport | null;
     Slot: { UniverseId: number; PlaceId: number } | null;
@@ -342,13 +452,19 @@ export interface BloxDossier {
     UrgentMaintenance: boolean;
     Cycles: BloxCycle[];
     Decisions: { Utc: string; Stage: BloxStage; What: string; Why: string }[];
-    KeyFacts: string[];
+    KeyFacts: BloxKeyFact[];
+    Directives: BloxDirective[];
     StageFailures: Partial<Record<BloxStage, number>>;
     StageCycles: Partial<Record<BloxStage, number>>;
     Usage: BloxUsage;
     NextAttemptUtc: string | null;
     Escalations: number;
     AbandonReason: string | null;
+    /** Where an abandoned game stopped (Revive brings it back there; Test and Launch go back to Build). */
+    AbandonedFromStage?: BloxStage | null;
+    Progress: BloxProgress;
+    /** Model or provider failures in a row: they back off and never count against the game. */
+    ProviderFailures?: number;
 }
 
 export interface BloxCriterion { Text: string; Met: boolean }
@@ -362,7 +478,27 @@ export interface BloxGameDetail {
     Revisions: number[];
     Media: string[];
     Playtest: BloxPlaytestView;
+    /** The cycle running now (or the last one since the server started), step by step. */
+    Live: BloxLiveCycle | null;
+    /** Cycles whose full log is still kept, newest first. */
+    CycleLogs: string[];
+    /** A Roblox API key and an experience slot exist, so the game can run in the engine here. */
+    EngineAvailable: boolean;
+    Watchdog: {
+        Level: number;
+        Name: string;
+        StalledCycles: number;
+        SameFailureCount: number;
+        LastFailureSignature: string | null;
+        LastProgressUtc: string | null;
+        Directive: string | null;
+        History: string[];
+        Ladder: string[];
+    };
 }
+
+/** GET /omniblox/game/cycle: one past cycle's full log. */
+export interface BloxCycleLog { CycleId: string; Report: BloxCycle | null; Entries: BloxLiveEntry[] }
 
 export interface BloxTelemetry {
     Days: number;
@@ -478,7 +614,11 @@ export const bloxPost = <T = { ok: boolean }>(path: string, body: unknown = {}):
 
 /** `v` only changes the cache key, so a re-made icon or a new build is fetched again. */
 export const bloxMediaPath = (gameId: string, file: string, v?: string | number | null) => `/omniblox/game/media${q({ id: gameId, file, v })}`;
-export const bloxRenderPath = (gameId: string, view: string, revision?: number) => `/omniblox/game/render${q({ id: gameId, view, rev: revision })}`;
+/** A picture of the world: view = map, overview, aerial, iso, spawn, zone:<id> or an object id; `v` (the last build's time) refreshes it. */
+export const bloxRenderPath = (gameId: string, view: string, v?: string | number | null, labels = false) =>
+    `/omniblox/game/render${q({ id: gameId, view, v, labels: labels ? 1 : undefined })}`;
+/** A picture an agent looked at (or made) during a cycle. */
+export const bloxCycleImagePath = (gameId: string, cycleId: string, file: string) => `/omniblox/game/cycle/image${q({ id: gameId, cycle: cycleId, file })}`;
 export const bloxAssetImagePath = (assetId: number, view = 'thumb') => `/omniblox/asset/image${q({ id: assetId, view })}`;
 
 /** Saves an authenticated file (e.g. the icon the owner uploads by hand) under a readable name. */
@@ -575,6 +715,11 @@ export function bloxStageTone(stage: BloxStage): string {
         case 'Test': return 'violet';
         default: return 'info';
     }
+}
+
+/** The watchdog's ladder: 1 rethink and 2 deep dive are warnings, 3 (paused, waiting for the owner) is bad. */
+export function bloxWatchdogTone(level: number): string {
+    return level >= 3 ? 'bad' : level >= 1 ? 'warn' : 'ok';
 }
 
 /** Dot colour for a game in lists: what state it is in, not which stage. */

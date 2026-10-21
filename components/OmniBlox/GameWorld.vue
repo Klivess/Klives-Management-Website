@@ -1,18 +1,63 @@
 <template>
-    <div class="ot-grid sidebar">
-        <OmniTraderCard title="World" :subtitle="drawable ? `Revision ${game.Build.Revision}, drawn from the compiled place` : 'Nothing is built in Research'">
+    <div class="bx-world">
+        <OmniTraderCard title="World" :subtitle="drawable ? subtitle : 'Nothing is built in Research'">
             <template v-if="drawable" #controls>
                 <div class="ot-segment sm" role="group" aria-label="Camera">
-                    <button v-for="v in VIEWS" :key="v.id" type="button" :aria-pressed="view === v.id" @click="view = v.id">{{ v.label }}</button>
+                    <button v-for="v in views" :key="v.id" type="button" :aria-pressed="view === v.id" @click="view = v.id">{{ v.label }}</button>
                 </div>
+                <label v-if="view !== 'map' && view !== 'overview'" class="labels"><input v-model="labels" type="checkbox" /> Object ids</label>
                 <button v-if="playable" type="button" class="ot-btn sm" @click="emit('play')">▶ Play this world</button>
             </template>
-            <OmniBloxImg v-if="drawable" :path="bloxRenderPath(game.GameId, view, game.Build.Revision)" ratio="1280 / 760" contain
+            <OmniBloxImg v-if="drawable" :path="bloxRenderPath(game.GameId, view, game.Build.LastBuildUtc ?? game.Build.Revision, labels)" ratio="1280 / 760" contain
                          :alt="`${game.Store.Title || game.WorkingTitle}: ${view} view`" fallback="Nothing to draw yet." />
             <OmniTraderStateBlock v-else title="No world yet" detail="The builder creates the world once the brief is written." />
+            <p v-if="drawable" class="hint bx-muted">{{ VIEW_HINT[view] ?? 'A close look at one zone of the map plan.' }}</p>
         </OmniTraderCard>
 
-        <div class="col">
+        <div class="ot-grid two">
+            <OmniTraderCard title="Map report" :subtitle="report ? `${Math.round(report.AreaWidth)}×${Math.round(report.AreaDepth)} studs · ${report.Objects} objects · ${report.DistinctModels} different models` : 'Measured on the current files'"
+                            :loading="drawable && report === null && !reportError" :empty="!drawable" empty-title="No world yet">
+                <OmniTraderStateBlock v-if="reportError" kind="error" title="Could not measure the map" :detail="reportError" />
+                <template v-else-if="report">
+                    <div class="score">
+                        <span class="value" :class="scoreTone">{{ report.Score }}</span>
+                        <div>
+                            <strong>{{ scoreWord }}</strong>
+                            <span class="bx-muted">60 is the bar for the Build stage; 80+ is the aim. {{ pct(report.DressedShare) }} of the play area is dressed.</span>
+                        </div>
+                    </div>
+                    <ul v-if="report.Findings.length" class="findings">
+                        <li v-for="(f, i) in findings" :key="i" :class="f.Severity">
+                            <span class="sev">{{ f.Severity }}</span><span class="area">{{ f.Area }}</span>{{ f.Message }}
+                        </li>
+                    </ul>
+                    <p v-else class="bx-muted">No problems found.</p>
+                    <details v-if="report.Facts.length" class="facts">
+                        <summary>Measurements</summary>
+                        <ul class="bx-list small"><li v-for="(f, i) in report.Facts" :key="i">{{ f }}</li></ul>
+                    </details>
+                </template>
+            </OmniTraderCard>
+
+            <OmniTraderCard title="Map plan" :subtitle="report?.Zones.length ? `${report.Zones.length} zone(s), in the order players reach them` : undefined"
+                            :empty="!report?.Zones.length && !report?.Concept" empty-title="No map plan yet" empty-text="The builder plans zones, paths and landmarks (plan_map) before dressing the world.">
+                <template v-if="report">
+                    <p v-if="report.Concept" class="concept">{{ report.Concept }}</p>
+                    <ol class="zones">
+                        <li v-for="z in zonesInOrder" :key="z.Id">
+                            <button type="button" class="zone" :aria-pressed="view === `zone:${z.Id}`" @click="view = `zone:${z.Id}`">
+                                <strong>{{ z.Order }}. {{ z.Name }}</strong>
+                                <span>{{ z.Purpose }}<template v-if="z.Theme"> · {{ z.Theme }}</template></span>
+                                <span class="bx-muted mono">{{ Math.round(z.Area[2]! - z.Area[0]!) }}×{{ Math.round(z.Area[3]! - z.Area[1]!) }} studs</span>
+                            </button>
+                        </li>
+                    </ol>
+                    <p v-if="report.Landmarks.length" class="landmarks"><span class="bx-muted">Landmarks:</span> {{ report.Landmarks.map(l => l.Name).join(' · ') }}</p>
+                </template>
+            </OmniTraderCard>
+        </div>
+
+        <div class="ot-grid two">
             <OmniTraderCard title="Build">
                 <dl class="ot-kv">
                     <dt>Revision</dt>
@@ -47,35 +92,90 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { fmtCount, fmtRelative, useNow } from '~/composables/useOmniTumblr';
-import { bloxAssetImagePath, bloxBytes, bloxRenderPath, type BloxDossier } from '~/composables/useOmniBlox';
+import { bloxAssetImagePath, bloxBytes, bloxGet, bloxRenderPath, type BloxDossier, type BloxMapReport } from '~/composables/useOmniBlox';
 
 const props = defineProps<{ game: BloxDossier; playable?: boolean }>();
 const emit = defineEmits<{ play: [] }>();
 const now = useNow();
 
-const VIEWS = [
+const BASE_VIEWS = [
+    { id: 'map', label: 'Map' },
+    { id: 'aerial', label: 'Aerial' },
     { id: 'iso', label: '3/4' },
-    { id: 'overview', label: 'Above' },
     { id: 'spawn', label: 'Spawn' },
 ] as const;
-const view = ref<string>('iso');
+const VIEW_HINT: Record<string, string> = {
+    map: 'From above, with the map plan: zones, paths, landmarks, the play area, a grid in studs and where the spawn faces.',
+    aerial: 'The whole world from high up, as a player flying over it would see it.',
+    iso: 'A three-quarter view of everything that is built.',
+    spawn: 'What a player sees the moment they join: the first impression.',
+};
+const view = ref<string>('map');
+const labels = ref(false);
 
 const drawable = computed(() => props.game.Stage !== 'Research' && !(props.game.Stage === 'Abandoned' && props.game.Build.Revision === 0));
+const subtitle = computed(() => `Revision ${props.game.Build.Revision} · drawn from the compiled place, models as Roblox's own pictures of them`);
 
-/** Build errors and warnings; geometry ones carry a "[geometry] [level]" prefix from the verifier. */
+const report = ref<BloxMapReport | null>(null);
+const reportError = ref<string | null>(null);
+async function loadReport() {
+    if (!drawable.value) return;
+    const result = await bloxGet<BloxMapReport>(`/omniblox/game/map?id=${encodeURIComponent(props.game.GameId)}`);
+    if (result.ok && result.data) { report.value = result.data; reportError.value = null; }
+    else reportError.value = result.error;
+}
+// Measured again after every build (the files only change the picture when they are built).
+watch(() => [props.game.GameId, props.game.Build.LastBuildUtc], loadReport, { immediate: true });
+
+const zonesInOrder = computed(() => (report.value?.Zones ?? []).slice().sort((a, b) => a.Order - b.Order));
+const views = computed(() => [...BASE_VIEWS, ...zonesInOrder.value.slice(0, 6).map(z => ({ id: `zone:${z.Id}`, label: z.Name }))]);
+const findings = computed(() => (report.value?.Findings ?? []).slice().sort((a, b) => rank(a.Severity) - rank(b.Severity)));
+const rank = (s: string) => s === 'error' ? 0 : s === 'warning' ? 1 : 2;
+const blocked = computed(() => (report.value?.Findings ?? []).some(f => f.Severity === 'error'));
+const scoreTone = computed(() => { const s = report.value?.Score ?? 0; return blocked.value || s < 60 ? 'bad' : s >= 80 ? 'good' : 'ok'; });
+const scoreWord = computed(() => {
+    const s = report.value?.Score ?? 0;
+    if (blocked.value) return 'Not ready: fix the errors below first';
+    return s >= 80 ? 'A full, finished world' : s >= 60 ? 'Good enough to ship; room to improve' : 'Not ready: the map needs work';
+});
+const pct = (v: number) => `${Math.round(v * 100)}%`;
+
+/** Build errors and warnings, tagged by where they came from ("[geometry]", "[types]"). */
 const problems = computed(() => {
     const parse = (line: string, fallback: 'error' | 'warning') => {
-        const m = /^\[geometry\]\s*(?:\[(\w+)\]\s*)?(.*)$/.exec(line);
-        return m ? { tag: 'geometry', level: (m[1] ?? fallback).toLowerCase(), text: m[2]! } : { tag: 'luau', level: fallback, text: line };
+        const m = /^\[(geometry|types)\]\s*(?:\[(\w+)\]\s*)?(.*)$/.exec(line);
+        return m ? { tag: m[1]!, level: (m[2] ?? fallback).toLowerCase(), text: m[3]! } : { tag: 'build', level: fallback, text: line };
     };
     return [...props.game.Build.Errors.map(e => parse(e, 'error')), ...props.game.Build.Warnings.map(w => parse(w, 'warning'))];
 });
 </script>
 
 <style scoped>
-.col { display: flex; flex-direction: column; gap: var(--ot-gutter); min-width: 0; }
+.bx-world { display: flex; flex-direction: column; gap: var(--ot-gutter); }
+.labels { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--ot-text-2); }
+.hint { margin: var(--ot-space-2) 0 0; font-size: 11.5px; }
+.score { display: flex; gap: var(--ot-space-3); align-items: center; margin-bottom: var(--ot-space-3); }
+.score .value { font-size: 34px; font-weight: 800; font-family: var(--ot-mono); line-height: 1; min-width: 64px; }
+.score .value.good { color: var(--ot-positive); }
+.score .value.ok { color: var(--ot-warning); }
+.score .value.bad { color: var(--ot-negative); }
+.score strong { display: block; font-size: 13px; }
+.score .bx-muted { font-size: 11.5px; line-height: 16px; }
+.findings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12px; line-height: 17px; }
+.findings .sev { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 6px; color: var(--ot-muted); }
+.findings .error .sev { color: var(--ot-negative); }
+.findings .warning .sev { color: var(--ot-warning); }
+.findings .area { font-family: var(--ot-mono); color: var(--ot-text-2); margin-right: 6px; }
+.facts { margin-top: var(--ot-space-3); font-size: 12px; }
+.facts summary { cursor: pointer; color: var(--ot-text-2); }
+.concept { margin: 0 0 var(--ot-space-3); font-size: 12.5px; line-height: 18px; }
+.zones { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.zone { width: 100%; text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: var(--ot-radius-sm); border: 1px solid var(--ot-line); background: var(--ot-surface-2); color: inherit; font-size: 12px; cursor: pointer; }
+.zone[aria-pressed="true"] { border-color: var(--ot-accent); }
+.mono { font-family: var(--ot-mono); font-size: 11px; }
+.landmarks { margin: var(--ot-space-3) 0 0; font-size: 12px; }
 .bx-sub { margin-top: var(--ot-space-4); }
 .problems { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; line-height: 17px; }
 .problems .tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 6px; color: var(--ot-muted); }
@@ -84,4 +184,5 @@ const problems = computed(() => {
 .models { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: var(--ot-space-2); }
 .model { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--ot-text-2); text-decoration: none; font-family: var(--ot-mono); }
 .model:hover { color: var(--ot-accent); }
+.small { font-size: 12px; }
 </style>

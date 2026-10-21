@@ -33,24 +33,29 @@
                     </template>
                     <button v-if="can('omniblox.studio.act') && game.Stage === 'Live'" class="ot-btn sm" :disabled="busy || game.UrgentMaintenance" @click="maintain">Maintain now</button>
                     <button v-if="awaitingApproval && can('omniblox.studio.manage')" class="ot-btn primary sm" :disabled="busy" @click="approve">Approve launch</button>
+                    <button v-if="can('omniblox.studio.manage') && game.Stage === 'Abandoned'" class="ot-btn primary sm" :disabled="busy" @click="revive">Revive</button>
                     <button v-if="can('omniblox.studio.manage') && abandonable" class="ot-btn danger sm" :disabled="busy" @click="abandon">Abandon</button>
                 </div>
             </div>
-
-            <form v-if="steerOpen" class="ot-card bx-steer bx-section" @submit.prevent="steer">
-                <textarea v-model="note" class="ot-input" rows="2" maxlength="600" placeholder="Direction for the next cycles, e.g. make stage 3 easier and add a second checkpoint" aria-label="Direction"></textarea>
-                <div class="row">
-                    <span class="bx-muted">{{ note.length }}/600 · kept as a key fact every agent reads</span>
-                    <button type="button" class="ot-btn ghost sm" @click="steerOpen = false">Cancel</button>
-                    <button class="ot-btn primary sm" :disabled="busy || !note.trim()">Send</button>
-                </div>
-            </form>
 
             <div v-if="playOpen && game && detail" ref="playPanel" class="bx-section">
                 <OmniBloxPlayPanel :game="game" :view="detail.Playtest" :revisions="detail.Revisions" :title="title" @close="setPlay(false)" @changed="load" />
             </div>
 
-            <div v-if="game?.WaitingReason" class="ot-banner warn" role="status">
+            <div v-if="detail && detail.Watchdog.Level > 0 && active" class="ot-banner" :class="detail.Watchdog.Level >= 3 ? 'bad' : 'warn'" role="status">
+                <span class="glyph" aria-hidden="true">{{ detail.Watchdog.Level >= 3 ? '⏸' : '!' }}</span>
+                <div class="watchdog">
+                    <strong>Watchdog: {{ detail.Watchdog.Name }}</strong>
+                    <span>{{ watchdogText }}</span>
+                    <details>
+                        <summary>How the watchdog works</summary>
+                        <ul class="bx-list small"><li v-for="l in detail.Watchdog.Ladder" :key="l">{{ l }}</li></ul>
+                        <ul v-if="detail.Watchdog.History.length" class="bx-list small history"><li v-for="(h, i) in detail.Watchdog.History.slice().reverse()" :key="i">{{ h }}</li></ul>
+                    </details>
+                </div>
+                <button v-if="detail.Watchdog.Level >= 3 && can('omniblox.studio.act')" class="ot-btn primary sm" :disabled="busy" @click="resume">Resume</button>
+            </div>
+            <div v-else-if="game?.WaitingReason" class="ot-banner warn" role="status">
                 <span class="glyph" aria-hidden="true">!</span>
                 <div><strong>Waiting</strong> {{ game.WaitingReason }}</div>
             </div>
@@ -78,6 +83,13 @@
                 </div>
                 <div v-else class="ot-skel" style="height:64px"></div>
             </section>
+
+            <div v-if="detail && game && (detail.Live || active || game.Directives.length)" class="ot-grid two bx-section bx-now">
+                <OmniBloxLivePanel :game-id="gameId" :initial="detail.Live" @finished="load" />
+                <div v-if="steerOpen || game.Directives.length" ref="directionsCard">
+                    <OmniBloxDirections :game="game" :can-act="can('omniblox.studio.act')" @changed="load" />
+                </div>
+            </div>
 
             <div class="ot-segment tabs" role="tablist" aria-label="Game sections">
                 <button v-for="t in tabs" :key="t.id" type="button" role="tab" :aria-pressed="tab === t.id" :aria-selected="tab === t.id" @click="setTab(t.id)">
@@ -120,6 +132,7 @@
                         </OmniTraderCard>
 
                         <OmniTraderCard title="Last test" :empty="!game.LastTest" empty-title="Not tested yet">
+                            <template #controls><button type="button" class="ot-btn ghost sm" @click="setTab('tests')">All checks</button></template>
                             <template v-if="game.LastTest">
                                 <p class="testline">
                                     <span class="ot-chip" :class="game.LastTest.Passed ? 'ok' : 'bad'">{{ game.LastTest.Passed ? 'Passed' : 'Failed' }}</span>
@@ -127,12 +140,13 @@
                                 </p>
                                 <p class="prose">{{ game.LastTest.Summary }}</p>
                                 <div class="bx-tags">
-                                    <span class="ot-chip" :class="game.LastTest.StaticOk ? 'ok' : 'bad'">Luau + scene</span>
+                                    <span class="ot-chip" :class="game.LastTest.StaticOk ? 'ok' : 'bad'">Luau, types + scene</span>
                                     <span class="ot-chip" :class="game.LastTest.GeometryOk ? 'ok' : 'bad'">Geometry</span>
-                                    <span class="ot-chip" :class="!game.LastTest.EngineRan ? '' : game.LastTest.EngineOk ? 'ok' : 'bad'">{{ game.LastTest.EngineRan ? 'Engine specs' : 'Engine specs not run' }}</span>
+                                    <span v-if="game.LastTest.MapScore != null" class="ot-chip" :class="game.LastTest.MapScore >= 60 ? 'ok' : 'bad'">Map {{ game.LastTest.MapScore }}/100</span>
+                                    <span class="ot-chip" :class="!game.LastTest.EngineRan ? '' : game.LastTest.EngineOk ? 'ok' : 'bad'">{{ game.LastTest.EngineRan ? 'Roblox engine' : 'Engine not run' }}</span>
                                 </div>
-                                <ul v-if="game.LastTest.Issues.length" class="issues">
-                                    <li v-for="(issue, i) in game.LastTest.Issues" :key="i" :class="issue.Severity">
+                                <ul v-if="lastTestIssues.length" class="issues">
+                                    <li v-for="(issue, i) in lastTestIssues" :key="i" :class="issue.Severity">
                                         <span class="sev">{{ issue.Severity }}</span>
                                         <span class="area">{{ issue.Area }}</span>
                                         {{ issue.Message }}
@@ -143,8 +157,14 @@
                     </div>
 
                     <div class="col">
-                        <OmniTraderCard title="Key facts" subtitle="Kept word for word in every briefing" :empty="!game.KeyFacts.length" empty-title="None yet">
-                            <ul class="bx-list"><li v-for="(f, i) in game.KeyFacts" :key="i">{{ f }}</li></ul>
+                        <OmniTraderCard title="Key facts" subtitle="Kept word for word in every briefing; a fact with the same key replaces the old one" :empty="!game.KeyFacts.length" empty-title="None yet">
+                            <ul class="facts">
+                                <li v-for="(f, i) in game.KeyFacts" :key="`${f.Key}-${i}`">
+                                    <span v-if="f.Source !== 'agent'" class="ot-chip" :class="f.Source === 'owner' ? 'info' : 'violet'">{{ f.Source === 'owner' ? 'you' : f.Source }}</span>
+                                    <strong v-if="f.Key" class="key">{{ f.Key }}</strong>
+                                    <span class="text">{{ f.Text }}</span>
+                                </li>
+                            </ul>
                         </OmniTraderCard>
 
                         <OmniTraderCard title="Decisions" :empty="!game.Decisions.length" empty-title="None yet" flush>
@@ -179,9 +199,10 @@
                 </div>
 
                 <OmniBloxGameWorld v-else-if="tab === 'world'" :game="game" :playable="detail.Playtest.Playable" @play="setPlay(true)" />
+                <OmniBloxGameTests v-else-if="tab === 'tests'" :game="game" :engine-available="detail.EngineAvailable" :can-act="can('omniblox.studio.act')" @changed="load" />
                 <OmniBloxGameStore v-else-if="tab === 'store'" :game="game" :media="detail.Media" />
                 <OmniBloxGameNumbers v-else-if="tab === 'numbers'" :game="game" />
-                <OmniBloxGameBrain v-else-if="tab === 'brain'" :game="game" />
+                <OmniBloxGameBrain v-else-if="tab === 'brain'" :game="game" :cycle-logs="detail.CycleLogs" />
                 <OmniBloxGameFiles v-else-if="tab === 'files'" :game-id="gameId" :revision="game.Build.Revision" />
                 <OmniTraderCard v-else-if="tab === 'activity'" title="Activity" :loading="events === null">
                     <OmniBloxEventList :events="events ?? []" :show-game="false" :limit="40" empty-text="Nothing recorded for this game yet." />
@@ -269,22 +290,33 @@ const stageMeta = computed(() => {
         parts.push(`${g.Maintenance.length} maintenance cycle${g.Maintenance.length === 1 ? '' : 's'}`);
     } else if (g.Stage !== 'Abandoned' && g.Stage !== 'Sunset') {
         parts.push(`in ${g.Stage.toLowerCase()} since ${fmtRelative(g.StageEnteredUtc, now.value)}`);
-        parts.push(`${s.StageCycles}${s.StageCycleBudget ? ` of ${s.StageCycleBudget}` : ''} cycles`);
+        parts.push(`${s.StageCycles} cycle${s.StageCycles === 1 ? '' : 's'} (no limit: it works until the criteria are met)`);
         if (g.NextAttemptUtc && new Date(g.NextAttemptUtc).getTime() > now.value) parts.push(`next attempt ${fmtRelative(g.NextAttemptUtc, now.value)}`);
+        if (g.ProviderFailures) parts.push(`the model was unreachable ${g.ProviderFailures} time${g.ProviderFailures === 1 ? '' : 's'} in a row (backing off; not counted against the game)`);
     }
     if (g.Escalations) parts.push(`${g.Escalations} watchdog escalation${g.Escalations === 1 ? '' : 's'}`);
     return parts.join(' · ');
 });
 
 const decisions = computed(() => (game.value?.Decisions ?? []).slice().reverse().slice(0, 12));
+const lastTestIssues = computed(() => (game.value?.LastTest?.Issues ?? []).filter(i => i.Severity !== 'info').slice(0, 12));
+
+const watchdogText = computed(() => {
+    const w = detail.value?.Watchdog;
+    if (!w) return '';
+    if (w.Level >= 3) return 'The same problem kept coming back, so the game is paused and waiting for you: resume it, steer it with a direction (that resumes it too), or abandon it. Nothing is lost while it waits.';
+    return w.Directive ?? `${w.StalledCycles} cycle(s) without progress.`;
+});
 
 // ── tabs ──
-type TabId = 'overview' | 'world' | 'store' | 'numbers' | 'brain' | 'files' | 'activity';
+type TabId = 'overview' | 'world' | 'tests' | 'store' | 'numbers' | 'brain' | 'files' | 'activity';
 const tabs = computed(() => {
     const g = game.value;
+    const failing = g?.Build.LastEngineRun && !g.Build.LastEngineRun.Ok ? g.Build.LastEngineRun.Failed + g.Build.LastEngineRun.Errors.length : 0;
     const list: { id: TabId; label: string; count?: number }[] = [
         { id: 'overview', label: 'Overview' },
         { id: 'world', label: 'World' },
+        { id: 'tests', label: 'Tests', count: failing || undefined },
         { id: 'store', label: 'Store' },
     ];
     if (g && (g.Stage === 'Live' || g.Stage === 'Sunset' || g.Stats.Daily.length)) list.push({ id: 'numbers', label: 'Numbers' });
@@ -336,22 +368,31 @@ async function act(path: string, body: Record<string, unknown>, success?: string
 }
 
 const setPaused = (paused: boolean) => act('/omniblox/games/pause', { paused });
+const resume = () => act('/omniblox/games/resume', {}, 'Resumed; the watchdog starts over');
 const maintain = () => act('/omniblox/games/maintain', {}, 'Maintenance queued');
 const approve = () => act('/omniblox/games/approve', {}, 'Launch approved');
 
 async function abandon() {
-    if (!await confirmAction(`Abandon "${title.value}"?`, 'The studio stops working on it, frees its experience slot and moves on to a new game.', 'Abandon', true)) return;
+    if (!await confirmAction(`Abandon "${title.value}"?`, 'The studio stops working on it and frees its experience slot. Everything is kept, and you can revive it later where it stopped.', 'Abandon', true)) return;
     await act('/omniblox/games/abandon', { reason: 'abandoned by the owner' });
 }
 
-const steerOpen = ref(false);
-const note = ref('');
-async function steer() {
-    if (await act('/omniblox/games/steer', { note: note.value.trim() }, 'Direction sent')) {
-        note.value = '';
-        steerOpen.value = false;
-    }
+async function revive() {
+    const where = game.value?.AbandonedFromStage;
+    const back = where === 'Test' || where === 'Launch' ? 'Build' : where ?? 'where it stopped';
+    if (!await confirmAction(`Revive "${title.value}"?`, `It goes back to ${back} with all its files and history; the watchdog starts over.`, 'Revive')) return;
+    await act('/omniblox/games/revive', {}, 'Revived');
 }
+
+// Steer opens the directions card (and brings it into view).
+const steerOpen = ref(false);
+const directionsCard = ref<HTMLElement | null>(null);
+watch(steerOpen, async open => {
+    if (!open) return;
+    await nextTick();
+    directionsCard.value?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    directionsCard.value?.querySelector('textarea')?.focus();
+});
 </script>
 
 <style scoped>
@@ -359,9 +400,18 @@ async function steer() {
 .bx-head .icon { width: 56px; flex: 0 0 56px; }
 .bx-head h1 { overflow-wrap: anywhere; }
 .subtitle { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.bx-steer { display: flex; flex-direction: column; gap: var(--ot-space-2); padding: var(--ot-card-pad); }
-.bx-steer .row { display: flex; gap: var(--ot-space-2); align-items: center; justify-content: flex-end; font-size: 11.5px; }
-.bx-steer .row .bx-muted { margin-right: auto; }
+.bx-now { align-items: start; }
+.ot-banner.bad { border-color: var(--ot-negative); background: var(--ot-negative-soft); }
+.watchdog { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.watchdog details { font-size: 12px; }
+.watchdog summary { cursor: pointer; color: var(--ot-text-2); }
+.watchdog .history { margin-top: 6px; color: var(--ot-muted); }
+.small { font-size: 12px; }
+.facts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; line-height: 18px; }
+.facts li { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.facts .key { font-family: var(--ot-mono); font-size: 11.5px; color: var(--ot-accent); }
+.facts .key::after { content: ':'; }
+.facts .text { overflow-wrap: anywhere; }
 .bx-stage { padding: var(--ot-card-pad); display: flex; flex-direction: column; gap: var(--ot-space-3); }
 .stage-body { display: flex; flex-direction: column; gap: var(--ot-space-2); }
 .goal { margin: 0; font-size: 13px; line-height: 19px; color: var(--ot-text-2); }

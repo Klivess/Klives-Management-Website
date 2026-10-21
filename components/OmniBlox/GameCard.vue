@@ -11,9 +11,11 @@
                 <span class="ot-chip" :class="bloxStageTone(game.Stage)">{{ game.Stage }}</span>
                 <span v-if="game.Paused" class="ot-chip">Paused</span>
                 <span v-if="game.UrgentMaintenance" class="ot-chip bad">Urgent</span>
+                <span v-if="game.Watchdog && game.Watchdog.Level > 0 && !retired" class="ot-chip" :class="bloxWatchdogTone(game.Watchdog.Level)" :title="`Watchdog: ${game.Watchdog.StalledCycles} cycle(s) without progress`">{{ game.Watchdog.Name }}</span>
                 <NuxtLink v-if="game.Playable" class="ot-btn sm play" :to="bloxPlayPath(game.GameId)" :aria-label="`Play ${game.Title}`">▶ Play</NuxtLink>
             </div>
             <OmniBloxStageTrack :stage="game.Stage" :reached="reached" compact />
+            <p v-if="liveLine" class="live" role="status"><span class="pulse" aria-hidden="true"></span>{{ liveLine }}</p>
             <p class="state" :class="{ warn: !!game.WaitingReason, bad: game.Stage === 'Abandoned' }">{{ stateLine }}</p>
             <dl class="facts">
                 <template v-if="game.Stage === 'Live' || game.Stage === 'Sunset'">
@@ -26,7 +28,10 @@
                     <div><dt>Exit criteria</dt><dd>{{ game.ChecklistMet }}/{{ game.ChecklistTotal }}</dd></div>
                     <div v-if="game.MilestonesTotal"><dt>Milestones</dt><dd>{{ game.MilestonesDone }}/{{ game.MilestonesTotal }}</dd></div>
                     <div v-if="game.BuildRevision"><dt>Build</dt><dd :class="{ bad: !game.LastBuildOk }">r{{ game.BuildRevision }}{{ game.LastBuildOk ? '' : ' ✗' }}</dd></div>
-                    <div><dt>Cycles</dt><dd>{{ game.StageCycles }}{{ game.StageCycleBudget ? `/${game.StageCycleBudget}` : '' }}</dd></div>
+                    <div v-if="game.MapScore != null"><dt>Map</dt><dd :class="{ bad: game.MapScore < 60, good: game.MapScore >= 80 }">{{ game.MapScore }}/100</dd></div>
+                    <div v-if="game.Engine"><dt>Engine</dt><dd :class="{ bad: !game.Engine.Ok && !game.Engine.KitFailed, good: game.Engine.Ok && game.Engine.Current }" :title="game.Engine.Summary">{{ engineLine }}</dd></div>
+                    <div v-if="game.OpenDirectives"><dt>Directions</dt><dd>{{ game.OpenDirectives }} open</dd></div>
+                    <div><dt>Cycles</dt><dd>{{ game.StageCycles }}</dd></div>
                 </template>
                 <template v-else>
                     <div><dt>Cycles</dt><dd>{{ totalCycles }}</dd></div>
@@ -40,10 +45,24 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { fmtCount, fmtDate, fmtRelative, useNow } from '~/composables/useOmniTumblr';
-import { BLOX_STAGES, bloxMediaPath, bloxPlayPath, bloxRobux, bloxStageTone, type BloxGameSummary, type BloxStage } from '~/composables/useOmniBlox';
+import { BLOX_STAGES, bloxMediaPath, bloxPlayPath, bloxRobux, bloxStageTone, bloxWatchdogTone, type BloxGameSummary, type BloxStage } from '~/composables/useOmniBlox';
 
 const props = defineProps<{ game: BloxGameSummary }>();
 const now = useNow();
+
+/** What the agent is doing this minute ("builder · running build · turn 14"), while a cycle runs. */
+const liveLine = computed(() => {
+    const live = props.game.Live;
+    if (!live?.Running) return null;
+    return `${live.Role} · ${live.Status} · turn ${live.Turns + 1}`;
+});
+
+const engineLine = computed(() => {
+    const e = props.game.Engine;
+    if (!e) return '';
+    const mark = e.Ok ? '✓' : e.KitFailed && e.Failed > 0 ? 'kit ✗' : '✗';
+    return `${mark} r${e.Revision}${e.Current ? '' : ' (old)'}`;
+});
 
 const retired = computed(() => props.game.Stage === 'Abandoned' || props.game.Stage === 'Sunset');
 const initials = computed(() => props.game.Title.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join(''));
@@ -87,5 +106,10 @@ const stateLine = computed(() => {
 .facts dt { color: var(--ot-muted); font-size: 10.5px; }
 .facts dd { margin: 0; font-family: var(--ot-mono); }
 .facts dd.bad { color: var(--ot-negative); }
+.facts dd.good { color: var(--ot-positive); }
+.live { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ot-accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pulse { flex: 0 0 8px; height: 8px; border-radius: 50%; background: var(--ot-accent); animation: bx-pulse 1.4s ease-in-out infinite; }
+@keyframes bx-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.75); } }
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
 .facts .spark { flex: 1 1 80px; min-width: 60px; max-width: 140px; }
 </style>

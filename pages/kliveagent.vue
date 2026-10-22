@@ -655,7 +655,7 @@ const computerAsleep = computed(() => !pendingRequestId.value && !!computerInfo.
 
 async function loadComputerInfo() {
   try {
-    const res = await RequestGETFromKliveAPI(`/kliveagent/computer?_t=${Date.now()}`, false, false);
+    const res = await RequestGETFromKliveAPI(`/kliveagent/computer`, false, false);
     const { data } = await readAgentApiResponse(res);
     if (!res.ok || !data) return;
     computerInfo.value = data.computer || null;
@@ -2029,7 +2029,7 @@ async function loadShortcuts() {
 // Poll the agent's setup status until it's ready, driving the loading bar.
 async function pollAgentStatus() {
   try {
-    const res = await RequestGETFromKliveAPI(`/kliveagent/status?_t=${Date.now()}`, false, false);
+    const res = await RequestGETFromKliveAPI(`/kliveagent/status`, false, false);
     if (res.ok) {
       const data = await res.json();
       agentState.value = data.state || 'starting';

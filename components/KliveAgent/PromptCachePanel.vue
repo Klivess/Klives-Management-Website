@@ -75,7 +75,7 @@ async function load() {
   loading.value = true;
   error.value = '';
   try {
-    const response = await RequestGETFromKliveAPI(`/kliveagent/stats/prompt-cache?range=${range.value}&_t=${Date.now()}`, false, false);
+    const response = await RequestGETFromKliveAPI(`/kliveagent/stats/prompt-cache?range=${range.value}`, false, false);
     const data = await response.json();
     if (!response.ok) throw new Error(data?.error || 'Could not load cache telemetry.');
     cache.value = data;

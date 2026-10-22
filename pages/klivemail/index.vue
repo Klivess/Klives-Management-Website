@@ -193,6 +193,7 @@ definePageMeta({ layout: 'navbar' });
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import Swal from 'sweetalert2';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '../../scripts/APIInterface';
+import { useAccess } from '~/composables/useAccess';
 
 const POLL_MS = 10000;
 const pageSize = ref(50);
@@ -245,7 +246,12 @@ function isFolder(type, address = null) {
 }
 
 // ── loaders ──
+// The page opens for any klivemail.* permission, but each list has its own. Without these checks a
+// profile that may see mailboxes but not messages polled /klivemail/messages into a 403 every 10 s.
+const { can, ensureLoaded } = useAccess();
+
 async function loadStats() {
+    if (!can('klivemail.mailboxes.read')) return;
     try {
         const r = await RequestGETFromKliveAPI('/klivemail/mailboxes', false, false);
         if (r && r.ok) {
@@ -257,6 +263,7 @@ async function loadStats() {
 }
 
 async function loadMessages(replace = true) {
+    if (!can('klivemail.messages.read')) return;
     if (searchMode.value) return loadSearch();
     loading.value = true;
     try {
@@ -411,10 +418,13 @@ function humanSize(bytes) {
 }
 
 // ── lifecycle ──
-onMounted(() => {
+let unmounted = false;
+onMounted(async () => {
     // Deep-link: /klivemail?mailbox=<address> opens that inbox (e.g. from the Accounts page).
     const mb = useRoute().query.mailbox;
     if (typeof mb === 'string' && mb) folder.value = { type: 'mailbox', address: mb };
+    await ensureLoaded(); // the loaders check permissions, which are unknown until the profile loads
+    if (unmounted) return;
     loadStats();
     loadMessages();
     pollTimer = window.setInterval(() => {
@@ -423,6 +433,7 @@ onMounted(() => {
     }, POLL_MS);
 });
 onUnmounted(() => {
+    unmounted = true;
     if (pollTimer) clearInterval(pollTimer);
 });
 </script>

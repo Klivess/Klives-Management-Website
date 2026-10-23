@@ -59,6 +59,7 @@ const ENTRIES: Entry[] = [
 
     { prefix: '/omniscience', label: 'Omniscience', rule: anyOf('omniscience.') },
     { prefix: '/omniscience-search', label: 'Omniscience', rule: anyOf('omniscience.') },
+    { prefix: '/omniscience-explore', label: 'Omniscience explorer', rule: anyOf('omniscience.') },
     { prefix: '/omniscience-review', label: 'Omniscience review', rule: anyOf('omniscience.') },
     { prefix: '/omniscience-person', label: 'Omniscience', rule: anyOf('omniscience.') },
     { prefix: '/omnidefence', label: 'OmniDefence', rule: anyOf('omnidefence.') },

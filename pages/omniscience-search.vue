@@ -1,5 +1,6 @@
 <template>
     <div class="os-shell">
+        <OmniscienceNav />
         <div class="os-crumb"><a href="/omniscience">◎ Omniscience</a> <span>/</span> <span>Search &amp; Q&amp;A</span></div>
 
         <header class="os-header">
@@ -8,6 +9,7 @@
                 <h1>Search &amp; Q&amp;A</h1>
                 <p>Search the entire message corpus by meaning, or ask a question and get an answer grounded in real messages with citations.</p>
             </div>
+            <div class="os-header-actions"><a class="os-btn ghost" href="/omniscience-explore">Advanced evidence explorer</a></div>
         </header>
 
         <section class="os-panel">
@@ -22,6 +24,8 @@
                 </div>
             </div>
         </section>
+
+        <div v-if="error" class="os-error-state"><span>{{ error }}</span><button class="os-btn sm" @click="run">Retry</button></div>
 
         <section v-if="mode === 'ask' && answer" class="os-panel">
             <div class="os-panel-head"><h2><span class="os-panel-code">ANS</span> Answer</h2></div>
@@ -45,7 +49,7 @@
                 </div>
             </div>
         </section>
-        <div v-else-if="searched && !searching" class="os-empty">No results.</div>
+        <div v-else-if="searched && !searching && !error" class="os-empty">No results.</div>
     </div>
 </template>
 
@@ -59,23 +63,32 @@ import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIIn
 export default {
     name: 'OmniscienceSearch',
     data() {
-        return { query: '', mode: 'search', searching: false, searched: false, results: [], answer: '' };
+        return { query: '', mode: 'search', searching: false, searched: false, results: [], answer: '', error: '' };
     },
     methods: {
         fmtTime(t) { if (!t) return ''; const d = new Date(t); return isNaN(d) ? '' : d.toLocaleString(); },
         async run() {
             if (!this.query.trim() || this.searching) return;
-            this.searching = true; this.answer = ''; this.results = [];
+            this.searching = true; this.answer = ''; this.results = []; this.error = '';
             try {
                 if (this.mode === 'ask') {
                     const res = await RequestPOSTFromKliveAPI('/omniscience/persons/ask', JSON.stringify({ question: this.query }), false, true);
                     if (res.ok) { const d = await res.json(); this.answer = d.answer || ''; this.results = d.citations || []; }
+                    else this.error = await res.text();
                 } else {
                     const res = await RequestGETFromKliveAPI('/omniscience/search/semantic?q=' + encodeURIComponent(this.query) + '&limit=30', false, false);
                     if (res.ok) { const d = await res.json(); this.results = d.results || []; }
+                    else this.error = await res.text();
                 }
-            } finally { this.searching = false; this.searched = true; }
+            } catch (e) { this.error = e?.message || 'Search failed.'; }
+            finally { this.searching = false; this.searched = true; }
         },
+    },
+    mounted() {
+        const params = new URLSearchParams(window.location.search);
+        this.mode = params.get('mode') === 'ask' ? 'ask' : 'search';
+        this.query = params.get('q') || '';
+        if (this.query) this.run();
     },
 };
 </script>

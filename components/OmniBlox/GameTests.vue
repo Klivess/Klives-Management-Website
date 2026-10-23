@@ -4,9 +4,9 @@
             <OmniTraderCard title="Checks on the current files" :subtitle="game.Build.Revision ? `Revision ${game.Build.Revision}` : 'Not built yet'">
                 <template v-if="canAct && buildable" #controls>
                     <button type="button" class="ot-btn sm" :disabled="busy !== null" @click="build">{{ busy === 'build' ? 'Building…' : 'Build now' }}</button>
-                    <button type="button" class="ot-btn primary sm" :disabled="busy !== null || !engineAvailable || testing"
-                            :title="engineAvailable ? 'Runs the game in Roblox\'s engine (about a minute)' : 'Needs the Roblox API key and an experience slot'" @click="runTests">
-                        {{ testing ? 'Running in Roblox…' : 'Run in Roblox' }}
+                    <button type="button" class="ot-btn primary sm" :disabled="busy !== null || !(engineAvailable || localEngine) || testing"
+                            :title="runTitle" @click="runTests">
+                        {{ testing ? (standIn ? 'Running locally…' : 'Running in Roblox…') : (standIn ? 'Run locally' : 'Run in Roblox') }}
                     </button>
                 </template>
                 <ul class="checks">
@@ -22,13 +22,13 @@
                         <span class="mark" aria-hidden="true">{{ mark(game.Build.Revision > 0 ? geometryErrors === 0 : null) }}</span>
                         <div><strong>Geometry</strong><span class="sub">{{ geometryErrors }} error(s), {{ geometryWarnings }} warning(s): floating, buried, unreachable, out of bounds</span></div>
                     </li>
-                    <li :class="tone(game.Build.MapScore == null ? null : game.Build.MapScore >= 60 && !mapBlocked)">
-                        <span class="mark" aria-hidden="true">{{ mark(game.Build.MapScore == null ? null : game.Build.MapScore >= 60 && !mapBlocked) }}</span>
-                        <div><strong>Map</strong><span class="sub">{{ game.Build.MapScore == null ? 'not measured yet' : `${game.Build.MapScore}/100 (60 is the bar, 80+ is the aim)${mapBlocked ? ' — blocking problems' : ''}` }}</span></div>
+                    <li :class="tone(game.Build.MapScore == null ? null : game.Build.MapScore >= BLOX_MAP_BAR && !mapBlocked)">
+                        <span class="mark" aria-hidden="true">{{ mark(game.Build.MapScore == null ? null : game.Build.MapScore >= BLOX_MAP_BAR && !mapBlocked) }}</span>
+                        <div><strong>Map</strong><span class="sub">{{ game.Build.MapScore == null ? 'not measured yet' : `${game.Build.MapScore}/100 (${BLOX_MAP_BAR} is the bar, 85+ is the aim)${mapBlocked ? ' — blocking problems' : ''}` }}</span></div>
                     </li>
                     <li :class="tone(engineState)">
                         <span class="mark" aria-hidden="true">{{ mark(engineState) }}</span>
-                        <div><strong>Roblox's engine</strong><span class="sub">{{ engineLine }}</span></div>
+                        <div><strong>{{ standIn ? 'Local engine' : 'Roblox\'s engine' }}</strong><span class="sub">{{ engineLine }}</span></div>
                     </li>
                 </ul>
                 <pre v-if="buildReport" class="report">{{ buildReport }}</pre>
@@ -49,14 +49,16 @@
         </div>
 
         <div class="col">
-            <OmniTraderCard title="Last run in Roblox's engine" :empty="!run" empty-title="Not run yet"
-                            :empty-text="engineAvailable ? 'Run in Roblox starts one: the kit checks itself, every module loads, the whole server boots, then the world and the game\'s own checks.' : 'Engine runs need the Roblox API key and a free experience slot.'"
+            <OmniTraderCard :title="run?.Local ? 'Last run in the local engine' : 'Last run in Roblox\'s engine'" :empty="!run" empty-title="Not run yet"
+                            :empty-text="emptyText"
                             :subtitle="run ? `r${run.Revision}${run.Revision === game.Build.Revision ? ' (this build)' : ' (an older build)'} · ${fmtRelative(run.Utc, now)}${run.Version ? ` · place version ${run.Version}` : ''}` : undefined">
                 <template v-if="run">
                     <p class="testline">
                         <span class="ot-chip" :class="run.Ok ? 'ok' : 'bad'">{{ run.Ok ? 'Passed' : 'Failed' }}</span>
-                        {{ run.Summary }}
+                        <span v-if="run.Local" class="ot-chip">Local engine</span>
+                        {{ run.Local ? run.Summary.replace(/^Local engine:\s*/, '') : run.Summary }}
                     </p>
+                    <p v-if="run.Local" class="note">A stand-in for Roblox's engine — the same checks and playthrough, without physics, replication or clients — used until the API key and an experience slot exist. Roblox's engine runs the game again before launch.</p>
                     <div v-if="run.KitFailed" class="ot-banner warn" role="note">
                         <span class="glyph" aria-hidden="true">!</span>
                         <div><strong>The kit's own checks failed</strong> They run before any game code, so this is a studio bug, not the game's: the game is not blamed for it, and it is on your task list.</div>
@@ -104,9 +106,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { fmtCount, fmtRelative, notify, useNow } from '~/composables/useOmniTumblr';
-import { bloxPost, type BloxDossier } from '~/composables/useOmniBlox';
+import { BLOX_MAP_BAR, bloxPost, type BloxDossier } from '~/composables/useOmniBlox';
 
-const props = defineProps<{ game: BloxDossier; engineAvailable: boolean; canAct: boolean }>();
+const props = defineProps<{ game: BloxDossier; engineAvailable: boolean; localEngine?: boolean; canAct: boolean }>();
 const emit = defineEmits<{ changed: [] }>();
 const now = useNow();
 
@@ -123,18 +125,31 @@ const testIssues = computed(() => (props.game.LastTest?.Issues ?? []).slice()
     .sort((a, b) => rank(a.Severity) - rank(b.Severity)));
 const rank = (s: string) => s === 'error' ? 0 : s === 'warning' ? 1 : 2;
 
-/** true passed on this build · false failed on it · null not run on it. */
+/** Roblox's engine cannot run the game yet and the studio's local engine stands in for it. */
+const standIn = computed(() => !props.engineAvailable && !!props.localEngine);
+const runTitle = computed(() => props.engineAvailable ? 'Runs the game in Roblox\'s engine (about a minute)'
+    : standIn.value ? 'No API key or experience slot yet: runs the game in the studio\'s local engine (about a minute)'
+    : 'Needs the Roblox API key and an experience slot');
+const emptyText = computed(() => props.engineAvailable
+    ? 'Run in Roblox starts one: the kit checks itself, every module loads, the whole server boots, then the world and the game\'s own checks.'
+    : standIn.value
+        ? 'Run locally starts one in the studio\'s local engine, which stands in until the API key and an experience slot exist: the kit checks itself, every module loads, the whole server boots, then the world, the playthrough and the game\'s own checks.'
+        : 'Engine runs need the Roblox API key and a free experience slot.');
+
+/** true passed on this build · false failed on it · null not run on it (in the engine that counts now). */
 const engineState = computed<boolean | null>(() => {
     const r = run.value;
     if (!r || r.Revision !== props.game.Build.Revision) return null;
+    if (r.Local && props.engineAvailable) return null; // once Roblox's engine can run it, only its run counts
     return r.Ok;
 });
 const engineLine = computed(() => {
     const r = run.value;
-    if (!props.engineAvailable && !r) return 'not available yet (needs the API key and an experience slot)';
-    if (!r) return 'never run';
+    if (!props.engineAvailable && !standIn.value && !r) return 'not available yet (needs the API key and an experience slot)';
+    if (!r) return standIn.value ? 'never run — the studio\'s local engine stands in until the API key and a slot exist' : 'never run';
     if (r.Revision !== props.game.Build.Revision) return `last run on r${r.Revision}; not run on this build`;
-    return r.Summary;
+    if (r.Local && props.engineAvailable) return 'ran only in the local engine; Roblox\'s engine has not run this build';
+    return r.Local ? r.Summary.replace(/^Local engine:\s*/, '') : r.Summary;
 });
 
 const mark = (ok: boolean | null) => ok === null ? '–' : ok ? '✓' : '✗';
@@ -160,9 +175,9 @@ const startedFrom = ref<string | null>(null);
 async function runTests() {
     busy.value = 'test';
     try {
-        const result = await bloxPost('/omniblox/games/test', { gameId: props.game.GameId });
+        const result = await bloxPost<{ started: boolean; local?: boolean }>('/omniblox/games/test', { gameId: props.game.GameId });
         if (!result.ok) { notify('Could not start the run', result.error ?? '', 'error'); return; }
-        notify('Running in Roblox', 'The result arrives in about a minute.', 'info');
+        notify((result.data?.local ?? standIn.value) ? 'Running in the local engine' : 'Running in Roblox', 'The result arrives in about a minute.', 'info');
         startedFrom.value = run.value?.Utc ?? '';
         testing.value = true;
         emit('changed');
@@ -173,7 +188,8 @@ async function runTests() {
 watch(() => run.value?.Utc, utc => {
     if (testing.value && utc && utc !== startedFrom.value) {
         testing.value = false;
-        notify(run.value?.Ok ? 'Passed in Roblox' : 'Failed in Roblox', run.value?.Summary ?? '', run.value?.Ok ? undefined : 'error');
+        const where = run.value?.Local ? 'in the local engine' : 'in Roblox';
+        notify(run.value?.Ok ? `Passed ${where}` : `Failed ${where}`, run.value?.Summary ?? '', run.value?.Ok ? undefined : 'error');
     }
 });
 </script>
@@ -189,6 +205,7 @@ watch(() => run.value?.Utc, utc => {
 .checks .sub { display: block; font-size: 11.5px; line-height: 16px; color: var(--ot-text-2); }
 .report { margin: var(--ot-space-3) 0 0; padding: var(--ot-space-2); border-radius: var(--ot-radius-sm); background: var(--ot-surface-2); font-size: 11px; line-height: 15px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; }
 .testline { margin: 0 0 var(--ot-space-2); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12.5px; line-height: 18px; }
+.note { margin: 0 0 var(--ot-space-2); font-size: 11.5px; line-height: 16px; color: var(--ot-text-2); }
 .issues { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; font-size: 12px; line-height: 17px; }
 .issues .sev { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 6px; color: var(--ot-muted); }
 .issues .error .sev { color: var(--ot-negative); }

@@ -1,5 +1,6 @@
 <template>
     <div class="os-shell">
+        <OmniscienceNav />
         <div class="os-crumb"><a href="/omniscience">◎ Omniscience</a> <span>/</span> <span>Dossier</span></div>
 
         <!-- ─────── Header ─────── -->
@@ -10,6 +11,10 @@
                 <p v-if="handles">{{ handles }}</p>
             </div>
             <div class="os-header-actions">
+                <button class="os-btn ghost" :class="{ cyan: pinned }" @click="togglePin">{{ pinned ? '★ Pinned' : '☆ Pin' }}</button>
+                <button class="os-btn ghost" @click="exportDossier('json')">Export JSON</button>
+                <button class="os-btn ghost" @click="exportDossier('markdown')">Export MD</button>
+                <a class="os-btn ghost" :href="`/omniscience-explore?tab=Compare&left=${personId}`">Compare</a>
                 <div class="osx-tier">
                     <span class="os-stamp">tier</span>
                     <button v-for="t in ['tracked','watch','archive']" :key="t" :class="['os-btn','sm', tier === t ? (t === 'tracked' ? 'cyan' : t === 'watch' ? 'violet' : '') : 'ghost']" @click="setTier(t)">{{ t }}</button>
@@ -18,6 +23,7 @@
                 <button class="os-btn cyan" @click="recompute">Recompute</button>
             </div>
         </header>
+        <div v-if="loadError" class="os-error-state"><span>{{ loadError }}</span><button class="os-btn sm" @click="loadAll">Retry</button></div>
 
         <!-- completeness bar -->
         <div v-if="completeness" class="osx-complete">
@@ -87,6 +93,17 @@
                     </div>
                 </div>
             </section>
+        </template>
+
+        <!-- ═══════ ACTIVITY / TIMELINE / NOTES ═══════ -->
+        <template v-if="tab === 'Activity'">
+            <OmniscienceActivity v-if="personId" :person-id="personId" />
+        </template>
+        <template v-if="tab === 'Timeline'">
+            <OmniscienceTimeline v-if="personId" :person-id="personId" />
+        </template>
+        <template v-if="tab === 'Notes'">
+            <OmniscienceNotes v-if="personId" :person-id="personId" />
         </template>
 
         <!-- ═══════ KNOWLEDGE ═══════ -->
@@ -258,6 +275,7 @@
 
         <!-- ═══════ REPLICA ═══════ -->
         <template v-if="tab === 'Replica'">
+            <ReplicaChatPanel v-if="personId" :person-id="personId" :display-name="displayName" :profile-targeted="!!dossier?.profile_targeted" />
             <section class="os-panel">
                 <div class="os-panel-head">
                     <h2><span class="os-panel-code">FID</span> Replica fidelity</h2>
@@ -266,8 +284,8 @@
                 <div class="os-panel-body">
                     <div v-for="r in fidelityRuns" :key="r.run_id" class="osx-fid">
                         <div class="osx-fid-head">
-                            <strong class="os-conf-num" style="font-size:18px">{{ (r.overall_fidelity*100).toFixed(0) }}%</strong>
-                            <span class="os-stamp">v{{ r.replica_version }} · {{ r.pairs_tested }} pairs · emb {{ (r.avg_embedding_similarity*100).toFixed(0) }}% · style {{ (r.avg_style_score*100).toFixed(0) }}% · {{ fmtTime(r.ran_at) }}</span>
+                            <strong class="os-conf-num" style="font-size:18px">{{ r.overall_fidelity == null ? 'N/A' : (r.overall_fidelity*100).toFixed(0) + '%' }}</strong>
+                            <span class="os-stamp">{{ r.method || 'legacy' }} · v{{ r.replica_version }} · {{ r.pairs_tested }}/{{ r.pairs_attempted || r.pairs_tested }} scored<span v-if="r.pairs_failed"> · {{ r.pairs_failed }} failed</span> · emb {{ r.avg_embedding_similarity == null ? '—' : (r.avg_embedding_similarity*100).toFixed(0) + '%' }} · style {{ r.avg_style_score == null ? '—' : (r.avg_style_score*100).toFixed(0) + '%' }} · {{ fmtTime(r.ran_at) }}</span>
                         </div>
                         <details v-if="(r.worst_misses||[]).length">
                             <summary class="os-muted">Worst misses</summary>
@@ -279,7 +297,7 @@
                         </details>
                     </div>
                     <div v-if="!fidelityRuns.length" class="os-empty">No fidelity runs. Train a replica, then benchmark it.</div>
-                    <p class="os-fact-meta" style="margin-top:10px">Chat with this replica from the ReplicaChat panel.</p>
+                    <p class="os-fact-meta" style="margin-top:10px">Temporal holdout is an experimental retrieval/style comparison, not a calibrated accuracy percentage. Failures remain visible.</p>
                 </div>
             </section>
         </template>
@@ -302,8 +320,10 @@ export default {
             displayName: '',
             handles: '',
             tier: 'archive',
-            tabs: ['Overview', 'Knowledge', 'Relationships', 'Contexts', 'Profile', 'Replica'],
+            tabs: ['Overview', 'Activity', 'Timeline', 'Knowledge', 'Relationships', 'Contexts', 'Profile', 'Notes', 'Replica'],
             tab: 'Overview',
+            pinned: false,
+            loadError: '',
             dossier: null,
             facts: [],
             relationships: [],
@@ -389,7 +409,8 @@ export default {
         },
         async loadAll() {
             const pid = encodeURIComponent(this.personId);
-            const [dossier, facts, rels, aliases, oq, changelog, b5, eras, fidelity] = await Promise.all([
+            this.loadError = '';
+            const [dossier, facts, rels, aliases, oq, changelog, b5, eras, fidelity, workspace] = await Promise.all([
                 this.getJson(`/omniscience/persons/get?personId=${pid}`),
                 this.getJson(`/omniscience/persons/facts?personId=${pid}`),
                 this.getJson(`/omniscience/persons/relationships?personId=${pid}`),
@@ -399,8 +420,10 @@ export default {
                 this.getJson(`/omniscience/persons/bigfive-series?personId=${pid}`),
                 this.getJson(`/omniscience/persons/era-profiles?personId=${pid}`),
                 this.getJson(`/omniscience/replica/fidelity?personId=${pid}`),
+                this.getJson('/omniscience/workspace/bootstrap'),
             ]);
             this.dossier = dossier;
+            if (!dossier) this.loadError = 'The dossier could not be loaded. Check the service and try again.';
             if (dossier) {
                 this.displayName = dossier.display_name || '';
                 this.tier = dossier.tier || 'archive';
@@ -418,8 +441,22 @@ export default {
             this.changelogs = changelog?.changelogs || [];
             this.eras = eras?.eras || [];
             this.fidelityRuns = fidelity?.runs || [];
+            this.pinned = (workspace?.pins || []).some(p => p.person_id === this.personId);
             // Big Five fallback: latest series point.
             if (!this.bigFive && b5?.series?.length) this.bigFive = b5.series[b5.series.length - 1].big_five;
+        },
+        async togglePin() {
+            const r = await RequestPOSTFromKliveAPI('/omniscience/workspace/pins/set', JSON.stringify({ personId: this.personId, pinned: !this.pinned }), false, true);
+            if (r.ok) { this.pinned = !this.pinned; this.toast(this.pinned ? 'Pinned to your working set' : 'Unpinned'); }
+        },
+        async exportDossier(format) {
+            const r = await RequestGETFromKliveAPI(`/omniscience/workspace/export/person?personId=${encodeURIComponent(this.personId)}&format=${format}`, false, false);
+            if (!r.ok) { this.toast('Export failed', 'error'); return; }
+            const data = await r.json();
+            const blob = new Blob([data.content], { type: data.mime });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = data.filename; a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
         },
         async setTier(tier) {
             const r = await RequestPOSTFromKliveAPI('/omniscience/persons/tier-set', JSON.stringify({ personId: this.personId, tier }), false, true);
@@ -446,14 +483,17 @@ export default {
         toast(title, icon = 'success') { Swal.fire({ icon, title, timer: 1300, showConfirmButton: false, background: '#0e1626', color: '#eaf6ff' }); },
     },
     mounted() {
-        this.personId = new URLSearchParams(window.location.search).get('personId') || '';
+        const params = new URLSearchParams(window.location.search);
+        this.personId = params.get('personId') || '';
+        const requestedTab = params.get('tab');
+        if (requestedTab && this.tabs.includes(requestedTab)) this.tab = requestedTab;
         if (this.personId) this.loadAll();
     },
 };
 </script>
 
 <style scoped>
-.osx-tier { display: flex; align-items: center; gap: 4px; }
+.osx-tier { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; max-width: 100%; min-width: 0; }
 .osx-complete { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; padding: 10px 14px; border: 1px solid var(--os-line); border-radius: 6px; background: rgba(255, 255, 255, .02); }
 .osx-vital { display: flex; align-items: center; gap: 12px; }
 .osx-chips { display: flex; flex-wrap: wrap; gap: 6px; }

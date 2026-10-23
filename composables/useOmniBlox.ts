@@ -9,7 +9,7 @@ import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 
 export type BloxStage = 'Research' | 'Build' | 'Test' | 'Launch' | 'Live' | 'Sunset' | 'Abandoned';
 export type BloxLevel = 'Info' | 'Success' | 'Warning' | 'Error';
-export type BloxTaskKind = 'ApiKey' | 'Creator' | 'ExperienceSlot' | 'LaunchApproval' | 'UploadIcon' | 'Questionnaire' | 'Escalation' | 'Other';
+export type BloxTaskKind = 'ApiKey' | 'Creator' | 'ExperienceSlot' | 'LaunchApproval' | 'UploadIcon' | 'Questionnaire' | 'Escalation' | 'Other' | 'BuildSignoff';
 export type BloxTaskStatus = 'Open' | 'Done' | 'Dismissed';
 export type BloxProductKind = 'GamePass' | 'DeveloperProduct';
 
@@ -49,11 +49,11 @@ export interface BloxGameSummary {
     Cycles: Partial<Record<BloxStage, number>>;
     /** Cycles in the current stage: a statistic, never a budget (there is no cycle limit). */
     StageCycles: number;
-    /** The map report's score at the last build (0-100; 60 is the bar for non-obbies). */
+    /** The map report's score at the last build (0-100; BLOX_MAP_BAR is the bar, and any error blocks). */
     MapScore: number | null;
     TypeChecked: boolean;
-    /** The newest run in Roblox's engine; Current means it ran on the current build. */
-    Engine: { Utc: string; Revision: number; Ok: boolean; Passed: number; Failed: number; KitFailed: boolean; Summary: string; Current: boolean } | null;
+    /** The newest engine run; Current means it ran on the current build, Local that it ran in the studio's local engine. */
+    Engine: { Utc: string; Revision: number; Ok: boolean; Local?: boolean; Passed: number; Failed: number; KitFailed: boolean; Summary: string; Current: boolean } | null;
     OpenDirectives: number;
     Watchdog: { Level: number; Name: string; StalledCycles: number; LastProgressUtc: string | null };
     /** The cycle running now (or the last one since the server started), without its steps. */
@@ -106,6 +106,7 @@ export interface BloxOverview {
     CreatorSet: boolean;
     Slots: { Total: number; Free: number };
     RequireLaunchApproval: boolean;
+    RequireBuildSignoff?: boolean;
     MaxGamesInProduction: number;
     Attention: BloxAttention[];
     StageCounts: Record<BloxStage, number>;
@@ -173,12 +174,14 @@ export interface BloxTestIssue { Severity: string; Area: string; Message: string
 export interface BloxEngineCase { Name: string; Ok: boolean; Detail: string | null; Phase: string; Owner: string; Seconds: number; Skipped: boolean; Warnings: string[] }
 /** A runtime error while the game ran, located in the game's files when possible. */
 export interface BloxEngineError { Message: string; Source: string | null; Trace: string | null; Phase: string; File: string | null; Line: number | null }
-/** The game run in Roblox's real engine (run_tests, the Test stage or a launch). */
+/** The game run in Roblox's real engine (run_tests, the Test stage or a launch), or in the studio's local engine standing in for it. */
 export interface BloxEngineRun {
     Utc: string;
     Revision: number;
     Ran: boolean;
     Ok: boolean;
+    /** It ran in the local engine (Lune; no physics, replication or clients) because Roblox's could not run the game yet. */
+    Local?: boolean;
     Version: number | null;
     Passed: number;
     Failed: number;
@@ -255,6 +258,13 @@ export interface BloxMapReport {
     Objects: number;
     DistinctModels: number;
     DressedShare: number;
+    /** Which rubric scored it: an open map (hub and zones), an obby course or tycoon plots. */
+    Kind?: 'open' | 'obby' | 'tycoon' | string;
+    /** Any error caps the score and blocks the Build stage. */
+    Blocked?: boolean;
+    /** The score the Build stage needs. */
+    Bar?: number;
+    Categories?: { Name: string; Score: number; Max: number; Note: string }[];
     Findings: { Severity: 'error' | 'warning' | 'info' | string; Area: string; Message: string }[];
     Facts: string[];
     Zones: { Id: string; Name: string; Purpose: string; Area: number[]; Order: number; Theme: string }[];
@@ -400,6 +410,10 @@ export interface BloxDossier {
         MapScore?: number | null;
         /** "[error] area: …" / "[warning] area: …" lines from the map report at the last build. */
         MapFindings?: string[];
+        /** A simulator's economy check at the last build: a bot's timeline playing the game's own numbers on its map. */
+        Economy?: string | null;
+        /** "[error] economy: …" lines (a wall, a slow first purchase); empty when the pacing is healthy. */
+        EconomyFindings?: string[];
         LastEngineRun?: BloxEngineRun | null;
     };
     LastTest: BloxTestReport | null;
@@ -433,6 +447,13 @@ export interface BloxDossier {
         IsPublic: boolean;
         LaunchRequestedUtc: string | null;
         LaunchApprovedUtc: string | null;
+        /** The revision the owner played and signed off (the build gate). */
+        SignoffRevision?: number | null;
+        SignoffUtc?: string | null;
+        /** The revision (and store page + products) the launch approval covers. */
+        ApprovedRevision?: number | null;
+        Approvals?: BloxApproval[];
+        LaunchFailures?: number;
         WentPublicUtc: string | null;
         EngineTestedRevision: number | null;
         LastLaunchStep: string | null;
@@ -469,6 +490,28 @@ export interface BloxDossier {
 
 export interface BloxCriterion { Text: string; Met: boolean }
 
+export type BloxGate = 'build' | 'launch';
+export interface BloxApproval { Gate: BloxGate; Decision: 'approved' | 'changes'; Note: string; Revision: number; Utc: string }
+
+/**
+ * The owner's two gates on the way to players: play and sign off the tested build (before any marketing), then
+ * approve the launch (this build, store page and products) before anything happens on Roblox.
+ */
+export interface BloxGates {
+    RequireBuildSignoff: boolean;
+    RequireLaunchApproval: boolean;
+    /** The gate the game is stopped at now, if any. */
+    Waiting: BloxGate | null;
+    Revision: number;
+    SignoffRevision: number | null;
+    SignoffUtc: string | null;
+    LaunchApproved: boolean;
+    ApprovedRevision: number | null;
+    LaunchApprovedUtc: string | null;
+    /** Newest first. */
+    History: BloxApproval[];
+}
+
 export interface BloxGameDetail {
     Game: BloxDossier;
     Summary: BloxGameSummary;
@@ -484,6 +527,9 @@ export interface BloxGameDetail {
     CycleLogs: string[];
     /** A Roblox API key and an experience slot exist, so the game can run in the engine here. */
     EngineAvailable: boolean;
+    /** Roblox's engine cannot run it yet and the studio's local engine stands in (run_tests and Run locally use it). */
+    LocalEngine?: boolean;
+    Approvals?: BloxGates;
     Watchdog: {
         Level: number;
         Name: string;
@@ -750,7 +796,14 @@ export const BLOX_TASK_LABEL: Record<BloxTaskKind, string> = {
     Questionnaire: 'Questionnaire',
     Escalation: 'Escalation',
     Other: 'Task',
+    BuildSignoff: 'Build sign-off',
 };
+
+/** The owner gates are approved from the game (games/approve, games/reject), never marked "done". */
+export const bloxIsGateTask = (kind: BloxTaskKind) => kind === 'LaunchApproval' || kind === 'BuildSignoff';
+
+/** The map score the Build stage needs (MapReport.Bar); a map report says its own Bar. */
+export const BLOX_MAP_BAR = 75;
 
 /** The in-game feedback button's scale and reasons (GameKit Feedback.luau / Client HUD). */
 export const BLOX_RATING_LABEL: Record<string, string> = { 1: 'Bad', 2: 'Okay', 3: 'Great' };

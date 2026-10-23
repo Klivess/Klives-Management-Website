@@ -8,7 +8,7 @@ const md = new MarkdownIt({
   html: false,
   linkify: true,
   breaks: true,
-  highlight(str, lang) {
+  highlight(str: string, lang: string) {
     try {
       if (lang && hljs.getLanguage(lang)) {
         return hljs.highlight(str, { language: lang, ignoreIllegals: true }).value;

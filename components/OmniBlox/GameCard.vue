@@ -28,7 +28,7 @@
                     <div><dt>Exit criteria</dt><dd>{{ game.ChecklistMet }}/{{ game.ChecklistTotal }}</dd></div>
                     <div v-if="game.MilestonesTotal"><dt>Milestones</dt><dd>{{ game.MilestonesDone }}/{{ game.MilestonesTotal }}</dd></div>
                     <div v-if="game.BuildRevision"><dt>Build</dt><dd :class="{ bad: !game.LastBuildOk }">r{{ game.BuildRevision }}{{ game.LastBuildOk ? '' : ' ✗' }}</dd></div>
-                    <div v-if="game.MapScore != null"><dt>Map</dt><dd :class="{ bad: game.MapScore < 60, good: game.MapScore >= 80 }">{{ game.MapScore }}/100</dd></div>
+                    <div v-if="game.MapScore != null"><dt>Map</dt><dd :class="{ bad: game.MapScore < BLOX_MAP_BAR, good: game.MapScore >= 85 }">{{ game.MapScore }}/100</dd></div>
                     <div v-if="game.Engine"><dt>Engine</dt><dd :class="{ bad: !game.Engine.Ok && !game.Engine.KitFailed, good: game.Engine.Ok && game.Engine.Current }" :title="game.Engine.Summary">{{ engineLine }}</dd></div>
                     <div v-if="game.OpenDirectives"><dt>Directions</dt><dd>{{ game.OpenDirectives }} open</dd></div>
                     <div><dt>Cycles</dt><dd>{{ game.StageCycles }}</dd></div>
@@ -45,7 +45,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { fmtCount, fmtDate, fmtRelative, useNow } from '~/composables/useOmniTumblr';
-import { BLOX_STAGES, bloxMediaPath, bloxPlayPath, bloxRobux, bloxStageTone, bloxWatchdogTone, type BloxGameSummary, type BloxStage } from '~/composables/useOmniBlox';
+import { BLOX_MAP_BAR, BLOX_STAGES, bloxMediaPath, bloxPlayPath, bloxRobux, bloxStageTone, bloxWatchdogTone, type BloxGameSummary, type BloxStage } from '~/composables/useOmniBlox';
 
 const props = defineProps<{ game: BloxGameSummary }>();
 const now = useNow();
@@ -61,7 +61,7 @@ const engineLine = computed(() => {
     const e = props.game.Engine;
     if (!e) return '';
     const mark = e.Ok ? '✓' : e.KitFailed && e.Failed > 0 ? 'kit ✗' : '✗';
-    return `${mark} r${e.Revision}${e.Current ? '' : ' (old)'}`;
+    return `${mark} r${e.Revision}${e.Local ? ' local' : ''}${e.Current ? '' : ' (old)'}`;
 });
 
 const retired = computed(() => props.game.Stage === 'Abandoned' || props.game.Stage === 'Sunset');

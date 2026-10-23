@@ -23,7 +23,7 @@
                     </div>
                 </div>
                 <div v-if="game" class="ot-actions">
-                    <button v-if="detail?.Playtest.Playable" class="ot-btn sm" :class="awaitingApproval ? '' : 'primary'" :aria-expanded="playOpen" @click="setPlay(!playOpen)">
+                    <button v-if="detail?.Playtest.Playable" class="ot-btn sm" :class="waitingGate === 'launch' ? '' : 'primary'" :aria-expanded="playOpen" @click="setPlay(!playOpen)">
                         ▶ Play
                     </button>
                     <a v-if="game.Slot && game.Publish.IsPublic" class="ot-btn ghost sm" :href="bloxRobloxGameUrl(game.Slot.PlaceId)" target="_blank" rel="noopener">Open on Roblox ↗</a>
@@ -32,7 +32,6 @@
                         <button class="ot-btn sm" :disabled="busy" @click="setPaused(!game.Paused)">{{ game.Paused ? 'Resume' : 'Pause' }}</button>
                     </template>
                     <button v-if="can('omniblox.studio.act') && game.Stage === 'Live'" class="ot-btn sm" :disabled="busy || game.UrgentMaintenance" @click="maintain">Maintain now</button>
-                    <button v-if="awaitingApproval && can('omniblox.studio.manage')" class="ot-btn primary sm" :disabled="busy" @click="approve">Approve launch</button>
                     <button v-if="can('omniblox.studio.manage') && game.Stage === 'Abandoned'" class="ot-btn primary sm" :disabled="busy" @click="revive">Revive</button>
                     <button v-if="can('omniblox.studio.manage') && abandonable" class="ot-btn danger sm" :disabled="busy" @click="abandon">Abandon</button>
                 </div>
@@ -64,8 +63,11 @@
                 <div><strong>Last launch step failed ({{ game.Publish.LastLaunchStep }})</strong> {{ game.Publish.LastLaunchError }}</div>
             </div>
 
-            <OmniTraderCard v-if="detail?.OwnerTasks.some(t => t.Status === 'Open')" class="bx-section" attention title="Needs you">
-                <OmniBloxTaskList :tasks="detail.OwnerTasks.filter(t => t.Status === 'Open')" :show-game="false" :games="overview?.Games ?? []" @changed="load" />
+            <OmniBloxApprovalGate v-if="waitingGate && game && detail?.Approvals" class="bx-section" :game="game" :gates="detail.Approvals" :playable="detail.Playtest.Playable"
+                                  :can-manage="can('omniblox.studio.manage')" @changed="load" @play="setPlay(true)" @world="setTab('world')" @store="setTab('store')" />
+
+            <OmniTraderCard v-if="openTasks.length" class="bx-section" attention title="Needs you">
+                <OmniBloxTaskList :tasks="openTasks" :show-game="false" :games="overview?.Games ?? []" @changed="load" />
             </OmniTraderCard>
 
             <section class="ot-card bx-stage bx-section" :aria-busy="!detail">
@@ -142,7 +144,7 @@
                                 <div class="bx-tags">
                                     <span class="ot-chip" :class="game.LastTest.StaticOk ? 'ok' : 'bad'">Luau, types + scene</span>
                                     <span class="ot-chip" :class="game.LastTest.GeometryOk ? 'ok' : 'bad'">Geometry</span>
-                                    <span v-if="game.LastTest.MapScore != null" class="ot-chip" :class="game.LastTest.MapScore >= 60 ? 'ok' : 'bad'">Map {{ game.LastTest.MapScore }}/100</span>
+                                    <span v-if="game.LastTest.MapScore != null" class="ot-chip" :class="game.LastTest.MapScore >= BLOX_MAP_BAR ? 'ok' : 'bad'">Map {{ game.LastTest.MapScore }}/100</span>
                                     <span class="ot-chip" :class="!game.LastTest.EngineRan ? '' : game.LastTest.EngineOk ? 'ok' : 'bad'">{{ game.LastTest.EngineRan ? 'Roblox engine' : 'Engine not run' }}</span>
                                 </div>
                                 <ul v-if="lastTestIssues.length" class="issues">
@@ -165,6 +167,10 @@
                                     <span class="text">{{ f.Text }}</span>
                                 </li>
                             </ul>
+                        </OmniTraderCard>
+
+                        <OmniTraderCard v-if="detail.Approvals?.History.length" title="Your approvals" subtitle="The build sign-off and the launch approval, newest first">
+                            <OmniBloxApprovalHistory :history="detail.Approvals.History" />
                         </OmniTraderCard>
 
                         <OmniTraderCard title="Decisions" :empty="!game.Decisions.length" empty-title="None yet" flush>
@@ -199,7 +205,7 @@
                 </div>
 
                 <OmniBloxGameWorld v-else-if="tab === 'world'" :game="game" :playable="detail.Playtest.Playable" @play="setPlay(true)" />
-                <OmniBloxGameTests v-else-if="tab === 'tests'" :game="game" :engine-available="detail.EngineAvailable" :can-act="can('omniblox.studio.act')" @changed="load" />
+                <OmniBloxGameTests v-else-if="tab === 'tests'" :game="game" :engine-available="detail.EngineAvailable" :local-engine="detail.LocalEngine ?? false" :can-act="can('omniblox.studio.act')" @changed="load" />
                 <OmniBloxGameStore v-else-if="tab === 'store'" :game="game" :media="detail.Media" />
                 <OmniBloxGameNumbers v-else-if="tab === 'numbers'" :game="game" />
                 <OmniBloxGameBrain v-else-if="tab === 'brain'" :game="game" :cycle-logs="detail.CycleLogs" />
@@ -218,7 +224,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useAccess } from '~/composables/useAccess';
 import { confirmAction, fmtDate, fmtRelative, notify, useNow, usePoll } from '~/composables/useOmniTumblr';
 import {
-    BLOX_STAGES, bloxGet, bloxMediaPath, bloxPost, bloxRobloxGameUrl, bloxStageTone, useBloxOverview,
+    BLOX_MAP_BAR, BLOX_STAGES, bloxGet, bloxIsGateTask, bloxMediaPath, bloxPost, bloxRobloxGameUrl, bloxStageTone, useBloxOverview,
     type BloxEvent, type BloxGameDetail, type BloxStage,
 } from '~/composables/useOmniBlox';
 
@@ -264,8 +270,10 @@ watch(gameId, () => {
 
 const active = computed(() => !!game.value && !['Live', 'Sunset', 'Abandoned'].includes(game.value.Stage));
 const abandonable = computed(() => !!game.value && !['Live', 'Sunset', 'Abandoned'].includes(game.value.Stage));
-const awaitingApproval = computed(() => game.value?.Stage === 'Launch'
-    && !!detail.value?.OwnerTasks.some(t => t.Kind === 'LaunchApproval' && t.Status === 'Open'));
+/** The owner gate the game is stopped at (play and sign off the build, or approve the launch). */
+const waitingGate = computed(() => game.value?.Stage === 'Launch' ? detail.value?.Approvals?.Waiting ?? null : null);
+/** The gate card handles the gate's own task. */
+const openTasks = computed(() => (detail.value?.OwnerTasks ?? []).filter(t => t.Status === 'Open' && !(waitingGate.value && bloxIsGateTask(t.Kind))));
 const reached = computed<BloxStage | null>(() => {
     const cycles = game.value?.StageCycles ?? {};
     return [...BLOX_STAGES].reverse().find(s => (cycles[s] ?? 0) > 0) ?? null;
@@ -370,7 +378,6 @@ async function act(path: string, body: Record<string, unknown>, success?: string
 const setPaused = (paused: boolean) => act('/omniblox/games/pause', { paused });
 const resume = () => act('/omniblox/games/resume', {}, 'Resumed; the watchdog starts over');
 const maintain = () => act('/omniblox/games/maintain', {}, 'Maintenance queued');
-const approve = () => act('/omniblox/games/approve', {}, 'Launch approved');
 
 async function abandon() {
     if (!await confirmAction(`Abandon "${title.value}"?`, 'The studio stops working on it and frees its experience slot. Everything is kept, and you can revive it later where it stopped.', 'Abandon', true)) return;

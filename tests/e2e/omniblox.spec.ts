@@ -137,9 +137,11 @@ async function mockApi(page: Page, options: MockOptions = {}) {
                     ? json({ error: 'Already 1 game(s) in production (OmniBlox_MaxGamesInProduction = 1). Pause or finish one first.' }, 409)
                     : json({ ok: true, gameId: meta.Building });
             case '/omniblox/games/approve': {
-                state.overview.OwnerTasks = state.overview.OwnerTasks.filter((t: any) => !(t.Kind === 'LaunchApproval' && t.GameId === body?.gameId));
-                return json({ ok: true });
+                const kind = body?.gate === 'build' ? 'BuildSignoff' : 'LaunchApproval';
+                state.overview.OwnerTasks = state.overview.OwnerTasks.filter((t: any) => !(t.Kind === kind && t.GameId === body?.gameId));
+                return json({ ok: true, gate: body?.gate });
             }
+            case '/omniblox/games/reject': return json({ ok: true, gate: body?.gate });
             case '/omniblox/games/playtest': {
                 const place = meta.PlaytestPlaceId;
                 return json({
@@ -240,22 +242,95 @@ test('studio: starting a game while one is in production says why it cannot', as
     expect(state.mutations.find(m => m.path === '/omniblox/games/new')?.body).toEqual({ theme: 'pirates' });
 });
 
-test('studio: a launch waiting for approval is approved from its task', async ({ page }) => {
-    const approval = {
-        TaskId: 't_approve1', Kind: 'LaunchApproval', GameId: meta.Building, Title: 'Approve the launch of "Candy Factory Tycoon"',
-        Detail: 'Built, tested and ready. Look it over (thumbnails, store page, products) and approve it on the OmniBlox dashboard. Experience 1001.',
-        Status: 'Open', CreatedUtc: meta.NowUtc, ResolvedUtc: null, Files: [], DedupeKey: `approve:${meta.Building}`,
+test('studio: the owner gates are approved from their tasks, each for its own gate', async ({ page }) => {
+    const signoff = {
+        TaskId: 't_signoff1', Kind: 'BuildSignoff', GameId: meta.Building, Title: 'Play and sign off "Candy Factory Tycoon" (r2)',
+        Detail: '"Candy Factory Tycoon" passed its tests on revision r2: map 87/100.\nPlay it before it is marketed.',
+        Status: 'Open', CreatedUtc: meta.NowUtc, ResolvedUtc: null, Files: [], DedupeKey: `signoff:${meta.Building}`,
     };
-    const state = await mockApi(page, { extraTasks: [approval] });
+    const approval = {
+        TaskId: 't_approve1', Kind: 'LaunchApproval', GameId: meta.Live, Title: 'Approve the launch of "Lava Forest Obby"',
+        Detail: 'Ready to go public as "Lava Forest Obby" in experience 1001 (revision r1, run clean in Roblox\'s engine).',
+        Status: 'Open', CreatedUtc: meta.NowUtc, ResolvedUtc: null, Files: [], DedupeKey: `approve:${meta.Live}`,
+    };
+    const state = await mockApi(page, { extraTasks: [signoff, approval] });
     await page.setViewportSize({ width: 1400, height: 1000 });
     await page.goto('/schemery/omniblox');
     await expect(page.getByRole('heading', { name: 'Game studio' })).toBeVisible(BOOT);
 
+    // Neither gate is a plain "done".
+    const signoffRow = page.locator('.bx-tasks li').filter({ hasText: 'Play and sign off' });
+    await expect(signoffRow.getByText('Build sign-off')).toBeVisible();
+    await expect(signoffRow.getByRole('button', { name: 'Done' })).toHaveCount(0);
+    await expect(signoffRow.getByRole('link', { name: '▶ Play it' })).toHaveAttribute('href', `/schemery/omniblox/game/${meta.Building}?play=1`);
+    await signoffRow.getByRole('button', { name: 'Approve build' }).click();
+    await expect(page.locator('.bx-tasks').getByText('Play and sign off "Candy Factory Tycoon" (r2)')).toHaveCount(0);
+    expect(state.mutations.find(m => m.path === '/omniblox/games/approve')?.body).toEqual({ gameId: meta.Building, gate: 'build' });
+
     const row = page.locator('.bx-tasks li').filter({ hasText: 'Approve the launch' });
-    await expect(row.getByRole('button', { name: 'Done' })).toHaveCount(0); // approval is not a plain "done"
+    await expect(row.getByRole('button', { name: 'Done' })).toHaveCount(0);
     await row.getByRole('button', { name: 'Approve launch' }).click();
-    await expect(page.locator('.bx-tasks').getByText('Approve the launch of "Candy Factory Tycoon"')).toHaveCount(0);
-    expect(state.mutations.find(m => m.path === '/omniblox/games/approve')?.body).toEqual({ gameId: meta.Building });
+    await expect(page.locator('.bx-tasks').getByText('Approve the launch of "Lava Forest Obby"')).toHaveCount(0);
+    expect(state.mutations.filter(m => m.path === '/omniblox/games/approve').at(-1)?.body).toEqual({ gameId: meta.Live, gate: 'launch' });
+});
+
+test('a tested build waits for the owner: play it, sign it off or ask for changes; then the launch', async ({ page }) => {
+    let gate: 'build' | 'launch' = 'build';
+    const state = await mockApi(page, {
+        patchGame: (id, detail) => {
+            if (id !== meta.Building || !detail.Game) return;
+            const g = detail.Game;
+            g.Stage = 'Launch';
+            g.WaitingReason = gate === 'build' ? `waiting for you to play r${g.Build.Revision} and sign it off` : 'waiting for your launch approval';
+            g.Store.Title = 'Candy Factory Tycoon';
+            g.Store.Description = 'Build the sweetest factory on the server!';
+            detail.Approvals = {
+                ...detail.Approvals, Waiting: gate, Revision: g.Build.Revision,
+                SignoffRevision: gate === 'launch' ? g.Build.Revision : null, SignoffUtc: gate === 'launch' ? meta.NowUtc : null,
+                History: gate === 'launch' ? [{ Gate: 'build', Decision: 'approved', Note: 'Fun from the first button.', Revision: g.Build.Revision, Utc: meta.NowUtc }] : [],
+            };
+            detail.OwnerTasks.push({
+                TaskId: 't_gate', Kind: gate === 'build' ? 'BuildSignoff' : 'LaunchApproval', GameId: id, Title: gate === 'build' ? 'Play and sign off "Candy Factory Tycoon" (r2)' : 'Approve the launch of "Candy Factory Tycoon"',
+                Detail: '…', Status: 'Open', CreatedUtc: meta.NowUtc, ResolvedUtc: null, Files: [], DedupeKey: `${gate}:${id}`,
+            });
+        },
+    });
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.goto(`/schemery/omniblox/game/${meta.Building}`);
+    await expect(page.getByRole('heading', { name: 'Candy Factory Tycoon' })).toBeVisible(BOOT);
+
+    // Gate 1: the build. The gate card replaces the task in "Needs you".
+    const card = page.locator('.bx-gate');
+    await expect(card).toContainText('Play and sign off r2');
+    await expect(card).toContainText('Gate 1 of 2');
+    await expect(page.locator('.ot-card').filter({ hasText: 'Needs you' }).getByText('Play and sign off "Candy Factory Tycoon"')).toHaveCount(0);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${SHOTS}/gate-build.png`, fullPage: true });
+    await card.getByRole('button', { name: 'Request changes' }).click();
+    await card.getByLabel('What to change').fill('The first dropper costs more than players start with.');
+    await card.getByRole('button', { name: 'Send to the builder' }).click();
+    await expect.poll(() => state.mutations.find(m => m.path === '/omniblox/games/reject')?.body)
+        .toEqual({ gameId: meta.Building, gate: 'build', note: 'The first dropper costs more than players start with.', backToBuild: true });
+    // Approved: the game reloads at the next gate (the server moves it on; here the mock does).
+    gate = 'launch';
+    await card.getByRole('button', { name: 'Approve build' }).click();
+    await expect.poll(() => state.mutations.find(m => m.path === '/omniblox/games/approve')?.body).toEqual({ gameId: meta.Building, gate: 'build' });
+
+    // Gate 2: the launch, with the store page and the prices it covers.
+    await expect(card).toContainText('Approve the launch');
+    await expect(card).toContainText('Build the sweetest factory on the server!');
+    await expect(card).toContainText('2x Candy · R$ 99');
+    await card.getByText(/Your earlier decisions/).click();
+    await expect(card).toContainText('Fun from the first button.');
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${SHOTS}/gate-launch.png`, fullPage: true });
+    await card.getByRole('button', { name: 'Request changes' }).click();
+    await card.getByLabel('What to change').fill('Make the 2x pass 79 R$.');
+    await card.getByRole('button', { name: 'Send to the marketer' }).click();
+    await expect.poll(() => state.mutations.filter(m => m.path === '/omniblox/games/reject').at(-1)?.body)
+        .toEqual({ gameId: meta.Building, gate: 'launch', note: 'Make the 2x pass 79 R$.', backToBuild: false });
+    await card.getByRole('button', { name: 'Approve launch' }).click();
+    await expect.poll(() => state.mutations.filter(m => m.path === '/omniblox/games/approve').at(-1)?.body).toEqual({ gameId: meta.Building, gate: 'launch' });
 });
 
 test('live game: overview, world, store, numbers, brain, files and activity', async ({ page }) => {
@@ -267,6 +342,11 @@ test('live game: overview, world, store, numbers, brain, files and activity', as
     await expect(page.getByText('Leap over glowing lava through a pine forest.')).toBeVisible();
     await expect(page.getByText('Three stages with checkpoints')).toBeVisible();
     await expect(page.locator('.bx-table tr.chosen')).toContainText('A lava obby through a pine forest');
+    // It went through both owner gates.
+    const approvals = page.locator('.ot-card').filter({ hasText: 'Your approvals' });
+    await expect(approvals.locator('.bx-approvals > li')).toHaveCount(2);
+    await expect(approvals).toContainText('Build sign-off · r1');
+    await expect(approvals).toContainText('Store page and prices look right.');
     await page.waitForTimeout(500);
     await page.screenshot({ path: `${SHOTS}/game-overview.png`, fullPage: true });
 
@@ -392,11 +472,62 @@ test('a game at work: every step live, the owner\'s directions, the engine run a
     await page.getByRole('tab', { name: 'World' }).click();
     const report = page.locator('.ot-card').filter({ hasText: 'Map report' });
     await expect(report.locator('.score .value')).toHaveText(/\d+/);
-    await expect(page.locator('.zones')).toContainText('Candy Grove');
-    await page.locator('.zone').filter({ hasText: 'Candy Grove' }).click();
+    await expect(report).toContainText('75 is the bar');
+    await expect(report.locator('.cats li')).toHaveCount(7);
+    await expect(report.locator('.cats li').filter({ hasText: 'Gameplay layout' })).toContainText('/20');
+    await expect(page.locator('.zones')).toContainText('Plot 2');
+    await page.locator('.zone').filter({ hasText: 'Plot 2' }).click();
     await expect.poll(() => page.locator('.bx-world .bx-img img').first().getAttribute('src')).toBeTruthy();
     await page.waitForTimeout(500);
     await page.screenshot({ path: `${SHOTS}/game-world-map.png`, fullPage: true });
+});
+
+test('without an API key the local engine stands in, and the Tests tab says so', async ({ page }) => {
+    // The same failing run, as the studio records it when there is no key or slot: in the local engine.
+    const state = await mockApi(page, {
+        patchGame: (id, detail) => {
+            if (id !== meta.Building || !detail.Game) return;
+            detail.EngineAvailable = false;
+            detail.LocalEngine = true;
+            const run = detail.Game.Build.LastEngineRun;
+            Object.assign(run, { Local: true, Version: null, Summary: `Local engine: ${run.Summary}` });
+            detail.Summary.Engine = { ...detail.Summary.Engine, Local: true, Summary: run.Summary };
+        },
+    });
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.goto(`/schemery/omniblox/game/${meta.Building}?tab=tests`);
+    await expect(page.getByRole('heading', { name: 'Candy Factory Tycoon' })).toBeVisible(BOOT);
+
+    const card = page.locator('.ot-card').filter({ hasText: 'Last run in the local engine' });
+    await expect(card.locator('.testline .ot-chip').filter({ hasText: 'Local engine' })).toBeVisible();
+    await expect(card.locator('.testline')).not.toContainText('Local engine:'); // the chip says it once
+    await expect(card).toContainText('Roblox\'s engine runs the game again before launch');
+    await expect(card.locator('.cases code').filter({ hasText: 'src/server/Welcome.server.luau:4' })).toBeVisible();
+    await expect(card).not.toContainText('place version');
+    await expect(page.locator('.checks li').filter({ hasText: 'Local engine' })).toHaveClass(/bad/);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${SHOTS}/game-tests-local.png`, fullPage: true });
+
+    await expect(page.getByRole('button', { name: 'Run in Roblox' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Run locally' }).click();
+    await expect.poll(() => state.mutations.find(m => m.path === '/omniblox/games/test')?.body).toEqual({ gameId: meta.Building });
+    await expect(page.locator('.swal2-popup')).toContainText('Running in the local engine');
+});
+
+test('a simulator\'s world shows the economy bot\'s timeline and any wall', async ({ page }) => {
+    await mockApi(page, {
+        patchGame: (id, detail) => {
+            if (id !== meta.Building || !detail.Game) return;
+            detail.Game.Build.Economy = 'A player who plays well: first harvest 14 s, first sale 62 s (19 coins a minute at the start), first purchase 1.0 min, every zone 24 min, first rebirth 53 min.\n     1.0 min  tool: Stone Axe (20)\n     5.6 min  unlock Pine Forest (55)';
+            detail.Game.Build.EconomyFindings = ['[error] economy: 1 zone(s) are out of reach within six hours of play: an economy wall.'];
+        },
+    });
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.goto(`/schemery/omniblox/game/${meta.Building}?tab=world`);
+    await expect(page.getByRole('heading', { name: 'Candy Factory Tycoon' })).toBeVisible(BOOT);
+    const economy = page.locator('.ot-card').filter({ hasText: 'Economy check' });
+    await expect(economy.locator('pre.timeline')).toContainText('unlock Pine Forest (55)');
+    await expect(economy.locator('.findings li.error')).toContainText('out of reach within six hours');
 });
 
 test('a game the watchdog paused waits for the owner, and resumes', async ({ page }) => {

@@ -1,5 +1,6 @@
 <template>
     <div class="os-shell">
+        <OmniscienceNav />
         <div class="os-crumb"><a href="/omniscience">◎ Omniscience</a> <span>/</span> <span>Review queue</span></div>
 
         <header class="os-header">

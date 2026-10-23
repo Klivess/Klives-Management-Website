@@ -1,6 +1,7 @@
 
 <script setup lang="ts">
 const route = useRoute();
+const isOmniscience = computed(() => route.path === '/omniscience' || route.path.startsWith('/omniscience-'));
 
 const pageTitle = computed(() => {
   if (route.path === '/') {
@@ -45,6 +46,7 @@ useHead(() => ({
     </NuxtLayout>
     <AccessToastHost />
     <AccessSuspendedOverlay />
+    <OmniscienceCommandPalette v-if="isOmniscience" />
 </template>
 
 <style>

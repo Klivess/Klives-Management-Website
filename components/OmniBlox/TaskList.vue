@@ -2,7 +2,7 @@
     <ul class="bx-tasks">
         <li v-for="task in tasks" :key="task.TaskId" :class="{ closed: task.Status !== 'Open' }">
             <div class="top">
-                <span class="ot-chip" :class="task.Kind === 'LaunchApproval' || task.Kind === 'Escalation' ? 'warn' : 'info'">{{ BLOX_TASK_LABEL[task.Kind] }}</span>
+                <span class="ot-chip" :class="bloxIsGateTask(task.Kind) || task.Kind === 'Escalation' ? 'warn' : 'info'">{{ BLOX_TASK_LABEL[task.Kind] ?? 'Task' }}</span>
                 <strong class="title">{{ task.Title }}</strong>
                 <span class="when">
                     <NuxtLink v-if="task.GameId && showGame" :to="`/schemery/omniblox/game/${task.GameId}`">{{ gameTitle(task.GameId) }}</NuxtLink>
@@ -15,7 +15,11 @@
             <button v-if="isLong(task)" type="button" class="ot-btn ghost sm more" @click="toggle(task.TaskId)">{{ expanded.has(task.TaskId) ? 'Show less' : 'Show all' }}</button>
             <div v-if="task.Status === 'Open'" class="actions">
                 <button v-for="file in task.Files" :key="file" class="ot-btn sm" :disabled="!task.GameId" @click="download(task, file)">⤓ {{ file }}</button>
-                <template v-if="task.Kind === 'LaunchApproval'">
+                <template v-if="task.Kind === 'BuildSignoff'">
+                    <NuxtLink v-if="task.GameId" class="ot-btn primary sm" :to="`/schemery/omniblox/game/${task.GameId}?play=1`">▶ Play it</NuxtLink>
+                    <button v-if="can('omniblox.studio.manage')" class="ot-btn sm" :disabled="busy === task.TaskId" @click="approve(task)">Approve build</button>
+                </template>
+                <template v-else-if="task.Kind === 'LaunchApproval'">
                     <button v-if="can('omniblox.studio.manage')" class="ot-btn primary sm" :disabled="busy === task.TaskId" @click="approve(task)">Approve launch</button>
                     <NuxtLink v-if="task.GameId" class="ot-btn ghost sm" :to="`/schemery/omniblox/game/${task.GameId}?tab=store`">Review first</NuxtLink>
                 </template>
@@ -32,7 +36,7 @@
 import { ref } from 'vue';
 import { useAccess } from '~/composables/useAccess';
 import { fmtRelative, notify, useNow } from '~/composables/useOmniTumblr';
-import { BLOX_TASK_LABEL, bloxDownload, bloxMediaPath, bloxPost, type BloxGameSummary, type BloxTask } from '~/composables/useOmniBlox';
+import { BLOX_TASK_LABEL, bloxDownload, bloxIsGateTask, bloxMediaPath, bloxPost, type BloxGameSummary, type BloxTask } from '~/composables/useOmniBlox';
 
 const props = withDefaults(defineProps<{ tasks: BloxTask[]; games?: BloxGameSummary[]; showGame?: boolean }>(), { games: () => [], showGame: true });
 const emit = defineEmits<{ changed: [] }>();
@@ -64,11 +68,13 @@ async function resolve(task: BloxTask, action: 'done' | 'dismiss') {
 
 async function approve(task: BloxTask) {
     if (!task.GameId) return;
+    const gate = task.Kind === 'BuildSignoff' ? 'build' : 'launch';
     busy.value = task.TaskId;
     try {
-        const result = await bloxPost('/omniblox/games/approve', { gameId: task.GameId });
-        if (result.ok) notify('Launch approved', 'The studio publishes it on its next step.');
-        else notify('Could not approve', result.error ?? '', 'error');
+        const result = await bloxPost('/omniblox/games/approve', { gameId: task.GameId, gate });
+        if (!result.ok) notify('Could not approve', result.error ?? '', 'error');
+        else if (gate === 'build') notify('Build signed off', 'The marketer starts on the store page; the launch waits for your approval.');
+        else notify('Launch approved', 'The studio publishes it on its next step.');
         emit('changed');
     } finally {
         busy.value = null;

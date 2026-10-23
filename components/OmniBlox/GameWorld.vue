@@ -23,9 +23,17 @@
                         <span class="value" :class="scoreTone">{{ report.Score }}</span>
                         <div>
                             <strong>{{ scoreWord }}</strong>
-                            <span class="bx-muted">60 is the bar for the Build stage; 80+ is the aim. {{ pct(report.DressedShare) }} of the play area is dressed.</span>
+                            <span class="bx-muted">{{ bar }} is the bar for the Build stage (an error caps the score); 85+ is the aim. {{ pct(report.DressedShare) }} of the play area is dressed.</span>
                         </div>
                     </div>
+                    <ul v-if="report.Categories?.length" class="cats" aria-label="Score by category">
+                        <li v-for="c in report.Categories" :key="c.Name">
+                            <span class="name">{{ c.Name }}</span>
+                            <span class="meter" aria-hidden="true"><span :class="catTone(c.Score, c.Max)" :style="{ width: `${Math.round(100 * c.Score / Math.max(1, c.Max))}%` }"></span></span>
+                            <span class="num">{{ c.Score }}/{{ c.Max }}</span>
+                            <span v-if="c.Note" class="note">{{ c.Note }}</span>
+                        </li>
+                    </ul>
                     <ul v-if="report.Findings.length" class="findings">
                         <li v-for="(f, i) in findings" :key="i" :class="f.Severity">
                             <span class="sev">{{ f.Severity }}</span><span class="area">{{ f.Area }}</span>{{ f.Message }}
@@ -40,7 +48,7 @@
             </OmniTraderCard>
 
             <OmniTraderCard title="Map plan" :subtitle="report?.Zones.length ? `${report.Zones.length} zone(s), in the order players reach them` : undefined"
-                            :empty="!report?.Zones.length && !report?.Concept" empty-title="No map plan yet" empty-text="The builder plans zones, paths and landmarks (plan_map) before dressing the world.">
+                            :empty="!report?.Zones.length && !report?.Concept" empty-title="No map plan yet" empty-text="The world generator lays out the zones, roads and landmarks when the game reaches Build.">
                 <template v-if="report">
                     <p v-if="report.Concept" class="concept">{{ report.Concept }}</p>
                     <ol class="zones">
@@ -56,6 +64,13 @@
                 </template>
             </OmniTraderCard>
         </div>
+
+        <OmniTraderCard v-if="game.Build.Economy" title="Economy check" subtitle="At every build a bot plays the game's own prices on its map: the first sale, the first purchase, every zone, the rebirth">
+            <ul v-if="economyFindings.length" class="findings economy">
+                <li v-for="(f, i) in economyFindings" :key="i" :class="f.level"><span class="sev">{{ f.level }}</span>{{ f.text }}</li>
+            </ul>
+            <pre class="timeline">{{ game.Build.Economy }}</pre>
+        </OmniTraderCard>
 
         <div class="ot-grid two">
             <OmniTraderCard title="Build">
@@ -94,7 +109,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { fmtCount, fmtRelative, useNow } from '~/composables/useOmniTumblr';
-import { bloxAssetImagePath, bloxBytes, bloxGet, bloxRenderPath, type BloxDossier, type BloxMapReport } from '~/composables/useOmniBlox';
+import { BLOX_MAP_BAR, bloxAssetImagePath, bloxBytes, bloxGet, bloxRenderPath, type BloxDossier, type BloxMapReport } from '~/composables/useOmniBlox';
 
 const props = defineProps<{ game: BloxDossier; playable?: boolean }>();
 const emit = defineEmits<{ play: [] }>();
@@ -133,14 +148,22 @@ const zonesInOrder = computed(() => (report.value?.Zones ?? []).slice().sort((a,
 const views = computed(() => [...BASE_VIEWS, ...zonesInOrder.value.slice(0, 6).map(z => ({ id: `zone:${z.Id}`, label: z.Name }))]);
 const findings = computed(() => (report.value?.Findings ?? []).slice().sort((a, b) => rank(a.Severity) - rank(b.Severity)));
 const rank = (s: string) => s === 'error' ? 0 : s === 'warning' ? 1 : 2;
-const blocked = computed(() => (report.value?.Findings ?? []).some(f => f.Severity === 'error'));
-const scoreTone = computed(() => { const s = report.value?.Score ?? 0; return blocked.value || s < 60 ? 'bad' : s >= 80 ? 'good' : 'ok'; });
+const blocked = computed(() => report.value?.Blocked ?? (report.value?.Findings ?? []).some(f => f.Severity === 'error'));
+const bar = computed(() => report.value?.Bar ?? BLOX_MAP_BAR);
+const scoreTone = computed(() => { const s = report.value?.Score ?? 0; return blocked.value || s < bar.value ? 'bad' : s >= 85 ? 'good' : 'ok'; });
 const scoreWord = computed(() => {
     const s = report.value?.Score ?? 0;
     if (blocked.value) return 'Not ready: fix the errors below first';
-    return s >= 80 ? 'A full, finished world' : s >= 60 ? 'Good enough to ship; room to improve' : 'Not ready: the map needs work';
+    return s >= 85 ? 'A full, finished world' : s >= bar.value ? 'Good enough to ship; room to improve' : 'Not ready: the map needs work';
 });
+const catTone = (score: number, max: number) => score >= max * 0.85 ? 'good' : score >= max * 0.5 ? 'ok' : 'bad';
 const pct = (v: number) => `${Math.round(v * 100)}%`;
+
+/** "[error] economy: …" lines from the last build's economy check. */
+const economyFindings = computed(() => (props.game.Build.EconomyFindings ?? []).map(line => {
+    const m = /^\[(\w+)\]\s*(?:[\w ]+:\s*)?(.*)$/.exec(line);
+    return m ? { level: m[1]!.toLowerCase(), text: m[2]! } : { level: 'warning', text: line };
+}));
 
 /** Build errors and warnings, tagged by where they came from ("[geometry]", "[types]"). */
 const problems = computed(() => {
@@ -163,6 +186,16 @@ const problems = computed(() => {
 .score .value.bad { color: var(--ot-negative); }
 .score strong { display: block; font-size: 13px; }
 .score .bx-muted { font-size: 11.5px; line-height: 16px; }
+.cats { list-style: none; margin: 0 0 var(--ot-space-3); padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cats li { display: grid; grid-template-columns: minmax(0, 150px) minmax(0, 1fr) 44px; align-items: center; column-gap: var(--ot-space-2); font-size: 12px; }
+.cats .meter { height: 6px; border-radius: 999px; background: var(--ot-surface-3); overflow: hidden; }
+.cats .meter span { display: block; height: 100%; border-radius: 999px; background: var(--ot-warning); }
+.cats .meter span.good { background: var(--ot-positive); }
+.cats .meter span.bad { background: var(--ot-negative); }
+.cats .num { font-family: var(--ot-mono); font-size: 11.5px; text-align: right; }
+.cats .note { grid-column: 1 / -1; font-size: 11px; line-height: 15px; color: var(--ot-muted); overflow-wrap: anywhere; }
+.timeline { margin: 0; padding: var(--ot-space-2) var(--ot-space-3); border-radius: var(--ot-radius-sm); background: var(--ot-surface-2); font-family: var(--ot-mono); font-size: 11.5px; line-height: 17px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.findings.economy { margin-bottom: var(--ot-space-3); }
 .findings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12px; line-height: 17px; }
 .findings .sev { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 6px; color: var(--ot-muted); }
 .findings .error .sev { color: var(--ot-negative); }

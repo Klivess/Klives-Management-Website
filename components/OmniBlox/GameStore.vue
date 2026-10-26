@@ -72,6 +72,21 @@
                     <dt>Visibility</dt><dd>{{ game.Publish.IsPublic ? `public since ${fmtWhen(game.Publish.WentPublicUtc)}` : 'private' }}</dd>
                     <dt>Published</dt><dd>{{ game.Publish.LastPublishedVersion ? `version ${game.Publish.LastPublishedVersion} (r${game.Publish.LastPublishedRevision}) · ${fmtRelative(game.Publish.LastPublishedUtc, now)}` : 'never' }}</dd>
                     <dt>Engine-tested</dt><dd>{{ game.Publish.EngineTestedRevision ? `r${game.Publish.EngineTestedRevision}` : 'not yet' }}</dd>
+                    <template v-if="game.Publish.FirstPublishedUtc || game.Publish.IconUploadedUtc">
+                        <dt>Icon</dt><dd>{{ game.Publish.IconUploadedUtc ? `uploaded ${fmtRelative(game.Publish.IconUploadedUtc, now)}` : 'not uploaded yet' }}</dd>
+                    </template>
+                    <template v-if="questionnaire">
+                        <dt>Maturity rating</dt>
+                        <dd :class="{ warn: !questionnaire.Published }">
+                            <template v-if="questionnaire.Published">{{ questionnaire.AgeRating ?? 'rated' }}{{ questionnaire.MinimumAge ? ` (${questionnaire.MinimumAge}+)` : '' }} · answered {{ fmtRelative(questionnaire.Utc, now) }}</template>
+                            <template v-else>not published: {{ questionnaire.StoppedReason }}</template>
+                            <details v-if="questionnaire.Answers.length" class="answers">
+                                <summary>{{ questionnaire.Answers.length }} answers</summary>
+                                <ul><li v-for="(a, i) in questionnaire.Answers" :key="i">{{ a }}</li></ul>
+                            </details>
+                        </dd>
+                    </template>
+                    <template v-else-if="game.Publish.FirstPublishedUtc"><dt>Maturity rating</dt><dd>questionnaire not answered yet</dd></template>
                     <template v-if="game.Publish.LaunchRequestedUtc"><dt>Launch requested</dt><dd>{{ fmtWhen(game.Publish.LaunchRequestedUtc) }}</dd></template>
                     <template v-if="game.Publish.LaunchApprovedUtc"><dt>Approved</dt><dd>{{ fmtWhen(game.Publish.LaunchApprovedUtc) }}</dd></template>
                     <template v-if="game.Publish.LastLaunchStep"><dt>Last step</dt><dd>{{ game.Publish.LastLaunchStep }}</dd></template>
@@ -91,6 +106,7 @@ const props = defineProps<{ game: BloxDossier; media: string[] }>();
 const now = useNow();
 
 const art = computed(() => props.media.filter(f => f.endsWith('.png')));
+const questionnaire = computed(() => props.game.Publish.Questionnaire ?? null);
 const hasTrailer = computed(() => props.media.includes('trailer.mp4'));
 const productsSubtitle = computed(() => {
     const passes = props.game.Products.filter(p => p.Kind === 'GamePass').length;
@@ -130,5 +146,9 @@ async function download(file: string) {
 .bx-table .mono { font-family: var(--ot-mono); }
 .bx-table .sub { display: block; font-size: 11px; color: var(--ot-muted); }
 .bad { color: var(--ot-negative); }
+.warn { color: var(--ot-warning); }
+.answers { margin-top: 4px; color: var(--ot-text-2); }
+.answers summary { cursor: pointer; font-size: 11.5px; color: var(--ot-muted); }
+.answers ul { margin: 4px 0 0; padding-left: 16px; font-size: 11.5px; line-height: 16px; }
 a { color: var(--ot-info); text-decoration: none; margin-left: 6px; }
 </style>

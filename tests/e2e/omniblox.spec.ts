@@ -360,6 +360,10 @@ test('live game: overview, world, store, numbers, brain, files and activity', as
     await expect(page.locator('.bx-table').getByText('Skip Stage', { exact: true })).toBeVisible();
     await expect(page.getByText('Compliance passed')).toBeVisible();
     await expect(page.locator('figure img').first()).toBeVisible();
+    // The fixture studio has no Roblox session, so the icon and questionnaire are still owed.
+    const publishing = page.locator('.ot-card').filter({ hasText: 'Publishing' });
+    await expect(publishing).toContainText('not uploaded yet');
+    await expect(publishing).toContainText('questionnaire not answered yet');
     await page.waitForTimeout(400);
     await page.screenshot({ path: `${SHOTS}/game-store.png`, fullPage: true });
 
@@ -528,6 +532,28 @@ test('a simulator\'s world shows the economy bot\'s timeline and any wall', asyn
     const economy = page.locator('.ot-card').filter({ hasText: 'Economy check' });
     await expect(economy.locator('pre.timeline')).toContainText('unlock Pine Forest (55)');
     await expect(economy.locator('.findings li.error')).toContainText('out of reach within six hours');
+});
+
+test('a live game shows the icon and the rating the studio published, with its answers', async ({ page }) => {
+    await mockApi(page, {
+        patchGame: (id, detail) => {
+            if (id !== meta.Live || !detail.Game) return;
+            detail.Game.Publish.IconUploadedUtc = meta.NowUtc;
+            detail.Game.Publish.Questionnaire = {
+                Utc: meta.NowUtc, QuestionnaireIds: ['main-1', 'add-1'], Published: true, StoppedReason: null, AgeRating: 'Minimal', MinimumAge: 0,
+                Answers: ['Does your experience contain violence? → No (because Violence: none)', 'How can players communicate? → Only Roblox\'s chat (because only Roblox\'s standard text chat)'],
+            };
+        },
+    });
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.goto(`/schemery/omniblox/game/${meta.Live}?tab=store`);
+    const publishing = page.locator('.ot-card').filter({ hasText: 'Publishing' });
+    await expect(publishing).toContainText('Maturity rating', BOOT);
+    await expect(publishing).toContainText('Minimal · answered');
+    await expect(publishing).toContainText('uploaded');
+    await publishing.getByText('2 answers').click();
+    await expect(publishing).toContainText('Does your experience contain violence? → No (because Violence: none)');
+    await page.screenshot({ path: `${SHOTS}/game-store-rated.png`, fullPage: true });
 });
 
 test('a game the watchdog paused waits for the owner, and resumes', async ({ page }) => {

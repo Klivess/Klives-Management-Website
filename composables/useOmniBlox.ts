@@ -9,7 +9,21 @@ import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 
 export type BloxStage = 'Research' | 'Build' | 'Test' | 'Launch' | 'Live' | 'Sunset' | 'Abandoned';
 export type BloxLevel = 'Info' | 'Success' | 'Warning' | 'Error';
-export type BloxTaskKind = 'ApiKey' | 'Creator' | 'ExperienceSlot' | 'LaunchApproval' | 'UploadIcon' | 'Questionnaire' | 'Escalation' | 'Other' | 'BuildSignoff';
+export type BloxTaskKind = 'ApiKey' | 'Creator' | 'ExperienceSlot' | 'LaunchApproval' | 'UploadIcon' | 'Questionnaire' | 'Escalation' | 'Other' | 'BuildSignoff' | 'RobloxSession';
+
+/** What the studio answered in Roblox's Maturity & Compliance questionnaire, and the rating it produced. */
+export interface BloxQuestionnaire {
+    Utc: string;
+    QuestionnaireIds: string[];
+    /** The rating is live on Roblox. */
+    Published: boolean;
+    /** Why the studio left it to the owner instead of publishing. */
+    StoppedReason: string | null;
+    AgeRating: string | null;
+    MinimumAge: number | null;
+    /** "Question → answer (because …)". */
+    Answers: string[];
+}
 export type BloxTaskStatus = 'Open' | 'Done' | 'Dismissed';
 export type BloxProductKind = 'GamePass' | 'DeveloperProduct';
 
@@ -458,6 +472,14 @@ export interface BloxDossier {
         EngineTestedRevision: number | null;
         LastLaunchStep: string | null;
         LastLaunchError: string | null;
+        /** The icon the studio put on Roblox through the owner's session (by content hash). */
+        IconUploadedHash?: string | null;
+        IconUploadedUtc?: string | null;
+        /** Store thumbnails still owed through the session (the homepage-thumbnail API refused them). */
+        StoreThumbnailsPending?: boolean;
+        StoreThumbnailsUploaded?: number;
+        /** The newest answering of Roblox's maturity questionnaire. */
+        Questionnaire?: BloxQuestionnaire | null;
     };
     Stats: {
         LastSyncUtc: string | null;
@@ -797,6 +819,7 @@ export const BLOX_TASK_LABEL: Record<BloxTaskKind, string> = {
     Escalation: 'Escalation',
     Other: 'Task',
     BuildSignoff: 'Build sign-off',
+    RobloxSession: 'Roblox sign-in',
 };
 
 /** The owner gates are approved from the game (games/approve, games/reject), never marked "done". */

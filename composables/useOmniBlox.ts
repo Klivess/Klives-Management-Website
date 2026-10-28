@@ -23,6 +23,58 @@ export interface BloxQuestionnaire {
     MinimumAge: number | null;
     /** "Question → answer (because …)". */
     Answers: string[];
+    /** Answered by the owner in the Creator Dashboard (the rating appeared without the studio answering). */
+    ByOwner?: boolean;
+}
+
+/** GET /omniblox/roblox (and every connect action's answer): the owner's Roblox account (RobloxConnection.cs). Never carries the session itself. */
+export interface BloxRobloxView {
+    Connected: boolean;
+    Account: { UserId: number; Name: string; Method: 'quick-login' | 'pasted' | string; ConnectedUtc: string; VerifiedUtc: string | null } | null;
+    CreatorUserId: number | null;
+    CreatorGroupId: number | null;
+    /** A Quick Log In code waiting to be entered and confirmed on a signed-in device. */
+    Pending: { Code: string; ExpiresUtc: string; StartedUtc: string; State: 'Created' | 'UserLinked' | 'Validated' | string; AccountName: string | null; ConfirmUrl: string } | null;
+    LastError: string | null;
+    /** Owner tasks that wait for the account (icon, questionnaire, sign-in, experiences). */
+    Waiting: string[];
+    /** Whether an API key is set, and what Roblox said about one set from the dashboard (never the key). */
+    ApiKey?: { Set: boolean; Info: { Name: string; OwnerUserId: number; Scopes: string[]; ExpiresUtc: string | null; CheckedUtc: string } | null; MatchesAccount: boolean };
+    /** Games still published on the account the studio switched away from. */
+    OldAccountGames?: { GameId: string; Title: string; Stage: BloxStage; UniverseId: number }[];
+}
+
+/** POST /omniblox/games/action: what the owner can do to a game's place on Roblox (GameActions.cs). */
+export type BloxGameAction = 'sync' | 'private' | 'public' | 'takedown' | 'move';
+
+/** An action the owner started on a game, step by step. */
+export interface BloxOwnerAction {
+    Kind: BloxGameAction | 'delegate' | string;
+    Title: string;
+    StartedUtc: string;
+    FinishedUtc: string | null;
+    Running: boolean;
+    Ok: boolean | null;
+    Steps: string[];
+    Message: string | null;
+}
+
+/** Owner tasks the studio can take over ("Do it yourself"): it does them, or hands them to the game's agent. */
+export const BLOX_DELEGATABLE: ReadonlySet<BloxTaskKind> = new Set<BloxTaskKind>(['UploadIcon', 'Questionnaire', 'ExperienceSlot', 'Escalation', 'Other']);
+
+/** Whether players can join a public game, as Roblox tells a signed-out visitor (PlayerReach.cs). */
+export interface BloxReach {
+    /** true: anyone with an account can join; false: Roblox shuts everyone but the creator out; null: unknown. */
+    Playable: boolean | null;
+    /** Roblox's playability status (GuestProhibited for a joinable game seen signed out, ContextualPlayabilityUnrated…). */
+    Status: string | null;
+    /** unrated, minimal, mild, moderate or restricted. */
+    Maturity: string | null;
+    MaturityLabel: string | null;
+    CheckedUtc: string;
+    SinceUtc: string | null;
+    /** Why the last check could not reach Roblox (the status is then the one before). */
+    Error: string | null;
 }
 export type BloxTaskStatus = 'Open' | 'Done' | 'Dismissed';
 export type BloxProductKind = 'GamePass' | 'DeveloperProduct';
@@ -77,6 +129,8 @@ export interface BloxGameSummary {
     MilestonesDone: number;
     MilestonesTotal: number;
     Usage: BloxUsage;
+    /** Whether players can join (public games, checked every 30 min); Why says why not. Null until first checked. */
+    Reach: (BloxReach & { Why: string | null }) | null;
     HasIcon: boolean;
     Revenue14d: number;
     Dau7d: number;
@@ -301,6 +355,10 @@ export interface BloxDailyMetrics {
     D1Retention: number | null;
     D7Retention: number | null;
     PeakConcurrent: number | null;
+    /** People Roblox showed the game's tile to, and people who clicked it. */
+    Impressions?: number | null;
+    Clicks?: number | null;
+    /** Clicks ÷ impressions (a fraction). */
     ClickThrough: number | null;
 }
 export interface BloxCycle {
@@ -480,7 +538,13 @@ export interface BloxDossier {
         StoreThumbnailsUploaded?: number;
         /** The newest answering of Roblox's maturity questionnaire. */
         Questionnaire?: BloxQuestionnaire | null;
+        /** Whether players can join, as Roblox reports it. */
+        Reach?: BloxReach | null;
+        /** Its experience is on the Roblox account the studio switched away from (move it to put it on the new one). */
+        OnOldAccount?: boolean;
     };
+    /** The newest action the owner started on the game (update on Roblox, take down, move…). */
+    OwnerAction?: BloxOwnerAction | null;
     Stats: {
         LastSyncUtc: string | null;
         LastSyncError: string | null;

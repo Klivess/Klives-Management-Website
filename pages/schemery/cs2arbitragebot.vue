@@ -912,6 +912,17 @@ const attention = computed(() => {
   if (e?.State === 'running' && isRealDate(e.LastFeedPollUtc) && now.value - new Date(e.LastFeedPollUtc).getTime() > 5 * 60_000) {
     items.push({ key: 'feed', title: 'Feed stalled', detail: `Last poll ${fmtAgo(e.LastFeedPollUtc, now.value)}`, tone: 'danger' });
   }
+  // The trade monitor follows purchases in flight and live relists; it stopped silently for two days once.
+  const following = purchases.value.some((x) => x.CurrentStrategicStage < 3 || x.CurrentStrategicStage === 9);
+  const tradesPolled = s?.trades?.lastPollUtc;
+  if (following && (s?.trades?.pollRunningSinceUtc || (isRealDate(tradesPolled) && now.value - new Date(tradesPolled).getTime() > 10 * 60_000))) {
+    items.push({
+      key: 'trades',
+      title: 'Trade tracking stalled',
+      detail: `Last CSFloat trade poll ${isRealDate(tradesPolled) ? fmtAgo(tradesPolled, now.value) : 'never'} — sales, deliveries and relists are not being followed`,
+      tone: 'danger',
+    });
+  }
   if (s && !s.automationEnabled) items.push({ key: 'automation', title: 'Automation off', detail: 'This instance is not the server', tone: 'info' });
   if (s?.settings && !s.settings.ScanningEnabled) items.push({ key: 'scanning', title: 'Scanning is off', detail: 'Enable "Scan the market" in settings', tone: 'warning' });
   if (s?.settings && !s.settings.PurchasingEnabled) items.push({ key: 'buying', title: 'Auto-buy is off', detail: 'Qualifying deals are alerted, not bought', tone: 'info' });

@@ -28,6 +28,8 @@ interface MockOptions {
     newGameConflict?: boolean;
     /** Edits a game's detail before it is served (e.g. a paused watchdog, a cycle still running). */
     patchGame?: (id: string, detail: any) => void;
+    /** Edits the overview (its games and attention list) once, before anything is served. */
+    patchOverview?: (overview: any) => void;
 }
 
 async function mockApi(page: Page, options: MockOptions = {}) {
@@ -35,8 +37,14 @@ async function mockApi(page: Page, options: MockOptions = {}) {
     const state = {
         overview: load('overview'),
         mutations: [] as { path: string; body: any }[],
+        /** The owner's Roblox account (RobloxConnection.View); Quick Log In advances one step per poll. */
+        roblox: { Connected: false, Account: null, CreatorUserId: 42, CreatorGroupId: null, Pending: null, LastError: null, Waiting: [] } as any,
+        /** The owner action the game page shows once one was started (GameActions: it finishes at once here). */
+        ownerAction: null as any,
     };
+    const robloxAccount = (method: string) => ({ UserId: 42, Name: 'StudioOwner', Method: method, ConnectedUtc: meta.NowUtc, VerifiedUtc: meta.NowUtc });
     state.overview.OwnerTasks.unshift(...(options.extraTasks ?? []));
+    options.patchOverview?.(state.overview);
 
     await page.clock.setFixedTime(NOW);
     await page.routeWebSocket('wss://klive.dev/**', () => {});
@@ -73,6 +81,7 @@ async function mockApi(page: Page, options: MockOptions = {}) {
                 if (!existsSync(`${FIXTURES}${name}.json`)) return json({ error: 'No such game.' }, 404);
                 const detail = load(name);
                 options.patchGame?.(p.get('id')!, detail);
+                if (state.ownerAction && detail.Game) detail.Game.OwnerAction = state.ownerAction;
                 return json(detail);
             }
             case '/omniblox/game/media': return file(`media/${p.get('id')}/${p.get('file')}`, 'image/png');
@@ -127,6 +136,33 @@ async function mockApi(page: Page, options: MockOptions = {}) {
                 state.overview.OwnerTasks = state.overview.OwnerTasks.filter((t: any) => t.TaskId !== body?.taskId);
                 return json({ ok: true });
             }
+            case '/omniblox/roblox': return json(state.roblox);
+            case '/omniblox/roblox/quicklogin':
+                state.roblox = { ...state.roblox, LastError: null, Pending: { Code: 'QK7Z2P', ExpiresUtc: new Date(NOW + 300_000).toISOString(), StartedUtc: meta.NowUtc, State: 'Created', AccountName: null, ConfirmUrl: 'https://www.roblox.com/crossdevicelogin/ConfirmCode' } };
+                return json(state.roblox);
+            case '/omniblox/roblox/quicklogin/poll': {
+                const pending = state.roblox.Pending;
+                if (pending?.State === 'Created') state.roblox = { ...state.roblox, Pending: { ...pending, State: 'UserLinked', AccountName: 'St*********' } };
+                else if (pending) state.roblox = { ...state.roblox, Pending: null, Connected: true, Account: robloxAccount('quick-login'), Waiting: [] };
+                return json(state.roblox);
+            }
+            case '/omniblox/roblox/quicklogin/cancel': state.roblox = { ...state.roblox, Pending: null }; return json(state.roblox);
+            case '/omniblox/roblox/cookie':
+                state.roblox = body?.cookie === 'good-session'
+                    ? { ...state.roblox, Connected: true, Account: robloxAccount('pasted'), LastError: null }
+                    : { ...state.roblox, LastError: 'Roblox does not accept this session: it was signed out, has expired, or was not copied whole.' };
+                return json(state.roblox);
+            case '/omniblox/roblox/verify': return json(state.roblox);
+            case '/omniblox/roblox/apikey':
+                state.roblox = { ...state.roblox, LastError: null, ApiKey: { Set: true, Info: { Name: 'OmniBlox studio', OwnerUserId: 42, Scopes: ['universe-places: write'], ExpiresUtc: null, CheckedUtc: meta.NowUtc }, MatchesAccount: true } };
+                return json(state.roblox);
+            case '/omniblox/games/action': {
+                const started = `${body?.action} on ${body?.gameId}`;
+                state.ownerAction = { Kind: body?.action, Title: started, StartedUtc: meta.NowUtc, FinishedUtc: meta.NowUtc, Running: false, Ok: true, Steps: ['Products: 2 updated on Roblox.', 'Published the current build: version 12'], Message: 'Everything is on Roblox again.' };
+                return json({ ok: true, started });
+            }
+            case '/omniblox/tasks/delegate': return json({ ok: true, message: 'Uploading it with your Roblox account now.' });
+            case '/omniblox/roblox/disconnect': state.roblox = { ...state.roblox, Connected: false, Account: null }; return json(state.roblox);
             case '/omniblox/studio/toggle': {
                 if (typeof body?.enabled === 'boolean') state.overview.Enabled = body.enabled;
                 if (typeof body?.harvester === 'boolean') state.overview.HarvesterEnabled = body.harvester;
@@ -554,6 +590,159 @@ test('a live game shows the icon and the rating the studio published, with its a
     await publishing.getByText('2 answers').click();
     await expect(publishing).toContainText('Does your experience contain violence? → No (because Violence: none)');
     await page.screenshot({ path: `${SHOTS}/game-store-rated.png`, fullPage: true });
+});
+
+test('a public game nobody can play says so on its card, in the studio\'s attention list and on its page', async ({ page }) => {
+    // What Roblox answered for the first launched game (Oct 2026): public, but unrated, so closed to every player.
+    const closed = {
+        Playable: false, Status: 'ContextualPlayabilityUnrated', Maturity: 'unrated', MaturityLabel: 'Unknown', CheckedUtc: meta.NowUtc, SinceUtc: '2026-10-02T09:00:00Z', Error: null,
+        Why: 'it has no maturity rating, and Roblox lets nobody but the creator play an unrated experience (answer its Maturity & Compliance questionnaire)',
+    };
+    await mockApi(page, {
+        patchOverview: o => {
+            const live = o.Games.find((g: any) => g.GameId === meta.Live);
+            live.Reach = closed;
+            o.Attention.unshift({ Level: 'error', Title: `Nobody can play "${live.Title}"`, Detail: `Roblox reports ${closed.Status}: ${closed.Why}.`, Action: null });
+        },
+        patchGame: (id, detail) => { if (id === meta.Live && detail.Summary) detail.Summary.Reach = closed; },
+    });
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.goto('/schemery/omniblox');
+    const card = page.locator('.bx-game').filter({ has: page.locator(`a[href="/schemery/omniblox/game/${meta.Live}"]`) });
+    await expect(card.locator('.ot-chip', { hasText: 'Nobody can play' })).toBeVisible(BOOT);
+    await expect(card).toContainText('Public, but nobody can play it: it has no maturity rating');
+    await expect(page.getByText(/^Nobody can play "/).first()).toBeVisible();
+    await page.screenshot({ path: `${SHOTS}/studio-unplayable.png`, fullPage: true });
+
+    await page.goto(`/schemery/omniblox/game/${meta.Live}`);
+    const banner = page.locator('.ot-banner.bad').filter({ hasText: 'Nobody can play this game' });
+    await expect(banner).toBeVisible(BOOT);
+    await expect(banner).toContainText('ContextualPlayabilityUnrated');
+    await expect(banner).toContainText('Maturity & Compliance questionnaire');
+    await page.screenshot({ path: `${SHOTS}/game-unplayable.png`, fullPage: true });
+});
+
+test('the owner connects their Roblox account with Quick Log In, or by pasting a cookie', async ({ page }) => {
+    const state = await mockApi(page, {
+        patchOverview: o => o.Attention.unshift({ Level: 'warning', Title: 'OmniBlox cannot create experiences', Detail: 'It creates the experiences its games publish to with your Roblox account, and none is connected.', Action: 'roblox' }),
+    });
+    state.roblox.Waiting = ['Answer the maturity questionnaire: nobody can play "Lava Forest Obby" until you do', 'Upload the icon for "Lava Forest Obby"'];
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.goto('/schemery/omniblox');
+    const card = page.locator('.ot-card').filter({ has: page.getByRole('heading', { name: 'Roblox account' }) });
+    await expect(card.getByRole('button', { name: 'Connect with Quick Log In' })).toBeVisible(BOOT);
+    await expect(card).toContainText('Without the questionnaire Roblox lets nobody play a public game');
+    await expect(card).toContainText('nobody can play "Lava Forest Obby"');
+
+    // The overview's attention item starts it: a code to type into Roblox's Quick Log In.
+    await page.getByRole('button', { name: 'Connect Roblox' }).click();
+    await expect(card.getByLabel('Quick Log In code')).toHaveText('QK7Z2P');
+    await expect(card.getByRole('link', { name: 'Quick Log In ↗' })).toHaveAttribute('href', 'https://www.roblox.com/crossdevicelogin/ConfirmCode');
+    await expect(card).toContainText('same network as the server');
+    await page.screenshot({ path: `${SHOTS}/roblox-code.png`, fullPage: true });
+
+    // Entered on the signed-in device, then confirmed: the card follows along by itself.
+    await expect(card).toContainText('St********* entered the code: press Confirm Login', { timeout: 10_000 });
+    await expect(card.locator('.ot-chip', { hasText: 'Connected' })).toBeVisible({ timeout: 10_000 });
+    await expect(card).toContainText('StudioOwner');
+    await expect(card).toContainText('signed in with Quick Log In');
+    await page.screenshot({ path: `${SHOTS}/roblox-connected.png`, fullPage: true });
+
+    // Disconnecting asks first.
+    await card.getByRole('button', { name: 'Disconnect' }).click();
+    await page.locator('.swal2-confirm').click();
+    await expect(card.getByRole('button', { name: 'Connect with Quick Log In' })).toBeVisible();
+
+    // The fallback: a pasted cookie, checked by the server, never left in the page.
+    await card.getByText('Or paste a session cookie').click();
+    const input = card.getByLabel('Roblox session cookie');
+    await input.fill('stale-session');
+    await card.getByRole('button', { name: 'Check and save' }).click();
+    await expect(card.getByRole('alert')).toContainText('Roblox does not accept this session');
+    await expect(input).toHaveValue('');
+    await input.fill('good-session');
+    await card.getByRole('button', { name: 'Check and save' }).click();
+    await expect(card).toContainText('pasted cookie');
+    expect(state.mutations.filter(m => m.path === '/omniblox/roblox/cookie').map(m => m.body)).toEqual([{ cookie: 'stale-session' }, { cookie: 'good-session' }]);
+});
+
+test('the owner manages a live game on Roblox: update, take down and archive, move to their own experience', async ({ page }) => {
+    const state = await mockApi(page);
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.goto(`/schemery/omniblox/game/${meta.Live}`);
+    const card = page.locator('.ot-card').filter({ has: page.getByRole('heading', { name: 'Manage on Roblox' }) });
+    await expect(card).toContainText('Experience 1001', BOOT);
+
+    await card.getByRole('button', { name: 'Update on Roblox' }).click();
+    await expect(card.locator('.ot-chip', { hasText: 'Done' })).toBeVisible();
+    await expect(card).toContainText('Everything is on Roblox again.');
+    await expect(card).toContainText('Published the current build: version 12');
+    await page.screenshot({ path: `${SHOTS}/game-manage.png`, fullPage: true });
+
+    await card.getByRole('button', { name: 'Take down…' }).click();
+    await card.getByLabel(/Also archive the experience/).check();
+    await card.getByRole('button', { name: 'Take it down and archive it' }).click();
+    await page.locator('.swal2-confirm').click();
+
+    await card.getByRole('button', { name: 'Move…' }).click();
+    await card.getByLabel('An experience of mine:').check();
+    await card.getByLabel('Experience as universeId:placeId').fill('5005:6006');
+    await card.getByRole('button', { name: 'Move it' }).click();
+    await page.locator('.swal2-confirm').click();
+
+    await expect.poll(() => state.mutations.filter(m => m.path === '/omniblox/games/action').map(m => m.body)).toEqual([
+        { gameId: meta.Live, action: 'sync' },
+        { gameId: meta.Live, action: 'takedown', archive: true },
+        { gameId: meta.Live, action: 'move', target: '5005:6006' },
+    ]);
+});
+
+test('"Do it yourself" hands an owner task back to the studio', async ({ page }) => {
+    const state = await mockApi(page, {
+        extraTasks: [{ TaskId: 't_icon', Kind: 'UploadIcon', GameId: meta.Live, Title: 'Upload the icon for "Lava Forest Obby"', Detail: 'Roblox has no API key for an experience\'s icon.', Status: 'Open', CreatedUtc: meta.NowUtc, ResolvedUtc: null, Files: ['icon.png'], DedupeKey: `icon:${meta.Live}` }],
+    });
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.goto('/schemery/omniblox');
+    const task = page.locator('.bx-tasks li').filter({ hasText: 'Upload the icon for "Lava Forest Obby"' }).first();
+    await task.getByRole('button', { name: 'Do it yourself' }).click(BOOT);
+    await expect(page.locator('.swal2-popup')).toContainText('Uploading it with your Roblox account now.');
+    expect(state.mutations.find(m => m.path === '/omniblox/tasks/delegate')?.body).toEqual({ taskId: 't_icon' });
+    // The decisions stay the owner's: no "Do it yourself" on an approval.
+    await page.locator('.swal2-confirm').click();
+    await expect(page.locator('.bx-tasks li').filter({ hasText: 'Approve' }).getByRole('button', { name: 'Do it yourself' })).toHaveCount(0);
+});
+
+test('the Roblox account card sets the API key, switches accounts and moves games off the old one', async ({ page }) => {
+    const state = await mockApi(page);
+    state.roblox = {
+        ...state.roblox, Connected: true,
+        Account: { UserId: 77, Name: 'NewStudio', Method: 'quick-login', ConnectedUtc: meta.NowUtc, VerifiedUtc: meta.NowUtc },
+        ApiKey: { Set: true, Info: { Name: 'Old key', OwnerUserId: 42, Scopes: [], ExpiresUtc: null, CheckedUtc: meta.NowUtc }, MatchesAccount: false },
+        OldAccountGames: [{ GameId: meta.Live, Title: 'Lava Forest Obby', Stage: 'Live', UniverseId: 1001 }],
+    };
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.goto('/schemery/omniblox');
+    const card = page.locator('.ot-card').filter({ has: page.getByRole('heading', { name: 'Roblox account' }) });
+    await expect(card).toContainText('NewStudio', BOOT);
+    await expect(card.locator('.ot-chip', { hasText: "another account's" })).toBeVisible();
+    await expect(card).toContainText('Still on the old account');
+    await page.screenshot({ path: `${SHOTS}/roblox-switch.png`, fullPage: true });
+
+    await card.getByRole('button', { name: 'Change' }).click();
+    await card.getByLabel('Roblox Open Cloud API key').fill('new-key-value');
+    await card.getByRole('button', { name: 'Check and save' }).click();
+    await expect(card).toContainText('"OmniBlox studio" · user 42');
+    await expect(card.getByLabel('Roblox Open Cloud API key')).toHaveCount(0);
+
+    await card.getByRole('button', { name: 'Move to this account' }).click();
+    await page.locator('.swal2-confirm').click();
+    await expect.poll(() => state.mutations.find(m => m.path === '/omniblox/games/action')?.body).toEqual({ gameId: meta.Live, action: 'move', target: 'new' });
+    await page.locator('.swal2-confirm').click(); // the "Moving" notice
+
+    await card.getByRole('button', { name: 'Switch to another account' }).click();
+    await page.locator('.swal2-confirm').click();
+    await expect.poll(() => state.mutations.find(m => m.path === '/omniblox/roblox/quicklogin')?.body).toEqual({ switchAccount: true });
+    expect(state.mutations.find(m => m.path === '/omniblox/roblox/apikey')?.body).toEqual({ apiKey: 'new-key-value' });
 });
 
 test('a game the watchdog paused waits for the owner, and resumes', async ({ page }) => {

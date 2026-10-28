@@ -58,6 +58,14 @@
                 <span class="glyph" aria-hidden="true">!</span>
                 <div><strong>Waiting</strong> {{ game.WaitingReason }}</div>
             </div>
+            <div v-if="closedReach" class="ot-banner bad" role="alert">
+                <span class="glyph" aria-hidden="true">⛔</span>
+                <div>
+                    <strong>Nobody can play this game</strong>
+                    Roblox reports {{ closedReach.Status }}{{ closedReach.SinceUtc ? ` since ${fmtDate(closedReach.SinceUtc)}` : '' }}: {{ closedReach.Why ?? 'it is closed to players' }}.
+                    It is public, but no player can open it until that changes. Checked {{ fmtRelative(closedReach.CheckedUtc, now) }}.
+                </div>
+            </div>
             <div v-if="game?.Publish.LastLaunchError && game.Stage === 'Launch'" class="ot-banner" role="status">
                 <span class="glyph" aria-hidden="true">⚠</span>
                 <div><strong>Last launch step failed ({{ game.Publish.LastLaunchStep }})</strong> {{ game.Publish.LastLaunchError }}</div>
@@ -69,6 +77,9 @@
             <OmniTraderCard v-if="openTasks.length" class="bx-section" attention title="Needs you">
                 <OmniBloxTaskList :tasks="openTasks" :show-game="false" :games="overview?.Games ?? []" @changed="load" />
             </OmniTraderCard>
+
+            <!-- The owner's actions on the game's place on Roblox (update, visibility, take down, move). -->
+            <OmniBloxGameManage v-if="game && can('omniblox.studio.manage') && (game.Slot || ['Launch', 'Live', 'Sunset'].includes(game.Stage))" class="bx-section" :game="game" @changed="load" />
 
             <section class="ot-card bx-stage bx-section" :aria-busy="!detail">
                 <OmniBloxStageTrack v-if="game" :stage="game.Stage" :reached="reached" />
@@ -243,6 +254,8 @@ const notFound = ref(false);
 const game = computed(() => detail.value?.Game ?? null);
 const summary = computed(() => detail.value?.Summary ?? overview.value?.Games.find(g => g.GameId === gameId.value) ?? null);
 const title = computed(() => summary.value?.Title ?? 'Game');
+/** A public game Roblox lets nobody into (unrated, private…): the first launch sat like that for four days unnoticed. */
+const closedReach = computed(() => summary.value?.IsPublic && summary.value.Reach?.Playable === false ? summary.value.Reach : null);
 
 useHead(() => ({ title: `${title.value} · OmniBlox` }));
 

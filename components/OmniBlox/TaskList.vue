@@ -24,6 +24,9 @@
                     <NuxtLink v-if="task.GameId" class="ot-btn ghost sm" :to="`/schemery/omniblox/game/${task.GameId}?tab=store`">Review first</NuxtLink>
                 </template>
                 <template v-else-if="can('omniblox.studio.act')">
+                    <button v-if="BLOX_DELEGATABLE.has(task.Kind)" class="ot-btn sm" :disabled="busy === task.TaskId"
+                            title="The studio does it itself (with your connected Roblox account where Roblox needs one), or hands it to the game's agent"
+                            @click="delegate(task)">Do it yourself</button>
                     <button class="ot-btn primary sm" :disabled="busy === task.TaskId" @click="resolve(task, 'done')">Done</button>
                     <button class="ot-btn ghost sm" :disabled="busy === task.TaskId" @click="resolve(task, 'dismiss')">Dismiss</button>
                 </template>
@@ -36,7 +39,7 @@
 import { ref } from 'vue';
 import { useAccess } from '~/composables/useAccess';
 import { fmtRelative, notify, useNow } from '~/composables/useOmniTumblr';
-import { BLOX_TASK_LABEL, bloxDownload, bloxIsGateTask, bloxMediaPath, bloxPost, type BloxGameSummary, type BloxTask } from '~/composables/useOmniBlox';
+import { BLOX_DELEGATABLE, BLOX_TASK_LABEL, bloxDownload, bloxIsGateTask, bloxMediaPath, bloxPost, type BloxGameSummary, type BloxTask } from '~/composables/useOmniBlox';
 
 const props = withDefaults(defineProps<{ tasks: BloxTask[]; games?: BloxGameSummary[]; showGame?: boolean }>(), { games: () => [], showGame: true });
 const emit = defineEmits<{ changed: [] }>();
@@ -60,6 +63,19 @@ async function resolve(task: BloxTask, action: 'done' | 'dismiss') {
     try {
         const result = await bloxPost('/omniblox/tasks/resolve', { taskId: task.TaskId, action });
         if (!result.ok) notify('Could not update the task', result.error ?? '', 'error');
+        emit('changed');
+    } finally {
+        busy.value = null;
+    }
+}
+
+/** "Do it yourself": the studio takes the task over, or says why only the owner can do it. */
+async function delegate(task: BloxTask) {
+    busy.value = task.TaskId;
+    try {
+        const result = await bloxPost<{ ok: boolean; message: string }>('/omniblox/tasks/delegate', { taskId: task.TaskId });
+        if (!result.ok) notify('OmniBlox cannot take this one', result.error ?? '', 'warning');
+        else notify('OmniBlox is on it', result.data?.message ?? '', 'info');
         emit('changed');
     } finally {
         busy.value = null;

@@ -40,7 +40,8 @@
                 {{ item.Detail }}
             </div>
             <div v-if="item.Action && can('omniblox.studio.manage')" class="actions">
-                <button class="ot-btn sm" :disabled="switching" @click="toggle(item.Action === 'studio' ? 'enabled' : 'harvester', true)">Switch on</button>
+                <button v-if="item.Action === 'roblox'" class="ot-btn primary sm" @click="robloxCard?.start()">Connect Roblox</button>
+                <button v-else class="ot-btn sm" :disabled="switching" @click="toggle(item.Action === 'studio' ? 'enabled' : 'harvester', true)">Switch on</button>
             </div>
         </div>
 
@@ -48,6 +49,9 @@
                         :subtitle="`${overview.OwnerTasks.length} thing${overview.OwnerTasks.length === 1 ? '' : 's'} only you can do`">
             <OmniBloxTaskList :tasks="overview.OwnerTasks" :games="overview.Games" @changed="refresh" />
         </OmniTraderCard>
+
+        <!-- The Roblox account the studio acts as for what no API key can do (owner only: it acts as them on Roblox). -->
+        <OmniBloxRobloxAccount v-if="overview && can('omniblox.studio.manage')" ref="robloxCard" class="bx-section" @changed="refresh" />
 
         <div class="ot-kpis bx-kpis6">
             <OmniTraderKpi label="Live games" :value="overview ? String(overview.StageCounts.Live ?? 0) : '—'" :loading="!overview"
@@ -153,6 +157,7 @@ useHead({ title: 'OmniBlox · Klives Management' });
 const { can } = useAccess();
 const { overview, refresh } = useBloxOverview();
 const now = useNow();
+const robloxCard = ref<{ start: () => Promise<void> } | null>(null);
 
 const money = computed(() => overview.value?.Money);
 const usage = computed(() => overview.value?.Usage);

@@ -190,6 +190,33 @@
                     </button>
                 </nav>
 
+                <div v-if="review" class="rail-section">
+                    <h3>Needs Review</h3>
+                    <div class="review-head" title="Classified as an attacker with high confidence, seen this week, and still being answered">
+                        <span>Attackers still answered</span><strong :class="review.hostileAnsweredCount ? 'bad-text' : 'good-text'">{{ fmtNum(review.hostileAnsweredCount) }}</strong>
+                    </div>
+                    <div v-for="item in review.hostileAnswered.slice(0, 6)" :key="'hostile-' + item.ip" class="review-row">
+                        <button class="threat-row" @click="selectIp(item.ip)">
+                            <span class="threat-ip">{{ item.ip }}</span>
+                            <span class="threat-meta">{{ classLabel(item.classification) }} / {{ fmtNum(item.requests) }} req / {{ item.status }}</span>
+                        </button>
+                        <button class="micro danger" :disabled="loading.action" @click="blockIp(item.ip)">Block</button>
+                    </div>
+                    <div class="review-head" title="Classified as a person or a verified crawler, but on Watch or turned away">
+                        <span>People on Watch / Blocked</span><strong :class="review.benignPenalisedCount ? 'warn-text' : 'good-text'">{{ fmtNum(review.benignPenalisedCount) }}</strong>
+                    </div>
+                    <div v-for="item in review.benignPenalised.slice(0, 6)" :key="'benign-' + item.ip" class="review-row">
+                        <button class="threat-row" :title="item.reason || ''" @click="selectIp(item.ip)">
+                            <span class="threat-ip">{{ item.ip }}</span>
+                            <span class="threat-meta">{{ classLabel(item.classification) }} / {{ item.status }} / {{ Math.round(item.score || 0) }}</span>
+                        </button>
+                        <button class="micro release" :disabled="loading.action" @click="untrapIp(item.ip)">Release</button>
+                    </div>
+                    <div v-if="defenceHealth" class="review-health" :class="{ 'bad-text': defenceHealthBad }">
+                        Overview {{ fmtNum(defenceHealth.overviewBuildMs) }} ms / audit queue {{ fmtNum(defenceHealth.auditQueue) }}<template v-if="defenceHealth.readPoolTimeouts"> / {{ fmtNum(defenceHealth.readPoolTimeouts) }} busy reads</template><template v-if="defenceHealth.auditRowsDropped"> / {{ fmtNum(defenceHealth.auditRowsDropped) }} rows dropped</template>
+                    </div>
+                </div>
+
                 <div class="rail-section">
                     <h3>Request Origin</h3>
                     <div v-for="origin in originBreakdown" :key="origin.origin" class="origin-row">
@@ -621,6 +648,7 @@ const COUNTRY_ALIASES = Object.freeze({
 });
 
 const HOUR = 3600;
+const MAP_REFRESH_MS = 30_000;
 
 export default {
     name: 'omnidefence',
@@ -638,7 +666,7 @@ export default {
                 { id: 'honeypot', label: 'Honeypots', code: 'HP' },
             ],
             overview: null,
-            requests: [], ips: [], mapIps: [], authEvents: [], profileActions: [], honeypotRoutes: [],
+            requests: [], ips: [], mapIps: [], mapLoadedAt: 0, authEvents: [], profileActions: [], honeypotRoutes: [],
             selectedIp: null, selectedIpNote: '', selectedIpRecent: [], selectedIpEvents: [], lastScan: null,
             mapFilter: 'all',
             mapColorBy: 'class',
@@ -679,6 +707,16 @@ export default {
         topAttackers() { return this.overview?.topAttackers || []; },
         topRoutes() { return this.overview?.topRoutes || []; },
         originBreakdown() { return this.overview?.originBreakdown || []; },
+        review() {
+            const r = this.overview?.review;
+            if (!r) return null;
+            return { ...r, hostileAnswered: r.hostileAnswered || [], benignPenalised: r.benignPenalised || [] };
+        },
+        defenceHealth() { return this.overview?.health || null; },
+        defenceHealthBad() {
+            const h = this.defenceHealth;
+            return !!h && (Number(h.overviewBuildMs) > 5000 || Number(h.auditRowsDropped) > 0 || Number(h.auditQueue) > 5000);
+        },
         mapSourceIps() { return this.mapIps.length ? this.mapIps : this.ips; },
         mapPoints() {
             return this.mapSourceIps.map((ipRecord, index) => {
@@ -1066,13 +1104,15 @@ export default {
         async loadOverview() { const data = await this.fetchJson('/omnidefence/overview', 'overview'); if (data) this.overview = data; },
         async loadRequests() { const data = await this.fetchJson('/omnidefence/requests' + this.buildQuery(this.filters.requests), 'requests'); if (data) this.requests = data.map(this.normalizeRequest); },
         async loadIps() { const data = await this.fetchJson('/omnidefence/ips' + this.buildQuery(this.filters.ips), 'ips'); if (data) this.ips = data.map(this.normalizeIp); },
-        async loadMapIps() { const data = await this.fetchJson('/omnidefence/ip-map', 'map'); if (data) this.mapIps = data.map(this.normalizeIp); },
+        async loadMapIps() { const data = await this.fetchJson('/omnidefence/ip-map', 'map'); if (data) { this.mapIps = data.map(this.normalizeIp); this.mapLoadedAt = Date.now(); } },
         async loadAuthEvents() { const data = await this.fetchJson('/omnidefence/auth-events' + this.buildQuery(this.filters.auth), 'auth'); if (data) this.authEvents = data.map(this.normalizeAuth); },
         async loadProfileActions() { const data = await this.fetchJson('/omnidefence/profile-actions' + this.buildQuery(this.filters.profile), 'profile'); if (data) this.profileActions = data.map(this.normalizeProfile); },
         async loadHoneypotRoutes() { const data = await this.fetchJson('/omnidefence/honeypot-routes', 'honeypot'); if (data) this.honeypotRoutes = data; },
         async refreshActive(manual = true) {
             if (this.isBusy && !manual) return;
-            const jobs = [this.loadOverview(), this.loadMapIps(), this.loadBlockedRegions()];
+            const jobs = [this.loadOverview(), this.loadBlockedRegions()];
+            // Every known IP (5k+ records, ~4 MB of JSON) moves slowly; the 5 s tick needn't refetch it.
+            if (manual || Date.now() - this.mapLoadedAt >= MAP_REFRESH_MS) jobs.push(this.loadMapIps());
             if (this.activeTab === 'activity') jobs.push(this.loadRequests());
             if (this.activeTab === 'ips') jobs.push(this.loadIps());
             if (this.activeTab === 'auth') jobs.push(this.loadAuthEvents());
@@ -2070,6 +2110,12 @@ export default {
 .origin-row, .route-row, .threat-row { display: flex; justify-content: space-between; gap: 8px; width: 100%; padding: 6px 0; color: #cfeee5; font-size: 12px; border: 0; border-bottom: 1px solid rgba(255,255,255,.05); background: transparent; text-align: left; }
 .threat-row { cursor: pointer; }
 .threat-ip { color: #f6fffe; } .threat-meta, .muted, .empty-rail { color: #78928b; font-size: 11px; }
+.review-head { display: flex; justify-content: space-between; gap: 8px; margin: 8px 0 2px; color: #a9c9c0; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+.review-row { display: flex; align-items: center; gap: 6px; }
+.review-row .threat-row { min-width: 0; flex: 1; flex-direction: column; gap: 1px; }
+.review-row .threat-ip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.review-health { margin-top: 10px; color: #78928b; font-size: 10px; line-height: 1.4; }
+.warn-text { color: #ffd98a; }
 .od-panel { min-width: 0; overflow: hidden; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid rgba(82,255,185,.14); background: linear-gradient(90deg, rgba(14,50,52,.7), rgba(9,12,15,.45)); }
 .panel-head h2 { margin: 0; font-size: 20px; color: #eafff9; }

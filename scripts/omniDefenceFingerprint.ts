@@ -197,10 +197,24 @@ async function fetchNonce(): Promise<boolean> {
     } catch { return false; }
 }
 
+// Puts unsent input back, so a refused or failed beacon does not lose it: the nonce expires
+// every 10-20 minutes and the retry used to report zero input for that interval.
+function restoreUnsent(sent: InputCounters, sentHeadings: number[]) {
+    counters.pointer += sent.pointer;
+    counters.keys += sent.keys;
+    counters.scroll += sent.scroll;
+    counters.touch += sent.touch;
+    counters.untrusted += sent.untrusted;
+    for (let i = 0; i < HEADING_BINS; i++) headings[i] += sentHeadings[i];
+    dirty = true;
+}
+
 async function send(final = false, retried = false) {
     if (!env) return;
     if (!nonce && !(await fetchNonce())) return;
-    const input = { ...counters, entropy: headingEntropy() };
+    const sent = counters;
+    const sentHeadings = headings;
+    const input = { ...sent, entropy: headingEntropy() };
     counters = { pointer: 0, keys: 0, scroll: 0, touch: 0, untrusted: 0 };
     headings = new Array<number>(HEADING_BINS).fill(0);
     dirty = false;
@@ -214,10 +228,12 @@ async function send(final = false, retried = false) {
         });
         if (r.status === 403 && !retried && !final) {
             nonce = null; // expired or IP changed: one fresh nonce, then give up quietly
+            restoreUnsent(sent, sentHeadings);
             await send(false, true);
         }
     } catch {
-        // Best-effort: a failed beacon must never affect the page.
+        // Best-effort: a failed beacon must never affect the page; the next interval resends.
+        if (!final) restoreUnsent(sent, sentHeadings);
     }
 }
 

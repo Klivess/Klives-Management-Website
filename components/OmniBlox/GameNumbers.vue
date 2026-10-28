@@ -11,7 +11,8 @@
                            :foot="lastD7 != null ? `day 7: ${bloxPct(lastD7)}` : 'day 7 shows after a week'" />
             <OmniTraderKpi label="Session length" :value="last?.AvgSessionMinutes != null ? `${last.AvgSessionMinutes.toFixed(1)} min` : '—'"
                            :foot="telemetry?.Sessions ? `median ${bloxSeconds(telemetry.MedianSessionSeconds)} in telemetry` : 'Roblox average'" />
-            <OmniTraderKpi label="Click-through" :value="bloxPct(last?.ClickThrough, 1)" foot="store impressions that became visits" />
+            <OmniTraderKpi label="Click-through" :value="bloxPct(last?.ClickThrough, 1)" :spark="spark('Impressions')"
+                           :foot="last?.Impressions != null ? `${fmtCount(last.Clicks ?? 0)} of ${fmtCount(last.Impressions)} shown the game clicked it` : 'people shown the game who clicked it'" />
             <OmniTraderKpi label="Rated Great" :value="ratings.total ? bloxPct(ratings.great / ratings.total) : '—'"
                            :foot="`${ratings.total} rating${ratings.total === 1 ? '' : 's'} in ${days} days`" />
         </div>
@@ -114,10 +115,11 @@ const now = useNow();
 const { overview } = useBloxOverview();
 const devEx = computed(() => overview.value?.Money.DevExRate ?? 0.0038);
 
-type Metric = 'DailyActiveUsers' | 'Visits' | 'RevenueRobux' | 'D1Retention';
+type Metric = 'DailyActiveUsers' | 'Visits' | 'Impressions' | 'RevenueRobux' | 'D1Retention';
 const MEASURES: { id: Metric; label: string }[] = [
     { id: 'DailyActiveUsers', label: 'Players' },
     { id: 'Visits', label: 'Visits' },
+    { id: 'Impressions', label: 'Shown' },
     { id: 'RevenueRobux', label: 'Robux' },
     { id: 'D1Retention', label: 'Retention' },
 ];

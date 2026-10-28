@@ -119,8 +119,8 @@ function cs2Fixtures(nowMs: number): ApiOverrides {
   };
 }
 
-async function openCs2Page(page: Page) {
-  await installDashboardApiMock(page, 'Klives', cs2Fixtures(Date.now()));
+async function openCs2Page(page: Page, fixtures: ApiOverrides = cs2Fixtures(Date.now())) {
+  await installDashboardApiMock(page, 'Klives', fixtures);
   await page.context().addCookies([{ name: 'password', value: 'e2e-klives', url: dashboardTestOrigin }]);
   await page.goto('/schemery/cs2arbitragebot', { waitUntil: 'domcontentloaded' });
   const panel = page.getByTestId('cs2-exit-model');
@@ -169,6 +169,14 @@ test.describe('CS2 Arbitrage — trade locks and exit decisions', () => {
     await expect(decision).toContainText('$3.72');
     await expect(decision).toContainText('Demand marked down');
     await expect(page.getByTestId('cs2-relist-state')).toContainText('14.7 expected sales passed');
+  });
+
+  test('a trade monitor that stopped polling is called out while a relist is live', async ({ page }) => {
+    // Live 2026-10-28: the last CSFloat trade poll was two days old, with no error, and nothing said so.
+    const fixtures = cs2Fixtures(Date.now());
+    (fixtures['/cs2arbitragebot/status'] as any).trades = { lastPollUtc: new Date(Date.now() - 2 * DAY).toISOString(), lastError: null };
+    await openCs2Page(page, fixtures);
+    await expect(page.locator('.cs2-attention__item', { hasText: 'Trade tracking stalled' })).toContainText('not being followed');
   });
 
   test('an opportunity the exit model rejected is labelled with the model value', async ({ page }) => {

@@ -11,12 +11,13 @@
                 <span class="ot-chip" :class="bloxStageTone(game.Stage)">{{ game.Stage }}</span>
                 <span v-if="game.Paused" class="ot-chip">Paused</span>
                 <span v-if="game.UrgentMaintenance" class="ot-chip bad">Urgent</span>
+                <span v-if="unplayable" class="ot-chip bad" :title="`Roblox: ${game.Reach!.Status}`">Nobody can play</span>
                 <span v-if="game.Watchdog && game.Watchdog.Level > 0 && !retired" class="ot-chip" :class="bloxWatchdogTone(game.Watchdog.Level)" :title="`Watchdog: ${game.Watchdog.StalledCycles} cycle(s) without progress`">{{ game.Watchdog.Name }}</span>
                 <NuxtLink v-if="game.Playable" class="ot-btn sm play" :to="bloxPlayPath(game.GameId)" :aria-label="`Play ${game.Title}`">▶ Play</NuxtLink>
             </div>
             <OmniBloxStageTrack :stage="game.Stage" :reached="reached" compact />
             <p v-if="liveLine" class="live" role="status"><span class="pulse" aria-hidden="true"></span>{{ liveLine }}</p>
-            <p class="state" :class="{ warn: !!game.WaitingReason, bad: game.Stage === 'Abandoned' }">{{ stateLine }}</p>
+            <p class="state" :class="{ warn: !!game.WaitingReason, bad: game.Stage === 'Abandoned' || unplayable }">{{ stateLine }}</p>
             <dl class="facts">
                 <template v-if="game.Stage === 'Live' || game.Stage === 'Sunset'">
                     <div><dt>Players/day</dt><dd>{{ fmtCount(Math.round(game.Dau7d)) }}</dd></div>
@@ -65,6 +66,8 @@ const engineLine = computed(() => {
 });
 
 const retired = computed(() => props.game.Stage === 'Abandoned' || props.game.Stage === 'Sunset');
+/** Public, but Roblox lets nobody in (an unrated experience, a private one…). */
+const unplayable = computed(() => props.game.IsPublic && props.game.Reach?.Playable === false);
 const initials = computed(() => props.game.Title.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join(''));
 const totalCycles = computed(() => Object.values(props.game.Cycles).reduce((sum, n) => sum + (n ?? 0), 0));
 const reached = computed<BloxStage | null>(() => [...BLOX_STAGES].reverse().find(s => (props.game.Cycles[s] ?? 0) > 0) ?? null);
@@ -75,6 +78,7 @@ const stateLine = computed(() => {
     if (g.Stage === 'Sunset') return g.SunsetReason ?? 'Retired.';
     if (g.Paused) return 'Paused.';
     if (g.WaitingReason) return `Waiting: ${g.WaitingReason}`;
+    if (unplayable.value) return `Public, but nobody can play it: ${g.Reach!.Why ?? g.Reach!.Status}.`;
     if (g.Stage === 'Live') return g.WentPublicUtc ? `Live since ${fmtDate(g.WentPublicUtc)}` : 'Live';
     return g.LastActivity ?? g.Pitch ?? 'Starting…';
 });

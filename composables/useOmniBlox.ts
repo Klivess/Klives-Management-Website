@@ -11,6 +11,15 @@ export type BloxStage = 'Research' | 'Build' | 'Test' | 'Launch' | 'Live' | 'Sun
 export type BloxLevel = 'Info' | 'Success' | 'Warning' | 'Error';
 export type BloxTaskKind = 'ApiKey' | 'Creator' | 'ExperienceSlot' | 'LaunchApproval' | 'UploadIcon' | 'Questionnaire' | 'Escalation' | 'Other' | 'BuildSignoff' | 'RobloxSession';
 
+/** A thumbnail on the experience's store page (StoreThumbnailRecord). */
+export interface BloxStoreThumbnail {
+    File: string;
+    Hash: string;
+    /** Roblox's image id (0 when not recorded). */
+    ImageId: number;
+    UploadedUtc: string;
+}
+
 /** What the studio answered in Roblox's Maturity & Compliance questionnaire, and the rating it produced. */
 export interface BloxQuestionnaire {
     Utc: string;
@@ -533,8 +542,9 @@ export interface BloxDossier {
         /** The icon the studio put on Roblox through the owner's session (by content hash). */
         IconUploadedHash?: string | null;
         IconUploadedUtc?: string | null;
-        /** Store thumbnails still owed through the session (the homepage-thumbnail API refused them). */
-        StoreThumbnailsPending?: boolean;
+        /** The thumbnails the studio put on the store page through the owner's session, oldest first. */
+        StoreThumbnails?: BloxStoreThumbnail[];
+        /** Before Oct 29 2026: how many thumbnails were put up, counted instead of recorded. */
         StoreThumbnailsUploaded?: number;
         /** The newest answering of Roblox's maturity questionnaire. */
         Questionnaire?: BloxQuestionnaire | null;

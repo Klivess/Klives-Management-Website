@@ -575,6 +575,7 @@ test('a live game shows the icon and the rating the studio published, with its a
         patchGame: (id, detail) => {
             if (id !== meta.Live || !detail.Game) return;
             detail.Game.Publish.IconUploadedUtc = meta.NowUtc;
+            detail.Game.Publish.StoreThumbnails = [{ File: 'thumb1.png', Hash: 'ab12', ImageId: 7001, UploadedUtc: meta.NowUtc }];
             detail.Game.Publish.Questionnaire = {
                 Utc: meta.NowUtc, QuestionnaireIds: ['main-1', 'add-1'], Published: true, StoppedReason: null, AgeRating: 'Minimal', MinimumAge: 0,
                 Answers: ['Does your experience contain violence? → No (because Violence: none)', 'How can players communicate? → Only Roblox\'s chat (because only Roblox\'s standard text chat)'],
@@ -587,9 +588,25 @@ test('a live game shows the icon and the rating the studio published, with its a
     await expect(publishing).toContainText('Maturity rating', BOOT);
     await expect(publishing).toContainText('Minimal · answered');
     await expect(publishing).toContainText('uploaded');
+    await expect(publishing).toContainText('1 on the store page · uploaded');
     await publishing.getByText('2 answers').click();
     await expect(publishing).toContainText('Does your experience contain violence? → No (because Violence: none)');
     await page.screenshot({ path: `${SHOTS}/game-store-rated.png`, fullPage: true });
+});
+
+test('a live game whose thumbnails never reached its store page says so', async ({ page }) => {
+    // What launches before Oct 29 2026 left: the homepage API took the thumbnails and the store page kept Roblox's placeholder.
+    await mockApi(page, {
+        patchGame: (id, detail) => {
+            if (id !== meta.Live || !detail.Game) return;
+            detail.Game.Publish.IconUploadedUtc = meta.NowUtc;
+            detail.Game.Publish.StoreThumbnails = [];
+        },
+    });
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.goto(`/schemery/omniblox/game/${meta.Live}?tab=store`);
+    const publishing = page.locator('.ot-card').filter({ hasText: 'Publishing' });
+    await expect(publishing.locator('dd.warn')).toContainText('not on the store page yet (1 made)', BOOT);
 });
 
 test('a public game nobody can play says so on its card, in the studio\'s attention list and on its page', async ({ page }) => {

@@ -74,6 +74,13 @@
                     <dt>Engine-tested</dt><dd>{{ game.Publish.EngineTestedRevision ? `r${game.Publish.EngineTestedRevision}` : 'not yet' }}</dd>
                     <template v-if="game.Publish.FirstPublishedUtc || game.Publish.IconUploadedUtc">
                         <dt>Icon</dt><dd>{{ game.Publish.IconUploadedUtc ? `uploaded ${fmtRelative(game.Publish.IconUploadedUtc, now)}` : 'not uploaded yet' }}</dd>
+                        <template v-if="thumbnails.made">
+                            <dt>Thumbnails</dt>
+                            <dd :class="{ warn: thumbnails.up < thumbnails.made }">
+                                <template v-if="!thumbnails.up">not on the store page yet ({{ thumbnails.made }} made)</template>
+                                <template v-else>{{ thumbnails.up < thumbnails.made ? `${thumbnails.up} of ${thumbnails.made}` : thumbnails.up }} on the store page{{ thumbnails.lastUtc ? ` · uploaded ${fmtRelative(thumbnails.lastUtc, now)}` : '' }}</template>
+                            </dd>
+                        </template>
                     </template>
                     <template v-if="questionnaire">
                         <dt>Maturity rating</dt>
@@ -108,6 +115,15 @@ const now = useNow();
 const art = computed(() => props.media.filter(f => f.endsWith('.png')));
 const questionnaire = computed(() => props.game.Publish.Questionnaire ?? null);
 const hasTrailer = computed(() => props.media.includes('trailer.mp4'));
+/** How many of the game's thumbnails are on its Roblox store page (Publish.StoreThumbnails; older launches only counted them). */
+const thumbnails = computed(() => {
+    const files = props.game.Store.ThumbnailFiles;
+    const records = props.game.Publish.StoreThumbnails ?? [];
+    const up = records.length
+        ? files.filter(f => records.some(r => r.File === f)).length
+        : Math.min(files.length, props.game.Publish.StoreThumbnailsUploaded ?? 0);
+    return { made: files.length, up, lastUtc: records.length ? records[records.length - 1].UploadedUtc : null };
+});
 const productsSubtitle = computed(() => {
     const passes = props.game.Products.filter(p => p.Kind === 'GamePass').length;
     return `${passes} game pass${passes === 1 ? '' : 'es'} · ${props.game.Products.length - passes} developer product${props.game.Products.length - passes === 1 ? '' : 's'}`;

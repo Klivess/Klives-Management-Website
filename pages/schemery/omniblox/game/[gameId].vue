@@ -119,7 +119,9 @@
                             <template v-if="game.Brief">
                                 <p class="pitch">{{ game.Brief.Pitch }}</p>
                                 <dl class="ot-kv">
-                                    <dt>Template</dt><dd>{{ game.Brief.Template }}</dd>
+                                    <dt>Genre</dt><dd>{{ game.Brief.Genre }}</dd>
+                                    <template v-if="game.Brief.World"><dt>World</dt><dd class="prose">{{ game.Brief.World }}</dd></template>
+                                    <template v-if="game.Brief.Template"><dt>Made from</dt><dd>the old {{ game.Brief.Template }} template</dd></template>
                                     <dt>Core loop</dt><dd class="prose">{{ game.Brief.CoreLoop }}</dd>
                                     <dt>For</dt><dd class="prose">{{ game.Brief.TargetPlayers || '—' }}</dd>
                                     <template v-if="game.Brief.Marketing.Hook"><dt>Hook</dt><dd class="prose">{{ game.Brief.Marketing.Hook }}</dd></template>
@@ -200,7 +202,7 @@
                                     <thead><tr><th>Concept</th><th title="Demand">D</th><th title="Competition">C</th><th title="Monetisation">M</th><th title="Feasibility">F</th><th title="Lessons">L</th><th>Total</th></tr></thead>
                                     <tbody>
                                         <tr v-for="c in game.Concepts" :key="c.ConceptId" :class="{ chosen: c.Chosen }">
-                                            <td><span v-if="c.Chosen" class="ot-chip ok">chosen</span> {{ c.Pitch }} <span class="bx-muted">· {{ c.Template }}</span></td>
+                                            <td><span v-if="c.Chosen" class="ot-chip ok">chosen</span> {{ c.Pitch }} <span class="bx-muted">· {{ c.Genre }}</span><span v-if="c.World" class="bx-muted"> · {{ c.World }}</span></td>
                                             <td>{{ c.Scores.Demand }}</td><td>{{ c.Scores.Competition }}</td><td>{{ c.Scores.Monetization }}</td><td>{{ c.Scores.Feasibility }}</td><td>{{ c.Scores.Lessons }}</td>
                                             <td class="total">{{ c.Scores.Total.toFixed(2) }}</td>
                                         </tr>
@@ -297,7 +299,7 @@ const headline = computed(() => {
     if (!g) return 'Loading…';
     if (g.Stage === 'Abandoned') return g.AbandonReason ?? 'Abandoned';
     if (g.Stage === 'Live' && g.Publish.WentPublicUtc) return `Live since ${fmtDate(g.Publish.WentPublicUtc)} · ${g.Brief?.Genre ?? ''}`;
-    return [g.Brief?.Genre, g.Brief?.Template && g.Brief.Template !== g.Brief.Genre ? `${g.Brief.Template} template` : null, `started ${fmtRelative(g.CreatedUtc, now.value)}`]
+    return [g.Brief?.Genre, g.Brief?.Template ? `made from the old ${g.Brief.Template} template` : null, `started ${fmtRelative(g.CreatedUtc, now.value)}`]
         .filter(Boolean).join(' · ');
 });
 

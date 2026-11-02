@@ -225,13 +225,16 @@ export interface BloxOverview {
 }
 
 export interface BloxScores { Demand: number; Competition: number; Monetization: number; Feasibility: number; Lessons: number; Total: number }
-export interface BloxConcept { ConceptId: string; Pitch: string; Genre: string; Template: string; CoreLoop: string; Twist: string; Evidence: string[]; Scores: BloxScores; Chosen: boolean }
+export interface BloxConcept { ConceptId: string; Pitch: string; Genre: string; /** Only on concepts from before the templates were abolished. */ Template: string; World?: string; CoreLoop: string; Twist: string; Evidence: string[]; Scores: BloxScores; Chosen: boolean }
 export interface BloxProductIdea { Key: string; Kind: BloxProductKind; Name: string; Description: string; PriceRobux: number; Grant: string }
 export interface BloxBrief {
     Title: string;
     Genre: string;
+    /** Empty for every game now; a game made before the templates were abolished keeps the one it was made from. */
     Template: string;
     Pitch: string;
+    /** The map as a level designer pitches it. */
+    World?: string;
     TargetPlayers: string;
     CoreLoop: string;
     MustHave: string[];

@@ -74,6 +74,9 @@ const ENTRIES: Entry[] = [
     { prefix: '/projects/accounts', label: 'Agent accounts', rule: anyOf('accounts.') },
     { prefix: '/klivegames', label: 'KliveGames', rule: anyOf('klivegames.') },
     { prefix: '/klivelink', label: 'KliveLink', rule: anyOf('klivelink.') },
+    { prefix: '/klivelink/collection', label: 'KliveLink collection', rule: anyOf('klivelink.collection.') },
+    { prefix: '/klivelink/audit', label: 'KliveLink audit', rule: anyOf('klivelink.audit.view') },
+    { prefix: '/klivelink/infect', label: 'KliveLink infect', rule: anyOf('klivelink.infect') },
     { prefix: '/klivetools', label: 'KliveTools', rule: anyOf('klivetools.') },
     { prefix: '/stratum', label: 'Stratum', rule: anyOf('stratum.') },
 

@@ -17,7 +17,8 @@ export default defineWebSocketHandler({
                 return;
             }
 
-            const backendUrl = `wss://klive.dev/klivelink/agent/screencapture/stream?agentId=${encodeURIComponent(agentId)}`;
+            const backendBase = process.env.KLIVE_API_WS || 'wss://klive.dev';
+            const backendUrl = `${backendBase}/klivelink/agent/screencapture/stream?agentId=${encodeURIComponent(agentId)}`;
 
             const backend = new WebSocket(backendUrl, {
                 headers: { 'Authorization': auth }

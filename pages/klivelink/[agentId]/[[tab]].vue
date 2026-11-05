@@ -760,6 +760,14 @@ watch([agentId, tab], async ([id, value], previous) => {
   if (value === 'screen' && canControl.value && detail.value?.IsConnected) await startScreen();
 }, { immediate: true });
 
+watch(() => detail.value?.IsConnected, (online, before) => {
+  if (before === undefined || !online) return;
+  if (tab.value === 'processes') loadProcesses();
+  if (tab.value === 'files') listFiles();
+  if (tab.value === 'terminal' && canControl.value) startLiveShell();
+  if (tab.value === 'screen' && canControl.value) startScreen();
+});
+
 onBeforeUnmount(() => { try { screenSocket?.close(); } catch {} try { shellSocket?.close(); } catch {} if (purgePoll) clearInterval(purgePoll); });
 </script>
 

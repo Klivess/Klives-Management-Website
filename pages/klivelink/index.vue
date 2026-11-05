@@ -156,8 +156,8 @@ async function collect(agent: any) {
     const res = await RequestPOSTFromKliveAPI('/klivelink/v2/collection/start', JSON.stringify({
       agentId: agent.AgentId, tier: 'T0', profile: 't0-fast',
     }), true, true);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    await load();
+    if (!res.ok) { const detail = await res.json().catch(() => null); throw new Error(detail?.error || `HTTP ${res.status}`); }
+    setTimeout(() => { void load(); }, 5000);
   } catch (e: any) {
     error.value = e?.message ?? 'Collection command failed.';
   }

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="ot-os kl-infect">
     <div class="ot-pagehead">
       <div>
@@ -9,7 +9,7 @@
     </div>
 
     <div v-if="!allowed" class="ot-banner bad" role="alert">
-      <span class="glyph">⚠</span><div><strong>Missing permission</strong>klivelink.infect is required.</div>
+      <span class="glyph">âš </span><div><strong>Missing permission</strong>klivelink.agents.infect is required.</div>
     </div>
 
     <div class="ot-grid two">
@@ -25,7 +25,7 @@
             <span class="muted">{{ formatBytes(file.size) }}</span>
           </div>
           <button class="ot-btn primary" :disabled="!file || busy || !allowed" @click="infect">
-            {{ busy ? 'Binding…' : 'Infect and download' }}
+            {{ busy ? 'Bindingâ€¦' : 'Infect and download' }}
           </button>
           <p class="muted small">
             The output is larger by the KliveLink agent. It installs per-user under
@@ -45,7 +45,7 @@
             <div class="muted">{{ formatBytes(result.size) }}</div>
             <a class="ot-btn primary" :href="result.url" :download="result.name">Download infected EXE</a>
           </div>
-          <div v-if="error" class="ot-banner bad" style="margin-top: 12px"><span class="glyph">⚠</span><div>{{ error }}</div></div>
+          <div v-if="error" class="ot-banner bad" style="margin-top: 12px"><span class="glyph">âš </span><div>{{ error }}</div></div>
         </div>
       </section>
     </div>
@@ -58,10 +58,10 @@ import { RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import { useAccess } from '~/composables/useAccess';
 
 definePageMeta({ layout: 'navbar' });
-useHead({ title: 'KliveLink · Infect EXE' });
+useHead({ title: 'KliveLink Â· Infect EXE' });
 
 const access = useAccess();
-const allowed = computed(() => access.can('klivelink.infect'));
+const allowed = computed(() => access.can('klivelink.agents.infect'));
 const fileInput = ref<HTMLInputElement | null>(null);
 const file = ref<File | null>(null);
 const busy = ref(false);
@@ -128,3 +128,4 @@ code { font-family: var(--ot-mono); font-size: 11px; color: var(--ot-accent); }
 .ot-btn.primary { width: 100%; justify-content: center; }
 @media (max-width: 900px) { .kl-infect { padding: var(--ot-space-3) var(--ot-space-4) 48px; } }
 </style>
+

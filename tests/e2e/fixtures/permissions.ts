@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Every permission the backend defines (generated from the backend's per-service Perms.cs
  * files). The e2e mocks build `/KMProfiles/me` and the catalog from it,
  * so the site is exercised against the real key set.
@@ -1058,7 +1058,7 @@ export const PERMISSIONS: FixturePermission[] = [
     "sensitive": true
   },
   {
-    "key": "klivelink.infect",
+    "key": "klivelink.agents.infect",
     "service": "KliveLink",
     "serviceKey": "klivelink",
     "area": "Infect",
@@ -2736,3 +2736,4 @@ export function catalogPayload(withRoutes = false) {
     signedInRoutes: withRoutes ? [{ path: '/KMProfiles/me', method: 'GET', kind: 'route' }] : null,
   };
 }
+

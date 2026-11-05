@@ -1,13 +1,13 @@
-/**
+﻿/**
  * What each page needs before it is worth showing. One table drives both the page guard
  * (AccessPageGuard renders "you don't have access" in place of the page, keeping the nav) and
  * the navbar (items you can't open aren't offered).
  *
  * A page requires *some* key of its service: what you then see inside depends on the exact
  * keys you hold, and sections you lack are locked individually. The server stays the
- * authority — this only avoids offering pages that would be refused.
+ * authority â€” this only avoids offering pages that would be refused.
  *
- * A page can override its entry with `definePageMeta({ access: { any: ['…'] } })`.
+ * A page can override its entry with `definePageMeta({ access: { any: ['â€¦'] } })`.
  */
 
 export type AccessRule =
@@ -17,7 +17,7 @@ export type AccessRule =
 
 export interface PageAccess {
     rule: AccessRule;
-    /** What the page is, for "you don't have access to …". */
+    /** What the page is, for "you don't have access to â€¦". */
     label: string;
 }
 
@@ -76,7 +76,7 @@ const ENTRIES: Entry[] = [
     { prefix: '/klivelink', label: 'KliveLink', rule: anyOf('klivelink.') },
     { prefix: '/klivelink/collection', label: 'KliveLink collection', rule: anyOf('klivelink.collection.') },
     { prefix: '/klivelink/audit', label: 'KliveLink audit', rule: anyOf('klivelink.audit.view') },
-    { prefix: '/klivelink/infect', label: 'KliveLink infect', rule: anyOf('klivelink.infect') },
+    { prefix: '/klivelink/infect', label: 'KliveLink infect', rule: anyOf('klivelink.agents.infect') },
     { prefix: '/klivetools', label: 'KliveTools', rule: anyOf('klivetools.') },
     { prefix: '/stratum', label: 'Stratum', rule: anyOf('stratum.') },
 
@@ -125,3 +125,4 @@ export function ruleKeys(rule: AccessRule): { any: string[]; all: string[] } {
     if (rule.kind !== 'keys') return { any: [], all: [] };
     return { any: rule.any ?? [], all: rule.all ?? [] };
 }
+

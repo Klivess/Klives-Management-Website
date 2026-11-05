@@ -423,7 +423,7 @@ async function collectNow(tier: 'T0' | 'T1' | 'T2' = 'T0') {
       profile: tier === 'T0' ? 't0-fast' : tier === 'T1' ? 'full' : 'deep',
       maxBytes: tier === 'T0' ? 50 * 1024 * 1024 : tier === 'T1' ? 500 * 1024 * 1024 : 2 * 1024 * 1024 * 1024,
     }), true, true);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) { const detail = await res.json().catch(() => null); throw new Error(detail?.error || `HTTP ${res.status}`); }
     notice.value = `Collection ${tier} started.`;
     await Promise.all([loadDetail(), loadCollection()]);
   } catch (e: any) { error.value = e?.message; }

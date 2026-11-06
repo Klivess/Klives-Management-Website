@@ -285,6 +285,29 @@
       </section>
     </div>
 
+    <!-- CAMERA -->
+    <div v-else-if="tab === 'camera'" class="tab-body">
+      <section class="ot-card">
+        <header>
+          <div class="titles"><h2>Camera</h2><p class="subtitle">{{ cameraActive ? 'Live camera frames' : 'Camera inactive' }}</p></div>
+          <div class="controls">
+            <select v-model.number="cameraIndex" class="ot-select sm" :disabled="cameraActive">
+              <option v-for="c in cameras" :key="c.index" :value="c.index">{{ c.name }}</option>
+            </select>
+            <button class="ot-btn" :disabled="!canControl || !detail?.IsConnected" @click="startCamera(true)">{{ cameraActive ? 'Restart' : 'Start' }}</button>
+            <button class="ot-btn ghost" :disabled="!cameraActive" @click="stopCamera">Stop</button>
+          </div>
+        </header>
+        <div class="body">
+          <div class="screen-frame">
+            <img v-if="cameraFrame" :src="'data:image/jpeg;base64,' + cameraFrame" alt="Remote camera" />
+            <div v-else class="muted">{{ cameraActive ? 'Waiting for camera frames…' : (cameras.length ? 'Start the camera to stream.' : 'No camera found on this agent.') }}</div>
+          </div>
+          <div v-if="cameraMeta" class="muted small">{{ cameraMeta.width }}×{{ cameraMeta.height }} · camera {{ cameraMeta.cameraIndex }} · {{ relative(cameraMeta.at) }}</div>
+        </div>
+      </section>
+    </div>
+
     <!-- AUDIT -->
     <div v-else-if="tab === 'audit'" class="tab-body">
       <section class="ot-card">
@@ -362,6 +385,7 @@ const tabs = [
   { id: 'terminal', code: 'TRM', label: 'Terminal' },
   { id: 'files', code: 'FS', label: 'Files' },
   { id: 'screen', code: 'SCR', label: 'Screen' },
+  { id: 'camera', code: 'CAM', label: 'Camera' },
   { id: 'audit', code: 'AUD', label: 'Audit' },
   { id: 'settings', code: 'SET', label: 'Settings' },
 ];
@@ -609,6 +633,54 @@ async function stopScreen() {
   try { await command('ScreenStop', {}); } catch {}
 }
 
+const cameras = ref<any[]>([]);
+const cameraIndex = ref(0);
+const cameraActive = ref(false);
+const cameraFrame = ref('');
+const cameraMeta = ref<any>(null);
+let cameraSocket: WebSocket | null = null;
+async function loadCameras() {
+  try {
+    cameras.value = (await command('CameraList', {})) || [];
+    if (cameras.value.length && !cameras.value.some((c: any) => c.index === cameraIndex.value))
+      cameraIndex.value = cameras.value[0].index;
+  } catch (e: any) { error.value = e?.message; }
+}
+async function startCamera(force = false) {
+  if (cameraActive.value && !force) return;
+  if (!cameras.value.length) await loadCameras();
+  if (!cameras.value.length) { error.value = 'No camera found on this agent.'; return; }
+  try { await command('CameraStop', {}); } catch {}
+  try {
+    const result = await command('CameraStart', {
+      cameraIndex: cameraIndex.value,
+      quality: 70,
+      intervalMs: 250,
+      width: 1280,
+      height: 720,
+    });
+    if (result?.started === false) throw new Error('Camera could not be started.');
+    cameraActive.value = true;
+    connectCamera();
+  } catch (e: any) { error.value = e?.message; }
+}
+function connectCamera() {
+  try { cameraSocket?.close(); } catch {}
+  cameraSocket = new WebSocket(BuildKliveWsUrl('/klivelink/v2/agents/camera/stream', { agentId: agentId.value }));
+  cameraSocket.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'frame') { cameraFrame.value = msg.base64; cameraMeta.value = msg.metadata; }
+    } catch {}
+  };
+  cameraSocket.onclose = () => { if (cameraActive.value) setTimeout(connectCamera, 1500); };
+}
+async function stopCamera() {
+  cameraActive.value = false;
+  try { cameraSocket?.close(); } catch {}
+  try { await command('CameraStop', {}); } catch {}
+}
+
 const snapshots = ref<any[]>([]);
 const records = ref<any[]>([]);
 const collectionTier = ref<'T0' | 'T1' | 'T2'>('T0');
@@ -746,6 +818,7 @@ watch([agentId, tab], async ([id, value], previous) => {
   if (previous && previous[1] !== value) {
     if (previous[1] === 'terminal') stopLiveShell();
     if (previous[1] === 'screen') stopScreen();
+    if (previous[1] === 'camera') stopCamera();
   }
   if (agentChanged) {
     try { await loadDetail(); } catch (e: any) { error.value = e?.message; return; }
@@ -758,6 +831,7 @@ watch([agentId, tab], async ([id, value], previous) => {
   if (value === 'audit') await loadAudit();
   if (value === 'terminal' && canControl.value && detail.value?.IsConnected) startLiveShell();
   if (value === 'screen' && canControl.value && detail.value?.IsConnected) await startScreen();
+  if (value === 'camera' && canControl.value && detail.value?.IsConnected) { await loadCameras(); await startCamera(); }
 }, { immediate: true });
 
 watch(() => detail.value?.IsConnected, (online, before) => {
@@ -766,9 +840,10 @@ watch(() => detail.value?.IsConnected, (online, before) => {
   if (tab.value === 'files') listFiles();
   if (tab.value === 'terminal' && canControl.value) startLiveShell();
   if (tab.value === 'screen' && canControl.value) startScreen();
+  if (tab.value === 'camera' && canControl.value) { loadCameras(); startCamera(); }
 });
 
-onBeforeUnmount(() => { try { screenSocket?.close(); } catch {} try { shellSocket?.close(); } catch {} if (purgePoll) clearInterval(purgePoll); });
+onBeforeUnmount(() => { try { screenSocket?.close(); } catch {} try { cameraSocket?.close(); } catch {} try { shellSocket?.close(); } catch {} if (purgePoll) clearInterval(purgePoll); });
 </script>
 
 <style scoped>

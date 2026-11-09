@@ -22,6 +22,8 @@ export default defineNuxtConfig({
     '/schemery/omniblox/**': {ssr: false},
     '/omnitrader': {ssr: false}, // Terminal: client-fetched behind auth, persisted per-browser layout, live charts
     '/omnitrader/**': {ssr: false},
+    '/omniscience-v3': {ssr: false}, // v3 engine pages: client-fetched behind auth, live stream, browser time zones
+    '/omniscience-v3/**': {ssr: false},
     '/*': {cors: true},
   },
   vite: {

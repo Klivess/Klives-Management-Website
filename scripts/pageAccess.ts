@@ -62,6 +62,9 @@ const ENTRIES: Entry[] = [
     { prefix: '/omniscience-explore', label: 'Omniscience explorer', rule: anyOf('omniscience.') },
     { prefix: '/omniscience-review', label: 'Omniscience review', rule: anyOf('omniscience.') },
     { prefix: '/omniscience-person', label: 'Omniscience', rule: anyOf('omniscience.') },
+    { prefix: '/omniscience-v3', label: 'Omniscience v3', rule: anyOf('omniscience.') },
+    { prefix: '/omniscience-v3/playbooks', label: 'Omniscience playbooks', rule: anyOf('omniscience.tactics.run') },
+    { prefix: '/omniscience-v3/cohorts', label: 'Omniscience cohorts', rule: anyOf('omniscience.persons.read') },
     { prefix: '/omnidefence', label: 'OmniDefence', rule: anyOf('omnidefence.') },
     { prefix: '/tripwires', label: 'Tripwires', rule: anyOf('tripwires.') },
 

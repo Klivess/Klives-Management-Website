@@ -1,0 +1,381 @@
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref, type ShallowRef } from 'vue';
+import { OmniApiError, isOmniAbort, omniGet, omniStreamUrl, toOmniError } from '~/scripts/omniscience/api';
+import type { Selection, StreamEventDto, V3StatusDto } from '~/scripts/omniscience/contracts';
+import { omniAge, omniInstant, omniUtcIso, type OmniLens } from '~/scripts/omniscience/format';
+
+/**
+ * Shared state and data plumbing for the Omniscience v3 pages. Everything exported here is
+ * prefixed `useOmni…` because Nuxt auto-imports composables site-wide.
+ */
+
+// ── one panel, one request ───────────────────────────────────────────────────
+
+export interface OmniResource<T> {
+    data: ShallowRef<T | null>;
+    error: Ref<OmniApiError | null>;
+    /** True until the first answer (data or error). */
+    loading: Ref<boolean>;
+    /** True while any request is in flight, including a background refresh. */
+    refreshing: Ref<boolean>;
+    loadedAt: Ref<number | null>;
+    /** The last request failed but an earlier answer is still on screen. */
+    stale: Ref<boolean>;
+    refresh: () => Promise<void>;
+}
+
+/**
+ * Loads one panel's data. A new request aborts the one before it, and leaving the page aborts
+ * whatever is in flight, so a slow answer can never overwrite a newer one. A failed refresh
+ * keeps the last good data on screen and marks it stale instead of blanking the panel.
+ */
+export function useOmniResource<T>(
+    load: (signal: AbortSignal) => Promise<T>,
+    options: { immediate?: boolean; pollMs?: number } = {},
+): OmniResource<T> {
+    const data = shallowRef<T | null>(null);
+    const error = ref<OmniApiError | null>(null);
+    const loading = ref(options.immediate !== false);
+    const refreshing = ref(false);
+    const loadedAt = ref<number | null>(null);
+    const stale = computed(() => error.value !== null && data.value !== null);
+    let controller: AbortController | null = null;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    async function refresh() {
+        controller?.abort();
+        const mine = new AbortController();
+        controller = mine;
+        refreshing.value = true;
+        try {
+            const value = await load(mine.signal);
+            if (mine.signal.aborted) return;
+            data.value = value;
+            error.value = null;
+            loadedAt.value = Date.now();
+        } catch (caught) {
+            if (mine.signal.aborted || isOmniAbort(caught)) return;
+            error.value = toOmniError(caught);
+        } finally {
+            if (controller === mine) {
+                controller = null;
+                refreshing.value = false;
+                loading.value = false;
+            }
+        }
+    }
+
+    const onVisible = () => { if (!document.hidden && options.pollMs) void refresh(); };
+
+    onMounted(() => {
+        if (options.immediate !== false) void refresh();
+        if (options.pollMs) {
+            timer = setInterval(() => { if (!document.hidden) void refresh(); }, options.pollMs);
+            document.addEventListener('visibilitychange', onVisible);
+        }
+    });
+    onBeforeUnmount(() => {
+        controller?.abort();
+        if (timer) clearInterval(timer);
+        document.removeEventListener('visibilitychange', onVisible);
+    });
+
+    return { data, error, loading, refreshing, loadedAt, stale, refresh };
+}
+
+// ── keyset-paged lists ───────────────────────────────────────────────────────
+
+/**
+ * A list read page by page with the server's cursor (never an offset, so rows that arrive
+ * while you read cannot shift or repeat). `reload` starts again from the newest page;
+ * `loadMore` appends the next one. While only the first page is loaded the list can be
+ * refreshed in the background without moving anything the reader has scrolled to.
+ */
+export function useOmniPaged<T, C>(
+    fetchPage: (cursor: C | null, signal: AbortSignal) => Promise<{ items: T[]; nextCursor?: C | null }>,
+    options: { pollMs?: number } = {},
+) {
+    const items = shallowRef<T[]>([]);
+    const error = ref<OmniApiError | null>(null);
+    const loading = ref(true);
+    const loadingMore = ref(false);
+    const next = shallowRef<C | null>(null);
+    const pages = ref(0);
+    const loadedAt = ref<number | null>(null);
+    const hasMore = computed(() => next.value !== null && next.value !== undefined);
+    let controller: AbortController | null = null;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    async function reload(quiet = false) {
+        controller?.abort();
+        const mine = new AbortController();
+        controller = mine;
+        if (!quiet) loading.value = true;
+        try {
+            const page = await fetchPage(null, mine.signal);
+            if (mine.signal.aborted) return;
+            items.value = page.items;
+            next.value = page.nextCursor ?? null;
+            pages.value = 1;
+            error.value = null;
+            loadedAt.value = Date.now();
+        } catch (caught) {
+            if (mine.signal.aborted || isOmniAbort(caught)) return;
+            error.value = toOmniError(caught);
+        } finally {
+            if (controller === mine) { controller = null; loading.value = false; }
+        }
+    }
+
+    async function loadMore() {
+        if (!hasMore.value || loadingMore.value || controller) return;
+        const mine = new AbortController();
+        controller = mine;
+        loadingMore.value = true;
+        try {
+            const page = await fetchPage(next.value, mine.signal);
+            if (mine.signal.aborted) return;
+            items.value = [...items.value, ...page.items];
+            next.value = page.nextCursor ?? null;
+            pages.value++;
+            error.value = null;
+        } catch (caught) {
+            if (mine.signal.aborted || isOmniAbort(caught)) return;
+            error.value = toOmniError(caught);
+        } finally {
+            if (controller === mine) controller = null;
+            loadingMore.value = false;
+        }
+    }
+
+    onMounted(() => {
+        void reload();
+        if (options.pollMs) {
+            timer = setInterval(() => {
+                if (!document.hidden && pages.value <= 1 && !controller) void reload(true);
+            }, options.pollMs);
+        }
+    });
+    onBeforeUnmount(() => {
+        controller?.abort();
+        if (timer) clearInterval(timer);
+    });
+
+    return { items, error, loading, loadingMore, hasMore, pages, loadedAt, reload, loadMore };
+}
+
+// ── engine status (shared by the shell and every page) ───────────────────────
+
+export function useOmniEngine() {
+    const status = useState<V3StatusDto | null>('omni-v3:status', () => null);
+    const statusError = useState<{ kind: string; message: string } | null>('omni-v3:status-error', () => null);
+    const statusAt = useState<number | null>('omni-v3:status-at', () => null);
+
+    async function refreshStatus(signal?: AbortSignal) {
+        try {
+            status.value = await omniGet<V3StatusDto>('status', {}, signal);
+            statusError.value = null;
+            statusAt.value = Date.now();
+        } catch (caught) {
+            if (isOmniAbort(caught)) return;
+            const e = toOmniError(caught);
+            statusError.value = { kind: e.kind, message: e.message };
+        }
+    }
+
+    const phase = computed(() => status.value?.phase ?? null);
+    const ready = computed(() => status.value?.phase === 'Ready');
+    /** Klives's IANA zone as the engine is configured; Europe/London until the engine says otherwise. */
+    const klivesZone = computed(() => status.value?.klivesZone || 'Europe/London');
+
+    return { status, statusError, statusAt, phase, ready, klivesZone, refreshStatus };
+}
+
+// ── time lens ────────────────────────────────────────────────────────────────
+
+const LENS_KEY = 'omni.v3.lens';
+const tickNow = ref(Date.now());
+let tickUsers = 0;
+let tickTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Times on screen: absolute in the chosen lens (Klives's zone or UTC), with a relative age that
+ * keeps counting. The lens is one site-wide choice, remembered per browser.
+ */
+export function useOmniTime() {
+    const { klivesZone } = useOmniEngine();
+    const lens = useState<OmniLens>('omni-v3:lens', () => 'Klives');
+
+    onMounted(() => {
+        try {
+            const saved = window.localStorage.getItem(LENS_KEY);
+            if (saved === 'Klives' || saved === 'Utc') lens.value = saved;
+        } catch { /* private mode: keep the default */ }
+        tickNow.value = Date.now();
+        if (tickUsers++ === 0) tickTimer = setInterval(() => { tickNow.value = Date.now(); }, 10_000);
+    });
+    onBeforeUnmount(() => {
+        if (--tickUsers <= 0 && tickTimer) { clearInterval(tickTimer); tickTimer = null; tickUsers = 0; }
+    });
+
+    function setLens(next: OmniLens) {
+        lens.value = next;
+        try { window.localStorage.setItem(LENS_KEY, next); } catch { /* not persisted */ }
+    }
+
+    const zone = computed(() => (lens.value === 'Utc' ? 'UTC' : klivesZone.value));
+    const at = (ms: number | null | undefined, seconds = false) => omniInstant(ms, zone.value, seconds);
+    const age = (ms: number | null | undefined) => omniAge(ms, tickNow.value);
+    const utc = (ms: number | null | undefined) => omniUtcIso(ms);
+
+    return { lens, setLens, zone, now: tickNow, at, age, utc };
+}
+
+// ── live stream ──────────────────────────────────────────────────────────────
+
+/**
+ * The v3 live stream. Resumes from the last event id it saw, so a reconnect replays what was
+ * missed with no gap and no duplicate; a `stream.reset` frame means events were lost and the
+ * page should reload what it shows.
+ */
+export function useOmniStream(options: {
+    topics?: readonly string[];
+    onEvent: (event: StreamEventDto) => void;
+    onReset?: (reason: string) => void;
+}) {
+    const connected = ref(false);
+    const cursor = ref(0);
+    let socket: WebSocket | null = null;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+    let stopped = true;
+
+    function schedule() {
+        if (stopped || retry) return;
+        // 1 s, 2 s, 4 s … capped at 30 s, with jitter so tabs do not reconnect in step.
+        const delay = Math.min(30_000, 1000 * 2 ** Math.min(attempts, 5)) * (0.75 + Math.random() * 0.5);
+        attempts++;
+        retry = setTimeout(() => { retry = null; open(); }, delay);
+    }
+
+    function open() {
+        if (stopped || typeof window === 'undefined') return;
+        let ws: WebSocket;
+        try {
+            ws = new WebSocket(omniStreamUrl(cursor.value, options.topics ?? []));
+        } catch {
+            schedule();
+            return;
+        }
+        socket = ws;
+        ws.onopen = () => { connected.value = true; };
+        ws.onmessage = message => {
+            let frame: StreamEventDto;
+            try { frame = JSON.parse(typeof message.data === 'string' ? message.data : ''); } catch { return; }
+            if (!frame || typeof frame.id !== 'number' || typeof frame.topic !== 'string') return;
+            attempts = 0;
+            if (frame.topic === 'stream.reset') {
+                cursor.value = frame.id;
+                options.onReset?.(String((frame.payload as any)?.reason ?? 'reset'));
+                return;
+            }
+            if (frame.id > cursor.value) cursor.value = frame.id;
+            if (frame.topic === 'stream.ping') return;
+            options.onEvent(frame);
+        };
+        ws.onclose = () => {
+            if (socket === ws) socket = null;
+            connected.value = false;
+            schedule();
+        };
+        ws.onerror = () => { try { ws.close(); } catch { /* already closed */ } };
+    }
+
+    function connect() {
+        if (!stopped) return;
+        stopped = false;
+        open();
+    }
+
+    function disconnect() {
+        stopped = true;
+        if (retry) { clearTimeout(retry); retry = null; }
+        const ws = socket;
+        socket = null;
+        try { ws?.close(); } catch { /* already closed */ }
+        connected.value = false;
+    }
+
+    onMounted(connect);
+    onBeforeUnmount(disconnect);
+    return { connected, cursor, connect, disconnect };
+}
+
+// ── handing a set to a tactic ────────────────────────────────────────────────
+
+/**
+ * A set picked up on one page (a cohort, the records behind a chart point, a run's output)
+ * waiting for the tactic it will feed. Any page can set it; the Tactics page consumes it.
+ */
+export function useOmniCarry() {
+    return useState<Selection | null>('omni-v3:carry', () => null);
+}
+
+// ── toasts ───────────────────────────────────────────────────────────────────
+
+export interface OmniToast { id: number; tone: 'ok' | 'warn' | 'bad' | 'info'; text: string }
+
+let toastSeq = 0;
+
+export function useOmniToasts() {
+    const toasts = useState<OmniToast[]>('omni-v3:toasts', () => []);
+
+    function dismiss(id: number) {
+        toasts.value = toasts.value.filter(t => t.id !== id);
+    }
+
+    function push(tone: OmniToast['tone'], text: string) {
+        const id = ++toastSeq;
+        toasts.value = [...toasts.value.slice(-4), { id, tone, text }];
+        if (typeof window !== 'undefined') setTimeout(() => dismiss(id), tone === 'bad' ? 9000 : 5000);
+    }
+
+    return { toasts, push, dismiss };
+}
+
+/**
+ * Runs a command (a POST) once: `busy` names what is running so its button can disable itself,
+ * the outcome is announced, and a failure is explained rather than swallowed.
+ */
+export function useOmniAction() {
+    const busy = ref<string | null>(null);
+    const { push } = useOmniToasts();
+
+    async function run<T>(name: string, action: () => Promise<T>, done?: (result: T) => string | null): Promise<T | null> {
+        if (busy.value) return null;
+        busy.value = name;
+        try {
+            const result = await action();
+            const text = done ? done(result) : null;
+            if (text) push('ok', text);
+            return result;
+        } catch (caught) {
+            const e = toOmniError(caught);
+            if (e.kind !== 'aborted') push('bad', e.message);
+            return null;
+        } finally {
+            busy.value = null;
+        }
+    }
+
+    return { busy, run };
+}
+
+/** Re-runs `fn` shortly after `source` stops changing (search boxes, filter edits). */
+export function useOmniDebounced<T>(source: () => T, fn: () => void, delayMs = 300) {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    watch(source, () => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => { timer = null; fn(); }, delayMs);
+    }, { deep: true });
+    onBeforeUnmount(() => { if (timer) clearTimeout(timer); });
+}

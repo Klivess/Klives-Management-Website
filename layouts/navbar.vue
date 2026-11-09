@@ -84,6 +84,7 @@ const NAV_GROUPS = [
     label: 'Intel',
     items: [
       { to: '/omniscience', label: 'Omniscience', icon: '◎' },
+      { to: '/omniscience-v3', label: 'Omniscience v3', icon: '◉' },
       { to: '/omnidefence', label: 'OmniDefence', icon: '⛨' },
       { to: '/tripwires', label: 'Tripwires', icon: '⚡' },
     ],

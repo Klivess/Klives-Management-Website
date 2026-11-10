@@ -11,6 +11,7 @@ export default defineNuxtConfig({
   routeRules: {
     '/': {prerender: true},
     '/administration/**': {ssr: false}, // Disable SSR for admin routes
+    '/admin': {ssr: false}, // Live console: polled, teleported layers, per-browser preferences
     '/dashboard': {ssr: false}, // Disable SSR for dashboard to avoid hydration issues
     '/profilepage': {ssr: false}, // Disable SSR for profilepage
     '/account': {ssr: false}, // Your sessions and permissions: client-driven, never cached HTML

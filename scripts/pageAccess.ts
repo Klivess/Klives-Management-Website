@@ -5,9 +5,9 @@
  *
  * A page requires *some* key of its service: what you then see inside depends on the exact
  * keys you hold, and sections you lack are locked individually. The server stays the
- * authority â€” this only avoids offering pages that would be refused.
+ * authority — this only avoids offering pages that would be refused.
  *
- * A page can override its entry with `definePageMeta({ access: { any: ['â€¦'] } })`.
+ * A page can override its entry with `definePageMeta({ access: { any: ['…'] } })`.
  */
 
 export type AccessRule =
@@ -17,7 +17,7 @@ export type AccessRule =
 
 export interface PageAccess {
     rule: AccessRule;
-    /** What the page is, for "you don't have access to â€¦". */
+    /** What the page is, for "you don't have access to …". */
     label: string;
 }
 

@@ -213,7 +213,7 @@
                         <button class="micro release" :disabled="loading.action" @click="untrapIp(item.ip)">Release</button>
                     </div>
                     <div v-if="defenceHealth" class="review-health" :class="{ 'bad-text': defenceHealthBad }">
-                        Overview {{ fmtNum(defenceHealth.overviewBuildMs) }} ms / audit queue {{ fmtNum(defenceHealth.auditQueue) }}<template v-if="defenceHealth.readPoolTimeouts"> / {{ fmtNum(defenceHealth.readPoolTimeouts) }} busy reads</template><template v-if="defenceHealth.auditRowsDropped"> / {{ fmtNum(defenceHealth.auditRowsDropped) }} rows dropped</template>
+                        <template v-if="overview.stale">Figures from {{ overviewAgeLabel }} ago, a newer overview is still being built / </template>Overview {{ fmtNum(defenceHealth.overviewBuildMs) }} ms / audit queue {{ fmtNum(defenceHealth.auditQueue) }}<template v-if="defenceHealth.readPoolTimeouts"> / {{ fmtNum(defenceHealth.readPoolTimeouts) }} busy reads</template><template v-if="defenceHealth.auditRowsDropped"> / {{ fmtNum(defenceHealth.auditRowsDropped) }} rows dropped</template>
                     </div>
                 </div>
 
@@ -715,7 +715,14 @@ export default {
         defenceHealth() { return this.overview?.health || null; },
         defenceHealthBad() {
             const h = this.defenceHealth;
-            return !!h && (Number(h.overviewBuildMs) > 5000 || Number(h.auditRowsDropped) > 0 || Number(h.auditQueue) > 5000);
+            return !!h && (this.overview?.stale === true || Number(h.overviewBuildMs) > 5000 || Number(h.auditRowsDropped) > 0 || Number(h.auditQueue) > 5000);
+        },
+        // The server serves its last overview, marked stale with its age, while a slow build runs.
+        overviewAgeLabel() {
+            const seconds = Number(this.overview?.ageSeconds || 0);
+            if (seconds >= 86400) return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
+            if (seconds >= 3600) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+            return `${Math.max(1, Math.round(seconds / 60))} min`;
         },
         mapSourceIps() { return this.mapIps.length ? this.mapIps : this.ips; },
         mapPoints() {

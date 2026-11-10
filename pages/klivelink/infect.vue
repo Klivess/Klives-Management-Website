@@ -9,7 +9,7 @@
     </div>
 
     <div v-if="!allowed" class="ot-banner bad" role="alert">
-      <span class="glyph">âš </span><div><strong>Missing permission</strong>klivelink.agents.infect is required.</div>
+      <span class="glyph">⚠</span><div><strong>Missing permission</strong>klivelink.agents.infect is required.</div>
     </div>
 
     <div class="ot-grid two">
@@ -25,7 +25,7 @@
             <span class="muted">{{ formatBytes(file.size) }}</span>
           </div>
           <button class="ot-btn primary" :disabled="!file || busy || !allowed" @click="infect">
-            {{ busy ? 'Bindingâ€¦' : 'Infect and download' }}
+            {{ busy ? 'Binding…' : 'Infect and download' }}
           </button>
           <p class="muted small">
             The output is larger by the KliveLink agent. It installs per-user under
@@ -45,7 +45,7 @@
             <div class="muted">{{ formatBytes(result.size) }}</div>
             <a class="ot-btn primary" :href="result.url" :download="result.name">Download infected EXE</a>
           </div>
-          <div v-if="error" class="ot-banner bad" style="margin-top: 12px"><span class="glyph">âš </span><div>{{ error }}</div></div>
+          <div v-if="error" class="ot-banner bad" style="margin-top: 12px"><span class="glyph">⚠</span><div>{{ error }}</div></div>
         </div>
       </section>
     </div>
@@ -58,7 +58,7 @@ import { RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import { useAccess } from '~/composables/useAccess';
 
 definePageMeta({ layout: 'navbar' });
-useHead({ title: 'KliveLink Â· Infect EXE' });
+useHead({ title: 'KliveLink · Infect EXE' });
 
 const access = useAccess();
 const allowed = computed(() => access.can('klivelink.agents.infect'));

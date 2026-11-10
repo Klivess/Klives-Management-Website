@@ -69,11 +69,13 @@ function viewerTimeZone(): string {
 
 const routes = {
   frontpage: '/GeneralBotStatistics/GetFrontpageStats',
-  api: '/KliveAPI/Statistics',
+  // Only the lifetime totals are shown here: one day of history instead of every day on record.
+  api: '/KliveAPI/Statistics?days=1',
   trader: '/api/omnitrader/firm/overview?trendDays=30',
   errors: '/api/logs?type=1&limit=5&sort=desc',
   logs: '/api/logs/summary?hours=24',
-  uptime: '/System/UptimeStatistics',
+  // Totals only (periods=0): the list of every uptime period since monitoring began is the Admin page's business.
+  uptime: '/System/UptimeStatistics?periods=0',
   projects: '/projects/list',
   agentStatus: '/kliveagent/status',
   agentJobs: '/kliveagent/jobs?activeOnly=true',

@@ -48,8 +48,48 @@ function strategy(over: Record<string, unknown> = {}) {
         Folder: { Path: '', IncludeSubfolders: false, Images: true, Videos: true, Pick: 'Random' },
         CaptionMode: 'AI', FixedCaption: '', CaptionPool: [],
         Ai: { Persona: 'A deadpan, terminally online meme blog. Dry, short and funny.', Instructions: 'lowercase only', Examples: ['cat.exe has stopped working'], MaxLength: 120, UseVision: true, UseSourceCaption: true, SuggestTags: true, MaxSuggestedTags: 5, AllowEmoji: true, Language: 'English', Fallback: 'Empty', Model: null },
-        FixedTags: ['memes', 'funny'], RotatingTags: ['relatable', 'lol', 'mood'], RotatingTagsPerPost: 2, MaxTags: 12, PostState: 'Published', CreditSource: false,
+        FixedTags: ['memes', 'funny'], RotatingTags: ['relatable', 'lol', 'mood'], RotatingTagsPerPost: 2, MaxTags: 12, ResearchTags: true, PostState: 'Published', CreditSource: false,
+        Reblogs: { Enabled: false, PerDay: 3, Tags: [], MinNotes: 50, MaxAgeHours: 72, Images: true, Videos: false, Text: true, RequireApproval: true, StartHour: 9, EndHour: 23, Guidance: '' },
         ...over,
+    };
+}
+
+function tagHealth(tag: string, source: string, verdict: string, over: Record<string, unknown> = {}) {
+    const summary: Record<string, string> = {
+        Crowded: 'Flooded: about 119 posts an hour, so a new post leaves the first page within 10 minutes. A typical post there ends up with 0 notes.',
+        Active: 'Active: about 14 posts a day, so a post stays on the first page for 34 hours. A typical post there ends up with 6 notes.',
+        Quiet: 'Alive but slow: about 3 posts a week. A typical post there ends up with 4 notes.',
+        Dead: 'Nobody else has ever posted under this tag, so nobody is browsing it.',
+        Unknown: 'Not checked yet.',
+    };
+    return {
+        Tag: tag, Source: source, Verdict: verdict, Score: verdict === 'Active' ? 77.7 : verdict === 'Quiet' ? 41 : 0,
+        PostsPerDay: verdict === 'Crowded' ? 2856 : verdict === 'Active' ? 14 : verdict === 'Quiet' ? 0.4 : null,
+        TypicalNotes: verdict === 'Active' ? 6 : verdict === 'Quiet' ? 4 : verdict === 'Crowded' ? 0 : null,
+        ShareWithNotes: verdict === 'Active' ? 0.9 : 0.1, Settled: verdict === 'Unknown' ? 0 : 20, CheckedUtc: verdict === 'Unknown' ? null : iso(-90),
+        OurPosts: 0, OurAvgNotes: null, Summary: summary[verdict], Related: [], ...over,
+    };
+}
+
+function reach(blogId: string) {
+    return {
+        BlogId: blogId, Posts30d: 17, WithNotes30d: 3, Notes30d: 7, AvgNotes30d: 0.4, Followers: 3, FollowersDelta30d: 3, PostsPerDay: 1, TagResearchOn: true,
+        Search: { CheckedUtc: iso(-60 * 5), Listed: true, Tag: 'real madrid', PostId: '7700001', LastListedUtc: iso(-60 * 5), Misses: 0 },
+        Findings: [
+            { Level: 'problem', Title: '14 of the last 17 posts got no notes at all', Detail: 'A blog with few followers is seen through its tags and little else, so a post nobody reacted to is usually a post nobody was shown.', Action: 'strategy' },
+            { Level: 'problem', Title: '#memes, #funny are flooded', Detail: '#funny: flooded: about 119 posts an hour, so a new post leaves the first page within 10 minutes.', Action: 'strategy' },
+            { Level: 'warning', Title: 'Posts once a day', Detail: 'Each post is one entry near the top of each of its tags, for as long as that tag takes to move on.', Action: 'schedule' },
+            { Level: 'warning', Title: 'The blog page looks unfinished: no description', Detail: 'Someone who likes a post opens the blog before following it.', Action: 'profile' },
+            { Level: 'good', Title: 'Tumblr lists this blog’s posts under their tags', Detail: 'A recent post was found in the listing for #real madrid.', Action: null },
+        ],
+        Tags: [
+            tagHealth('memes', 'fixed', 'Crowded', { OurPosts: 17, OurAvgNotes: 0.4 }),
+            tagHealth('funny', 'fixed', 'Crowded', { OurPosts: 17, OurAvgNotes: 0.4 }),
+            tagHealth('real madrid', 'ai', 'Active', { OurPosts: 1, OurAvgNotes: 5 }),
+            tagHealth('the shirt is the alibi', 'ai', 'Dead', { OurPosts: 1, OurAvgNotes: 0 }),
+            tagHealth('plastic chair', 'ai', 'Unknown', { OurPosts: 1, OurAvgNotes: 0 }),
+        ],
+        RelatedTags: ['shitpost', 'humor', 'dank memes'],
     };
 }
 
@@ -207,6 +247,12 @@ async function mockApi(page: Page, state: MockState) {
             }
             case '/omnitumblr/analytics':
                 return json(analytics(qp('blogId'), Number(qp('days') ?? 30)));
+            case '/omnitumblr/reach':
+                return blogById(qp('blogId')) ? json(reach(qp('blogId')!)) : json({ error: 'No such blog.' }, 404);
+            case '/omnitumblr/tags/research': {
+                const body = state.mutations[state.mutations.length - 1].body;
+                return json({ Tags: (body.tags as string[]).map(t => tagHealth(t.toLowerCase(), 'checked', t === 'shitpost' ? 'Crowded' : t === 'Real Madrid' ? 'Active' : 'Dead')) });
+            }
             case '/omnitumblr/post': {
                 const p = state.posts.find(x => x.PostId === qp('postId'));
                 if (!p) return json({ error: 'No such post.' }, 404);
@@ -215,7 +261,12 @@ async function mockApi(page: Page, state: MockState) {
                     Media: p.IsVideo ? [{ Index: 0, MimeType: 'video/mp4', Bytes: p.Bytes, Width: p.Width, Height: p.Height, DurationSeconds: p.DurationSeconds, HasThumbnail: p.HasThumbnail, Exists: true, FileName: 'reel.mp4' }] : [],
                     AttemptLog: p.Status === 'Failed' ? [{ Utc: iso(-30), Ok: false, Code: '400.8005', Message: p.LastError, DurationMs: 4200 }] : p.Status === 'Published' ? [{ Utc: p.PublishedUtc, Ok: true, Code: '201', Message: null, DurationMs: 8800 }] : [],
                     MetricsHistory: p.Status === 'Published' ? [{ Utc: p.PublishedUtc, Notes: 0 }, { Utc: iso(-60 * 40), Notes: 120 }, { Utc: iso(-60 * 20), Notes: 301 }, { Utc: iso(-20), Notes: p.Notes }] : [],
-                    CaptionInfo: { Mode: 'AI', Model: 'qwen3-vl', UsedVision: true, GeneratedUtc: iso(-90), Edited: p.CaptionEdited, Error: null, Failures: 0, AltText: 'A cat leaps across a kitchen counter at night.', SuggestedTags: ['cats', 'parkour'], Direction: null },
+                    TagHealth: (p.Tags as string[]).map(t => tagHealth(t, 'post', t === 'memes' ? 'Crowded' : t === 'cats' ? 'Active' : 'Unknown')),
+                    CaptionInfo: { Mode: 'AI', Model: 'qwen3-vl', UsedVision: true, GeneratedUtc: iso(-90), Edited: p.CaptionEdited, Error: null, Failures: 0, AltText: 'A cat leaps across a kitchen counter at night.', SuggestedTags: ['cats', 'parkour'], DroppedTags: ['kitchen counter at night'], TagsResearched: true, Direction: null },
+                    Reblog: p.Kind === 'Reblog' ? {
+                        ParentPostId: '9001', ParentBlogName: (p as any).ReblogOf, ParentUrl: (p as any).ReblogUrl, Summary: (p as any).ReblogSummary, ParentTags: ['memes', 'relatable'],
+                        ParentNotes: (p as any).ReblogNotes, ParentPublishedUtc: iso(-60 * 9), ParentType: 'photo', FoundUnderTag: 'memes', SeenByModel: true, Reason: (p as any).ReblogReason,
+                    } : null,
                     Content: p.ContentSource ? { Kind: 'MemeScraper', Key: 'ig:123', Origin: 'catmemes.daily', OriginalCaption: p.OriginalCaption, OriginalUrl: 'https://www.instagram.com/reel/abc/', Views: 812000, Likes: 40000, CreatedUtc: iso(-60 * 24 * 3) } : null,
                     Slug: 'nobody-my-cat-at-3am-parkour-1a2b3c4d', Deferrals: 0, NeedsReconcile: false, ManualOverride: false, CreatedUtc: iso(-60 * 24), UpdatedUtc: iso(-90),
                 });
@@ -260,6 +311,12 @@ async function mockApi(page: Page, state: MockState) {
                 if (Array.isArray(body.tags)) p.Tags = body.tags;
                 return json(p);
             }
+            case '/omnitumblr/posts/swap-content': {
+                const body = state.mutations[state.mutations.length - 1].body;
+                const p = state.posts.find(x => x.PostId === body.postId) as any;
+                if (p?.Kind === 'Reblog') Object.assign(p, { ReblogOf: 'otherperson', ReblogSummary: 'me explaining the plot to my cat', ReblogNotes: 140 });
+                return json({ message: 'Swapped.', Post: p });
+            }
             case '/omnitumblr/posts/approve': {
                 const body = state.mutations[state.mutations.length - 1].body;
                 let approved = 0;
@@ -275,7 +332,7 @@ async function mockApi(page: Page, state: MockState) {
                 return json({ Created: created });
             }
             case '/omnitumblr/captions/preview':
-                return json({ Caption: 'he has seen things. he will not elaborate.', Tags: ['memes', 'funny', 'cats', 'unhinged'], SuggestedTags: ['cats', 'unhinged'], AltText: 'A cat staring into the distance.', Model: 'qwen3-vl', UsedVision: true, FramesSent: 4, Content: { Key: 'ig:900', Source: 'MemeScraper', Kind: 'Video', Origin: 'catmemes.daily', OriginalUrl: null, Views: 400000, Likes: 20000, CreatedUtc: iso(-60 * 24), OriginalCaption: 'the stare', DurationSeconds: 9, FileName: '900.mp4' } });
+                return json({ Caption: 'he has seen things. he will not elaborate.', Tags: ['memes', 'funny', 'cats', 'unhinged'], SuggestedTags: ['cats', 'unhinged'], DroppedTags: ['thousand yard stare'], TagsResearched: true, AltText: 'A cat staring into the distance.', Model: 'qwen3-vl', UsedVision: true, FramesSent: 4, Content: { Key: 'ig:900', Source: 'MemeScraper', Kind: 'Video', Origin: 'catmemes.daily', OriginalUrl: null, Views: 400000, Likes: 20000, CreatedUtc: iso(-60 * 24), OriginalCaption: 'the stare', DurationSeconds: 9, FileName: '900.mp4' } });
             default:
                 return json({});
         }
@@ -373,6 +430,105 @@ test('blog page: analytics, strategy edits and caption preview', async ({ page }
     await page.screenshot({ path: `${SHOTS}/blog-activity.png`, fullPage: true });
 });
 
+test('blog page: the reach check names what limits reach and looks tags up', async ({ page }) => {
+    const state = buildState();
+    await mockApi(page, state);
+    await page.setViewportSize({ width: 1500, height: 1100 });
+    await page.goto('/schemery/omnitumblr/blog/b-meme?tab=reach');
+
+    await expect(page.getByText('What is holding reach back')).toBeVisible(BOOT);
+    await expect(page.getByText('14 of the last 17 posts got no notes at all')).toBeVisible();
+    await expect(page.getByText('3 of 17')).toBeVisible();
+    await expect(page.getByText('#memes, #funny are flooded')).toBeVisible();
+    await expect(page.getByRole('link', { name: /Blog settings/ })).toHaveAttribute('href', 'https://www.tumblr.com/settings/blog/memeblog');
+    const row = (tag: string) => page.getByRole('row').filter({ hasText: tag });
+    await expect(row('#real madrid').getByText('Active', { exact: true })).toBeVisible();
+    await expect(row('#the shirt is the alibi').getByText('Nobody there')).toBeVisible();
+    await expect(row('#funny').getByText('119/hour')).toBeVisible();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${SHOTS}/blog-reach.png`, fullPage: true });
+
+    // Try tags before adding them: a suggestion chip plus a typed one, sent as a JSON body.
+    await page.getByRole('button', { name: '#shitpost' }).click();
+    await page.getByLabel('Tags to check').fill('Real Madrid');
+    await page.getByRole('button', { name: 'Check on Tumblr' }).click();
+    await expect.poll(() => state.mutations.find(m => m.path === '/omnitumblr/tags/research')?.body).toEqual({ tags: ['shitpost', 'Real Madrid'] });
+    await expect(page.locator('.checked li').first()).toContainText('#real madrid'); // best first
+    await page.screenshot({ path: `${SHOTS}/blog-reach-checked.png`, fullPage: true });
+
+    // A finding leads to where it is fixed, and the strategy carries the research switch.
+    await page.getByRole('button', { name: 'Edit schedule' }).click();
+    await expect(page.getByText('When to post')).toBeVisible();
+    const research = page.getByLabel('Check suggested tags on Tumblr first');
+    await expect(research).toBeChecked();
+    await research.uncheck();
+    await page.getByRole('button', { name: 'Save strategy' }).first().click();
+    await expect.poll(() => state.mutations.find(m => m.path === '/omnitumblr/blogs/update')?.body?.strategy?.ResearchTags).toBe(false);
+
+    // A post shows how each of its tags is doing, and what was left out.
+    await page.getByRole('tab', { name: /Queue/ }).click();
+    await page.getByText('my last brain cell watching me try to adult').click();
+    await expect(page.getByRole('dialog').getByText('#cats · Active')).toBeVisible();
+    await expect(page.getByRole('dialog').getByText('#memes · Flooded')).toBeVisible();
+    await expect(page.getByRole('dialog').getByText(/Left out, nobody else on Tumblr uses them: #kitchen counter at night/)).toBeVisible();
+    await page.screenshot({ path: `${SHOTS}/post-drawer-tags.png` });
+});
+
+test('curated reblogs: a pick in the queue, picking another, and the settings', async ({ page }) => {
+    const state = buildState();
+    state.posts.push(post('p-reblog', { BlogId: 'b-meme', Name: 'memeblog' }, {
+        Kind: 'Reblog', Status: 'AwaitingApproval', Approved: false, Caption: null, Tags: ['memes'], IsVideo: false, DurationSeconds: null, CaptionMode: 'None', UsedVision: false,
+        ContentSource: null, ContentOrigin: null, ContentUrl: null, OriginalCaption: null, ScheduledUtc: iso(200), SlotUtc: null,
+        ReblogOf: 'funnyperson', ReblogUrl: 'https://www.tumblr.com/funnyperson/9001', ReblogSummary: 'when the wifi drops mid-download', ReblogNotes: 512,
+        ReblogTag: 'memes', ReblogType: 'photo', ReblogReason: 'A harmless relatable meme.', ReblogSeenByModel: true,
+    }));
+    await mockApi(page, state);
+    await page.setViewportSize({ width: 1500, height: 1100 });
+    await page.goto('/schemery/omnitumblr/blog/b-meme?tab=queue');
+
+    // In the queue a reblog reads as whose post it is, not as a caption of ours.
+    const row = page.getByText('⟳ @funnyperson: when the wifi drops mid-download');
+    await expect(row).toBeVisible(BOOT);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${SHOTS}/blog-queue-reblog.png`, fullPage: true });
+
+    await row.click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('heading', { name: 'Reblog of @funnyperson' })).toBeVisible();
+    await expect(dialog.getByText(/512 notes when picked/)).toBeVisible();
+    await expect(dialog.getByText('A harmless relatable meme.')).toBeVisible();
+    await expect(dialog.getByRole('link', { name: /open on Tumblr/ })).toHaveAttribute('href', 'https://www.tumblr.com/funnyperson/9001');
+    await expect(dialog.getByLabel('Comment (optional)')).toBeVisible();
+    await expect(dialog.getByRole('button', { name: /Rewrite with AI/ })).toHaveCount(0); // nothing of ours to caption
+    await expect(page.getByRole('button', { name: 'Swap content' })).toHaveCount(0);
+    await page.screenshot({ path: `${SHOTS}/post-drawer-reblog.png` });
+
+    await page.getByRole('button', { name: 'Pick another' }).click();
+    await expect.poll(() => state.mutations.find(m => m.path === '/omnitumblr/posts/swap-content')?.body).toEqual({ postId: 'p-reblog' });
+    await expect(dialog.getByRole('heading', { name: 'Reblog of @otherperson' })).toBeVisible();
+    await page.getByRole('button', { name: 'Approve', exact: true }).click();
+    await expect.poll(() => state.mutations.find(m => m.path === '/omnitumblr/posts/approve')?.body).toEqual({ postId: 'p-reblog' });
+    await page.getByRole('button', { name: 'Close panel' }).click();
+
+    // Off until switched on; switching it on shows the rest, and approval stays on unless taken off.
+    await page.getByRole('tab', { name: 'Strategy' }).click();
+    const enable = page.getByLabel('Reblog other people\'s posts');
+    await expect(enable).not.toBeChecked();
+    await expect(page.getByLabel('Reblogs a day')).toHaveCount(0);
+    await enable.check();
+    await page.getByLabel('Reblogs a day').fill('4');
+    await page.getByLabel('Tags to reblog from').fill('shitpost');
+    await page.getByLabel('Tags to reblog from').press('Enter');
+    await expect(page.getByLabel('Hold each pick for my approval')).toBeChecked();
+    await expect(page.getByLabel(/Videos \(always held for approval\)/)).not.toBeChecked();
+    await page.getByText('Curated reblogs').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${SHOTS}/blog-strategy-reblogs.png`, fullPage: true });
+    await page.getByRole('button', { name: 'Save strategy' }).first().click();
+    await expect.poll(() => state.mutations.find(m => m.path === '/omnitumblr/blogs/update')?.body?.strategy?.Reblogs)
+        .toMatchObject({ Enabled: true, PerDay: 4, Tags: ['shitpost'], RequireApproval: true, Videos: false, MinNotes: 50 });
+});
+
 test('compose creates posts with a JSON body', async ({ page }) => {
     const state = buildState();
     await mockApi(page, state);
@@ -433,5 +589,20 @@ test('pages hold together at phone width', async ({ page }) => {
     await expect(page.getByText('Best times to post')).toBeVisible(BOOT);
     await page.waitForTimeout(500);
     await page.screenshot({ path: `${SHOTS}/mobile-analytics.png`, fullPage: true });
+    expect(await horizontalOverflow()).toBeLessThanOrEqual(1);
+
+    // In-app from here: another cold page load can run the dev server out of sockets.
+    await page.getByRole('tab', { name: 'Reach' }).click();
+    await expect(page.getByText('What is holding reach back')).toBeVisible();
+    await expect(page.getByText('#the shirt is the alibi')).toBeVisible();
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: `${SHOTS}/mobile-reach.png`, fullPage: true });
+    expect(await horizontalOverflow()).toBeLessThanOrEqual(1);
+
+    await page.getByRole('tab', { name: 'Strategy' }).click();
+    await page.getByLabel('Reblog other people\'s posts').check();
+    await expect(page.getByLabel('Reblogs a day')).toBeVisible();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${SHOTS}/mobile-strategy.png`, fullPage: true });
     expect(await horizontalOverflow()).toBeLessThanOrEqual(1);
 });

@@ -24,6 +24,21 @@
                 </div>
             </section>
 
+            <!-- A reblog: whose post, and why it was picked -->
+            <section v-if="reblog" class="reblog">
+                <h4 class="ot-sectionhead">Reblog of @{{ reblog.ParentBlogName }}</h4>
+                <p v-if="reblog.Summary" class="original">{{ reblog.Summary }}</p>
+                <dl class="ot-kv">
+                    <dt>Original</dt>
+                    <dd><a v-if="reblog.ParentUrl" :href="reblog.ParentUrl" target="_blank" rel="noopener noreferrer" class="link">open on Tumblr ↗</a>
+                        · {{ fmtCount(reblog.ParentNotes) }} notes when picked{{ reblog.ParentPublishedUtc ? ` · posted ${fmtRelative(reblog.ParentPublishedUtc)}` : '' }}</dd>
+                    <dt v-if="reblog.FoundUnderTag">Found under</dt><dd v-if="reblog.FoundUnderTag">#{{ reblog.FoundUnderTag }}</dd>
+                    <dt v-if="reblog.ParentTags.length">Its tags</dt><dd v-if="reblog.ParentTags.length">{{ reblog.ParentTags.map(t => '#' + t).join(' ') }}</dd>
+                    <dt>Screening</dt>
+                    <dd>{{ reblog.Reason || 'Passed.' }}<span v-if="!reblog.SeenByModel" class="warn"> Look at the original before approving.</span></dd>
+                </dl>
+            </section>
+
             <div v-if="banner" class="ot-banner" :class="banner.tone" role="status">
                 <span class="glyph" aria-hidden="true">{{ banner.tone === 'warn' ? '⏸' : banner.tone === 'info' ? 'ℹ' : '⚠' }}</span>
                 <div><strong>{{ banner.title }}</strong>{{ banner.text }}</div>
@@ -32,15 +47,15 @@
             <!-- Caption + tags + time -->
             <section class="editor">
                 <div class="ot-field">
-                    <label for="tb-caption">Caption</label>
-                    <textarea id="tb-caption" v-model="caption" class="ot-input" rows="4" :disabled="!editable"
-                              :placeholder="p!.CaptionPending ? 'The caption is being written…' : 'No caption'"></textarea>
+                    <label for="tb-caption">{{ reblog ? 'Comment (optional)' : 'Caption' }}</label>
+                    <textarea id="tb-caption" v-model="caption" class="ot-input" :rows="reblog ? 2 : 4" :disabled="!editable"
+                              :placeholder="reblog ? 'Reblogged as it is. Anything typed here is added under the original.' : p!.CaptionPending ? 'The caption is being written…' : 'No caption'"></textarea>
                     <div class="help">
-                        {{ caption.length }} characters · {{ captionProvenance }}
+                        {{ caption.length }} characters{{ reblog ? '' : ` · ${captionProvenance}` }}
                     </div>
                 </div>
 
-                <div v-if="editable && canEdit" class="regen">
+                <div v-if="editable && canEdit && !reblog" class="regen">
                     <input v-model="direction" class="ot-input" maxlength="300" aria-label="Direction for the AI rewrite"
                            placeholder="Optional direction for the AI, e.g. “lean into the cat's face”" @keydown.enter.prevent="regenerate" />
                     <button class="ot-btn" :disabled="busy" @click="regenerate">{{ busyAction === 'regen' ? 'Writing…' : '✨ Rewrite with AI' }}</button>
@@ -49,7 +64,16 @@
                 <div class="ot-field">
                     <label for="tb-tags">Tags</label>
                     <OmniTumblrTagInput input-id="tb-tags" v-model="tags" :disabled="!editable || !canEdit" />
-                    <div v-if="detail.CaptionInfo.SuggestedTags.length" class="help">AI suggested: {{ detail.CaptionInfo.SuggestedTags.map(t => '#' + t).join(' ') }}</div>
+                    <div v-if="reblog" class="help">Tumblr lists only original posts under a tag, so a reblog's tags only file it in the blog's own archive.</div>
+                    <div v-if="knownTags.length && !reblog" class="taghealth" aria-label="How each tag is doing on Tumblr">
+                        <span v-for="t in knownTags" :key="t.Tag" class="ot-chip" :class="tagVerdictTone(t)" :title="t.Summary">#{{ t.Tag }} · {{ TAG_VERDICT_LABEL[t.Verdict] }}</span>
+                    </div>
+                    <div v-if="detail.CaptionInfo.SuggestedTags.length && !reblog" class="help">
+                        AI suggested: {{ detail.CaptionInfo.SuggestedTags.map(t => '#' + t).join(' ') }}{{ detail.CaptionInfo.TagsResearched ? ' (checked on Tumblr)' : '' }}
+                    </div>
+                    <div v-if="detail.CaptionInfo.DroppedTags?.length && !reblog" class="help">
+                        Left out, nobody else on Tumblr uses them: {{ detail.CaptionInfo.DroppedTags.map(t => '#' + t).join(' ') }}
+                    </div>
                 </div>
 
                 <div v-if="editable" class="ot-field">
@@ -68,7 +92,11 @@
             </section>
 
             <!-- Performance -->
-            <section v-if="p!.Status === 'Published' || p!.Status === 'Removed'" class="perf">
+            <section v-if="reblog && p!.Status === 'Published'">
+                <h4 class="ot-sectionhead">Performance</h4>
+                <p class="original">Tumblr shows the original's notes on every reblog of it, so a reblog has no notes of its own to measure. What reblogs do for the blog shows up in its followers and activity.</p>
+            </section>
+            <section v-else-if="p!.Status === 'Published' || p!.Status === 'Removed'" class="perf">
                 <h4 class="ot-sectionhead">Performance</h4>
                 <div class="ot-kpis tight">
                     <OmniTraderKpi label="Notes" :value="fmtCount(p!.Notes)" small :foot="p!.MetricsSyncedUtc ? `checked ${fmtRelative(p!.MetricsSyncedUtc)}` : 'not checked yet'" />
@@ -121,9 +149,10 @@
                 <button v-if="p!.Status === 'AwaitingApproval'" class="ot-btn primary" :disabled="busy" @click="act('approve')">Approve</button>
                 <button v-if="canPublishNow && canPublish" class="ot-btn" :disabled="busy" @click="act('publish-now')">Publish now</button>
                 <button v-if="p!.Status === 'Failed'" class="ot-btn" :disabled="busy" @click="act('retry')">Retry</button>
-                <button v-if="editable && p!.Origin === 'Autopilot'" class="ot-btn ghost" :disabled="busy" @click="act('swap-content')">Swap content</button>
-                <button v-if="editable && p!.Origin === 'Autopilot'" class="ot-btn ghost" :disabled="busy" @click="act('skip')">Skip slot</button>
-                <button v-if="editable" class="ot-btn danger" :disabled="busy" @click="act('cancel')">Cancel post</button>
+                <button v-if="editable && reblog" class="ot-btn ghost" :disabled="busy" @click="act('pick-another')">{{ busyAction === 'pick-another' ? 'Looking…' : 'Pick another' }}</button>
+                <button v-if="editable && !reblog && p!.Origin === 'Autopilot'" class="ot-btn ghost" :disabled="busy" @click="act('swap-content')">Swap content</button>
+                <button v-if="editable && !reblog && p!.Origin === 'Autopilot'" class="ot-btn ghost" :disabled="busy" @click="act('skip')">Skip slot</button>
+                <button v-if="editable" class="ot-btn danger" :disabled="busy" @click="act('cancel')">{{ reblog ? 'Don’t reblog' : 'Cancel post' }}</button>
                 <button v-if="p!.Status === 'Published' && canPublish" class="ot-btn danger" :disabled="busy" @click="act('delete-remote')">Delete from Tumblr</button>
             </template>
             <a v-if="p?.TumblrUrl && p.Status === 'Published' && !p.TumblrIdPending" :href="p.TumblrUrl" target="_blank" rel="noopener noreferrer" class="ot-btn ghost">Open on Tumblr ↗</a>
@@ -135,8 +164,8 @@
 import { computed, ref, watch } from 'vue';
 import { useAccess } from '~/composables/useAccess';
 import {
-    STATUS_LABEL, confirmAction, fmtBytes, fmtCount, fmtClipLength, fmtRelative, fmtWhen, forgetMedia, fromLocalInput, loadMediaUrl, notify,
-    postMediaPath, postThumbPath, q, toLocalInput, tumblrGet, tumblrPost, type PostDetail, type PostSummary,
+    STATUS_LABEL, TAG_VERDICT_LABEL, confirmAction, fmtBytes, fmtCount, fmtClipLength, fmtRelative, fmtWhen, forgetMedia, fromLocalInput, loadMediaUrl, notify,
+    postMediaPath, postThumbPath, q, tagVerdictTone, toLocalInput, tumblrGet, tumblrPost, type PostDetail, type PostSummary,
 } from '~/composables/useOmniTumblr';
 
 const props = defineProps<{ open: boolean; postId: string | null }>();
@@ -156,10 +185,14 @@ const loadingVideo = ref(false);
 
 const caption = ref('');
 const tags = ref<string[]>([]);
+// What Tumblr's listings say about the tags still on the post (ones not looked up yet are left out).
+const knownTags = computed(() => (detail.value?.TagHealth ?? [])
+    .filter(t => t.Verdict !== 'Unknown' && tags.value.some(x => x.toLowerCase() === t.Tag)));
 const scheduledLocal = ref('');
 const direction = ref('');
 
 const p = computed(() => detail.value?.Post ?? null);
+const reblog = computed(() => (p.value?.Kind === 'Reblog' ? detail.value?.Reblog ?? null : null));
 const firstMedia = computed(() => detail.value?.Media[0] ?? null);
 const editable = computed(() => !!p.value && ['Draft', 'Planned', 'Ready', 'AwaitingApproval'].includes(p.value.Status));
 const canPublishNow = computed(() => !!p.value && ['Draft', 'Planned', 'Ready', 'AwaitingApproval', 'Failed', 'Skipped', 'Cancelled'].includes(p.value.Status));
@@ -172,7 +205,7 @@ const dirty = computed(() => {
         || scheduledLocal.value !== toLocalInput(post.ScheduledUtc);
 });
 
-const drawerTitle = computed(() => p.value ? `${p.value.Kind} post${p.value.BlogName ? ` · @${p.value.BlogName}` : ''}` : 'Post');
+const drawerTitle = computed(() => p.value ? `${p.value.Kind === 'Reblog' ? 'Reblog' : `${p.value.Kind} post`}${p.value.BlogName ? ` · @${p.value.BlogName}` : ''}` : 'Post');
 const drawerSubtitle = computed(() => p.value ? `${STATUS_LABEL[p.value.Status]} · ${fmtWhen(p.value.PublishedUtc ?? p.value.ScheduledUtc)}` : '');
 
 const mediaFacts = computed(() => {
@@ -196,6 +229,8 @@ const banner = computed(() => {
     const post = p.value;
     if (!post) return null;
     if (post.Status === 'Failed') return { tone: 'bad', title: 'This post failed', text: ` ${post.LastError ?? ''}` };
+    if (post.Status === 'AwaitingApproval' && post.Kind === 'Reblog')
+        return { tone: 'info', title: 'Waiting for your approval', text: ' This is someone else\'s post. It is reblogged once you approve it; left alone, it is dropped after two days.' };
     if (post.Status === 'AwaitingApproval') return { tone: 'info', title: 'Waiting for your approval', text: ' Autopilot will not publish it until it is approved.' };
     if (editable.value && post.BlockedReason) return { tone: 'warn', title: 'On hold', text: ` ${post.BlockedReason}` };
     if (['Skipped', 'Cancelled', 'Removed'].includes(post.Status) && post.LastError) return { tone: 'info', title: STATUS_LABEL[post.Status], text: ` ${post.LastError}` };
@@ -265,6 +300,7 @@ const ACTIONS: Record<string, { confirm?: [string, string, string, boolean]; don
     'publish-now': { confirm: ['Publish now?', 'It goes out within a few seconds, ignoring the schedule, daily cap and spacing.', 'Publish now', false], done: 'Publishing…' },
     'retry': { done: 'Queued for another attempt' },
     'swap-content': { confirm: ['Swap the content?', 'Autopilot picks the next video in line for this slot and writes a new caption. This one will not be used again.', 'Swap', false], done: 'Swapped' },
+    'pick-another': { done: 'Picked a different post' },
     'skip': { confirm: ['Skip this slot?', 'Nothing will be posted in this slot. The content is not reused.', 'Skip slot', true], done: 'Skipped' },
     'cancel': { confirm: ['Cancel this post?', 'Autopilot will fill its slot with different content.', 'Cancel post', true], done: 'Cancelled' },
     'delete-remote': { confirm: ['Delete it from Tumblr?', 'The post is permanently deleted from the blog on Tumblr. Its notes are lost. This cannot be undone.', 'Delete from Tumblr', true], done: 'Deleted from Tumblr' },
@@ -275,7 +311,9 @@ async function act(action: string) {
     if (!post) return;
     const spec = ACTIONS[action];
     if (spec.confirm && !(await confirmAction(...spec.confirm))) return;
-    await run(action, () => tumblrPost<any>(`/omnitumblr/posts/${action}`, { postId: post.PostId }), spec.done);
+    // A reblog is swapped through the same route as any content; the server picks another post to reblog.
+    const route = action === 'pick-another' ? 'swap-content' : action;
+    await run(action, () => tumblrPost<any>(`/omnitumblr/posts/${route}`, { postId: post.PostId }), spec.done);
 }
 
 async function run(action: string, call: () => Promise<{ ok: boolean; error: string | null; data: any }>, done: string | null) {
@@ -300,6 +338,8 @@ async function run(action: string, call: () => Promise<{ ok: boolean; error: str
 
 <style scoped>
 .tb-drawer { display: flex; flex-direction: column; gap: var(--ot-space-4); }
+.taghealth { display: flex; flex-wrap: wrap; gap: 4px; margin-top: var(--ot-space-2); }
+.reblog .warn { color: var(--ot-warning); }
 .media { display: flex; flex-direction: column; gap: var(--ot-space-2); }
 .player { width: 100%; max-height: 460px; border-radius: var(--ot-radius-sm); background: #000; }
 .mediafacts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ot-space-3); font-size: 12px; color: var(--ot-text-2); }

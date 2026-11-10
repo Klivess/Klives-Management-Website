@@ -8,7 +8,8 @@
                 <span v-if="showBlog && post.BlogName" class="blog">@{{ post.BlogName }}</span>
                 <span class="when" :title="exactTime">{{ whenLabel }}</span>
                 <span class="ot-chip" :class="statusTone(post.Status)">{{ STATUS_LABEL[post.Status] }}</span>
-                <span v-if="post.Origin === 'Autopilot'" class="origin" title="Planned by autopilot">auto</span>
+                <span v-if="post.Kind === 'Reblog'" class="origin" :title="post.ReblogTag ? `Picked from #${post.ReblogTag}` : 'A curated reblog'">reblog</span>
+                <span v-else-if="post.Origin === 'Autopilot'" class="origin" title="Planned by autopilot">auto</span>
                 <span v-if="post.TumblrState !== 'Published'" class="origin">{{ post.TumblrState.toLowerCase() }}</span>
             </div>
             <p class="caption" :class="{ empty: !post.Caption, pending: post.CaptionPending }">{{ captionText }}</p>
@@ -19,7 +20,11 @@
             <p v-if="notice" class="notice" :class="noticeTone">{{ notice }}</p>
         </div>
         <div class="side">
-            <template v-if="post.Status === 'Published'">
+            <!-- A reblog shows the original's notes on Tumblr, so none are shown as this blog's. -->
+            <span v-if="post.Kind === 'Reblog'" class="sub" :title="post.ReblogNotes != null ? `The original had ${post.ReblogNotes} notes when it was picked` : ''">
+                {{ post.Status === 'Published' ? 'reblogged' : pending ? fmtRelative(post.ScheduledUtc, now) : '' }}
+            </span>
+            <template v-else-if="post.Status === 'Published'">
                 <span class="metric" :title="`${post.Notes} notes`">{{ fmtCount(post.Notes) }}<small> notes</small></span>
                 <span v-if="post.Likes !== null" class="sub">♥ {{ fmtCount(post.Likes) }} · ⟳ {{ fmtCount(post.Reblogs) }}</span>
             </template>
@@ -32,7 +37,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import {
-    STATUS_LABEL, fmtCount, fmtClipLength, fmtRelative, fmtWhen, postThumbPath, statusTone, useNow, type PostSummary,
+    STATUS_LABEL, fmtCount, fmtClipLength, fmtRelative, fmtWhen, postThumbPath, reblogLine, statusTone, useNow, type PostSummary,
 } from '~/composables/useOmniTumblr';
 
 const props = withDefaults(defineProps<{ post: PostSummary; showBlog?: boolean; compact?: boolean }>(), { showBlog: false, compact: false });
@@ -52,6 +57,7 @@ const exactTime = computed(() => new Date(props.post.PublishedUtc ?? props.post.
 
 const captionText = computed(() => {
     const p = props.post;
+    if (p.Kind === 'Reblog') return reblogLine(p);
     if (p.CaptionPending) return p.CaptionError ? `Caption pending — AI failed: ${p.CaptionError}` : 'Writing the caption…';
     if (p.Kind === 'Text' && p.Title) return p.Title + (p.Caption ? ` — ${p.Caption}` : '');
     return p.Caption?.trim() || '(no caption)';

@@ -115,7 +115,7 @@
                                 <dt>Schedule</dt><dd>{{ scheduleSummary }}</dd>
                                 <dt>Content</dt><dd>{{ sourceSummary }}</dd>
                                 <dt>Captions</dt><dd>{{ captionSummary }}</dd>
-                                <dt>Tags</dt><dd>{{ blog!.Strategy.FixedTags.map(t => '#' + t).join(' ') || '—' }}</dd>
+                                <dt>Tags</dt><dd>{{ blog!.Strategy.FixedTags.map(t => '#' + t).join(' ') || '—' }} · <button type="button" class="linkish" @click="setTab('reach')">are they working?</button></dd>
                                 <dt>Approval</dt><dd>{{ blog!.RequireApproval ? 'posts wait for approval' : 'posts go out automatically' }}</dd>
                             </dl>
                         </OmniTraderCard>
@@ -170,12 +170,12 @@
                             <tbody>
                                 <tr v-for="p in historyFiltered" :key="p.PostId" class="clickable" tabindex="0" @click="openPost(p.PostId)" @keydown.enter="openPost(p.PostId)">
                                     <td><OmniTumblrThumb size="xs" :kind="p.Kind" :path="p.HasThumbnail ? postThumbPath(p.PostId) : null" /></td>
-                                    <td class="captioncell">{{ p.Caption || '(no caption)' }}<span v-if="p.LastError && p.Status !== 'Published'" class="sub neg">{{ p.LastError }}</span></td>
+                                    <td class="captioncell">{{ p.Kind === 'Reblog' ? reblogLine(p) : p.Caption || '(no caption)' }}<span v-if="p.LastError && p.Status !== 'Published'" class="sub neg">{{ p.LastError }}</span></td>
                                     <td class="nowrap">{{ fmtWhen(p.PublishedUtc ?? p.ScheduledUtc) }}</td>
-                                    <td class="num">{{ p.Status === 'Published' ? fmtCount(p.Notes) : '' }}</td>
+                                    <td class="num">{{ p.Status === 'Published' && p.Kind !== 'Reblog' ? fmtCount(p.Notes) : '' }}</td>
                                     <td class="num">{{ p.Likes ?? '' }}</td>
                                     <td class="num">{{ p.Reblogs ?? '' }}</td>
-                                    <td class="num">{{ p.Status === 'Published' ? `${p.NotesAt24h ?? '·'} / ${p.NotesAt7d ?? '·'}` : '' }}</td>
+                                    <td class="num">{{ p.Status === 'Published' && p.Kind !== 'Reblog' ? `${p.NotesAt24h ?? '·'} / ${p.NotesAt7d ?? '·'}` : '' }}</td>
                                     <td><span class="ot-chip" :class="statusTone(p.Status)">{{ STATUS_LABEL[p.Status] }}</span></td>
                                 </tr>
                             </tbody>
@@ -258,6 +258,11 @@
                 </div>
             </template>
 
+            <!-- ── Reach ── -->
+            <template v-else-if="tab === 'reach'">
+                <OmniTumblrReach :blog-id="blogId" :blog-name="blog!.Name" @go="setTab" />
+            </template>
+
             <!-- ── Strategy ── -->
             <template v-else-if="tab === 'strategy'">
                 <OmniTumblrStrategyEditor :blog-id="blogId" :strategy="blog!.Strategy" :require-approval="blog!.RequireApproval" @saved="loadDetail" />
@@ -292,7 +297,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useAccess } from '~/composables/useAccess';
 import {
     DAY_SHORT, STATUS_LABEL, WEEK_ORDER, blogStateTone, confirmAction, contentThumbPath, fmtCount, fmtDate, fmtClipLength, fmtRelative,
-    fmtSignedCount, fmtWhen, minuteToHHMM, notify, postThumbPath, q, statusTone, tumblrGet, tumblrPost, useNow, usePoll, useTumblrOverview,
+    fmtSignedCount, fmtWhen, minuteToHHMM, notify, postThumbPath, q, reblogLine, statusTone, tumblrGet, tumblrPost, useNow, usePoll, useTumblrOverview,
     type Analytics, type BlogDetail, type PostSummary, type Ranked,
 } from '~/composables/useOmniTumblr';
 
@@ -322,16 +327,17 @@ const summary = computed(() => detail.value?.Summary ?? null);
 
 useHead(() => ({ title: blog.value ? `@${blog.value.Name} · OmniTumblr` : 'OmniTumblr' }));
 
-type Tab = 'overview' | 'queue' | 'published' | 'analytics' | 'strategy' | 'activity';
+type Tab = 'overview' | 'queue' | 'published' | 'analytics' | 'reach' | 'strategy' | 'activity';
 const tab = computed<Tab>(() => {
     const t = String(route.query.tab ?? 'overview');
-    return (['overview', 'queue', 'published', 'analytics', 'strategy', 'activity'].includes(t) ? t : 'overview') as Tab;
+    return (['overview', 'queue', 'published', 'analytics', 'reach', 'strategy', 'activity'].includes(t) ? t : 'overview') as Tab;
 });
 const TABS = computed(() => [
     { id: 'overview' as Tab, label: 'Overview', count: 0 },
     { id: 'queue' as Tab, label: 'Queue', count: detail.value?.Pending.length ?? 0 },
     { id: 'published' as Tab, label: 'Published', count: 0 },
     { id: 'analytics' as Tab, label: 'Analytics', count: 0 },
+    { id: 'reach' as Tab, label: 'Reach', count: 0 },
     { id: 'strategy' as Tab, label: 'Strategy', count: 0 },
     { id: 'activity' as Tab, label: 'Activity', count: 0 },
 ]);
@@ -584,4 +590,5 @@ const limitLabel = (key: string) => `Tumblr ${key.replace(/_/g, ' ')}`;
 .topmain .sub { font-size: 11px; color: var(--ot-muted); }
 .notes { font-family: var(--ot-mono); font-weight: 600; }
 .savebar { margin-top: var(--ot-space-2); }
+.linkish { border: 0; background: none; padding: 0; color: var(--ot-info); cursor: pointer; font-size: inherit; }
 </style>

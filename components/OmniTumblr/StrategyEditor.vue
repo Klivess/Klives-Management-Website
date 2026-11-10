@@ -211,6 +211,9 @@
                     <div class="previewtext">
                         <p class="cap">{{ previewResult.Caption }}</p>
                         <p class="tags">{{ previewResult.Tags.map(t => '#' + t).join(' ') }}</p>
+                        <p v-if="previewResult.DroppedTags?.length" class="muted small">
+                            Left out, nobody else on Tumblr uses them: {{ previewResult.DroppedTags.map(t => '#' + t).join(' ') }}
+                        </p>
                         <p class="muted small">
                             {{ previewResult.UsedVision ? `Looked at ${previewResult.FramesSent} frames` : 'Text only (no frames)' }}
                             · {{ previewResult.Model ?? 'default model' }}
@@ -243,9 +246,69 @@
                 <div class="ot-field">
                     <label :for="fid('max-tags')">Max tags per post</label>
                     <input :id="fid('max-tags')" v-model.number="draft.MaxTags" type="number" min="1" max="30" class="ot-input" :disabled="!canEdit" />
-                    <div class="help">Including AI suggestions. Tumblr allows 30.</div>
+                    <div class="help">Including AI suggestions. Tumblr allows 30 and lists a post under its first 20.</div>
                 </div>
             </div>
+            <div class="checks">
+                <label class="ot-check"><input v-model="draft.ResearchTags" type="checkbox" :disabled="!canEdit" /> Check suggested tags on Tumblr first</label>
+            </div>
+            <p class="muted small taghelp">
+                Each tag the caption model suggests is looked up on Tumblr. The ones other people's posts get notes under go on the post, best first;
+                the ones nobody else uses are left out. The Reach tab shows how each of this blog's tags is doing.
+            </p>
+        </OmniTraderCard>
+
+        <!-- Curated reblogs -->
+        <OmniTraderCard title="Curated reblogs" subtitle="A few times a day, reblog a well-liked post from the blog's tags. On Tumblr reblogging is how a blog takes part: the original poster is told, and the blog shows up in the post's notes.">
+            <div class="checks">
+                <label class="ot-check"><input v-model="draft.Reblogs.Enabled" type="checkbox" :disabled="!canEdit" /> Reblog other people's posts</label>
+                <label class="ot-check"><input v-model="draft.Reblogs.RequireApproval" type="checkbox" :disabled="!canEdit || !draft.Reblogs.Enabled" /> Hold each pick for my approval</label>
+            </div>
+            <p class="muted small taghelp">
+                Every pick is screened first: it must be an original post that is recent, already well liked, not marked mature and open to reblogs,
+                and a model then looks at it and turns down anything that does not fit the blog or is not safe to put on it.
+                A post the model could not look at always waits for approval, whatever the switch above says. Needs autopilot to be on.
+            </p>
+            <template v-if="draft.Reblogs.Enabled">
+                <div class="ot-formgrid">
+                    <div class="ot-field">
+                        <label :for="fid('reblogs-per-day')">Reblogs a day</label>
+                        <input :id="fid('reblogs-per-day')" v-model.number="draft.Reblogs.PerDay" type="number" min="1" max="12" class="ot-input" :disabled="!canEdit" />
+                    </div>
+                    <div class="ot-field">
+                        <label :for="fid('reblogs-min-notes')">Only posts with at least</label>
+                        <input :id="fid('reblogs-min-notes')" v-model.number="draft.Reblogs.MinNotes" type="number" min="0" class="ot-input" :disabled="!canEdit" />
+                        <div class="help">notes. Lower it for small tags.</div>
+                    </div>
+                    <div class="ot-field">
+                        <label :for="fid('reblogs-max-age')">No older than (hours)</label>
+                        <input :id="fid('reblogs-max-age')" v-model.number="draft.Reblogs.MaxAgeHours" type="number" min="6" max="336" class="ot-input" :disabled="!canEdit" />
+                    </div>
+                    <div class="ot-field">
+                        <label :for="fid('reblogs-start')">Between (hour of the blog's day)</label>
+                        <div class="hours">
+                            <input :id="fid('reblogs-start')" v-model.number="draft.Reblogs.StartHour" type="number" min="0" max="23" class="ot-input" aria-label="First hour for reblogs" :disabled="!canEdit" />
+                            <span>and</span>
+                            <input v-model.number="draft.Reblogs.EndHour" type="number" min="1" max="24" class="ot-input" aria-label="Last hour for reblogs" :disabled="!canEdit" />
+                        </div>
+                    </div>
+                </div>
+                <div class="ot-field">
+                    <label :for="fid('reblog-tags')">Look in these tags</label>
+                    <OmniTumblrTagInput :input-id="fid('reblog-tags')" v-model="draft.Reblogs.Tags" :max="30" :disabled="!canEdit" label="Tags to reblog from"
+                                        placeholder="Empty: the blog's own fixed and rotating tags" />
+                </div>
+                <div class="checks reblogkinds">
+                    <span class="muted">Pick from:</span>
+                    <label class="ot-check"><input v-model="draft.Reblogs.Images" type="checkbox" :disabled="!canEdit" /> Images</label>
+                    <label class="ot-check"><input v-model="draft.Reblogs.Text" type="checkbox" :disabled="!canEdit" /> Text posts</label>
+                    <label class="ot-check" title="Only one frame of a video can be screened, so video picks always wait for approval."><input v-model="draft.Reblogs.Videos" type="checkbox" :disabled="!canEdit" /> Videos (always held for approval)</label>
+                </div>
+                <div class="ot-field">
+                    <label :for="fid('reblog-guidance')">Anything else to turn down</label>
+                    <input :id="fid('reblog-guidance')" v-model="draft.Reblogs.Guidance" class="ot-input" maxlength="1000" placeholder="e.g. nothing about football; no screenshots of tweets" :disabled="!canEdit" />
+                </div>
+            </template>
         </OmniTraderCard>
 
         <!-- Publishing -->
@@ -279,7 +342,7 @@ import { computed, onMounted, ref, useId, watch } from 'vue';
 import { useAccess } from '~/composables/useAccess';
 import {
     cloneDeep, contentThumbPath, notify, tumblrGet, tumblrPost, type CaptionMode, type CatalogOptions, type ContentPreview,
-    type ContentSourceKind, type Strategy,
+    type ContentSourceKind, type ReblogSettings, type Strategy,
 } from '~/composables/useOmniTumblr';
 
 const props = defineProps<{ blogId: string; strategy: Strategy; requireApproval: boolean }>();
@@ -304,7 +367,20 @@ const CAPTION_MODES: { value: CaptionMode; label: string; help: string }[] = [
     { value: 'None', label: 'None', help: 'No caption — the media speaks for itself.' },
 ];
 
-const draft = ref<Strategy>(cloneDeep(props.strategy));
+const REBLOG_DEFAULTS: ReblogSettings = {
+    Enabled: false, PerDay: 3, Tags: [], MinNotes: 50, MaxAgeHours: 72, Images: true, Videos: false, Text: true,
+    RequireApproval: true, StartHour: 9, EndHour: 23, Guidance: '',
+};
+
+/** A copy with every newer setting present, so a server that predates one still gives an editable strategy. */
+function complete(strategy: Strategy): Strategy {
+    const copy = cloneDeep(strategy);
+    copy.Reblogs = { ...REBLOG_DEFAULTS, ...(copy.Reblogs ?? {}) };
+    if (copy.ResearchTags == null) copy.ResearchTags = true;
+    return copy;
+}
+
+const draft = ref<Strategy>(complete(props.strategy));
 const approval = ref(props.requireApproval);
 const saving = ref(false);
 const saveError = ref<string | null>(null);
@@ -318,13 +394,13 @@ let adoptNextRefresh = false;
 watch(() => [props.strategy, props.requireApproval] as const, ([strategy, requireApproval]) => {
     // A refresh from the server must not wipe an edit in progress.
     if (!dirty.value || adoptNextRefresh) {
-        draft.value = cloneDeep(strategy);
+        draft.value = complete(strategy);
         approval.value = requireApproval;
         adoptNextRefresh = false;
     }
 });
 
-const dirty = computed(() => JSON.stringify(draft.value) !== JSON.stringify(props.strategy) || approval.value !== props.requireApproval);
+const dirty = computed(() => JSON.stringify(draft.value) !== JSON.stringify(complete(props.strategy)) || approval.value !== props.requireApproval);
 
 const examplesText = computed({
     get: () => draft.value.Ai.Examples.join('\n'),
@@ -368,7 +444,7 @@ function addSource(username: string) {
 }
 
 function discard() {
-    draft.value = cloneDeep(props.strategy);
+    draft.value = complete(props.strategy);
     approval.value = props.requireApproval;
     saveError.value = null;
 }
@@ -399,7 +475,7 @@ async function save() {
 const previewing = ref(false);
 const previewError = ref<string | null>(null);
 const previewDirection = ref('');
-const previewResult = ref<{ Caption: string; Tags: string[]; SuggestedTags: string[]; AltText: string | null; Model: string | null; UsedVision: boolean; FramesSent: number; Content: ContentPreview } | null>(null);
+const previewResult = ref<{ Caption: string; Tags: string[]; SuggestedTags: string[]; DroppedTags?: string[]; TagsResearched?: boolean; AltText: string | null; Model: string | null; UsedVision: boolean; FramesSent: number; Content: ContentPreview } | null>(null);
 
 async function preview() {
     previewing.value = true;
@@ -425,6 +501,8 @@ async function preview() {
 .ot-formgrid.wide { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
 .advanced { margin-top: var(--ot-space-3); }
 .advanced summary { cursor: pointer; color: var(--ot-text-2); font-size: 12.5px; margin-bottom: var(--ot-space-3); }
+/* Four options are wider than a phone: let the switchers wrap instead of pushing the page sideways. */
+.ot-segment { flex-wrap: wrap; max-width: 100%; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { border: 1px solid var(--ot-line-strong); background: transparent; border-radius: 999px; padding: 2px 10px; font-size: 12px; cursor: pointer; color: var(--ot-text-2); }
 .chip small { color: var(--ot-muted); margin-left: 4px; }
@@ -442,5 +520,9 @@ async function preview() {
 .cap { font-size: 15px; line-height: 21px; }
 .tags { color: var(--ot-info); font-size: 12.5px; }
 .small { font-size: 11.5px; margin: 0; }
+.taghelp { margin-top: var(--ot-space-2); max-width: 720px; }
+.hours { display: flex; align-items: center; gap: var(--ot-space-2); color: var(--ot-text-2); font-size: 12.5px; }
+.hours .ot-input { width: 72px; }
+.reblogkinds { margin: var(--ot-space-3) 0; align-items: center; }
 .savebar { display: flex; gap: var(--ot-space-2); align-items: center; position: sticky; bottom: 0; padding: var(--ot-space-3) 0; background: linear-gradient(transparent, var(--ot-bg) 35%); }
 </style>

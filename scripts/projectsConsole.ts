@@ -245,6 +245,15 @@ export function outcomeTotals(series: OverviewPoint[] | null | undefined) {
   }), { completed: 0, failed: 0, deferred: 0, cancelled: 0 });
 }
 
+/**
+ * A numeric observable's history as plain numbers, oldest first. Observable samples carry `numericValue`
+ * (ObservableSample on the server), unlike the overview's result history, which carries `value`.
+ */
+export function observableSeries(o: { type?: string; history?: { numericValue?: number | null }[] | null } | null | undefined): number[] {
+  if (!o || o.type !== 'Numeric') return [];
+  return (o.history ?? []).filter(s => typeof s.numericValue === 'number' && Number.isFinite(s.numericValue)).map(s => s.numericValue as number);
+}
+
 /** SVG paths for a sparkline in a w×h box: the line, and the area under it. */
 export function sparkPaths(values: number[], w = 100, h = 28, pad = 2): { line: string; area: string } | null {
   const pts = values.filter(v => Number.isFinite(v));

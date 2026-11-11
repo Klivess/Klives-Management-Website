@@ -1,164 +1,162 @@
 <template>
-  <div class="hooks-panel">
-    <div class="hp-head">
-      <p class="hp-note">Stimulus hooks decide what wakes the fleet — timers, webhooks, file changes, screen diffs, or Commander scripts.</p>
-      <button class="hp-add" @click="showForm = !showForm">{{ showForm ? 'Cancel' : '+ New hook' }}</button>
+  <div class="pjx-hk">
+    <div class="pjx-hk__bar">
+      <span class="pjx-dim">{{ summary }}</span>
+      <button class="pjx-btn pjx-btn--sm" :class="showForm ? 'pjx-btn--ghost' : ''" :aria-expanded="showForm" @click="showForm = !showForm; formError = ''">
+        <ProjectsIcon :name="showForm ? 'x' : 'plus'" />{{ showForm ? 'Cancel' : 'New trigger' }}
+      </button>
     </div>
 
-    <form v-if="showForm" class="hp-form" @submit.prevent="create">
-      <div class="hp-field">
-        <label>Source</label>
-        <select v-model="draft.sourceKind" class="hp-input">
-          <option value="timer">timer</option>
-          <option value="webhook">webhook</option>
-          <option value="file-watch">file-watch</option>
-          <option value="screen-diff">screen-diff</option>
-          <option value="script">script</option>
-          <option value="email">email</option>
-          <option value="discord">discord</option>
-          <option value="process-exit">process-exit</option>
-        </select>
+    <form v-if="showForm" class="pjx-hk__form" @submit.prevent="create">
+      <div class="pjx-hk__form-row">
+        <div class="pjx-field">
+          <label class="pjx-field__label" for="pjx-hk-kind">Source</label>
+          <select id="pjx-hk-kind" v-model="draft.sourceKind" class="pjx-select">
+            <option v-for="k in KINDS" :key="k.id" :value="k.id">{{ k.label }}</option>
+          </select>
+        </div>
+        <div class="pjx-field" style="flex: 1">
+          <label class="pjx-field__label" for="pjx-hk-spec">Source spec <span class="pjx-faint">· JSON</span></label>
+          <input id="pjx-hk-spec" v-model="draft.sourceSpec" class="pjx-input pjx-mono" :placeholder="specHint" :aria-invalid="!!specError || undefined" />
+        </div>
       </div>
-      <div class="hp-field">
-        <label>Recognition criterion <span class="hp-hint">(when does it count? empty = always)</span></label>
-        <textarea v-model="draft.criterion" class="hp-input" rows="2" placeholder="e.g. a supplier replied with a price quote"></textarea>
+      <div class="pjx-field">
+        <label class="pjx-field__label" for="pjx-hk-crit">When does it count? <span class="pjx-faint">· empty means every event wakes the agent</span></label>
+        <textarea id="pjx-hk-crit" v-model="draft.criterion" class="pjx-textarea" rows="2" placeholder="e.g. a supplier replied with a price quote"></textarea>
       </div>
-      <div class="hp-field">
-        <label>Source spec <span class="hp-hint">(JSON — e.g. {{ specHint }})</span></label>
-        <input v-model="draft.sourceSpec" class="hp-input hp-mono" :placeholder="specHint" />
+      <p v-if="specError" class="pjx-note" data-tone="fault">{{ specError }}</p>
+      <p v-if="formError" class="pjx-note" data-tone="fault" role="alert">{{ formError }}</p>
+      <div class="pjx-hk__form-foot">
+        <span class="pjx-faint">{{ kindHelp }}</span>
+        <button type="submit" class="pjx-btn pjx-btn--primary pjx-btn--sm" :disabled="creating || !!specError">{{ creating ? 'Creating…' : 'Create trigger' }}</button>
       </div>
-      <button type="submit" class="hp-create" :disabled="creating">{{ creating ? 'Creating…' : 'Create hook' }}</button>
     </form>
 
-    <div v-if="loading" class="hp-info">Loading hooks…</div>
-    <div v-else-if="!hooks.length" class="hp-empty">No hooks yet. The keepalive still wakes the Commander periodically.</div>
-    <ul v-else class="hp-list">
-      <li v-for="h in hooks" :key="h.hookID" class="hp-item">
-        <div class="hp-item-main">
-          <span class="hp-kind" :class="'k-' + h.sourceKind">{{ h.sourceKind }}</span>
-          <span class="hp-dest">→ {{ h.destinationAgentID }}</span>
-          <span v-if="!h.enabled" class="hp-disabled">disabled</span>
-          <span v-else class="hp-arm" :class="armClass(h.armState)" :title="h.armDetail">{{ armLabel(h.armState) }}</span>
+    <div v-if="loading" class="pjx-dim" style="font-size: 12px"><ProjectsIcon name="refresh" class="pjx-spin" /> Loading triggers…</div>
+    <div v-else-if="loadError" class="pjx-banner" data-tone="fault" role="alert">
+      <ProjectsIcon name="alert" /><div class="pjx-banner__body">{{ loadError }}</div>
+      <div class="pjx-banner__actions"><button class="pjx-btn pjx-btn--sm" @click="load">Retry</button></div>
+    </div>
+    <p v-else-if="!hooks.length" class="pjx-dim" style="font-size: 12.5px">No triggers yet. The keepalive still wakes the Commander periodically.</p>
+    <ul v-else class="pjx-hk__list">
+      <li v-for="h in hooks" :key="h.hookID" :data-off="!h.enabled || undefined">
+        <span class="pjx-chip" :data-tone="kindTone(h.sourceKind)"><ProjectsIcon :name="kindIcon(h.sourceKind)" />{{ h.sourceKind }}</span>
+        <div class="pjx-hk__body">
+          <p class="pjx-hk__crit" :data-none="!h.recognitionCriterion || undefined">{{ h.recognitionCriterion || 'No criterion: every event wakes the agent.' }}</p>
+          <p v-if="h.enabled && h.armState === 'Error'" class="pjx-hk__err">{{ h.armDetail }}</p>
         </div>
-        <div class="hp-crit">{{ h.recognitionCriterion || '(no criterion — always delivers)' }}</div>
-        <div v-if="h.enabled && h.armState === 'Error'" class="hp-armdetail">{{ h.armDetail }}</div>
-        <button class="hp-del" @click="remove(h.hookID)" title="Delete hook">✕</button>
+        <span class="pjx-dim pjx-hk__dest" title="Who it wakes">→ {{ h.destinationAgentID }}</span>
+        <span v-if="!h.enabled" class="pjx-chip pjx-chip--quiet">disabled</span>
+        <span v-else class="pjx-chip" :data-tone="armTone(h.armState)" :title="h.armDetail || ''">{{ armLabel(h.armState) }}</span>
+        <span class="pjx-hk__tools">
+          <template v-if="confirmID === h.hookID">
+            <button class="pjx-btn pjx-btn--danger pjx-btn--xs" :disabled="removing" @click="remove(h.hookID)">{{ removing ? 'Deleting…' : 'Delete' }}</button>
+            <button class="pjx-btn pjx-btn--ghost pjx-btn--xs" @click="confirmID = null">Keep</button>
+          </template>
+          <button v-else class="pjx-iconbtn pjx-iconbtn--sm" data-tone="fault" title="Delete this trigger" aria-label="Delete this trigger" @click="confirmID = h.hookID"><ProjectsIcon name="trash" /></button>
+        </span>
       </li>
     </ul>
+    <p v-if="listError" class="pjx-note" data-tone="fault" role="alert">{{ listError }}</p>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue';
-import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import { computed, onMounted, reactive, ref } from 'vue';
+import ProjectsIcon from '~/components/Projects/Icon.vue';
+import { pjxGet, pjxPost } from '~/composables/useProjectsConsole';
+import type { PjTone } from '~/scripts/projectsConsole';
 
 const props = defineProps<{ projectId: string }>();
 
+const KINDS = [
+  { id: 'timer', label: 'Timer', hint: '{"intervalSeconds": 3600}', help: 'Wakes the agent on a fixed interval.', icon: 'clock', tone: 'info' },
+  { id: 'webhook', label: 'Webhook', hint: '{}', help: 'A URL anything can POST to; the payload reaches the agent.', icon: 'broadcast', tone: 'plan' },
+  { id: 'file-watch', label: 'File watch', hint: '{"path": "/project/inbox"}', help: 'Fires when files under the path change.', icon: 'folder', tone: 'info' },
+  { id: 'screen-diff', label: 'Screen change', hint: '{"intervalSeconds": 5, "threshold": 0.05}', help: 'Fires when the desktop changes by more than the threshold.', icon: 'monitor', tone: 'need' },
+  { id: 'script', label: 'Script', hint: '{"script": "await Emit(...);", "pollSeconds": 30}', help: 'A Commander script that decides when to emit.', icon: 'sparkles', tone: 'plan' },
+  { id: 'email', label: 'Email', hint: '{"to": "orders@klive.dev", "from": "", "subjectContains": ""}', help: 'Mail to a KliveMail address that matches the filter.', icon: 'mail', tone: 'info' },
+  { id: 'discord', label: 'Discord', hint: '{"channelId": "", "authorId": "", "contains": ""}', help: 'Discord messages that match the filter.', icon: 'message', tone: 'info' },
+  { id: 'process-exit', label: 'Process exit', hint: '{"processName": "chrome", "pollSeconds": 10}', help: 'Fires when the named process stops.', icon: 'stop', tone: 'fault' },
+] as const;
+
 const hooks = ref<any[]>([]);
 const loading = ref(true);
+const loadError = ref('');
+const listError = ref('');
 const showForm = ref(false);
 const creating = ref(false);
+const formError = ref('');
+const confirmID = ref<string | null>(null);
+const removing = ref(false);
 const draft = reactive({ sourceKind: 'timer', criterion: '', sourceSpec: '' });
 
-const specHint = computed(() => {
-  switch (draft.sourceKind) {
-    case 'timer': return '{"intervalSeconds": 3600}';
-    case 'file-watch': return '{"path": "/project/inbox"}';
-    case 'screen-diff': return '{"intervalSeconds": 5, "threshold": 0.05}';
-    case 'script': return '{"script": "await Emit(...);", "pollSeconds": 30}';
-    case 'email': return '{"to": "orders@klive.dev", "from": "", "subjectContains": ""}';
-    case 'discord': return '{"channelId": "", "authorId": "", "contains": ""}';
-    case 'process-exit': return '{"processName": "chrome", "pollSeconds": 10}';
-    default: return '{}';
-  }
+const kind = computed(() => KINDS.find(k => k.id === draft.sourceKind) ?? KINDS[0]);
+const specHint = computed(() => kind.value.hint);
+const kindHelp = computed(() => kind.value.help);
+// A spec that does not parse used to be replaced with {} without a word: a timer with no interval.
+const specError = computed(() => {
+  const raw = draft.sourceSpec.trim();
+  if (!raw) return '';
+  try {
+    const v = JSON.parse(raw);
+    return v && typeof v === 'object' && !Array.isArray(v) ? '' : 'The source spec must be a JSON object, like the placeholder.';
+  } catch { return 'The source spec is not valid JSON. Check the quotes and braces against the placeholder.'; }
+});
+const summary = computed(() => {
+  if (loading.value) return 'Reading triggers…';
+  if (!hooks.value.length) return 'Timers, webhooks, email and screen watches that wake the agents';
+  const live = hooks.value.filter(h => h.enabled && h.armState === 'Armed').length;
+  const broken = hooks.value.filter(h => h.enabled && h.armState === 'Error').length;
+  return [`${hooks.value.length} ${hooks.value.length === 1 ? 'trigger' : 'triggers'}`, live ? `${live} live` : '', broken ? `${broken} inert` : ''].filter(Boolean).join(' · ');
 });
 
+const kindIcon = (k: string) => KINDS.find(x => x.id === k)?.icon ?? 'zap';
+const kindTone = (k: string): PjTone => (KINDS.find(x => x.id === k)?.tone ?? 'rest') as PjTone;
 function armLabel(state: string) {
-  switch (state) {
-    case 'Armed': return '● live';
-    case 'Passive': return '○ push';
-    case 'Error': return '⚠ inert';
-    default: return '';
-  }
+  return ({ Armed: 'live', Passive: 'waits for a push', Error: 'inert' } as Record<string, string>)[state] ?? (state || 'unknown');
 }
-function armClass(state: string) {
-  return {
-    'a-armed': state === 'Armed',
-    'a-passive': state === 'Passive',
-    'a-error': state === 'Error',
-  };
+function armTone(state: string): PjTone {
+  return state === 'Armed' ? 'work' : state === 'Error' ? 'fault' : 'rest';
 }
 
 async function load() {
   loading.value = true;
-  try {
-    const res = await RequestGETFromKliveAPI(`/projects/hooks?projectID=${props.projectId}`, false, false);
-    if (res.ok) hooks.value = await res.json();
-  } catch { /* transient */ }
-  finally { loading.value = false; }
+  loadError.value = '';
+  const r = await pjxGet<any[]>(`/projects/hooks?projectID=${encodeURIComponent(props.projectId)}`);
+  loading.value = false;
+  if (r.ok && Array.isArray(r.body)) hooks.value = r.body;
+  else loadError.value = `Could not load the triggers (${r.status ? `HTTP ${r.status}` : 'network error'}).`;
 }
 
 async function create() {
+  if (creating.value || specError.value) return;
   creating.value = true;
-  try {
-    let spec: any = {};
-    if (draft.sourceSpec.trim()) { try { spec = JSON.parse(draft.sourceSpec); } catch { /* leave empty */ } }
-    const body = {
-      projectID: props.projectId,
-      sourceKind: draft.sourceKind,
-      recognitionCriterion: draft.criterion,
-      sourceSpecJson: JSON.stringify(spec),
-    };
-    const res = await RequestPOSTFromKliveAPI('/projects/hooks/create', JSON.stringify(body), false, true);
-    if (res.ok) {
-      showForm.value = false;
-      draft.criterion = ''; draft.sourceSpec = '';
-      await load();
-    }
-  } finally { creating.value = false; }
+  formError.value = '';
+  const spec = draft.sourceSpec.trim() ? JSON.parse(draft.sourceSpec) : {};
+  const r = await pjxPost('/projects/hooks/create', {
+    projectID: props.projectId,
+    sourceKind: draft.sourceKind,
+    recognitionCriterion: draft.criterion,
+    sourceSpecJson: JSON.stringify(spec),
+  });
+  creating.value = false;
+  if (!r.ok) { formError.value = r.error; return; }
+  showForm.value = false;
+  draft.criterion = ''; draft.sourceSpec = '';
+  await load();
 }
 
 async function remove(hookID: string) {
-  const res = await RequestPOSTFromKliveAPI(
-    `/projects/hooks/delete?projectID=${props.projectId}&hookID=${hookID}`, null, false, true);
-  if (res.ok) await load();
+  if (removing.value) return;
+  removing.value = true;
+  listError.value = '';
+  const r = await pjxPost(`/projects/hooks/delete?projectID=${encodeURIComponent(props.projectId)}&hookID=${encodeURIComponent(hookID)}`, null);
+  removing.value = false;
+  confirmID.value = null;
+  if (!r.ok) { listError.value = r.error; return; }
+  await load();
 }
 
 onMounted(load);
 </script>
-
-<style scoped>
-.hooks-panel { padding: 4px 2px; }
-.hp-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
-.hp-note { font-size: 12px; color: var(--ot-muted); margin: 0; flex: 1; }
-.hp-add { background: var(--ot-surface-2); color: var(--ot-text-2); border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
-.hp-form { background: var(--ot-surface); border: 1px solid var(--ot-line); border-radius: 8px; padding: 14px; margin-bottom: 14px; }
-.hp-field { margin-bottom: 10px; }
-.hp-field label { display: block; font-size: 12px; color: var(--ot-text-2); margin-bottom: 4px; }
-.hp-hint { color: var(--ot-muted); }
-.hp-input { width: 100%; box-sizing: border-box; background: var(--ot-surface-2); color: var(--ot-text); border: 1px solid var(--ot-line-strong); border-radius: 6px; padding: 8px 10px; font-size: 13px; }
-.hp-mono { font-family: var(--ot-mono); }
-.hp-create { background: var(--ot-accent); color: var(--ot-on-accent); border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
-.hp-create:disabled { opacity: 0.5; }
-.hp-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
-.hp-item { position: relative; background: var(--ot-surface-2); border-radius: 8px; padding: 10px 12px; }
-.hp-item-main { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.hp-kind { font-size: 11px; padding: 2px 8px; border-radius: 8px; background: var(--ot-surface-3); color: var(--ot-text-2); }
-.k-timer { background: var(--ot-info-soft); color: var(--ot-info); }
-.k-screen-diff { background: var(--ot-warning-soft); color: var(--ot-warning); }
-.k-script { background: var(--ot-violet-soft); color: var(--ot-violet); }
-.k-email { background: var(--ot-info-soft); color: var(--ot-info); }
-.k-discord { background: var(--ot-info-soft); color: var(--ot-info); }
-.k-process-exit { background: var(--ot-negative-soft); color: var(--ot-warning); }
-.hp-dest { font-size: 12px; color: var(--ot-muted); }
-.hp-disabled { font-size: 11px; color: var(--ot-negative); }
-.hp-arm { font-size: 11px; padding: 2px 7px; border-radius: 8px; white-space: nowrap; }
-.a-armed { background: var(--ot-positive-soft); color: var(--ot-positive); }
-.a-passive { background: var(--ot-surface-2); color: var(--ot-muted); }
-.a-error { background: var(--ot-negative-soft); color: var(--ot-negative); }
-.hp-crit { font-size: 12px; color: var(--ot-text-2); }
-.hp-armdetail { font-size: 11px; color: var(--ot-negative); margin-top: 3px; }
-.hp-del { position: absolute; top: 8px; right: 8px; background: none; border: none; color: var(--ot-muted); cursor: pointer; font-size: 13px; }
-.hp-del:hover { color: var(--ot-negative); }
-.hp-info, .hp-empty { color: var(--ot-muted); font-size: 13px; padding: 16px; text-align: center; }
-</style>

@@ -1,62 +1,41 @@
 <template>
   <span class="he-wrap">
-    <button class="ot-btn ghost" title="Download the full lossless conversation history as CSV" @click="openDialog">
-      ⤓ Export history
+    <button class="pjx-btn pjx-btn--ghost" title="Download the full lossless conversation history as CSV" @click="openDialog">
+      <ProjectsIcon name="download" />Export
     </button>
 
-    <transition name="he-fade">
-      <div v-if="open" class="he-backdrop" @click.self="open = false">
-        <div class="he-modal">
-          <div class="he-head">
-            <h3>Export history</h3>
-            <button class="he-close" @click="open = false">✕</button>
+    <ProjectsDialog :open="open" title="Export history" subtitle="The full lossless event log as CSV: every message, tool call, tool result, artifact reference, author and timestamp." @close="open = false">
+      <div class="he-body">
+        <div class="pjx-seg he-presets" role="group" aria-label="Timeframe">
+          <button v-for="p in presets" :key="p.id" type="button" class="pjx-seg__opt" :aria-pressed="activePreset === p.id" @click="applyPreset(p.id)">{{ p.label }}</button>
+        </div>
+        <div class="he-range" :data-off="mode === 'all' || undefined">
+          <div class="pjx-field">
+            <label class="pjx-field__label" for="he-from">From</label>
+            <input id="he-from" v-model="fromValue" type="datetime-local" class="pjx-input" :disabled="mode === 'all'" @input="activePreset = 'custom'" />
           </div>
-
-          <p class="he-sub">
-            Downloads the full lossless event log — every message, tool call, tool result, artifact
-            reference, author and timestamp — as a CSV over the timeframe you pick.
-          </p>
-
-          <div class="he-presets">
-            <button
-              v-for="p in presets"
-              :key="p.id"
-              class="he-chip"
-              :class="{ active: activePreset === p.id }"
-              @click="applyPreset(p.id)"
-            >{{ p.label }}</button>
-          </div>
-
-          <div class="he-range" :class="{ disabled: mode === 'all' }">
-            <label class="he-field">
-              <span>From</span>
-              <input v-model="fromValue" type="datetime-local" :disabled="mode === 'all'" @input="activePreset = 'custom'" />
-            </label>
-            <label class="he-field">
-              <span>To</span>
-              <input v-model="toValue" type="datetime-local" :disabled="mode === 'all'" @input="activePreset = 'custom'" />
-            </label>
-          </div>
-          <p v-if="mode === 'all'" class="he-hint">Exporting the project's entire history from the very first event.</p>
-          <p v-else-if="rangeInvalid" class="he-error">“From” must be before “To”.</p>
-
-          <div v-if="error" class="he-error">{{ error }}</div>
-
-          <div class="he-actions">
-            <button class="he-cancel" @click="open = false">Cancel</button>
-            <button class="he-go" :disabled="busy || rangeInvalid" @click="downloadCsv">
-              {{ busy ? 'Preparing…' : 'Download CSV' }}
-            </button>
+          <div class="pjx-field">
+            <label class="pjx-field__label" for="he-to">To</label>
+            <input id="he-to" v-model="toValue" type="datetime-local" class="pjx-input" :disabled="mode === 'all'" @input="activePreset = 'custom'" />
           </div>
         </div>
+        <p v-if="mode === 'all'" class="pjx-note">Exports the project's entire history, from the very first event.</p>
+        <p v-else-if="rangeInvalid" class="pjx-note" data-tone="fault">“From” must be before “To”.</p>
+        <p v-if="error" class="pjx-note" data-tone="fault" role="alert">{{ error }}</p>
       </div>
-    </transition>
+      <template #foot>
+        <button class="pjx-btn" @click="open = false">Cancel</button>
+        <button class="pjx-btn pjx-btn--primary" :disabled="busy || rangeInvalid" @click="downloadCsv"><ProjectsIcon name="download" />{{ busy ? 'Preparing…' : 'Download CSV' }}</button>
+      </template>
+    </ProjectsDialog>
   </span>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
+import ProjectsDialog from '~/components/Projects/Dialog.vue';
+import ProjectsIcon from '~/components/Projects/Icon.vue';
 
 const props = defineProps<{ projectId: string }>();
 
@@ -147,36 +126,9 @@ async function downloadCsv() {
 
 <style scoped>
 .he-wrap { display: inline-flex; }
-.ctrl { background: var(--ot-surface-2); color: var(--ot-text-2); border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; }
-.ctrl:hover { background: var(--ot-surface-3); color: var(--ot-text); }
-
-.he-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; }
-.he-modal { width: min(460px, 94vw); background: var(--ot-surface); border: 1px solid var(--ot-line); border-radius: 10px; padding: 20px; color: var(--ot-text); box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
-.he-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.he-head h3 { margin: 0; font-size: 17px; }
-.he-close { background: none; border: none; color: var(--ot-muted); font-size: 16px; cursor: pointer; }
-.he-close:hover { color: var(--ot-text); }
-.he-sub { font-size: 12px; color: var(--ot-muted); line-height: 1.5; margin: 0 0 14px; }
-
-.he-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
-.he-chip { background: var(--ot-surface-2); border: 1px solid var(--ot-line); color: var(--ot-text-2); padding: 6px 12px; border-radius: 16px; cursor: pointer; font-size: 12px; }
-.he-chip:hover { border-color: var(--ot-line-strong); color: var(--ot-text); }
-.he-chip.active { background: var(--ot-positive-soft); border-color: var(--ot-accent); color: var(--ot-positive); }
-
-.he-range { display: flex; gap: 12px; }
-.he-range.disabled { opacity: 0.4; }
-.he-field { flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--ot-muted); text-transform: uppercase; letter-spacing: 0.03em; }
-.he-field input { background: var(--ot-surface-2); color: var(--ot-text); border: 1px solid var(--ot-line-strong); border-radius: 6px; padding: 7px 8px; font-size: 13px; color-scheme: dark; }
-.he-field input:disabled { cursor: not-allowed; }
-
-.he-hint { font-size: 12px; color: var(--ot-muted); margin: 10px 0 0; }
-.he-error { font-size: 12px; color: var(--ot-negative); margin: 10px 0 0; }
-
-.he-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-.he-cancel { background: var(--ot-surface-2); color: var(--ot-text-2); border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
-.he-go { background: var(--ot-accent); color: var(--ot-on-accent); border: none; padding: 8px 18px; border-radius: 6px; cursor: pointer; font-weight: 600; }
-.he-go:disabled { opacity: 0.5; cursor: default; }
-
-.he-fade-enter-active, .he-fade-leave-active { transition: opacity 0.15s; }
-.he-fade-enter-from, .he-fade-leave-to { opacity: 0; }
+.he-body { display: flex; flex-direction: column; gap: 12px; }
+.he-presets { align-self: flex-start; }
+.he-range { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.he-range[data-off] { opacity: 0.45; }
+.he-range input { color-scheme: dark; }
 </style>

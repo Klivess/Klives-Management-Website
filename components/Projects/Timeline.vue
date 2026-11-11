@@ -1,18 +1,15 @@
 <template>
   <div class="timeline">
     <div class="tl-toolbar">
-      <div class="tl-left">
-        <span class="tl-label">Timeline</span>
-        <span class="tl-range">{{ rangeLabel }}</span>
-      </div>
+      <span class="tl-range">{{ rangeLabel }}</span>
       <div class="tl-controls">
-        <button class="tl-btn" title="Zoom out" @click="zoomBy(1.6)">−</button>
-        <button class="tl-btn" title="Zoom in" @click="zoomBy(1 / 1.6)">+</button>
-        <span class="tl-sep"></span>
-        <button v-for="z in zooms" :key="z.label" class="tl-btn" :class="{ active: nearSpan(z.ms) && following }" @click="setWindow(z.ms)">{{ z.label }}</button>
-        <span class="tl-sep"></span>
-        <button class="tl-btn" title="Fit all events" @click="fitAll">Fit</button>
-        <button class="tl-btn" :class="{ live: following }" title="Follow live" @click="goLive">
+        <button class="pjx-iconbtn pjx-iconbtn--sm tl-zoom" title="Zoom out" aria-label="Zoom out" @click="zoomBy(1.6)">−</button>
+        <button class="pjx-iconbtn pjx-iconbtn--sm" title="Zoom in" aria-label="Zoom in" @click="zoomBy(1 / 1.6)"><ProjectsIcon name="plus" /></button>
+        <div class="pjx-seg" role="group" aria-label="Time window">
+          <button v-for="z in zooms" :key="z.label" type="button" class="pjx-seg__opt" :aria-pressed="nearSpan(z.ms) && following" @click="setWindow(z.ms)">{{ z.label }}</button>
+        </div>
+        <button class="pjx-btn pjx-btn--ghost pjx-btn--sm" title="Fit all events" @click="fitAll">Fit</button>
+        <button class="pjx-btn pjx-btn--sm tl-live" :data-on="following || undefined" :aria-pressed="following" title="Follow live" @click="goLive">
           <span class="tl-livedot" :class="{ on: following }"></span>Live
         </button>
       </div>
@@ -81,6 +78,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import ProjectsIcon from '~/components/Projects/Icon.vue';
 import { eventColor } from '~/components/Projects/eventColors';
 
 const props = defineProps<{ events: any[]; agentLabels?: Record<string, string> }>();
@@ -329,25 +327,19 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.timeline { background: var(--ot-surface); border-radius: 8px; padding: 12px; }
-.tl-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 12px; flex-wrap: wrap; }
-.tl-left { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-.tl-label { font-weight: 600; color: var(--ot-text-2); }
-.tl-range { font-size: 11px; color: var(--ot-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.tl-controls { display: flex; align-items: center; gap: 4px; }
-.tl-btn { background: var(--ot-surface-2); color: var(--ot-text-2); border: none; padding: 4px 9px; border-radius: 5px; cursor: pointer; font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
-.tl-btn:hover { background: var(--ot-surface-3); }
-.tl-btn.active { background: var(--ot-accent); color: var(--ot-on-accent); }
-.tl-btn.live { background: var(--ot-surface-2); color: var(--ot-negative); }
-.tl-btn.live:hover { background: var(--ot-negative-soft); }
-.tl-sep { width: 1px; height: 16px; background: var(--ot-surface-3); margin: 0 3px; }
-.tl-livedot { width: 6px; height: 6px; border-radius: 50%; background: var(--ot-surface-3); }
-.tl-livedot.on { background: var(--ot-negative); animation: blink 1.6s ease-in-out infinite; }
+.timeline { padding: 10px 12px 12px; }
+.tl-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.tl-range { color: var(--pjx-ink-3); font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tl-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pjx .tl-zoom { font-size: 16px; line-height: 1; }
+.pjx .tl-live[data-on] { border-color: color-mix(in srgb, var(--pjx-fault) 45%, transparent); background: color-mix(in srgb, var(--pjx-fault) 10%, transparent); color: color-mix(in srgb, var(--pjx-fault) 65%, white); }
+.tl-livedot { width: 6px; height: 6px; border-radius: 50%; background: var(--pjx-ink-4); }
+.tl-livedot.on { background: var(--pjx-fault); animation: blink 1.6s ease-in-out infinite; }
 .tl-canvas-wrap { width: 100%; overflow: hidden; cursor: crosshair; touch-action: none; }
 .tl-canvas-wrap.grabbing { cursor: grabbing; }
 .tl-svg { display: block; user-select: none; }
 .lane-bg { fill: var(--ot-surface-2); }
-.lane-commander { fill: rgba(109, 220, 79, 0.06); }
+.lane-commander { fill: rgba(143, 128, 255, 0.06); }
 .lane-name { fill: var(--ot-muted); font-size: 10px; }
 .grid { stroke: var(--ot-grid); stroke-width: 1; }
 .tick-label { fill: var(--ot-muted); font-size: 9px; }
@@ -361,7 +353,7 @@ onBeforeUnmount(() => {
 .now-pulse { fill: var(--ot-negative); animation: pulse 1.6s ease-out infinite; }
 @keyframes pulse { 0% { opacity: 1; r: 4; } 70% { opacity: 0.15; r: 9; } 100% { opacity: 0; r: 9; } }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-.tl-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 11px; color: var(--ot-muted); }
+.tl-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 11px; color: var(--pjx-ink-3); }
 .lg { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
 .lg.dim { opacity: 0.35; }
 .lg i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }

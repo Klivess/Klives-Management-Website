@@ -1,11 +1,11 @@
 <template>
   <div class="conversation-panel">
     <div class="cp-toolbar">
-      <div class="ot-segment sm" role="group" aria-label="Conversation detail">
-        <button type="button" :aria-pressed="detail === 'messages'" @click="detail = 'messages'">Messages</button>
-        <button type="button" :aria-pressed="detail === 'everything'" @click="detail = 'everything'">Everything</button>
+      <div class="pjx-seg" role="group" aria-label="Conversation detail">
+        <button type="button" class="pjx-seg__opt" :aria-pressed="detail === 'messages'" @click="detail = 'messages'">Messages</button>
+        <button type="button" class="pjx-seg__opt" :aria-pressed="detail === 'everything'" @click="detail = 'everything'">Everything</button>
       </div>
-      <span class="cp-count pj-muted">{{ messageCount }} message{{ messageCount === 1 ? '' : 's' }} · {{ actionCount }} action{{ actionCount === 1 ? '' : 's' }}</span>
+      <span class="cp-count">{{ messageCount }} {{ messageCount === 1 ? 'message' : 'messages' }} · {{ actionCount }} {{ actionCount === 1 ? 'action' : 'actions' }}</span>
     </div>
 
     <div class="cp-events" ref="scrollEl" @scroll.passive="onScroll">
@@ -13,11 +13,11 @@
            a screenshot finishes loading, long after its event was appended. -->
       <div class="cp-inner" ref="innerEl">
         <template v-for="item in items" :key="item.key">
-          <div v-if="item.kind === 'event'" class="cp-event" :class="['a-' + item.event.author, 't-' + item.event.type]" @click="$emit('select', item.event)">
+          <div v-if="item.kind === 'event'" class="cp-event" :class="['a-' + item.event.author, 't-' + item.event.type, { pending: item.event._optimistic }]" @click="$emit('select', item.event)">
             <div class="cp-meta">
               <span class="cp-who">{{ whoLabel(item.event) }}</span>
               <span v-if="typeLabel(item.event)" class="cp-type">{{ typeLabel(item.event) }}</span>
-              <span class="cp-time">{{ time(item.event.timestamp) }}</span>
+              <span class="cp-time">{{ item.event._optimistic ? 'sending…' : time(item.event.timestamp) }}</span>
             </div>
             <div v-if="isProse(item.event)" class="cp-text pj-prose" v-html="renderMarkdown(item.event.text)"></div>
             <div v-else class="cp-text plain">{{ item.event.text }}</div>
@@ -28,7 +28,7 @@
 
           <div v-else class="cp-burst" :class="['a-' + item.author, { open: isOpen(item) }]">
             <button type="button" class="cp-burst-head" :aria-expanded="isOpen(item)" @click="toggle(item)">
-              <span class="cp-burst-caret" aria-hidden="true">{{ isOpen(item) ? '▾' : '▸' }}</span>
+              <ProjectsIcon name="chevron-right" class="cp-burst-caret" />
               <span class="cp-who">{{ item.whoLabel }}</span>
               <span class="cp-burst-title">{{ item.title }}</span>
               <span class="cp-burst-tools">
@@ -54,14 +54,18 @@
           </div>
         </template>
 
-        <ApprovalCard v-for="g in pendingGates" :key="g.gateID" :gate="g" @resolve="onResolve" />
+        <div v-if="needs.length" class="cp-needs">
+          <ProjectsNeedCard v-for="n in needs" :key="n.key" :need="n" :now="now" :busy="resolving" :can-resolve="canResolve" @resolve="onResolve" />
+        </div>
 
         <div v-if="loaded && !items.length && !pendingGates.length && !liveAgents.length" class="cp-empty">
-          No conversation yet. Say hello to the Commander, or wait for it to report in.
+          <ProjectsIcon name="message" />
+          <b>No conversation yet</b>
+          <span>Say hello to the Commander below, or wait for it to report in.</span>
         </div>
 
         <!-- Who is mid-turn right now. An agent can spend minutes on one turn, and nothing is written
-             to the event log until it finishes — this is the only window into that gap. -->
+             to the event log until it finishes: this is the only window into that gap. -->
         <div v-for="a in liveAgents" :key="a.agentID" class="cp-live" :class="'a-' + (a.agentID === 'commander' ? 'commander' : 'agent')">
           <div class="cp-live-head">
             <span class="cp-live-dot" :class="'ph-' + a.phase"></span>
@@ -79,23 +83,24 @@
         <!-- When the Commander is not mid-turn, say why and when it runs next, so a quiet chat never
              reads as being ignored. -->
         <div v-if="commanderStatus" class="cp-status" role="status">
-          <span class="ot-dot" :class="commanderStatus.tone" aria-hidden="true"></span>
+          <span class="pjx-chip" :data-tone="commanderStatus.tone">{{ commanderStatus.label }}</span>
           <span class="cp-who">Commander</span>
-          <span class="cp-status-label">{{ commanderStatus.label }}</span>
           <span class="cp-status-detail">{{ commanderStatus.detail }}</span>
           <span v-if="commanderStatus.next" class="cp-status-next">next {{ commanderStatus.next }}</span>
         </div>
       </div>
     </div>
 
-    <div v-if="sendError" class="cp-notice bad">{{ sendError }} <button class="ot-btn ghost sm" @click="sendError = ''">Dismiss</button></div>
-    <div v-if="promotionNotice" class="cp-notice warn">{{ promotionNotice }} <button class="ot-btn ghost sm" @click="promotionNotice = ''">Dismiss</button></div>
+    <button v-if="!stick" type="button" class="cp-jump" @click="pinToBottom(true)"><ProjectsIcon name="arrow-down" />Latest</button>
+
+    <div v-if="sendError" class="cp-notice bad" role="alert"><ProjectsIcon name="alert" /><span>{{ sendError }}</span><button class="pjx-btn pjx-btn--ghost pjx-btn--xs" @click="sendError = ''">Dismiss</button></div>
+    <div v-if="promotionNotice" class="cp-notice warn"><ProjectsIcon name="info" /><span>{{ promotionNotice }}</span><button class="pjx-btn pjx-btn--ghost pjx-btn--xs" @click="promotionNotice = ''">Dismiss</button></div>
     <div class="cp-composer">
       <div class="cp-composer-row">
         <textarea
           ref="inputEl"
           v-model="draft"
-          class="ot-input cp-input"
+          class="pjx-textarea cp-input"
           :disabled="sending"
           rows="1"
           :placeholder="placeholder"
@@ -103,16 +108,16 @@
           @keydown.enter.exact.prevent="send"
           @input="autosize"
         ></textarea>
-        <button class="ot-btn primary cp-send" :disabled="sending || !draft.trim()" @click="send">Send</button>
+        <button class="pjx-btn pjx-btn--primary cp-send" :disabled="sending || !draft.trim()" @click="send"><ProjectsIcon name="arrow-right" />Send</button>
       </div>
       <div class="cp-composer-foot">
-        <div class="ot-segment sm" role="group" aria-label="Message kind">
-          <button type="button" :aria-pressed="kind === 'task'" title="A durable task: it stays on the Commander's books until its deliverable is verified." @click="kind = 'task'">Task</button>
-          <button type="button" :aria-pressed="kind === 'steering'" title="Chat: a one-off steer or question; it stays in force briefly, then ages out." @click="kind = 'steering'">Chat</button>
-          <button type="button" :aria-pressed="kind === 'rule'" title="Rule: standing policy for every agent. Nothing discharges it but you." @click="kind = 'rule'">Rule</button>
+        <div class="pjx-seg" role="group" aria-label="Message kind">
+          <button type="button" class="pjx-seg__opt" :aria-pressed="kind === 'task'" title="A durable task: it stays on the Commander's books until its deliverable is verified." @click="kind = 'task'">Task</button>
+          <button type="button" class="pjx-seg__opt" :aria-pressed="kind === 'steering'" title="Chat: a one-off steer or question; it stays in force briefly, then ages out." @click="kind = 'steering'">Chat</button>
+          <button type="button" class="pjx-seg__opt" :aria-pressed="kind === 'rule'" title="Rule: standing policy for every agent. Nothing discharges it but you." @click="kind = 'rule'">Rule</button>
         </div>
         <span class="cp-hint">{{ kindHint }}</span>
-        <span class="cp-hint cp-keys">Enter to send · Shift+Enter for a new line</span>
+        <span class="cp-hint cp-keys"><span class="pjx-kbd">Enter</span> send · <span class="pjx-kbd">Shift</span>+<span class="pjx-kbd">Enter</span> new line</span>
       </div>
     </div>
   </div>
@@ -120,10 +125,14 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
-import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 import { useEventStream } from '~/composables/useEventStream';
 import { renderMarkdown } from '~/scripts/agentMarkdown';
-import ApprovalCard from '~/components/Projects/ApprovalCard.vue';
+import ProjectsNeedCard from '~/components/Projects/NeedCard.vue';
+import ProjectsIcon from '~/components/Projects/Icon.vue';
+import { useAccess } from '~/composables/useAccess';
+import { pjxPost, usePjxToasts } from '~/composables/useProjectsConsole';
+import type { PjNeed, PjTone } from '~/scripts/projectsConsole';
 import ProjectsArtifactImage from '~/components/Projects/ArtifactImage.vue';
 import { PJ_SCHEDULE_STATE, pjNextRun, useProjectSchedule } from '~/composables/useProjectsUi';
 
@@ -132,6 +141,14 @@ const emit = defineEmits<{ (e: 'events', events: any[]): void; (e: 'select', ev:
 
 const events = ref<any[]>([]);
 const pendingGates = ref<any[]>([]);
+const access = useAccess();
+const canResolve = computed(() => access.can('projects.gates.resolve'));
+const { toast } = usePjxToasts();
+const resolving = ref(false);
+// Pending approvals in the same card the fleet board and the overview use, oldest first.
+const needs = computed<PjNeed[]>(() => [...pendingGates.value]
+  .sort((a, b) => (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0))
+  .map(g => ({ key: g.gateID, kind: 'approval', projectID: props.projectId, projectName: 'This project', label: g.title, since: g.createdAt ?? null, gate: g })));
 const draft = ref('');
 // Task stays the default (a real request must not be silently downgraded); Chat sends it as one-off
 // steering; Rule sends it as standing policy no acknowledgement discharges. Constraint-shaped messages
@@ -193,8 +210,9 @@ const commanderStatus = computed(() => {
   const entry = schedule.value?.agents.find(a => a.agentID === 'commander');
   if (!entry || entry.state === 'working') return null;
   const state = PJ_SCHEDULE_STATE[entry.state] ?? { label: entry.state, tone: '' };
+  const tone: PjTone = entry.state === 'waiting' ? 'need' : entry.state === 'held' ? 'fault' : 'rest';
   return {
-    label: state.label, tone: state.tone, detail: entry.detail,
+    label: state.label, tone, detail: entry.detail,
     next: entry.state === 'done' ? '' : pjNextRun(entry.nextWakeAt, now.value),
   };
 });
@@ -389,23 +407,32 @@ async function send() {
   pinToBottom(true);
   draft.value = '';
   nextTick(autosize);
-  try {
-    const res = await RequestPOSTFromKliveAPI('/projects/message', JSON.stringify({ projectID: props.projectId, text, kind: kind.value }), false, true);
-    if (!res.ok) { sendError.value = "Message didn't send. Try again."; return; }
-    try {
-      const receipt = (await res.json())?.receipt;
-      if (receipt?.promotedToRule) {
-        promotionNotice.value = 'Saved as a standing rule — it stays in force until you revoke it.';
-        setTimeout(() => { promotionNotice.value = ''; }, 9000);
-      }
-    } catch { /* the message landed; the notice is a nicety */ }
-  } catch { sendError.value = "Message didn't send. Try again."; }
-  finally { sending.value = false; }
+  const r = await pjxPost<any>('/projects/message', { projectID: props.projectId, text, kind: kind.value });
+  sending.value = false;
+  if (!r.ok) {
+    // The optimistic bubble came off and the words go back in the box: before, a failed message stayed in
+    // the thread looking sent while the text was gone.
+    const idx = events.value.findIndex(x => x._optimistic && x.text === text);
+    if (idx >= 0) events.value.splice(idx, 1);
+    emit('events', events.value);
+    if (!draft.value.trim()) { draft.value = text; nextTick(autosize); }
+    sendError.value = `Your message didn't send: ${r.error} It is back in the box.`;
+    return;
+  }
+  sendError.value = '';
+  if (r.body?.receipt?.promotedToRule) {
+    promotionNotice.value = 'Saved as a standing rule: it stays in force until you revoke it.';
+    setTimeout(() => { promotionNotice.value = ''; }, 9000);
+  }
 }
 
-async function onResolve(gateID: string, decision: string, comment: string) {
-  await RequestPOSTFromKliveAPI('/projects/gates/resolve',
-    JSON.stringify({ projectID: props.projectId, gateID, decision, comment }), false, true);
+async function onResolve(_projectID: string, gateID: string, decision: string, comment: string) {
+  if (resolving.value) return;
+  resolving.value = true;
+  const r = await pjxPost('/projects/gates/resolve', { projectID: props.projectId, gateID, decision, comment });
+  resolving.value = false;
+  if (!r.ok) { toast(r.error, 'fault', 6000); return; }
+  toast(decision === 'Discuss' ? 'Opened a discussion with the Commander.' : decision === 'Approve' ? 'Approved.' : 'Denied.', decision === 'Deny' ? 'need' : 'work');
   await loadGates();
 }
 
@@ -435,76 +462,83 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.conversation-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.cp-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--ot-space-3); padding: var(--ot-space-2) var(--ot-space-3); border-bottom: 1px solid var(--ot-line); }
-.cp-count { font-size: 11.5px; }
-.cp-events { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
-.cp-inner { padding: var(--ot-space-3); display: flex; flex-direction: column; gap: var(--ot-space-2); }
+.conversation-panel { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.cp-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--pjx-line); }
+.cp-count { color: var(--pjx-ink-3); font-size: 11.5px; }
+.cp-events { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+.cp-inner { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
 
-.cp-event { min-width: 0; padding: var(--ot-space-2) var(--ot-space-3); border-radius: var(--ot-radius-sm); background: var(--ot-surface-2); border-left: 3px solid var(--ot-line-strong); cursor: pointer; }
-.cp-event:hover { background: var(--ot-surface-3); }
-.cp-event.a-klives { border-left-color: var(--ot-info); background: rgba(99, 200, 234, 0.06); }
-.cp-event.a-commander { border-left-color: var(--ot-accent); }
-.cp-event.a-stimulus { border-left-color: var(--ot-warning); }
-.cp-event.t-approval-requested, .cp-event.t-approval-resolved { border-left-color: var(--ot-violet); }
-.cp-meta { display: flex; gap: var(--ot-space-2); align-items: baseline; font-size: 11px; color: var(--ot-muted); margin-bottom: 3px; }
-.cp-who { font-weight: 650; color: var(--ot-text-2); text-transform: capitalize; }
-.cp-type { text-transform: uppercase; letter-spacing: 0.6px; font-size: 10px; }
-.cp-time { font-family: var(--ot-mono); font-size: 10.5px; color: var(--ot-muted); white-space: nowrap; }
-.cp-text { font-size: 13.5px; color: var(--ot-text); overflow-wrap: anywhere; word-break: break-word; }
-.cp-text.plain { white-space: pre-wrap; font-size: 12.5px; color: var(--ot-text-2); }
-.cp-shots { display: flex; flex-wrap: wrap; gap: var(--ot-space-2); align-items: flex-start; margin-top: var(--ot-space-2); }
-.cp-empty { color: var(--ot-muted); font-size: 13px; text-align: center; padding: var(--ot-space-6) var(--ot-space-3); }
+.cp-event { min-width: 0; padding: 8px 12px; border: 1px solid var(--pjx-line); border-radius: 12px; background: rgba(168, 176, 214, 0.03); cursor: pointer; transition: border-color 120ms, background 120ms; }
+.cp-event:hover { border-color: var(--pjx-line-strong); }
+.cp-event.a-klives { align-self: flex-end; max-width: min(86%, 760px); border-color: color-mix(in srgb, var(--pjx-accent) 28%, transparent); background: color-mix(in srgb, var(--pjx-accent) 8%, transparent); }
+.cp-event.a-commander { border-left: 3px solid color-mix(in srgb, var(--pjx-work) 55%, transparent); }
+.cp-event.a-stimulus { border-left: 3px solid color-mix(in srgb, var(--pjx-need) 55%, transparent); }
+.cp-event.t-approval-requested, .cp-event.t-approval-resolved { border-left: 3px solid color-mix(in srgb, var(--pjx-plan) 60%, transparent); }
+.cp-event.pending { opacity: 0.65; }
+.cp-meta { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; color: var(--pjx-ink-3); font-size: 11px; }
+.cp-who { color: var(--pjx-ink-2); font-weight: 650; text-transform: capitalize; }
+.cp-type { padding: 0 6px; border-radius: 999px; background: rgba(168, 176, 214, 0.08); color: var(--pjx-ink-3); font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.cp-time { color: var(--pjx-ink-4); font-family: var(--pjx-mono); font-size: 10.5px; white-space: nowrap; }
+.cp-text { color: var(--pjx-ink); font-size: 13px; overflow-wrap: anywhere; word-break: break-word; }
+.cp-text.plain { color: var(--pjx-ink-2); font-size: 12.5px; white-space: pre-wrap; }
+.cp-shots { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin-top: 8px; }
+.cp-needs { display: flex; flex-direction: column; gap: 8px; }
+.cp-needs :deep(.pjx-need__project) { display: none; }
+.cp-needs :deep(.pjx-need__age) { margin-left: auto; }
+.cp-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 40px 12px; color: var(--pjx-ink-3); font-size: 12.5px; text-align: center; }
+.cp-empty b { color: var(--pjx-ink-2); font-weight: 600; }
+.cp-empty :deep(.pjx-icon) { color: var(--pjx-ink-4); font-size: 22px; }
 
-.cp-burst { min-width: 0; border-radius: var(--ot-radius-sm); border: 1px solid var(--ot-line); background: rgba(255, 255, 255, 0.015); }
-.cp-burst-head { display: flex; align-items: center; gap: var(--ot-space-2); width: 100%; padding: 6px var(--ot-space-3); text-align: left; cursor: pointer; font-size: 12px; color: var(--ot-text-2); min-width: 0; }
-.cp-burst-head:hover { background: rgba(255, 255, 255, 0.03); }
-.cp-burst-caret { color: var(--ot-muted); width: 10px; flex: 0 0 auto; }
-.cp-burst-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ot-text-2); }
-.cp-burst-tools { display: flex; gap: 4px; flex: 0 1 auto; min-width: 0; overflow: hidden; }
-.cp-tool-chip { font-family: var(--ot-mono); font-size: 10.5px; padding: 0 5px; border-radius: 4px; background: var(--ot-accent-soft); color: var(--ot-accent); white-space: nowrap; }
-.cp-tool-chip.failed { background: var(--ot-negative-soft); color: var(--ot-negative); }
-.cp-burst-preview { padding: 0 var(--ot-space-3) var(--ot-space-2); margin-top: 0; }
-.cp-burst-list { list-style: none; margin: 0; padding: 0 var(--ot-space-3) var(--ot-space-2) calc(var(--ot-space-3) + 18px); display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
-.cp-burst-list li { cursor: pointer; overflow-wrap: anywhere; color: var(--ot-text-2); }
-.cp-burst-list li:hover { color: var(--ot-text); }
-.cp-burst-list code { font-family: var(--ot-mono); color: var(--ot-accent); margin-right: 6px; }
-.cp-burst-list .t-tool-result code { color: var(--ot-info); }
-.cp-thought { font-style: italic; color: var(--ot-text-2); }
+.cp-burst { min-width: 0; border: 1px solid var(--pjx-line); border-radius: 10px; background: rgba(8, 9, 13, 0.25); }
+.cp-burst-head { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 6px 10px; color: var(--pjx-ink-2); font-size: 12px; text-align: left; cursor: pointer; }
+.cp-burst-head:hover { background: rgba(168, 176, 214, 0.03); }
+.cp-burst-caret { flex: none; color: var(--pjx-ink-4); transition: transform 120ms; }
+.cp-burst.open .cp-burst-caret { transform: rotate(90deg); }
+.cp-burst-title { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--pjx-ink-3); text-overflow: ellipsis; white-space: nowrap; }
+.cp-burst-tools { display: flex; flex: 0 1 auto; gap: 4px; min-width: 0; overflow: hidden; }
+.cp-tool-chip { padding: 0 6px; border-radius: 6px; background: color-mix(in srgb, var(--pjx-accent) 12%, transparent); color: color-mix(in srgb, var(--pjx-accent) 70%, white); font-family: var(--pjx-mono); font-size: 10.5px; white-space: nowrap; }
+.cp-tool-chip.failed { background: color-mix(in srgb, var(--pjx-fault) 14%, transparent); color: color-mix(in srgb, var(--pjx-fault) 70%, white); }
+.cp-burst-preview { margin-top: 0; padding: 0 10px 8px; }
+.cp-burst-list { display: flex; flex-direction: column; gap: 4px; padding: 0 10px 8px 30px; font-size: 12px; }
+.cp-burst-list li { color: var(--pjx-ink-2); overflow-wrap: anywhere; cursor: pointer; }
+.cp-burst-list li:hover { color: var(--pjx-ink); }
+.cp-burst-list code { margin-right: 6px; color: color-mix(in srgb, var(--pjx-accent) 75%, white); font-family: var(--pjx-mono); }
+.cp-burst-list .t-tool-result code { color: var(--pjx-info); }
+.cp-thought { color: var(--pjx-ink-3); font-style: italic; }
 .cp-tool-text { white-space: pre-wrap; }
 
-.cp-status { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px var(--ot-space-2); padding: 6px var(--ot-space-3); font-size: 12px; color: var(--ot-muted); border-top: 1px dashed var(--ot-line); }
-.cp-status .ot-dot { align-self: center; }
-.cp-status-label { color: var(--ot-text-2); font-weight: 600; }
+.cp-status { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding: 7px 2px 2px; border-top: 1px dashed var(--pjx-line); color: var(--pjx-ink-3); font-size: 12px; }
 .cp-status-detail { min-width: 0; overflow-wrap: anywhere; }
-.cp-status-next { margin-left: auto; font-family: var(--ot-mono); font-size: 11px; }
-.cp-live { min-width: 0; padding: 7px var(--ot-space-3); border-radius: var(--ot-radius-sm); background: rgba(255,255,255,0.015); border: 1px dashed var(--ot-line-strong); border-left: 3px solid var(--ot-line-strong); }
-.cp-live.a-commander { border-left-color: var(--ot-accent); }
-.cp-live.a-agent { border-left-color: var(--ot-violet); }
-.cp-live-head { display: flex; align-items: center; gap: var(--ot-space-2); font-size: 11px; color: var(--ot-muted); }
+.cp-status-next { margin-left: auto; font-family: var(--pjx-mono); font-size: 11px; }
+.cp-live { min-width: 0; padding: 7px 12px; border: 1px dashed var(--pjx-line-strong); border-left: 3px solid var(--pjx-line-strong); border-radius: 10px; background: rgba(168, 176, 214, 0.02); }
+.cp-live.a-commander { border-left-color: color-mix(in srgb, var(--pjx-work) 60%, transparent); }
+.cp-live.a-agent { border-left-color: color-mix(in srgb, var(--pjx-plan) 60%, transparent); }
+.cp-live-head { display: flex; align-items: center; gap: 8px; color: var(--pjx-ink-3); font-size: 11px; }
 .cp-live-spacer { flex: 1; }
-.cp-live-phase { color: var(--ot-text-2); }
-.cp-live-tool { color: var(--ot-accent); font-size: 11px; font-family: var(--ot-mono); }
-.cp-live-model, .cp-live-elapsed { color: var(--ot-muted); font-family: var(--ot-mono); }
-.cp-live-preview { margin-top: 4px; font-size: 12.5px; color: var(--ot-text-2); white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
-.cp-live-detail { margin-top: 4px; font-size: 12px; color: var(--ot-muted); overflow-wrap: anywhere; word-break: break-word; }
-.cp-live-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; background: var(--ot-info); animation: cp-pulse 1.4s ease-in-out infinite; }
-.cp-live-dot.ph-writing { background: var(--ot-accent); animation-duration: 0.9s; }
-.cp-live-dot.ph-tool { background: var(--ot-warning); }
+.cp-live-phase { color: var(--pjx-ink-2); }
+.cp-live-tool { color: color-mix(in srgb, var(--pjx-accent) 75%, white); font-family: var(--pjx-mono); font-size: 11px; }
+.cp-live-model, .cp-live-elapsed { color: var(--pjx-ink-4); font-family: var(--pjx-mono); }
+.cp-live-preview { margin-top: 4px; color: var(--pjx-ink-2); font-size: 12.5px; overflow-wrap: anywhere; white-space: pre-wrap; word-break: break-word; }
+.cp-live-detail { margin-top: 4px; color: var(--pjx-ink-3); font-size: 12px; overflow-wrap: anywhere; word-break: break-word; }
+.cp-live-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--pjx-info); animation: cp-pulse 1.4s ease-in-out infinite; }
+.cp-live-dot.ph-writing { background: var(--pjx-work); animation-duration: 0.9s; }
+.cp-live-dot.ph-tool { background: var(--pjx-need); }
 .cp-ellipsis { animation: cp-fade 1.4s ease-in-out infinite; }
 @keyframes cp-pulse { 0%, 100% { opacity: 0.25; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }
 @keyframes cp-fade { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .cp-live-dot, .cp-ellipsis { animation: none; opacity: 1; } }
 
-.cp-notice { display: flex; justify-content: space-between; align-items: center; gap: var(--ot-space-2); font-size: 12px; padding: 4px var(--ot-space-3); border-top: 1px solid var(--ot-line); }
-.cp-notice.bad { background: var(--ot-negative-soft); color: #ffcaca; }
-.cp-notice.warn { background: var(--ot-warning-soft); color: #ffe6b0; }
-.cp-composer { display: flex; flex-direction: column; gap: 6px; padding: var(--ot-space-3); border-top: 1px solid var(--ot-line); background: var(--ot-surface); }
-.cp-composer-row { display: flex; gap: var(--ot-space-2); align-items: flex-end; }
-.cp-input { flex: 1; min-width: 0; height: auto; min-height: 38px; max-height: 220px; resize: none; line-height: 20px; padding: 8px 10px; }
-.cp-send { height: 38px; }
-.cp-composer-foot { display: flex; align-items: center; gap: var(--ot-space-3); flex-wrap: wrap; }
-.cp-hint { font-size: 11.5px; color: var(--ot-muted); }
-.cp-keys { margin-left: auto; }
-@media (max-width: 720px) { .cp-keys { display: none; } }
+.cp-jump { position: absolute; right: 16px; bottom: 118px; z-index: 2; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 1px solid var(--pjx-line-strong); border-radius: 999px; background: var(--pjx-surface-3); color: var(--pjx-ink); font-size: 11.5px; font-weight: 600; box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.7); cursor: pointer; }
+.cp-notice { display: flex; align-items: center; gap: 8px; padding: 5px 12px; border-top: 1px solid var(--pjx-line); font-size: 12px; }
+.cp-notice span { flex: 1; min-width: 0; }
+.cp-notice.bad { background: color-mix(in srgb, var(--pjx-fault) 10%, transparent); color: color-mix(in srgb, var(--pjx-fault) 60%, white); }
+.cp-notice.warn { background: color-mix(in srgb, var(--pjx-need) 10%, transparent); color: color-mix(in srgb, var(--pjx-need) 60%, white); }
+.cp-composer { display: flex; flex-direction: column; gap: 7px; padding: 10px 12px; border-top: 1px solid var(--pjx-line); background: rgba(8, 9, 13, 0.3); }
+.cp-composer-row { display: flex; align-items: flex-end; gap: 8px; }
+.pjx .cp-input { flex: 1; min-width: 0; height: auto; min-height: 38px; max-height: 220px; padding: 8px 10px; line-height: 20px; resize: none; font-size: 13px; }
+.pjx .cp-send { height: 38px; }
+.cp-composer-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.cp-hint { color: var(--pjx-ink-3); font-size: 11.5px; }
+.cp-keys { margin-left: auto; color: var(--pjx-ink-4); }
+@media (max-width: 720px) { .cp-keys { display: none; } .cp-event.a-klives { max-width: 100%; } .cp-jump { bottom: 132px; } }
 </style>

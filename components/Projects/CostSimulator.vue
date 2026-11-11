@@ -549,23 +549,25 @@ async function load(forceRefresh = false) {
 </script>
 
 <style scoped>
+/* Drawn in the Projects console's language (its --pjx-* tokens), with the ot-os tokens as fallbacks. */
 .cost-simulator {
-  --surface: var(--ot-surface);
-  --surface-raised: var(--ot-surface-2);
-  --border: var(--ot-line);
-  --muted: var(--ot-muted);
-  --text: var(--ot-text);
-  --green: var(--ot-positive);
-  --green-bright: var(--ot-positive);
-  --amber: var(--ot-warning);
+  --surface: linear-gradient(180deg, rgba(24, 27, 36, 0.92), rgba(18, 20, 27, 0.96));
+  --surface-raised: var(--pjx-inset, var(--ot-surface-2));
+  --border: var(--pjx-line, var(--ot-line));
+  --muted: var(--pjx-ink-3, var(--ot-muted));
+  --text: var(--pjx-ink, var(--ot-text));
+  --green: var(--pjx-accent, var(--ot-positive));
+  --green-bright: var(--pjx-accent, var(--ot-positive));
+  --amber: var(--pjx-need, var(--ot-warning));
   color: var(--text);
   min-width: 0;
 }
 
 .price-panel {
   background: var(--surface);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset, 0 10px 30px -18px rgba(0, 0, 0, 0.6);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 14px;
   padding: 16px;
   margin-bottom: 18px;
 }
@@ -607,7 +609,7 @@ async function load(forceRefresh = false) {
 
 .price-panel input:focus-visible {
   border-color: var(--green);
-  outline: 2px solid rgba(109, 220, 79, 0.35);
+  outline: 2px solid rgba(143, 128, 255, 0.35);
   outline-offset: 1px;
 }
 
@@ -626,12 +628,14 @@ async function load(forceRefresh = false) {
 .timeframe .stacked { min-width: 190px; }
 
 .range-control {
-  background: var(--ot-surface);
+  background: var(--pjx-inset, var(--ot-surface));
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   display: flex;
   gap: 2px;
-  padding: 3px;
+  padding: 2px;
+  flex-wrap: wrap;
+  max-width: 100%;
 }
 
 .range-button {
@@ -649,7 +653,7 @@ async function load(forceRefresh = false) {
 }
 
 .range-button:hover:not(:disabled) { background: var(--ot-surface-2); color: var(--ot-text); }
-.range-button.active { background: var(--ot-accent-soft); color: var(--ot-accent); }
+.range-button.active { background: var(--pjx-surface-3, var(--ot-accent-soft)); color: var(--text); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35); }
 .range-button:disabled, .refresh-button:disabled { cursor: default; opacity: 0.65; }
 
 .refresh-button {
@@ -686,7 +690,7 @@ async function load(forceRefresh = false) {
   align-items: center;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 14px;
   color: var(--ot-text-2);
   display: flex;
   gap: 14px;
@@ -695,6 +699,8 @@ async function load(forceRefresh = false) {
   padding: 24px;
 }
 
+/* The loading card is a spinner beside its words; only the error card spreads out to its Retry button. */
+.state-card[role='status'] { justify-content: center; }
 .state-card strong { color: var(--text); display: block; font-size: 14px; margin-bottom: 4px; }
 .state-card p { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 0; }
 .error-state { background: var(--ot-negative-soft); border-color: var(--ot-negative); }
@@ -736,9 +742,9 @@ async function load(forceRefresh = false) {
   padding: 14px 16px;
 }
 
-.headline-card:first-child { box-shadow: inset 0 2px 0 rgba(109, 220, 79, 0.72); }
-.headline-card.tone-amber { box-shadow: inset 0 2px 0 rgba(240, 180, 41, 0.72); }
-.headline-card.tone-green { box-shadow: inset 0 2px 0 rgba(109, 220, 79, 0.72); }
+.headline-card:first-child { box-shadow: inset 0 2px 0 rgba(143, 128, 255, 0.72); }
+.headline-card.tone-amber { box-shadow: inset 0 2px 0 rgba(243, 181, 74, 0.72); }
+.headline-card.tone-green { box-shadow: inset 0 2px 0 rgba(143, 128, 255, 0.72); }
 .headline-card.tone-neutral { box-shadow: inset 0 2px 0 #35353c; }
 
 .metric-label {
@@ -806,7 +812,7 @@ async function load(forceRefresh = false) {
 .name-column { text-align: left !important; width: 34%; }
 
 .cost-table tbody tr { border-top: 1px solid var(--border); }
-.project-row { background: var(--surface); }
+.project-row { background: var(--pjx-surface, var(--ot-surface)); }
 .project-row.open { background: var(--ot-surface-2); }
 .project-row th, .project-row td { color: var(--ot-text-2); font-weight: 600; }
 
@@ -855,7 +861,7 @@ async function load(forceRefresh = false) {
 .agent-name { color: var(--ot-text-2); }
 
 .agent-name em {
-  background: rgba(109, 220, 79, 0.14);
+  background: rgba(143, 128, 255, 0.14);
   border-radius: 20px;
   color: var(--green-bright);
   font-size: 9px;

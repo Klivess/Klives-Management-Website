@@ -39,7 +39,7 @@
         </div>
 
         <!-- The figures that answer "is it healthy and what is it costing", one click from the detail. -->
-        <div class="pjx-ws-pulse" aria-label="Project vitals">
+        <section class="pjx-ws-pulse" aria-label="Project at a glance">
           <button class="pjx-pulse" @click="openBudget">
             <span class="pjx-pulse__label">Model budget</span>
             <span class="pjx-pulse__value pjx-num" :data-tone="tokenTone">{{ pjUsd(ledger.tokenSpendUsd) }}<span class="pjx-dim" style="font-weight: 500">{{ isUnlimited(project.tokenBudgetUsd) ? ' · no cap' : ` of ${pjUsd(project.tokenBudgetUsd)}` }}</span></span>
@@ -66,7 +66,7 @@
             <span class="pjx-pulse__value pjx-num">{{ topObservable?.displayValue ?? '—' }}</span>
             <span class="pjx-pulse__sub">{{ topObservable ? `updated ${ageWords(topObservable.updatedAt, now)} ago` : 'agents publish these as they work' }}</span>
           </button>
-        </div>
+        </section>
       </header>
 
       <div v-if="actionError" class="pjx-banner" data-tone="fault" role="alert">
@@ -96,38 +96,38 @@
           <ProjectsOverviewTab v-if="tab === 'overview'" :project-id="projectId" :project="project" :digest="digest" :ledger="ledger"
             :agents="agents" :observables="observables" :grand-plan="grandPlan" :events="events"
             @navigate="setTab" @changed="refresh" />
-          <div v-show="tab === 'conversation'" class="ot-card pw-chat">
+          <div v-show="tab === 'conversation'" class="pjx-card pw-chat">
             <ProjectsConversationPanel :project-id="projectId" @events="onEvents" @select="selectEvent" />
           </div>
-          <OmniTraderCard v-if="tab === 'timeline'" title="Timeline" subtitle="Every event, by agent lane. Click a marker for its details." flush>
+          <ProjectsCard v-if="tab === 'timeline'" title="Timeline" icon="timeline" meta="Every event, by agent lane. Click a marker for its details." flush>
             <ProjectsTimeline :events="events" :agent-labels="agentLabels" @select="selectEvent" />
-          </OmniTraderCard>
-          <div v-if="tab === 'plan'" class="ot-stack">
-            <OmniTraderCard title="Step ledger" subtitle="The linear path the Commander is walking right now"><ProjectsStepsPanel :project-id="projectId" /></OmniTraderCard>
-            <OmniTraderCard title="Grand Plan" subtitle="The approved north star: mission, milestones, risks and success criteria">
+          </ProjectsCard>
+          <div v-if="tab === 'plan'" class="pjx-stack">
+            <ProjectsCard title="Step ledger" icon="plan" meta="The linear path the Commander is walking right now"><ProjectsStepsPanel :project-id="projectId" /></ProjectsCard>
+            <ProjectsCard title="Grand Plan" icon="target" meta="The approved north star: mission, milestones, risks and success criteria">
               <ProjectsGrandPlanPanel :project-id="projectId" :grand-plan="grandPlan" />
-            </OmniTraderCard>
-            <OmniTraderCard title="Councils" subtitle="Adversarial reviews the Commander convened before big decisions" :empty="!councils.length"
+            </ProjectsCard>
+            <ProjectsCard title="Councils" icon="users" meta="Adversarial reviews the Commander convened before big decisions" :empty="!councils.length"
               empty-title="No councils yet" empty-text="The Commander convenes one before a plan, a pivot or an irreversible spend.">
               <ProjectsCouncilsPanel :project-id="projectId" :councils="councils" />
-            </OmniTraderCard>
+            </ProjectsCard>
           </div>
-          <OmniTraderCard v-if="tab === 'agents'" title="Agents" :subtitle="`The task force · cap ${project.subAgentCap}`">
+          <ProjectsCard v-if="tab === 'agents'" title="Task force" icon="bot" :meta="`${agents.length} on the roster · cap ${project.subAgentCap}`">
             <ProjectsAgentsPanel :project-id="projectId" :cap="project.subAgentCap" @watch="() => setTab('computers')" @roster-changed="loadAgents" />
-          </OmniTraderCard>
+          </ProjectsCard>
           <ProjectsComputersPanel v-if="tab === 'computers'" :project-id="projectId" />
-          <OmniTraderCard v-if="tab === 'files'" title="Files" subtitle="/project: shared by you and every agent"><ProjectsFilesPanel :project-id="projectId" :status="project.status" /></OmniTraderCard>
-          <OmniTraderCard v-if="tab === 'observables'" title="Observables" subtitle="Live values the agents maintain for you">
+          <ProjectsCard v-if="tab === 'files'" title="Files" icon="folder" meta="/project: shared by you and every agent"><ProjectsFilesPanel :project-id="projectId" :status="project.status" /></ProjectsCard>
+          <ProjectsCard v-if="tab === 'observables'" title="Observables" icon="gauge" meta="Live values the agents keep measured for you">
             <ProjectsObservablesPanel :project-id="projectId" :observables="observables" @changed="loadObservables" />
-          </OmniTraderCard>
-          <ProjectsAnalyticsDashboard v-if="tab === 'analytics'" :project-id="projectId" />
-          <div v-if="tab === 'settings'" class="ot-stack">
-            <OmniTraderCard title="Settings" subtitle="This project's own configuration, independent of every other project">
+          </ProjectsCard>
+          <ProjectsAnalyticsDashboard v-if="tab === 'analytics'" :project-id="projectId" compact-header />
+          <div v-if="tab === 'settings'" class="pjx-stack">
+            <ProjectsCard title="Settings" icon="settings" meta="This project's own configuration, independent of every other project">
               <ProjectsSettingsPanel :project-id="projectId" />
-            </OmniTraderCard>
-            <OmniTraderCard title="Wake triggers" subtitle="Timers, webhooks, email and screen watches that wake the agents">
+            </ProjectsCard>
+            <ProjectsCard title="Wake triggers" icon="broadcast" meta="Timers, webhooks, email and screen watches that wake the agents">
               <ProjectsHooksPanel :project-id="projectId" />
-            </OmniTraderCard>
+            </ProjectsCard>
           </div>
         </section>
 
@@ -190,7 +190,7 @@
               <ul class="pjx-obs">
                 <li v-for="o in topObservables" :key="o.observableID">
                   <span class="pjx-obs__name" :title="o.name">{{ o.name }}</span>
-                  <ProjectsSpark v-if="o.type === 'Numeric' && o.history?.length > 1" :values="o.history.map((h: any) => Number(h.value))" :label="`${o.name} history`" />
+                  <ProjectsSpark v-if="observableSeries(o).length > 1" :values="observableSeries(o)" :label="`${o.name} history`" />
                   <span class="pjx-obs__value">{{ o.displayValue }}</span>
                 </li>
               </ul>
@@ -215,10 +215,11 @@ import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIIn
 import { useEventStream } from '~/composables/useEventStream';
 import { useAccess } from '~/composables/useAccess';
 import { pjxPost, usePjxToasts } from '~/composables/useProjectsConsole';
-import { ageWords, budgetPct, isUnlimited, pjUsd, projectState, type PjCommand } from '~/scripts/projectsConsole';
+import { ageWords, budgetPct, isUnlimited, observableSeries, pjUsd, projectState, type PjCommand } from '~/scripts/projectsConsole';
 import ProjectsShell from '~/components/Projects/Shell.vue';
 import ProjectsIcon from '~/components/Projects/Icon.vue';
 import ProjectsSpark from '~/components/Projects/Spark.vue';
+import ProjectsCard from '~/components/Projects/Card.vue';
 import ProjectsOverviewTab from '~/components/Projects/OverviewTab.vue';
 import ProjectsTimeline from '~/components/Projects/Timeline.vue';
 import ProjectsConversationPanel from '~/components/Projects/ConversationPanel.vue';

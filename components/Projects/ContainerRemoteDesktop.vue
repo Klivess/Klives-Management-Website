@@ -302,7 +302,7 @@ defineExpose({ controlling: control });
 .crd-btn, .crd-key { font-size: 12px; font-weight: 700; color: var(--ot-text-2); background: rgba(255,255,255,0.06); border: 1px solid var(--ot-line); border-radius: 7px; padding: 6px 10px; cursor: pointer; }
 .crd-key { padding: 6px 8px; min-width: 34px; }
 .crd-btn:hover, .crd-key:hover { background: rgba(255,255,255,0.12); color: var(--ot-text); }
-.crd-btn-on { background: rgba(109, 220, 79, 0.22); border-color: rgba(109, 220, 79, 0.5); color: var(--ot-positive); }
+.crd-btn-on { background: rgba(143, 128, 255, 0.22); border-color: rgba(143, 128, 255, 0.5); color: var(--ot-positive); }
 
 .crd-stage { position: relative; flex: 1 1 0; min-height: 0; display: flex; align-items: center; justify-content: center; background: repeating-linear-gradient(45deg, var(--ot-surface), var(--ot-surface) 10px, var(--ot-surface) 10px, var(--ot-surface) 20px); outline: none; overflow: hidden; touch-action: none; }
 .crd-stage-control { cursor: crosshair; }

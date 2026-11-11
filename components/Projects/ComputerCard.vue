@@ -140,12 +140,16 @@ function onRepair(event: Event) {
 </script>
 
 <style scoped>
-.pj-computer { display: flex; flex-direction: column; border: 1px solid var(--ot-line); border-radius: var(--ot-radius); background: var(--ot-surface); min-width: 0; overflow: hidden; }
-.pj-computer.state-missing, .pj-computer.state-unreachable { border-color: rgba(255, 123, 123, 0.4); }
-.pj-computer.state-degraded { border-color: rgba(240, 180, 41, 0.4); }
-.pc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--ot-space-2); padding: var(--ot-space-2) var(--ot-space-3); border-bottom: 1px solid var(--ot-line); }
+/* Drawn in the Projects console's language (projects-console.scss tokens), with ot-os fallbacks for any host
+   page outside it. The left edge carries the state's colour, like the board's rows. */
+.pj-computer { position: relative; display: flex; flex-direction: column; border: 1px solid var(--pjx-line, var(--ot-line)); border-radius: var(--pjx-radius, var(--ot-radius)); background: linear-gradient(180deg, rgba(24, 27, 36, 0.92), rgba(18, 20, 27, 0.96)); min-width: 0; overflow: hidden; }
+.pj-computer::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--pc-edge, transparent); }
+.pj-computer.state-running { --pc-edge: var(--pjx-work, var(--ot-positive)); }
+.pj-computer.state-missing, .pj-computer.state-unreachable { --pc-edge: var(--pjx-fault, var(--ot-negative)); border-color: color-mix(in srgb, var(--pjx-fault, #ff6479) 40%, transparent); }
+.pj-computer.state-degraded { --pc-edge: var(--pjx-need, var(--ot-warning)); border-color: color-mix(in srgb, var(--pjx-need, #f3b54a) 40%, transparent); }
+.pc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--ot-space-2); padding: 10px 14px; border-bottom: 1px solid var(--pjx-line, var(--ot-line)); }
 .pc-title { display: flex; flex-direction: column; min-width: 0; }
-.pc-title strong { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: capitalize; }
+.pc-title strong { font-size: 13.5px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: capitalize; }
 .pc-sub { font-size: 11px; color: var(--ot-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pc-live :deep(.live-desktop) { border-radius: 0; background: #070907; }
 .pc-live :deep(.ld-head) { display: none; }
@@ -153,8 +157,8 @@ function onRepair(event: Event) {
 .pc-asleep { display: flex; flex-direction: column; align-items: flex-start; gap: var(--ot-space-2); padding: var(--ot-space-4) var(--ot-space-3); background: rgba(0,0,0,0.25); font-size: 12.5px; color: var(--ot-text-2); aspect-ratio: 16 / 9; justify-content: center; }
 .compact .pc-asleep { aspect-ratio: auto; }
 .pc-asleep p { margin: 0; font-size: 12.5px; }
-.pc-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ot-space-2) var(--ot-space-3); margin: 0; padding: var(--ot-space-3); font-size: 12px; }
-.pc-facts dt { font-size: 10px; letter-spacing: 0.8px; text-transform: uppercase; color: var(--ot-muted); font-weight: 650; margin-bottom: 2px; }
+.pc-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin: 0; padding: 12px 14px; font-size: 12px; }
+.pc-facts dt { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pjx-ink-4, var(--ot-muted)); font-weight: 650; margin-bottom: 2px; }
 .pc-facts dd { margin: 0; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; min-width: 0; }
 .pc-routes { gap: var(--ot-space-1); }
 .ok { color: var(--ot-positive); }
@@ -168,7 +172,7 @@ function onRepair(event: Event) {
 .pc-events li.bad { color: #ffb4b4; }
 .pc-events li.warn { color: #f5d78a; }
 .pc-events .pj-mono { color: var(--ot-muted); margin-right: 4px; }
-.pc-actions { display: flex; align-items: center; gap: var(--ot-space-2); padding: var(--ot-space-2) var(--ot-space-3); border-top: 1px solid var(--ot-line); margin-top: auto; flex-wrap: wrap; }
+.pc-actions { display: flex; align-items: center; gap: var(--ot-space-2); padding: 9px 14px; border-top: 1px solid var(--pjx-line, var(--ot-line)); margin-top: auto; flex-wrap: wrap; }
 .pc-repair { margin-left: auto; }
 .pc-repair-select { height: var(--ot-control-sm); font-size: 11.5px; }
 </style>

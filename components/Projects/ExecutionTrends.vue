@@ -62,7 +62,7 @@ let charts: Chart[] = [];
 let mounted = false;
 const percent = (value: number | null | undefined) => value == null ? '—' : `${value.toFixed(1)}%`;
 const humanize = (value: string) => value.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, c => c.toUpperCase());
-const colors = { completed: '#4ec98a', failed: '#ff7b7b', deferred: '#f0b429', cancelled: '#a89bf0' };
+const colors = { completed: '#3ddc97', failed: '#ff6479', deferred: '#f3b54a', cancelled: '#b994ff' };
 function destroy() { charts.forEach(chart => chart.destroy()); charts = []; }
 function render() {
   if (!mounted) return;
@@ -73,9 +73,9 @@ function render() {
   const options: any = {
     responsive: true, maintainAspectRatio: false, animation: false,
     interaction: { mode: 'index', intersect: false },
-    plugins: { legend: { labels: { color: '#b3c2ad', usePointStyle: true, boxWidth: 9 } } },
-    scales: { x: { ticks: { color: '#93a48d', maxTicksLimit: 7, maxRotation: 0 }, grid: { display: false } },
-      y: { beginAtZero: true, ticks: { color: '#93a48d' }, grid: { color: 'rgba(146, 196, 130, 0.10)' } } },
+    plugins: { legend: { labels: { color: '#aeb3c6', usePointStyle: true, boxWidth: 9 } } },
+    scales: { x: { ticks: { color: '#7e8399', maxTicksLimit: 7, maxRotation: 0 }, grid: { display: false } },
+      y: { beginAtZero: true, ticks: { color: '#7e8399' }, grid: { color: 'rgba(168, 176, 214, 0.10)' } } },
   };
   if (outcomesCanvas.value) {
     const fields = ['successfulWakes', 'failedWakes', 'deferredWakes', 'cancelledWakes'] as const;
@@ -101,8 +101,8 @@ function render() {
     charts.push(new Chart(ratesCanvas.value, { type: 'line', options: rateOptions,
       data: { labels, datasets: [
         { label: 'Active execution %', data: props.series.map(p => p.execution?.activeRate ?? null), borderColor: colors.completed, pointRadius: 2, spanGaps: false },
-        { label: 'Productive wakes %', data: props.series.map(p => p.execution?.productiveRate ?? null), borderColor: '#63c8ea', pointRadius: 2, spanGaps: false },
-        { label: '99% target', data: props.series.map(() => 99), borderColor: '#93a48d', borderDash: [5, 5], pointRadius: 0, borderWidth: 1 },
+        { label: 'Productive wakes %', data: props.series.map(p => p.execution?.productiveRate ?? null), borderColor: '#5fb6ff', pointRadius: 2, spanGaps: false },
+        { label: '99% target', data: props.series.map(() => 99), borderColor: '#7e8399', borderDash: [5, 5], pointRadius: 0, borderWidth: 1 },
       ] },
     }));
   }

@@ -1,128 +1,138 @@
 <template>
-  <div class="obs-panel">
-    <p class="obs-intro">
-      Live values the agents maintain for you — this project's dashboard. They create and update them
-      with <code>update_observable</code>; delete anything stale.
-    </p>
-
-    <div v-if="!observables.length" class="obs-empty">
-      No observables yet — agents create them with <code>update_observable</code> as the project runs.
+  <div class="pjx-ob">
+    <div v-if="!observables.length" class="pjx-empty">
+      <ProjectsIcon name="gauge" />
+      <b>No live values yet</b>
+      <span>Agents publish them as the project runs (<code class="pjx-mono">update_observable</code>): balances, followers, items shipped.</span>
     </div>
 
-    <div v-else class="obs-grid">
-      <button
-        v-for="o in observables"
-        :key="o.observableID"
-        class="obs-tile"
-        :class="{ selected: selectedId === o.observableID }"
-        @click="select(o.observableID)"
-      >
-        <div class="obs-tile-label" :title="o.description || o.name">{{ o.name }}</div>
-
-        <template v-if="o.type === 'Numeric'">
-          <div class="obs-tile-value">{{ o.displayValue }}</div>
-          <div class="obs-tile-foot">
-            <span v-if="deltaOf(o) !== null" class="obs-delta" :class="deltaOf(o)! >= 0 ? 'up' : 'down'">
-              {{ deltaOf(o)! >= 0 ? '▲' : '▼' }} {{ formatDelta(o) }}
+    <template v-else>
+      <div class="pjx-ob__grid">
+        <button v-for="o in observables" :key="o.observableID" type="button" class="pjx-ob__tile" :aria-pressed="selectedId === o.observableID"
+          :data-stale="isStale(o) || undefined" @click="select(o.observableID)">
+          <span class="pjx-ob__name" :title="o.description || o.name">{{ o.name }}</span>
+          <template v-if="o.type === 'Numeric'">
+            <span class="pjx-ob__value pjx-num">{{ o.displayValue }}</span>
+            <span class="pjx-ob__trend">
+              <span v-if="deltaOf(o) !== null" class="pjx-ob__delta pjx-num" :data-tone="deltaOf(o)! >= 0 ? 'work' : 'fault'">
+                <ProjectsIcon :name="deltaOf(o)! >= 0 ? 'arrow-up' : 'arrow-down'" />{{ formatDelta(o) }}
+              </span>
+              <ProjectsSpark v-if="observableSeries(o).length > 1" :values="observableSeries(o)" :label="`${o.name} history`" />
             </span>
-            <ProjectsObservableSparkline
-              v-if="o.history && o.history.length > 1"
-              :samples="o.history" :width="90" :height="24" />
+          </template>
+          <span v-else class="pjx-ob__text">{{ o.textValue || '—' }}</span>
+          <span class="pjx-ob__meta">
+            <span v-if="o.validity === 'Invalid'" class="pjx-chip" data-tone="fault">invalid</span>
+            <span v-else-if="isStale(o)" class="pjx-chip" data-tone="need" :title="`Expected an update at least every ${staleWords(o)}`">stale</span>
+            <span class="pjx-faint">{{ ageShort(o.updatedAt, now) }} ago</span>
+          </span>
+        </button>
+      </div>
+
+      <section v-if="selected" class="pjx-ob__detail" :aria-label="`${selected.name} in detail`">
+        <header class="pjx-ob__detail-head">
+          <div class="pjx-ob__detail-titles">
+            <h3>{{ selected.name }}</h3>
+            <p v-if="selected.description" class="pjx-dim">{{ selected.description }}</p>
+            <p class="pjx-faint">
+              {{ selected.type }}<template v-if="selected.unit"> · {{ selected.unit }}</template>
+              · updated {{ ageWords(selected.updatedAt, now) }} ago by {{ selected.updatedBy || '—' }}
+              <template v-if="selected.sourceKind && selected.sourceKind !== 'Agent'"> · {{ String(selected.sourceKind).toLowerCase() }} source</template>
+            </p>
           </div>
-        </template>
+          <div class="pjx-ob__detail-tools">
+            <b class="pjx-ob__now pjx-num">{{ selected.displayValue }}</b>
+            <template v-if="!confirmDelete">
+              <button class="pjx-btn pjx-btn--ghost pjx-btn--sm" @click="confirmDelete = true"><ProjectsIcon name="trash" />Delete</button>
+            </template>
+            <template v-else>
+              <span class="pjx-dim" style="font-size: 12px">Delete it and its history?</span>
+              <button class="pjx-btn pjx-btn--danger pjx-btn--sm" :disabled="deleting" @click="del(selected)">{{ deleting ? 'Deleting…' : 'Delete' }}</button>
+              <button class="pjx-btn pjx-btn--ghost pjx-btn--sm" @click="confirmDelete = false">Keep</button>
+            </template>
+            <button class="pjx-iconbtn pjx-iconbtn--sm" title="Close" aria-label="Close the detail" @click="selectedId = null"><ProjectsIcon name="x" /></button>
+          </div>
+        </header>
+        <div v-if="deleteError" class="pjx-banner" data-tone="fault" role="alert"><ProjectsIcon name="alert" /><div class="pjx-banner__body">{{ deleteError }}</div></div>
 
-        <template v-else>
-          <div class="obs-tile-text">{{ o.textValue || '—' }}</div>
-          <div class="obs-tile-foot"><span class="obs-updated">updated {{ ago(o.updatedAt) }}</span></div>
-        </template>
-      </button>
-    </div>
+        <div v-if="observableSeries(selected).length > 1" class="pjx-ob__chart"><canvas ref="chartCanvas"></canvas></div>
+        <p v-else-if="selected.type === 'Numeric'" class="pjx-dim" style="font-size: 12px">Not enough history to chart yet.</p>
 
-    <!-- Expanded drawer for the selected observable: full history chart + samples + delete. -->
-    <div v-if="selected" class="obs-drawer">
-      <div class="obs-drawer-head">
-        <div>
-          <h3 class="obs-drawer-title">{{ selected.name }}</h3>
-          <p v-if="selected.description" class="obs-drawer-desc">{{ selected.description }}</p>
-          <p class="obs-drawer-meta">
-            {{ selected.type }}<template v-if="selected.unit"> · {{ selected.unit }}</template>
-            · updated {{ ago(selected.updatedAt) }} by {{ selected.updatedBy || '—' }}
-          </p>
+        <div v-if="recentSamples.length" class="pjx-ob__samples">
+          <table>
+            <thead><tr><th>When</th><th>Value</th><th>By</th></tr></thead>
+            <tbody>
+              <tr v-for="(s, i) in recentSamples" :key="i">
+                <td class="pjx-dim">{{ fmtTime(s.timestamp) }}</td>
+                <td class="pjx-num">{{ selected.type === 'Numeric' ? s.numericValue : s.textValue }}</td>
+                <td class="pjx-dim">{{ s.updatedBy }}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <div class="obs-drawer-actions">
-          <span class="obs-drawer-now">{{ selected.displayValue }}</span>
-          <button class="obs-del" :disabled="deleting" @click="del(selected)">{{ deleting ? '…' : 'Delete' }}</button>
-          <button class="obs-close" @click="selectedId = null">✕</button>
-        </div>
-      </div>
-      <div v-if="deleteError" class="obs-del-error">{{ deleteError }}</div>
+      </section>
 
-      <div v-if="selected.type === 'Numeric' && selected.history && selected.history.length > 1" class="obs-chart-wrap">
-        <canvas ref="chartCanvas"></canvas>
-      </div>
-      <p v-else-if="selected.type === 'Numeric'" class="obs-thin">Not enough history to chart yet.</p>
-
-      <div class="obs-samples">
-        <div v-for="(s, i) in recentSamples" :key="i" class="obs-sample-row">
-          <span class="obs-sample-time">{{ fmtTime(s.timestamp) }}</span>
-          <span class="obs-sample-val">{{ selected.type === 'Numeric' ? s.numericValue : s.textValue }}</span>
-          <span class="obs-sample-by">{{ s.updatedBy }}</span>
-        </div>
-      </div>
-    </div>
+      <p class="pjx-faint pjx-gp__foot">Agents create and update these with <code class="pjx-mono">update_observable</code>; delete anything that no longer means anything.</p>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Chart from 'chart.js/auto';
-import { RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
-import ProjectsObservableSparkline from '~/components/Projects/ObservableSparkline.vue';
+import ProjectsIcon from '~/components/Projects/Icon.vue';
+import ProjectsSpark from '~/components/Projects/Spark.vue';
+import { pjxPost } from '~/composables/useProjectsConsole';
+import { ageShort, ageWords, observableSeries } from '~/scripts/projectsConsole';
 
 const props = defineProps<{ projectId: string; observables: any[] }>();
 const emit = defineEmits<{ (e: 'changed'): void }>();
 
 const selectedId = ref<string | null>(null);
 const selected = computed(() => props.observables.find(o => o.observableID === selectedId.value) ?? null);
-const recentSamples = computed(() => {
-  const h = selected.value?.history ?? [];
-  return [...h].reverse().slice(0, 40); // newest first
-});
+const recentSamples = computed(() => [...(selected.value?.history ?? [])].reverse().slice(0, 40)); // newest first
+const confirmDelete = ref(false);
+const now = ref(Date.now());
+let clock: ReturnType<typeof setInterval> | null = null;
 
-function select(id: string) { selectedId.value = selectedId.value === id ? null : id; }
+function select(id: string) {
+  selectedId.value = selectedId.value === id ? null : id;
+  confirmDelete.value = false;
+  deleteError.value = '';
+}
 
-// Delta = current value vs the previous history sample (the last change's magnitude).
+// Delta = the current value against the previous sample: the size of the last change.
 function deltaOf(o: any): number | null {
-  const h = o.history;
-  if (o.type !== 'Numeric' || !h || h.length < 2) return null;
-  const cur = h[h.length - 1]?.numericValue;
-  const prev = h[h.length - 2]?.numericValue;
-  if (typeof cur !== 'number' || typeof prev !== 'number') return null;
-  return cur - prev;
+  const series = observableSeries(o);
+  return series.length < 2 ? null : series[series.length - 1] - series[series.length - 2];
 }
 function formatDelta(o: any): string {
   const d = deltaOf(o);
   if (d === null) return '';
   const abs = Math.abs(d);
-  const s = abs >= 1000 ? abs.toLocaleString(undefined, { maximumFractionDigits: 0 })
-    : abs.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  if (o.format === 'Currency') return '$' + s;
-  if (o.format === 'Percent') return s + '%';
-  return s;
+  const s = abs.toLocaleString(undefined, { maximumFractionDigits: abs >= 1000 ? 0 : 2 });
+  return o.format === 'Currency' ? `$${s}` : o.format === 'Percent' ? `${s}%` : s;
 }
 
-function ago(iso: string): string {
-  if (!iso) return '—';
-  const secs = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (secs < 60) return 'just now';
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
-  return `${Math.floor(secs / 86400)}d ago`;
+// StaleAfter arrives as a .NET TimeSpan ("d.hh:mm:ss"); a value older than that is no longer being kept.
+function staleMs(o: any): number | null {
+  const m = /^(?:(\d+)\.)?(\d+):(\d+):(\d+)/.exec(String(o?.staleAfter ?? ''));
+  if (!m) return null;
+  return (((Number(m[1] || 0) * 24 + Number(m[2])) * 60 + Number(m[3])) * 60 + Number(m[4])) * 1000;
 }
+function isStale(o: any): boolean {
+  const ms = staleMs(o);
+  const at = Date.parse(o?.observedAt || o?.updatedAt || '');
+  return ms != null && ms > 0 && !Number.isNaN(at) && now.value - at > ms;
+}
+function staleWords(o: any): string {
+  const ms = staleMs(o) ?? 0;
+  return ageWords(new Date(now.value - ms).toISOString(), now.value);
+}
+
 function fmtTime(iso: string): string {
   if (!iso) return '';
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 // ── delete ──
@@ -132,29 +142,22 @@ async function del(o: any) {
   if (deleting.value) return;
   deleting.value = true;
   deleteError.value = '';
-  try {
-    const res = await RequestPOSTFromKliveAPI('/projects/observables/delete',
-      JSON.stringify({ projectID: props.projectId, name: o.name }), false, true);
-    if (!res.ok) { deleteError.value = `Delete failed (HTTP ${res.status}).`; return; }
-    selectedId.value = null;
-    emit('changed');
-  } catch (e: any) {
-    deleteError.value = e?.message ? `Delete failed: ${e.message}` : 'Delete failed.';
-  } finally {
-    deleting.value = false;
-  }
+  const r = await pjxPost('/projects/observables/delete', { projectID: props.projectId, name: o.name });
+  deleting.value = false;
+  if (!r.ok) { deleteError.value = r.error; return; }
+  selectedId.value = null;
+  confirmDelete.value = false;
+  emit('changed');
 }
 
-// ── expanded chart (chart.js, single series) ──
+// ── chart (chart.js, one series) ──
 const chartCanvas = ref<HTMLCanvasElement | null>(null);
 let chart: Chart | null = null;
-
 function destroyChart() { if (chart) { chart.destroy(); chart = null; } }
-
 function renderChart() {
   destroyChart();
   const o = selected.value;
-  if (!o || o.type !== 'Numeric' || !chartCanvas.value) return;
+  if (!o || !chartCanvas.value) return;
   const hist = (o.history ?? []).filter((s: any) => typeof s.numericValue === 'number');
   if (hist.length < 2) return;
   chart = new Chart(chartCanvas.value, {
@@ -164,14 +167,14 @@ function renderChart() {
       datasets: [{
         label: o.name,
         data: hist.map((s: any) => s.numericValue),
-        borderColor: '#6ddc4f',
-        backgroundColor: 'rgba(77, 158, 57, 0.10)',
+        borderColor: '#8f80ff',
+        backgroundColor: 'rgba(143, 128, 255, 0.10)',
         borderWidth: 2,
         fill: true,
         tension: 0.15,
         pointRadius: 0,
         pointHoverRadius: 4,
-        pointHoverBackgroundColor: '#6ddc4f',
+        pointHoverBackgroundColor: '#8f80ff',
       }],
     },
     options: {
@@ -179,66 +182,19 @@ function renderChart() {
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { display: false }, // single series — the drawer title names it
-        tooltip: {
-          backgroundColor: '#191d16',
-          borderColor: 'rgba(146, 196, 130, 0.30)',
-          borderWidth: 1,
-          titleColor: '#b3c2ad',
-          bodyColor: '#e9f1e5',
-        },
+        legend: { display: false }, // one series: the detail's title names it
+        tooltip: { backgroundColor: '#14161d', borderColor: 'rgba(168, 176, 214, 0.30)', borderWidth: 1, titleColor: '#a9aec4', bodyColor: '#e8eaf3' },
       },
       scales: {
-        x: { ticks: { color: '#93a48d', maxTicksLimit: 6, font: { size: 10 } }, grid: { color: 'rgba(146, 196, 130, 0.10)' } },
-        y: { ticks: { color: '#93a48d', font: { size: 10 } }, grid: { color: 'rgba(146, 196, 130, 0.10)' } },
+        x: { ticks: { color: '#7d8299', maxTicksLimit: 6, font: { size: 10 } }, grid: { color: 'rgba(168, 176, 214, 0.08)' } },
+        y: { ticks: { color: '#7d8299', font: { size: 10 } }, grid: { color: 'rgba(168, 176, 214, 0.08)' } },
       },
     },
   });
 }
 
-// Re-render on selection change or when the selected observable's data updates (live push).
+// Re-render on a new selection, and when the selected value's data updates (live push).
 watch([selectedId, () => selected.value?.updatedAt], () => nextTick(renderChart));
-onBeforeUnmount(destroyChart);
+onMounted(() => { clock = setInterval(() => { now.value = Date.now(); }, 30000); });
+onBeforeUnmount(() => { destroyChart(); if (clock) clearInterval(clock); });
 </script>
-
-<style scoped>
-.obs-panel { color: var(--ot-text); }
-.obs-intro { font-size: 12px; color: var(--ot-muted); margin: 0 0 14px; line-height: 1.5; }
-.obs-intro code, .obs-empty code { background: var(--ot-surface-2); color: var(--ot-text-2); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
-.obs-empty { padding: 28px; text-align: center; color: var(--ot-muted); background: var(--ot-surface); border-radius: 8px; font-size: 13px; }
-
-.obs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.obs-tile { text-align: left; background: var(--ot-surface-2); border: 1px solid var(--ot-line); border-radius: 10px; padding: 14px; cursor: pointer; transition: border-color 0.12s, background 0.12s; min-width: 0; }
-.obs-tile:hover { background: var(--ot-surface-2); border-color: var(--ot-line-strong); }
-.obs-tile.selected { border-color: var(--ot-accent); }
-.obs-tile-label { font-size: 11px; color: var(--ot-muted); text-transform: uppercase; letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.obs-tile-value { font-size: 26px; font-weight: 600; color: var(--ot-text); margin-top: 6px; overflow: hidden; text-overflow: ellipsis; }
-.obs-tile-text { font-size: 15px; color: var(--ot-text); margin-top: 6px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.obs-tile-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; min-height: 24px; }
-.obs-delta { font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.obs-delta.up { color: var(--ot-positive); }
-.obs-delta.down { color: var(--ot-negative); }
-.obs-updated { font-size: 11px; color: var(--ot-muted); }
-
-.obs-drawer { margin-top: 16px; background: var(--ot-surface); border: 1px solid var(--ot-line); border-radius: 10px; padding: 16px; }
-.obs-drawer-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.obs-drawer-title { margin: 0; font-size: 16px; }
-.obs-drawer-desc { margin: 4px 0 0; font-size: 12px; color: var(--ot-text-2); }
-.obs-drawer-meta { margin: 4px 0 0; font-size: 11px; color: var(--ot-muted); }
-.obs-drawer-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.obs-drawer-now { font-size: 20px; font-weight: 600; color: var(--ot-text); font-variant-numeric: tabular-nums; }
-.obs-del { background: var(--ot-negative-soft); color: var(--ot-negative); border: 1px solid var(--ot-negative); border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: 12px; }
-.obs-del:disabled { opacity: 0.5; }
-.obs-close { background: var(--ot-surface-2); color: var(--ot-text-2); border: none; border-radius: 6px; padding: 5px 10px; cursor: pointer; }
-.obs-del-error { color: var(--ot-negative); font-size: 12px; margin-top: 8px; }
-.obs-chart-wrap { height: 220px; margin-top: 14px; }
-.obs-thin { font-size: 12px; color: var(--ot-muted); margin-top: 12px; }
-
-.obs-samples { margin-top: 14px; max-height: 200px; overflow-y: auto; border-top: 1px solid var(--ot-line); }
-.obs-sample-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; padding: 5px 2px; font-size: 12px; border-bottom: 1px solid var(--ot-line); }
-.obs-sample-time { color: var(--ot-muted); }
-.obs-sample-val { color: var(--ot-text); font-variant-numeric: tabular-nums; text-align: right; }
-.obs-sample-by { color: var(--ot-muted); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.obs-samples::-webkit-scrollbar { width: 6px; }
-.obs-samples::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
-</style>

@@ -1,106 +1,122 @@
 <template>
   <ProjectsShell>
-  <div class="np-page">
-    <div class="ot-pagehead">
-      <div>
-        <h1>Deploy a new project</h1>
-        <p class="subtitle">A project is a goal <em>and</em> a budget, pursued 24/7 by a Commander and its sub-agents. Configure it deliberately — once deployed it starts working immediately.</p>
+    <section class="pjx-card pjx-verdict" data-tone="accent" aria-label="New project">
+      <span class="pjx-verdict__glyph"><ProjectsIcon name="rocket" /></span>
+      <div class="pjx-verdict__text">
+        <h1 class="pjx-verdict__headline">Start a project</h1>
+        <p class="pjx-verdict__sub">A goal and a budget, pursued around the clock by a Commander and its agents. It drafts a Grand Plan first and waits for your approval before it executes.</p>
       </div>
-    </div>
+    </section>
 
-    <div class="np-body">
-      <div class="np-main">
-        <!-- ── Goal & identity ── -->
-        <section class="np-card">
-          <h2 class="np-card-title">Goal &amp; identity</h2>
-          <label class="np-field">
-            <span class="np-label">Project name</span>
-            <input v-model.trim="form.name" class="np-input" placeholder="e.g. Dropshipping storefront" maxlength="80" />
-          </label>
-          <label class="np-field">
-            <span class="np-label">The goal <span class="np-hint">stated verbatim — this is the Commander's north star</span></span>
-            <textarea v-model.trim="form.goal" class="np-textarea" rows="4" placeholder="e.g. Build and run a profitable print-on-demand store, reinvesting profit, reporting weekly."></textarea>
-          </label>
-        </section>
-
-        <section class="np-card">
-          <h2 class="np-card-title">Initial shared files <span class="np-optional">optional</span></h2>
-          <p class="np-sublabel np-cardnote">Seed the project with briefs, research, datasets, brand kits, or whole folders. They are placed under <code>inputs/</code> before the Commander starts its first wake.</p>
-          <ProjectsFileUploader
-            ref="initialUploader"
-            purpose="initial"
-            title="Initialize the project filesystem"
-            hint="The original folder structure is preserved. Project workers can see who uploaded each file and when."
-            @state="onUploadState"
-          />
-        </section>
-
-        <!-- ── Budgets & autonomy ── -->
-        <section class="np-card">
-          <h2 class="np-card-title">Budget &amp; autonomy</h2>
-          <div class="np-grid2">
-            <label class="np-field">
-              <span class="np-label">Token budget (USD) <span class="np-req">required</span></span>
-              <input v-model.number="form.tokenBudgetUsd" class="np-input" type="number" min="0" step="0.5" placeholder="10" />
-              <span class="np-sublabel">Total LLM spend allowed. At ~80% you're warned; at 100% the project pauses for a top-up.</span>
-            </label>
-            <label class="np-field">
-              <span class="np-label">Money budget (USD)</span>
-              <input v-model.number="form.moneyBudgetUsd" class="np-input" type="number" min="0" step="1" placeholder="0" />
-              <span class="np-sublabel">Real-money spend allowed (ads, subscriptions, services). 0 = no real money.</span>
-            </label>
-            <label class="np-field">
-              <span class="np-label">Autonomous money / action (USD)</span>
-              <input v-model.number="form.moneyAutonomousThresholdUsd" class="np-input" type="number" min="0" step="1" placeholder="0" />
-              <span class="np-sublabel">Single spends at or below this are the Commander's own call; above needs your approval.</span>
-            </label>
-            <label class="np-field">
-              <span class="np-label">Agent cap</span>
-              <input v-model.number="form.subAgentCap" class="np-input" type="number" min="1" max="50" step="1" placeholder="5" />
-              <span class="np-sublabel">Max concurrent agents (Commander + sub-agents + one-level helpers).</span>
-            </label>
+    <div class="pjx-new">
+      <div class="pjx-new__main">
+        <!-- 1 · goal -->
+        <section class="pjx-card" aria-label="Goal">
+          <header class="pjx-card__head"><h2 class="pjx-card__title pjx-step"><span class="pjx-step__n" :data-done="(form.name && form.goal) || undefined">1</span>What should it achieve?</h2></header>
+          <div class="pjx-card__body" style="display: flex; flex-direction: column; gap: 12px">
+            <div class="pjx-field">
+              <label for="np-name">Project name</label>
+              <input id="np-name" ref="nameInput" v-model.trim="form.name" class="pjx-input pjx-name" placeholder="e.g. Print-on-demand storefront" maxlength="80" />
+            </div>
+            <div class="pjx-field">
+              <label for="np-goal">The goal <span class="pjx-faint">· given to the Commander word for word; it is the north star</span></label>
+              <textarea id="np-goal" v-model.trim="form.goal" class="pjx-textarea pjx-goal" rows="5" placeholder="e.g. Build and run a profitable print-on-demand store, reinvest the profit, and report to me every week."></textarea>
+              <span class="pjx-faint" style="font-size: 11px">Say what done looks like and how you want to hear about progress. The Commander turns it into milestones.</span>
+            </div>
           </div>
         </section>
 
-        <!-- ── Behaviour ── -->
-        <section class="np-card">
-          <h2 class="np-card-title">Behaviour</h2>
-          <label class="np-toggle">
-            <span>
-              <span class="np-label">Desktop containers</span>
-              <span class="np-sublabel">Give agents real desktops (mouse/keyboard/screen). Leave off for a text-only project.</span>
-            </span>
-            <input type="checkbox" v-model="settings.containersEnabled" />
-          </label>
-          <label v-if="settings.containersEnabled" class="np-field">
-            <span class="np-label">Browser sign-ins</span>
-            <select v-model="settings.desktopAllocation" class="np-input">
-              <option value="PerAgentContainers">Separate browser per agent</option>
-              <option value="SharedDesktopWithInputLock">One shared browser session</option>
-            </select>
-            <span class="np-sublabel">Shared mode lets every agent use the same logged-in Chromium desktop; their input is automatically locked one at a time.</span>
-          </label>
-          <label class="np-toggle">
-            <span>
-              <span class="np-label">Vision</span>
-              <span class="np-sublabel">Feed screenshots back to video-tier agents after each desktop action.</span>
-            </span>
-            <input type="checkbox" v-model="settings.visionEnabled" />
-          </label>
-          <label v-if="settings.containersEnabled" class="np-field">
-            <span class="np-label">Desktop image</span>
-            <input v-model.trim="settings.desktopImage" class="np-input mono" placeholder="omnipotent/projects-desktop:latest" />
-          </label>
+        <!-- 2 · budget -->
+        <section class="pjx-card" aria-label="Budget and autonomy">
+          <header class="pjx-card__head"><h2 class="pjx-card__title pjx-step"><span class="pjx-step__n" :data-done="(form.tokenBudgetUsd || 0) > 0 || undefined">2</span>Budget and autonomy</h2></header>
+          <div class="pjx-card__body" style="display: flex; flex-direction: column; gap: 14px">
+            <div class="pjx-field">
+              <span class="pjx-field__label">Model budget: what it may spend on AI</span>
+              <div class="pjx-presets" role="group" aria-label="Model budget presets">
+                <button v-for="p in TOKEN_PRESETS" :key="p.v" type="button" class="pjx-preset" :aria-pressed="form.tokenBudgetUsd === p.v" @click="form.tokenBudgetUsd = p.v"><b>{{ pjUsd(p.v) }}</b><span>{{ p.note }}</span></button>
+              </div>
+            </div>
+            <div class="pjx-field">
+              <span class="pjx-field__label">Real money: ads, subscriptions, services</span>
+              <div class="pjx-presets" role="group" aria-label="External budget presets">
+                <button v-for="p in MONEY_PRESETS" :key="p.v" type="button" class="pjx-preset" :aria-pressed="form.moneyBudgetUsd === p.v" @click="form.moneyBudgetUsd = p.v"><b>{{ p.v ? pjUsd(p.v) : 'None' }}</b><span>{{ p.note }}</span></button>
+              </div>
+            </div>
+            <div class="pjx-grid2">
+              <div class="pjx-field">
+                <label for="np-token">Model budget (USD)</label>
+                <input id="np-token" v-model.number="form.tokenBudgetUsd" class="pjx-input pjx-num" type="number" min="0" step="0.5" />
+                <span class="pjx-faint" style="font-size: 11px">Warned at 80%; paused for a top-up at 100%.</span>
+              </div>
+              <div class="pjx-field">
+                <label for="np-money">Money budget (USD)</label>
+                <input id="np-money" v-model.number="form.moneyBudgetUsd" class="pjx-input pjx-num" type="number" min="0" step="1" />
+                <span class="pjx-faint" style="font-size: 11px">0 means no real money at all.</span>
+              </div>
+              <div class="pjx-field">
+                <label for="np-auto">Spend without asking, per action (USD)</label>
+                <input id="np-auto" v-model.number="form.moneyAutonomousThresholdUsd" class="pjx-input pjx-num" type="number" min="0" step="1" />
+                <span class="pjx-faint" style="font-size: 11px">Anything above this waits for your approval.</span>
+              </div>
+              <div class="pjx-field">
+                <label for="np-cap">Agent cap</label>
+                <input id="np-cap" v-model.number="form.subAgentCap" class="pjx-input pjx-num" type="number" min="1" max="50" step="1" />
+                <span class="pjx-faint" style="font-size: 11px">Commander, sub-agents and their helpers at once.</span>
+              </div>
+            </div>
+          </div>
         </section>
 
-        <!-- ── Model routing ── -->
-        <section class="np-card">
-          <div class="np-card-title-row">
-            <h2 class="np-card-title">Model routing</h2>
-            <button type="button" class="np-linkbtn" @click="showModels = !showModels">{{ showModels ? 'Hide' : 'Customize' }}</button>
+        <!-- 3 · behaviour -->
+        <section class="pjx-card" aria-label="Computers and behaviour">
+          <header class="pjx-card__head"><h2 class="pjx-card__title pjx-step"><span class="pjx-step__n" data-done>3</span>Computers and behaviour</h2><span class="pjx-card__meta">from your project defaults</span></header>
+          <div class="pjx-card__body" style="padding-top: 2px; padding-bottom: 2px">
+            <button type="button" class="pjx-toggle" role="switch" :aria-checked="!!settings.containersEnabled" aria-label="Desktop computers" @click="settings.containersEnabled = !settings.containersEnabled">
+              <span class="pjx-toggle__copy"><b>Desktop computers</b><span>Agents get real desktops: mouse, keyboard, screen and a browser. Leave off for a text-only project.</span></span>
+              <span class="pjx-switch" :data-on="settings.containersEnabled || undefined" aria-hidden="true"></span>
+            </button>
+            <div v-if="settings.containersEnabled" class="pjx-toggle" style="cursor: default">
+              <span class="pjx-toggle__copy"><b>Browser sign-ins</b><span>Shared: every agent uses one signed-in browser, taking turns.</span></span>
+              <select v-model="settings.desktopAllocation" class="pjx-select" aria-label="Browser sign-ins">
+                <option value="PerAgentContainers">A browser per agent</option>
+                <option value="SharedDesktopWithInputLock">One shared browser</option>
+              </select>
+            </div>
+            <button type="button" class="pjx-toggle" role="switch" :aria-checked="!!settings.visionEnabled" aria-label="Vision" @click="settings.visionEnabled = !settings.visionEnabled">
+              <span class="pjx-toggle__copy"><b>Vision</b><span>Agents see a screenshot after each desktop action.</span></span>
+              <span class="pjx-switch" :data-on="settings.visionEnabled || undefined" aria-hidden="true"></span>
+            </button>
+            <div v-if="settings.containersEnabled && showAdvanced" class="pjx-toggle" style="cursor: default">
+              <span class="pjx-toggle__copy"><b>Desktop image</b><span>The container image each computer starts from.</span></span>
+              <input v-model.trim="settings.desktopImage" class="pjx-input pjx-mono" style="max-width: 300px" aria-label="Desktop image" placeholder="omnipotent/projects-desktop:latest" />
+            </div>
           </div>
-          <p class="np-sublabel np-cardnote">Prefilled from your system defaults. The tier list doubles as a price list (text &lt; image &lt; video &lt; audio).</p>
-          <div v-if="showModels" class="np-models">
+        </section>
+
+        <!-- 4 · files -->
+        <section class="pjx-card" aria-label="Starting files">
+          <header class="pjx-card__head"><h2 class="pjx-card__title pjx-step"><span class="pjx-step__n" :data-done="uploadState.selected ? (uploadState.ready || undefined) : true">4</span>Starting files</h2><span class="pjx-card__meta">optional · placed under <code class="pjx-mono">inputs/</code> before the first wake</span></header>
+          <div class="pjx-card__body ot-os pjx-embed">
+            <ProjectsFileUploader
+              ref="initialUploader"
+              purpose="initial"
+              title="Briefs, research, datasets, brand kits or whole folders"
+              hint="Folder structure is kept, and every agent can see who uploaded each file and when."
+              @state="onUploadState"
+            />
+          </div>
+        </section>
+
+        <!-- 5 · models -->
+        <section class="pjx-card" aria-label="Model routing">
+          <header class="pjx-card__head">
+            <h2 class="pjx-card__title pjx-step"><span class="pjx-step__n" :data-done="routesValid || undefined">5</span>Model routing</h2>
+            <span class="pjx-card__meta">{{ showModels ? 'per role; the tier list doubles as a price list' : `inherits your defaults · Commander ${settings.commanderRoutes?.[0] || '—'}` }}</span>
+            <div class="pjx-card__tools">
+              <button type="button" class="pjx-btn pjx-btn--ghost pjx-btn--sm" :aria-expanded="showModels" @click="showModels = !showModels; showAdvanced = showAdvanced || showModels">{{ showModels ? 'Hide' : 'Customize' }}</button>
+            </div>
+          </header>
+          <div v-if="showModels" class="pjx-card__body ot-os pjx-embed" style="display: flex; flex-direction: column; gap: 12px">
             <ModelRouteList
               v-for="f in modelFields"
               :key="f.key"
@@ -111,54 +127,77 @@
               :show-parameters="!('parametersNote' in f)"
               :parameters-note="'parametersNote' in f ? f.parametersNote : ''"
             />
-            <p v-if="!routesValid" class="np-error">Every model route entry must contain a provider/model value.</p>
+            <p v-if="!routesValid" class="pjx-note" data-tone="fault">Every model route needs a provider/model value.</p>
           </div>
         </section>
       </div>
 
-      <!-- ── Summary rail ── -->
-      <aside class="np-rail">
-        <div class="np-summary">
-          <h3>Ready to deploy?</h3>
-          <ul class="np-check">
-            <li :class="{ ok: form.name }">{{ form.name ? '✓' : '•' }} Named</li>
-            <li :class="{ ok: form.goal }">{{ form.goal ? '✓' : '•' }} Goal set</li>
-            <li :class="{ ok: (form.tokenBudgetUsd || 0) > 0 }">{{ (form.tokenBudgetUsd || 0) > 0 ? '✓' : '•' }} Token budget</li>
-            <li v-if="uploadState.selected" :class="{ ok: uploadState.ready }">{{ uploadState.ready ? '✓' : '•' }} {{ uploadState.ready ? `${uploadState.selected} file${uploadState.selected === 1 ? '' : 's'} ready` : 'Uploading files' }}</li>
-          </ul>
-          <div class="np-recap">
-            <div class="np-recap-row"><span>Tokens</span><span>${{ (form.tokenBudgetUsd || 0).toFixed(2) }}</span></div>
-            <div class="np-recap-row"><span>Money</span><span>${{ (form.moneyBudgetUsd || 0).toFixed(2) }}</span></div>
-            <div class="np-recap-row"><span>Autonomous ≤</span><span>${{ (form.moneyAutonomousThresholdUsd || 0).toFixed(2) }}</span></div>
-            <div class="np-recap-row"><span>Agent cap</span><span>{{ form.subAgentCap || 5 }}</span></div>
-            <div class="np-recap-row"><span>Containers</span><span>{{ settings.containersEnabled ? 'on' : 'off' }}</span></div>
-            <div v-if="settings.containersEnabled" class="np-recap-row"><span>Sign-ins</span><span>{{ settings.desktopAllocation === 'SharedDesktopWithInputLock' ? 'shared' : 'separate' }}</span></div>
-            <div class="np-recap-row"><span>Commander</span><span class="mono ellip">{{ settings.commanderRoutes?.[0] || '—' }}</span></div>
+      <!-- ── rail ── -->
+      <aside class="pjx-new__rail" aria-label="Ready to deploy">
+        <div class="pjx-card">
+          <div class="pjx-rail__section">
+            <div class="pjx-rail__label">Ready to deploy?</div>
+            <ul class="pjx-checklist">
+              <li :data-done="!!form.name || undefined"><ProjectsIcon :name="form.name ? 'check-circle' : 'dot'" />Named</li>
+              <li :data-done="!!form.goal || undefined"><ProjectsIcon :name="form.goal ? 'check-circle' : 'dot'" />Goal written</li>
+              <li :data-done="(form.tokenBudgetUsd || 0) > 0 || undefined"><ProjectsIcon :name="(form.tokenBudgetUsd || 0) > 0 ? 'check-circle' : 'dot'" />Model budget set</li>
+              <li v-if="uploadState.selected" :data-done="(uploadState.ready && !uploadState.busy) || undefined"><ProjectsIcon :name="uploadState.ready && !uploadState.busy ? 'check-circle' : 'hourglass'" />{{ uploadState.ready && !uploadState.busy ? `${uploadState.selected} ${uploadState.selected === 1 ? 'file' : 'files'} ready` : 'Uploading files…' }}</li>
+              <li v-if="!routesValid"><ProjectsIcon name="alert" />A model route is empty</li>
+            </ul>
           </div>
-          <p v-if="error" class="np-error">{{ error }}</p>
-          <button class="np-deploy" :disabled="!canDeploy || deploying" @click="deploy">
-            {{ deploying ? 'Deploying…' : uploadState.busy ? 'Waiting for files…' : 'Deploy project' }}
-          </button>
-          <button class="np-cancel" :disabled="deploying" @click="cancel">Cancel</button>
+          <div class="pjx-rail__section">
+            <dl class="pjx-recap">
+              <dt>Model budget</dt><dd>{{ pjUsd(form.tokenBudgetUsd || 0) }}</dd>
+              <dt>Real money</dt><dd>{{ form.moneyBudgetUsd ? pjUsd(form.moneyBudgetUsd) : 'none' }}</dd>
+              <dt>Without asking</dt><dd>{{ form.moneyAutonomousThresholdUsd ? `≤ ${pjUsd(form.moneyAutonomousThresholdUsd)} an action` : 'always asks' }}</dd>
+              <dt>Agents</dt><dd>up to {{ form.subAgentCap || 5 }}</dd>
+              <dt>Computers</dt><dd>{{ settings.containersEnabled ? (settings.desktopAllocation === 'SharedDesktopWithInputLock' ? 'on · shared browser' : 'on · own browsers') : 'off' }}</dd>
+              <dt>Commander</dt><dd :title="settings.commanderRoutes?.[0]" class="pjx-mono">{{ settings.commanderRoutes?.[0] || '—' }}</dd>
+            </dl>
+          </div>
+          <div class="pjx-rail__section" style="display: flex; flex-direction: column; gap: 8px">
+            <p v-if="error" class="pjx-note" data-tone="fault" role="alert">{{ error }}</p>
+            <button class="pjx-btn pjx-btn--primary" style="width: 100%; height: 38px" :disabled="!canDeploy || deploying" aria-keyshortcuts="Control+Enter" @click="deploy">
+              <ProjectsIcon name="rocket" />{{ deploying ? 'Deploying…' : uploadState.busy ? 'Waiting for files…' : 'Deploy project' }}
+            </button>
+            <div style="display: flex; justify-content: space-between; align-items: center">
+              <button class="pjx-btn pjx-btn--ghost pjx-btn--sm" :disabled="deploying" @click="cancel">Cancel</button>
+              <span class="pjx-faint" style="font-size: 11px"><span class="pjx-kbd">Ctrl</span> <span class="pjx-kbd">Enter</span> deploys</span>
+            </div>
+          </div>
         </div>
       </aside>
     </div>
-  </div>
   </ProjectsShell>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import { pjUsd } from '~/scripts/projectsConsole';
 import ProjectsFileUploader from '~/components/Projects/FileUploader.vue';
 import ModelRouteList from '~/components/Projects/ModelRouteList.vue';
 import ProjectsShell from '~/components/Projects/Shell.vue';
+import ProjectsIcon from '~/components/Projects/Icon.vue';
 
 definePageMeta({ layout: 'navbar' });
 useHead({ title: 'Projects · New project' });
 
 const router = useRouter();
+
+// One-click starting points; the exact fields below take any value.
+const TOKEN_PRESETS = [
+  { v: 5, note: 'a trial run' },
+  { v: 10, note: 'a few days' },
+  { v: 25, note: 'a few weeks' },
+  { v: 100, note: 'a long campaign' },
+];
+const MONEY_PRESETS = [
+  { v: 0, note: 'never spends' },
+  { v: 20, note: 'small tests' },
+  { v: 100, note: 'ads and tools' },
+];
 
 const form = reactive({
   name: '',
@@ -200,8 +239,10 @@ const settings = reactive<Record<string, any>>({
 const defaults = ref<Record<string, any>>({});
 
 const showModels = ref(false);
+const showAdvanced = ref(false);
 const deploying = ref(false);
 const error = ref('');
+const nameInput = ref<HTMLInputElement | null>(null);
 const initialUploader = ref<InstanceType<typeof ProjectsFileUploader> | null>(null);
 const uploadState = ref({ sessionID: null as string | null, selected: 0, ready: true, busy: false });
 
@@ -260,7 +301,8 @@ function changedSettings(): Record<string, any> {
 
 async function deploy() {
   error.value = '';
-  if (!canDeploy.value) { error.value = 'Name, goal, and a token budget above 0 are required.'; return; }
+  if (deploying.value) return;
+  if (!canDeploy.value) { error.value = 'A name, a goal and a model budget above $0 are needed.'; return; }
   deploying.value = true;
   try {
     const payload: Record<string, any> = {
@@ -295,58 +337,14 @@ async function cancel() {
   router.push('/projects');
 }
 
-onMounted(loadDefaults);
+function onKey(e: KeyboardEvent) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); deploy(); }
+}
+onMounted(async () => {
+  loadDefaults();
+  window.addEventListener('keydown', onKey);
+  await nextTick();
+  nameInput.value?.focus();
+});
+onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 </script>
-
-<style scoped>
-.np-page { color: var(--ot-text); max-width: 1180px; }
-.ot-pagehead .subtitle em { color: var(--ot-text-2); font-style: italic; }
-
-.np-body { display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: start; }
-@media (max-width: 900px) { .np-body { grid-template-columns: 1fr; } }
-
-.np-main { display: flex; flex-direction: column; gap: 16px; }
-.np-card { background: var(--ot-surface); border: 1px solid var(--ot-line); border-radius: 10px; padding: 18px 20px; }
-.np-card-title { margin: 0 0 14px; font-size: 15px; color: var(--ot-text); }
-.np-optional { color: var(--ot-muted); font-size: 10px; font-weight: 400; margin-left: 6px; }
-.np-card-title-row { display: flex; justify-content: space-between; align-items: center; }
-.np-cardnote { margin: -8px 0 12px; }
-.np-linkbtn { background: none; border: none; color: var(--ot-info); cursor: pointer; font-size: 13px; padding: 0; }
-.np-linkbtn:hover { text-decoration: underline; }
-
-.np-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
-.np-field:last-child { margin-bottom: 0; }
-.np-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; }
-@media (max-width: 620px) { .np-grid2 { grid-template-columns: 1fr; } }
-.np-label { font-size: 13px; color: var(--ot-text); font-weight: 500; }
-.np-hint { color: var(--ot-muted); font-weight: 400; font-size: 11px; margin-left: 6px; }
-.np-req { color: var(--ot-warning); font-weight: 400; font-size: 11px; margin-left: 6px; }
-.np-sublabel { font-size: 11px; color: var(--ot-muted); line-height: 1.4; }
-.np-input, .np-textarea { background: var(--ot-surface); color: var(--ot-text); border: 1px solid var(--ot-line-strong); border-radius: 6px; padding: 9px 11px; font-size: 13px; width: 100%; box-sizing: border-box; }
-.np-input:focus, .np-textarea:focus { outline: none; border-color: var(--ot-accent); }
-.np-textarea { resize: vertical; line-height: 1.5; font-family: inherit; }
-.mono { font-family: var(--ot-mono); }
-
-.np-toggle { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--ot-line); }
-.np-toggle:last-of-type { border-bottom: none; }
-.np-toggle > span { display: flex; flex-direction: column; gap: 3px; }
-.np-toggle input { width: 20px; height: 20px; accent-color: var(--ot-positive); flex-shrink: 0; }
-.np-models { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
-.np-modelrow { margin-bottom: 8px; }
-
-.np-rail { position: sticky; top: 16px; }
-.np-summary { background: var(--ot-surface); border: 1px solid var(--ot-line); border-radius: 10px; padding: 18px; }
-.np-summary h3 { margin: 0 0 12px; font-size: 15px; color: var(--ot-text); }
-.np-check { list-style: none; padding: 0; margin: 0 0 14px; font-size: 12px; color: var(--ot-muted); }
-.np-check li { padding: 3px 0; }
-.np-check li.ok { color: var(--ot-positive); }
-.np-recap { border-top: 1px solid var(--ot-line); padding-top: 12px; margin-bottom: 14px; }
-.np-recap-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--ot-text-2); padding: 3px 0; }
-.np-recap-row .ellip { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.np-error { color: var(--ot-negative); font-size: 12px; background: var(--ot-negative-soft); padding: 8px 10px; border-radius: 6px; margin: 0 0 12px; }
-.np-deploy { width: 100%; background: var(--ot-accent); color: var(--ot-on-accent); border: none; padding: 11px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; }
-.np-deploy:hover:not(:disabled) { background: color-mix(in srgb, var(--ot-accent) 82%, white); }
-.np-deploy:disabled { opacity: 0.45; cursor: default; }
-.np-cancel { width: 100%; background: none; color: var(--ot-muted); border: none; padding: 9px; margin-top: 6px; cursor: pointer; font-size: 13px; }
-.np-cancel:hover:not(:disabled) { color: var(--ot-text-2); }
-</style>

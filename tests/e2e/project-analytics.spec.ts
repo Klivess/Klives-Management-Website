@@ -35,6 +35,8 @@ test('wake analytics supports time ranges, honest outcomes and responsive charts
   });
   await page.goto('/projects/analytics');
   await expect(page.getByRole('region', { name: 'Wake execution performance' })).toBeVisible();
+  // The page's one-line verdict comes from the same payload as the charts.
+  await expect(page.getByTestId('analytics-verdict')).toContainText('100 wakes · 72% active · 53% productive');
   await expect(page.getByText('72.0%', { exact: true })).toBeVisible();
   await expect(page.getByText('28.0%', { exact: true })).toBeVisible();
   await expect(page.getByRole('img', { name: 'Wake outcomes over time', exact: true })).toBeVisible();

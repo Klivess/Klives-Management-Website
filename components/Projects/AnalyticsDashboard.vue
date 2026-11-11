@@ -1,9 +1,11 @@
 <template>
   <div class="analytics-dashboard" :aria-busy="loading">
-    <header class="analytics-header">
+    <header class="analytics-header" :class="{ compact: compactHeader }">
       <div>
-        <div class="eyebrow">{{ isAllProjects ? 'Fleet intelligence' : 'Project intelligence' }}</div>
-        <h2>{{ isAllProjects ? 'All-project analytics' : 'Analytics' }}</h2>
+        <template v-if="!compactHeader">
+          <div class="eyebrow">{{ isAllProjects ? 'Fleet intelligence' : 'Project intelligence' }}</div>
+          <h2>{{ isAllProjects ? 'All-project analytics' : 'Analytics' }}</h2>
+        </template>
         <p class="analytics-subtitle">
           {{ scopeSubtitle }}
           <span v-if="analytics?.generatedAt" class="generated-at">
@@ -97,7 +99,7 @@
 
         <div class="metric-grid">
           <article
-            v-for="metric in metricCards"
+            v-for="metric in metricCards.filter(m => showAllMetrics || !metricIsEmpty(m))"
             :key="metric.label"
             class="metric-card"
             :class="metric.tone ? `tone-${metric.tone}` : ''"
@@ -107,6 +109,15 @@
             <div v-if="metric.detail" class="metric-detail">{{ metric.detail }}</div>
           </article>
         </div>
+        <button
+          v-if="metricCards.some(metricIsEmpty)"
+          type="button"
+          class="fold-button"
+          :aria-expanded="showAllMetrics"
+          @click="showAllMetrics = !showAllMetrics"
+        >
+          {{ showAllMetrics ? 'Hide the empty figures' : `Show all ${metricCards.length} figures (${metricCards.filter(metricIsEmpty).length} have nothing to report)` }}
+        </button>
       </section>
 
       <section class="cache-verification" aria-labelledby="prompt-cache-heading">
@@ -118,7 +129,7 @@
                 {{ cacheStatusLabel }}
               </span>
             </div>
-            <p>
+            <p v-if="promptCache.status !== 'no-data' || showCacheDetail">
               Provider-reported cached_tokens / prompt_tokens from post-fix Projects requests only.
               Reusable-prefix efficiency tests the cacheable portion against the previous turn;
               raw hit rate also includes each uncached, newly-added suffix. Whole-response caching
@@ -128,6 +139,15 @@
           <span v-if="promptCache.lastMeasuredAt" class="card-total">
             Last sample {{ formatDateTime(promptCache.lastMeasuredAt) }}
           </span>
+          <button
+            v-else-if="promptCache.status === 'no-data'"
+            type="button"
+            class="fold-button"
+            :aria-expanded="showCacheDetail"
+            @click="showCacheDetail = !showCacheDetail"
+          >
+            {{ showCacheDetail ? 'Hide the gauges' : `Show the ${cacheMetricCards.length} gauges` }}
+          </button>
         </div>
 
         <div class="cache-verdict" :class="`cache-verdict-${promptCache.status}`" role="status">
@@ -135,7 +155,7 @@
           <span>{{ promptCache.verdict }}</span>
         </div>
 
-        <div class="cache-metric-grid">
+        <div v-if="promptCache.status !== 'no-data' || showCacheDetail" class="cache-metric-grid">
           <article v-for="metric in cacheMetricCards" :key="metric.label" class="cache-metric">
             <span>{{ metric.label }}</span>
             <strong>{{ metric.value }}</strong>
@@ -985,10 +1005,22 @@ interface MetricCard {
 const props = withDefaults(defineProps<{
   projectId?: string;
   allProjects?: boolean;
+  /** The host page already names the view: drop the eyebrow and title, keep the controls. */
+  compactHeader?: boolean;
 }>(), {
   projectId: '',
   allProjects: false,
+  compactHeader: false,
 });
+// The Projects console's Analytics page writes its one-line verdict from the same payload.
+const emit = defineEmits<{ (e: 'loaded', payload: any): void }>();
+
+// Figures with nothing to say (zero, "—", "No forecast") fold away until asked for; the page
+// leads with the ones that carry information.
+const showAllMetrics = ref(false);
+const EMPTY_VALUE = /^(?:US\$|\$)?0(?:\.0+)?%?$|^—$|^-$|^No\b|^Not\b/i;
+const metricIsEmpty = (metric: { value: string }) => EMPTY_VALUE.test(String(metric.value ?? '').trim());
+const showCacheDetail = ref(false);
 
 const rangeOptions: Array<{ key: RangeKey; label: string; shortLabel: string }> = [
   { key: '1h', label: 'Last hour', shortLabel: '1H' },
@@ -1604,11 +1636,11 @@ const heatmapMax = computed(() =>
 function heatCellStyle(count: number) {
   if (!count || heatmapMax.value <= 0) return { backgroundColor: 'rgba(255,255,255,0.035)' };
   const intensity = 0.16 + (count / heatmapMax.value) * 0.84;
-  return { backgroundColor: `rgba(77, 158, 57, ${intensity.toFixed(3)})` };
+  return { backgroundColor: `rgba(143, 128, 255, ${intensity.toFixed(3)})` };
 }
 
 function heatLegendStyle(level: number) {
-  return { backgroundColor: `rgba(77, 158, 57, ${(0.08 + level * 0.18).toFixed(2)})` };
+  return { backgroundColor: `rgba(143, 128, 255, ${(0.08 + level * 0.18).toFixed(2)})` };
 }
 
 function normalizeDay(value: string | number): number {
@@ -1721,6 +1753,7 @@ async function loadAnalytics(forceRefresh = false) {
     const payload = normalizePayload(await response.json());
     if (generation !== requestGeneration) return;
     analytics.value = payload;
+    emit('loaded', payload);
     lastLoadMs.value = Math.max(1, Math.round(performance.now() - startedAt));
     // Let the payload paint before Chart.js builds every visualization on the main thread.
     loading.value = false;
@@ -1755,9 +1788,9 @@ function renderCharts() {
 
   const series = analytics.value.series;
   const labels = series.map(point => formatSeriesDate(point.date));
-  const gridColor = 'rgba(146, 196, 130, 0.10)';
-  const tickColor = '#93a48d';
-  const legendColor = '#b3c2ad';
+  const gridColor = 'rgba(168, 176, 214, 0.10)';
+  const tickColor = '#7e8399';
+  const legendColor = '#aeb3c6';
 
   const cacheSeries = promptCache.value.series;
   if (cacheSeries.some(point => numeric(point.requests) > 0)) {
@@ -1770,8 +1803,8 @@ function renderCharts() {
             type: 'bar',
             label: 'Cached prompt tokens',
             data: cacheSeries.map(point => numeric(point.cachedTokens)),
-            backgroundColor: 'rgba(78, 201, 138, 0.72)',
-            borderColor: '#4ec98a',
+            backgroundColor: 'rgba(61, 220, 151, 0.72)',
+            borderColor: '#3ddc97',
             borderWidth: 1,
             borderRadius: 2,
             stack: 'prompt',
@@ -1781,8 +1814,8 @@ function renderCharts() {
             type: 'bar',
             label: 'Uncached prompt tokens',
             data: cacheSeries.map(point => numeric(point.uncachedTokens)),
-            backgroundColor: 'rgba(255, 123, 123, 0.68)',
-            borderColor: '#ff7b7b',
+            backgroundColor: 'rgba(255, 100, 121, 0.68)',
+            borderColor: '#ff6479',
             borderWidth: 1,
             borderRadius: 2,
             stack: 'prompt',
@@ -1792,8 +1825,8 @@ function renderCharts() {
             type: 'line',
             label: 'Cache hit rate',
             data: cacheSeries.map(point => numeric(point.cacheHitRatePct)),
-            borderColor: '#63c8ea',
-            backgroundColor: '#63c8ea',
+            borderColor: '#5fb6ff',
+            backgroundColor: '#5fb6ff',
             pointRadius: cacheSeries.length > 45 ? 0 : 2.5,
             pointHoverRadius: 4,
             borderWidth: 2,
@@ -1844,9 +1877,9 @@ function renderCharts() {
         {
           label: 'Model spend',
           data: series.map(point => numeric(point.spendUsd)),
-          borderColor: '#4ec98a',
-          backgroundColor: 'rgba(77,158,57,0.16)',
-          pointBackgroundColor: '#4ec98a',
+          borderColor: '#3ddc97',
+          backgroundColor: 'rgba(143,128,255,0.16)',
+          pointBackgroundColor: '#3ddc97',
           pointBorderWidth: 0,
           pointRadius: series.length > 45 ? 0 : 2.5,
           pointHoverRadius: 4,
@@ -1857,9 +1890,9 @@ function renderCharts() {
         {
           label: 'Real-money spend',
           data: series.map(point => numeric(point.moneySpendUsd)),
-          borderColor: '#f0b429',
+          borderColor: '#f3b54a',
           backgroundColor: 'rgba(231,165,67,0.08)',
-          pointBackgroundColor: '#f0b429',
+          pointBackgroundColor: '#f3b54a',
           pointBorderWidth: 0,
           pointRadius: series.length > 45 ? 0 : 2.5,
           pointHoverRadius: 4,
@@ -1902,8 +1935,8 @@ function renderCharts() {
           numeric(summary.value.rangeCompletionTokens),
           numeric(summary.value.rangeUnclassifiedTokens),
         ],
-        backgroundColor: ['#6ddc4f', '#3987e5', '#6b7a66'],
-        borderColor: '#12150f',
+        backgroundColor: ['#8f80ff', '#5b8def', '#5d6175'],
+        borderColor: '#12141b',
         borderWidth: 3,
         hoverOffset: 5,
       }],
@@ -1920,8 +1953,8 @@ function renderCharts() {
           type: 'bar',
           label: 'Events',
           data: series.map(point => numeric(point.events)),
-          backgroundColor: 'rgba(77,158,57,0.55)',
-          borderColor: '#6ddc4f',
+          backgroundColor: 'rgba(143,128,255,0.55)',
+          borderColor: '#8f80ff',
           borderWidth: 1,
           borderRadius: 3,
           yAxisID: 'y',
@@ -1930,8 +1963,8 @@ function renderCharts() {
           type: 'line',
           label: 'Wakes',
           data: series.map(point => numeric(point.wakes)),
-          borderColor: '#63c8ea',
-          backgroundColor: '#63c8ea',
+          borderColor: '#5fb6ff',
+          backgroundColor: '#5fb6ff',
           pointRadius: series.length > 45 ? 0 : 2.5,
           pointHoverRadius: 4,
           borderWidth: 2,
@@ -1976,8 +2009,8 @@ function renderCharts() {
             type: 'bar',
             label: 'Operating',
             data: series.map(point => numeric(point.activeDurationMs)),
-            backgroundColor: 'rgba(77,158,57,0.72)',
-            borderColor: '#4ec98a',
+            backgroundColor: 'rgba(143,128,255,0.72)',
+            borderColor: '#3ddc97',
             borderWidth: 1,
             borderRadius: 2,
             stack: 'lifecycle',
@@ -1988,7 +2021,7 @@ function renderCharts() {
             label: 'Paused',
             data: series.map(point => numeric(point.pausedDurationMs)),
             backgroundColor: 'rgba(217,184,114,0.76)',
-            borderColor: '#c98500',
+            borderColor: '#d9a441',
             borderWidth: 1,
             borderRadius: 2,
             stack: 'lifecycle',
@@ -1999,7 +2032,7 @@ function renderCharts() {
             label: 'Inactive',
             data: series.map(point => numeric(point.inactiveDurationMs)),
             backgroundColor: 'rgba(85,85,95,0.68)',
-            borderColor: '#93a48d',
+            borderColor: '#7e8399',
             borderWidth: 1,
             borderRadius: 2,
             stack: 'lifecycle',
@@ -2009,8 +2042,8 @@ function renderCharts() {
             type: 'line',
             label: 'Availability',
             data: series.map(point => numeric(point.availabilityPct)),
-            borderColor: '#63c8ea',
-            backgroundColor: '#63c8ea',
+            borderColor: '#5fb6ff',
+            backgroundColor: '#5fb6ff',
             pointRadius: series.length > 45 ? 0 : 2,
             pointHoverRadius: 4,
             borderWidth: 2,
@@ -2074,8 +2107,8 @@ function renderCharts() {
               numeric(summary.value.rangePausedDurationMs),
               numeric(summary.value.rangeInactiveDurationMs),
             ],
-            backgroundColor: ['#6ddc4f', '#c98500', '#6b7a66'],
-            borderColor: '#12150f',
+            backgroundColor: ['#8f80ff', '#d9a441', '#5d6175'],
+            borderColor: '#12141b',
             borderWidth: 3,
             hoverOffset: 5,
           }],
@@ -2093,10 +2126,10 @@ function renderCharts() {
         datasets: [{
           data: analytics.value.outcomes.map(item => numeric(item.count)),
           backgroundColor: analytics.value.outcomes.map(item => ({
-            'wake-completed': '#4ec98a', 'wake-failed': '#ff7b7b',
-            'wake-deferred': '#f0b429', 'wake-cancelled': '#a89bf0',
-          }[item.key] ?? '#93a48d')),
-          borderColor: '#12150f',
+            'wake-completed': '#3ddc97', 'wake-failed': '#ff6479',
+            'wake-deferred': '#f3b54a', 'wake-cancelled': '#b994ff',
+          }[item.key] ?? '#7e8399')),
+          borderColor: '#12141b',
           borderWidth: 3,
           hoverOffset: 5,
         }],
@@ -2163,7 +2196,7 @@ function renderCharts() {
           label: 'Events',
           data: eventRows.map(item => numeric(item.count)),
           backgroundColor: 'rgba(127,176,217,0.68)',
-          borderColor: '#63c8ea',
+          borderColor: '#5fb6ff',
           borderWidth: 1,
           borderRadius: 4,
         }],
@@ -2195,8 +2228,8 @@ function renderCharts() {
         labels: budgetLabels,
         datasets: [{
           data: budgetValues,
-          backgroundColor: overBudget > 0 ? ['#d95926', '#ff7b7b'] : ['#6ddc4f', '#20261d'],
-          borderColor: '#12150f',
+          backgroundColor: overBudget > 0 ? ['#ff8a5c', '#ff6479'] : ['#8f80ff', '#20242f'],
+          borderColor: '#12141b',
           borderWidth: 3,
           hoverOffset: 5,
         }],
@@ -2218,8 +2251,8 @@ function renderCharts() {
           {
             label: 'Range spend',
             data: projectRows.map(item => numeric(item.rangeSpendUsd)),
-            backgroundColor: 'rgba(77,158,57,0.72)',
-            borderColor: '#6ddc4f',
+            backgroundColor: 'rgba(143,128,255,0.72)',
+            borderColor: '#8f80ff',
             borderWidth: 1,
             borderRadius: 3,
           },
@@ -2227,7 +2260,7 @@ function renderCharts() {
             label: 'Budget',
             data: projectRows.map(item => numeric(item.budgetUsd)),
             backgroundColor: 'rgba(127,176,217,0.24)',
-            borderColor: '#63c8ea',
+            borderColor: '#5fb6ff',
             borderWidth: 1,
             borderRadius: 3,
           },
@@ -2263,7 +2296,7 @@ function renderCharts() {
         datasets: [{
           data: analytics.value.statuses.map(item => numeric(item.count)),
           backgroundColor: statusPalette(analytics.value.statuses),
-          borderColor: '#12150f',
+          borderColor: '#12141b',
           borderWidth: 3,
           hoverOffset: 5,
         }],
@@ -2293,19 +2326,19 @@ function doughnutOptions(legendColor: string, formatter: (value: number) => stri
 }
 
 function palette(count: number) {
-  const colors = ['#6ddc4f', '#3987e5', '#c98500', '#9085e9', '#ff7b7b', '#199e70', '#63c8ea', '#c98500'];
+  const colors = ['#8f80ff', '#5b8def', '#d9a441', '#a99dff', '#ff6479', '#2bb6a3', '#5fb6ff', '#d9a441'];
   return Array.from({ length: count }, (_, index) => colors[index % colors.length]);
 }
 
 function statusPalette(statuses: AnalyticsStatus[]) {
   const colors: Record<string, string> = {
-    active: '#6ddc4f',
-    planning: '#63c8ea',
-    paused: '#c98500',
-    budgetpaused: '#d95926',
-    blocked: '#ff7b7b',
-    completed: '#3987e5',
-    archived: '#6b7a66',
+    active: '#8f80ff',
+    planning: '#5fb6ff',
+    paused: '#d9a441',
+    budgetpaused: '#ff8a5c',
+    blocked: '#ff6479',
+    completed: '#5b8def',
+    archived: '#5d6175',
   };
   return statuses.map((status, index) => colors[String(status.key || status.label).toLowerCase()] ?? palette(statuses.length)[index]);
 }
@@ -2478,15 +2511,17 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* Drawn in the Projects console's language (its --pjx-* tokens), with the ot-os tokens as fallbacks. */
 .analytics-dashboard {
-  --surface: var(--ot-surface);
-  --surface-raised: var(--ot-surface-2);
-  --surface-soft: var(--ot-surface-2);
-  --border: var(--ot-line);
-  --muted: var(--ot-muted);
-  --text: var(--ot-text);
-  --green: var(--ot-positive);
-  --green-bright: var(--ot-positive);
+  --surface: var(--pjx-surface, var(--ot-surface));
+  --surface-raised: var(--pjx-inset, var(--ot-surface-2));
+  --surface-soft: var(--pjx-surface-2, var(--ot-surface-2));
+  --border: var(--pjx-line, var(--ot-line));
+  --muted: var(--pjx-ink-3, var(--ot-muted));
+  --text: var(--pjx-ink, var(--ot-text));
+  --green: var(--pjx-work, var(--ot-positive));
+  --green-bright: var(--pjx-accent, var(--ot-positive));
+  --card: linear-gradient(180deg, rgba(24, 27, 36, 0.92), rgba(18, 20, 27, 0.96));
   color: var(--text);
   min-width: 0;
 }
@@ -2498,6 +2533,19 @@ onBeforeUnmount(() => {
   gap: 24px;
   margin-bottom: 20px;
 }
+.analytics-header.compact { align-items: center; margin-bottom: 10px; }
+
+.fold-button {
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #b9b0ff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.fold-button:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 .eyebrow {
   color: var(--green-bright);
@@ -2543,10 +2591,10 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 2px;
-  background: var(--ot-surface);
+  background: var(--pjx-inset, var(--ot-surface));
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 3px;
+  border-radius: 10px;
+  padding: 2px;
 }
 
 .range-button,
@@ -2574,8 +2622,9 @@ onBeforeUnmount(() => {
 }
 
 .range-button.active {
-  color: var(--ot-accent);
-  background: var(--ot-accent-soft);
+  color: var(--text);
+  background: var(--pjx-surface-3, var(--ot-accent-soft));
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
 }
 
 .range-button:focus-visible,
@@ -2613,9 +2662,9 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   gap: 14px;
-  background: var(--surface);
+  background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 14px;
   color: var(--ot-text-2);
   padding: 24px;
   text-align: left;
@@ -2752,16 +2801,16 @@ onBeforeUnmount(() => {
 .metric-card {
   min-width: 0;
   background: var(--surface-raised);
-  border: 1px solid var(--ot-line);
-  border-radius: 9px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
   padding: 12px;
   box-shadow: inset 0 2px 0 transparent;
 }
 
-.metric-card.tone-green { box-shadow: inset 0 2px 0 rgba(109, 220, 79, 0.72); }
-.metric-card.tone-blue { box-shadow: inset 0 2px 0 rgba(99, 200, 234, 0.72); }
-.metric-card.tone-amber { box-shadow: inset 0 2px 0 rgba(240, 180, 41, 0.72); }
-.metric-card.tone-purple { box-shadow: inset 0 2px 0 rgba(168, 155, 240, 0.58); }
+.metric-card.tone-green { box-shadow: inset 0 2px 0 rgba(143, 128, 255, 0.72); }
+.metric-card.tone-blue { box-shadow: inset 0 2px 0 rgba(95, 182, 255, 0.72); }
+.metric-card.tone-amber { box-shadow: inset 0 2px 0 rgba(243, 181, 74, 0.72); }
+.metric-card.tone-purple { box-shadow: inset 0 2px 0 rgba(185, 148, 255, 0.58); }
 
 .metric-label {
   color: var(--ot-muted);
@@ -2793,9 +2842,9 @@ onBeforeUnmount(() => {
 .cache-verification {
   min-width: 0;
   margin-bottom: 16px;
-  background: linear-gradient(145deg, rgba(31, 42, 31, 0.42), rgba(22, 21, 25, 0.96) 42%);
-  border: 1px solid var(--ot-line-strong);
-  border-radius: 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
   padding: 14px;
 }
 
@@ -2844,9 +2893,9 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
-.cache-verdict-healthy { border-color: var(--ot-accent); background: rgba(109, 220, 79, 0.58); }
-.cache-verdict-degraded { border-color: var(--ot-negative); background: rgba(255, 123, 123, 0.58); }
-.cache-verdict-warming { border-color: var(--ot-warning); background: rgba(240, 180, 41, 0.48); }
+.cache-verdict-healthy { border-color: var(--pjx-work, var(--ot-positive)); background: rgba(61, 220, 151, 0.14); }
+.cache-verdict-degraded { border-color: var(--ot-negative); background: rgba(255, 100, 121, 0.58); }
+.cache-verdict-warming { border-color: var(--ot-warning); background: rgba(243, 181, 74, 0.48); }
 
 .cache-metric-grid {
   display: grid;
@@ -2984,10 +3033,11 @@ onBeforeUnmount(() => {
 .heatmap-card,
 .table-card {
   min-width: 0;
-  background: var(--surface);
+  background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 14px;
   padding: 14px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset, 0 10px 30px -18px rgba(0, 0, 0, 0.6);
 }
 
 .card-total {

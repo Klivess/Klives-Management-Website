@@ -1,128 +1,106 @@
 <template>
-  <div class="agents-panel">
-    <p class="ap-note">The fleet: the Commander and the sub-agents it has spawned. Click a desktop-capable agent to watch it work.</p>
-
-    <div v-if="loading" class="ap-info">Loading roster…</div>
+  <div class="pjx-ag">
+    <div v-if="loading" class="pjx-empty"><ProjectsIcon name="refresh" class="pjx-spin" /><span>Loading the roster…</span></div>
     <template v-else>
-      <div class="ap-slots">
-        <span class="ap-slot-count">{{ roster.length }} of {{ cap }} slots</span>
-        <span v-if="free > 0" class="ap-slot-free">{{ free }} free</span>
-        <span v-else class="ap-slot-full">roster full</span>
+      <div class="pjx-ag__bar">
+        <div class="ap-slots pjx-ag__slots">
+          <b class="pjx-num">{{ roster.length }} of {{ cap }} slots</b>
+          <span v-if="free > 0" class="pjx-ag__free">{{ free }} free</span>
+          <span v-else class="pjx-ag__full">roster full</span>
+          <span class="pjx-slots" aria-hidden="true"><i v-for="n in Math.min(cap, 16)" :key="n" :data-on="n <= roster.length || undefined"></i></span>
+        </div>
+        <span class="pjx-dim pjx-ag__hint">Watch an agent with a desktop from its row. Retiring keeps its work.</span>
       </div>
 
-      <!-- Work left behind by agents that have been retired. It sits above the roster because it is
-           the only thing here that nobody currently owns. -->
-      <section v-if="handovers.length" class="ap-handovers">
-        <h4 class="ap-handovers-head">
-          Unclaimed work
-          <span class="ap-handovers-count">{{ handovers.length }}</span>
-        </h4>
-        <p class="ap-handovers-note">
-          Preserved from retired agents. The Commander picks each of these up, reassigns it, or drops it.
-        </p>
-        <ul class="ap-handover-list">
-          <li v-for="h in handovers" :key="h.handoverID" class="ap-handover">
-            <div class="ap-handover-top">
-              <span class="ap-handover-role">{{ h.role }}</span>
-              <span class="ap-handover-reason">{{ reasonLabel(h.reason) }}</span>
-              <span v-if="h.interruptedMidWake" class="ap-tag ap-tag-warn">interrupted mid-wake</span>
+      <!-- Work left behind by retired agents. It sits above the roster because it is the only thing here
+           that nobody currently owns. -->
+      <section v-if="handovers.length" class="ap-handovers pjx-ag__handovers" aria-label="Unclaimed work">
+        <h4 class="pjx-gp__label">Unclaimed work <span class="pjx-num">{{ handovers.length }}</span></h4>
+        <p class="pjx-dim pjx-ag__handover-note">Preserved from retired agents. The Commander picks each up, reassigns it, or drops it.</p>
+        <ul class="pjx-ag__handover-list">
+          <li v-for="h in handovers" :key="h.handoverID">
+            <div class="pjx-ag__handover-top">
+              <b class="pjx-ag__role">{{ h.role }}</b>
+              <span class="pjx-dim">{{ reasonLabel(h.reason) }}</span>
+              <span v-if="h.interruptedMidWake" class="pjx-chip" data-tone="need">interrupted mid-wake</span>
+              <span class="pjx-faint pjx-ag__when">{{ shortTime(h.retiredAt) }}</span>
             </div>
-            <p v-if="h.objective" class="ap-handover-objective">{{ h.objective }}</p>
-            <div class="ap-handover-meta">
-              <span v-if="h.activeMilestoneIDs?.length">
-                {{ h.activeMilestoneIDs.length }} milestone{{ h.activeMilestoneIDs.length === 1 ? '' : 's' }} unowned
-              </span>
-              <span v-if="h.openDirectives">{{ h.openDirectives }} directive{{ h.openDirectives === 1 ? '' : 's' }} reassigned</span>
-              <span v-if="h.deliverablePaths?.length">{{ h.deliverablePaths.length }} expected deliverable{{ h.deliverablePaths.length === 1 ? '' : 's' }}</span>
-              <span class="ap-handover-when">{{ shortTime(h.retiredAt) }}</span>
+            <p v-if="h.objective" class="pjx-ag__objective">{{ h.objective }}</p>
+            <div class="pjx-ag__meta">
+              <span v-if="h.activeMilestoneIDs?.length">{{ h.activeMilestoneIDs.length }} {{ h.activeMilestoneIDs.length === 1 ? 'milestone' : 'milestones' }} unowned</span>
+              <span v-if="h.openDirectives">{{ h.openDirectives }} {{ h.openDirectives === 1 ? 'directive' : 'directives' }} reassigned</span>
+              <span v-if="h.deliverablePaths?.length">{{ h.deliverablePaths.length }} expected {{ h.deliverablePaths.length === 1 ? 'deliverable' : 'deliverables' }}</span>
             </div>
           </li>
         </ul>
       </section>
 
-      <ul class="ap-list">
-        <li
-          v-for="a in roster"
-          :key="a.agentID"
-          class="ap-item"
-          :class="{ 'is-commander': a.isCommander || a.role === 'commander', watchable: hasDesktop(a), 'is-retiring': retiringID === a.agentID }"
-        >
-          <div class="ap-badge" :style="{ background: tierColor(a.tier) }" @click="pick(a)">{{ tierShort(a.tier) }}</div>
-          <div class="ap-body" @click="pick(a)">
-            <div class="ap-role">
-              {{ a.role }}
-              <span v-if="hasDesktop(a)" class="ap-desktop" title="Has a desktop — click to watch">🖥️</span>
-              <span v-if="a.awake" class="ap-tag ap-tag-live">working</span>
-              <span v-else-if="a.reclaimable" class="ap-tag ap-tag-idle">finished</span>
-              <span v-if="a.mission === 'Standing'" class="ap-tag" title="Owns an ongoing beat, not a bounded deliverable">standing</span>
+      <ul class="ap-list pjx-ag__list">
+        <li v-for="a in roster" :key="a.agentID" class="ap-item pjx-ag__item"
+          :class="{ 'is-commander': isCommander(a), 'is-retiring': retiringID === a.agentID }" :data-awake="a.awake || undefined">
+          <span class="pjx-ag__tier" :data-tone="tierTone(a.tier)" :title="tierTitle(a.tier)">{{ tierShort(a.tier) }}</span>
+          <div class="pjx-ag__body">
+            <div class="pjx-ag__head">
+              <b class="pjx-ag__role">{{ isCommander(a) ? 'Commander' : a.role }}</b>
+              <span v-if="a.awake" class="pjx-chip" data-tone="work" data-live><span class="pjx-chip__dot"></span>working</span>
+              <span v-else-if="a.reclaimable" class="pjx-chip" data-tone="need">finished</span>
+              <span v-if="a.mission === 'Standing'" class="pjx-chip pjx-chip--quiet" title="Owns an ongoing beat, not a bounded deliverable">standing</span>
             </div>
-            <p v-if="a.objective" class="ap-objective">{{ a.objective }}</p>
-            <div class="ap-meta">
-              <span class="ap-id">{{ a.agentID }}</span>
-              <span v-if="a.parentAgentID" class="ap-parent">← {{ a.parentAgentID }}</span>
+            <p v-if="a.objective" class="pjx-ag__objective pjx-truncate" :title="a.objective">{{ a.objective }}</p>
+            <div class="pjx-ag__meta pjx-mono">
+              <span>{{ a.agentID }}</span>
+              <span v-if="a.parentAgentID">← {{ a.parentAgentID }}</span>
               <span v-if="a.workStatus">{{ a.workStatus.toLowerCase() }}</span>
               <span v-if="a.activeMilestoneIDs?.length">{{ a.activeMilestoneIDs.join(', ') }}</span>
             </div>
           </div>
-          <button
-            v-if="!(a.isCommander || a.role === 'commander')"
-            class="ap-retire"
-            :disabled="!!retiringID"
-            title="Retire this agent now — its work is preserved and handed to the Commander"
-            @click.stop="askRetire(a)"
-          >Retire</button>
+          <div class="pjx-ag__tools">
+            <button v-if="hasDesktop(a)" class="pjx-btn pjx-btn--sm" title="Watch its desktop" @click="pick(a)"><ProjectsIcon name="monitor" />Watch</button>
+            <button v-if="!isCommander(a)" class="ap-retire pjx-btn pjx-btn--ghost pjx-btn--sm pjx-ag__retire" :disabled="!!retiringID"
+              title="Retire this agent now: its work is preserved and handed to the Commander" @click.stop="askRetire(a)">Retire</button>
+          </div>
         </li>
       </ul>
-      <p v-if="retireError" class="ap-error">{{ retireError }}</p>
+      <div v-if="retireError" class="pjx-banner" data-tone="fault" role="alert"><ProjectsIcon name="alert" /><div class="pjx-banner__body">{{ retireError }}</div></div>
     </template>
 
-    <!-- Removing an agent is instant and destroys its container, so it states the cost before it
-         happens rather than reporting it afterwards. -->
-    <div v-if="confirming" class="ap-modal-backdrop" @click.self="confirming = null">
-      <div class="ap-modal">
-        <h3>Retire {{ confirming.role }}?</h3>
-        <p class="ap-modal-lead">
-          It stops immediately and its desktop is destroyed. Everything it was working on is preserved
-          and handed to the Commander, so the work continues — it just needs a new owner.
-        </p>
-        <ul class="ap-modal-facts">
-          <li v-if="confirming.awake" class="is-warn">It is generating right now — its wake is cancelled mid-flight.</li>
-          <li v-if="confirming.activeMilestoneIDs?.length">
-            Owns {{ confirming.activeMilestoneIDs.length }} milestone{{ confirming.activeMilestoneIDs.length === 1 ? '' : 's' }}
-            ({{ confirming.activeMilestoneIDs.join(', ') }}) — they become unowned.
+    <!-- Removing an agent is instant and destroys its container, so the cost is stated before it happens. -->
+    <ProjectsDialog :open="!!confirming" :title="confirming ? `Retire ${confirming.role}?` : ''" @close="confirming = null">
+      <div v-if="confirming" class="ap-modal pjx-ag__confirm">
+        <p>It stops immediately and its desktop is destroyed. Everything it was working on is preserved and handed to the Commander,
+          so the work continues: it just needs a new owner.</p>
+        <ul class="pjx-ag__facts">
+          <li v-if="confirming.awake" data-tone="need"><ProjectsIcon name="zap" />It is generating right now: its wake is cancelled mid-flight.</li>
+          <li v-if="confirming.activeMilestoneIDs?.length"><ProjectsIcon name="target" />
+            Owns {{ confirming.activeMilestoneIDs.length }} {{ confirming.activeMilestoneIDs.length === 1 ? 'milestone' : 'milestones' }}
+            ({{ confirming.activeMilestoneIDs.join(', ') }}): they become unowned.
           </li>
-          <li v-if="confirming.mission === 'Standing'" class="is-warn">
-            It owns a standing beat. Nothing continues that beat until someone else picks it up.
+          <li v-if="confirming.mission === 'Standing'" data-tone="need"><ProjectsIcon name="clock" />It owns a standing beat. Nothing continues that beat until someone else picks it up.</li>
+          <li v-if="confirming.helperAgentIDs?.length" data-tone="need"><ProjectsIcon name="users" />
+            <template v-if="confirming.helperAgentIDs.length === 1">Its helper {{ confirming.helperAgentIDs[0] }} is retired with it: a helper cannot outlive its parent.</template>
+            <template v-else>Its {{ confirming.helperAgentIDs.length }} helpers ({{ confirming.helperAgentIDs.join(', ') }}) are retired with it: a helper cannot outlive its parent.</template>
           </li>
-          <li v-if="confirming.helperAgentIDs?.length" class="is-warn">
-            <template v-if="confirming.helperAgentIDs.length === 1">
-              Its helper {{ confirming.helperAgentIDs[0] }} is retired with it — a helper cannot outlive its parent.
-            </template>
-            <template v-else>
-              Its {{ confirming.helperAgentIDs.length }} helpers ({{ confirming.helperAgentIDs.join(', ') }})
-              are retired with it — a helper cannot outlive its parent.
-            </template>
-          </li>
-          <li v-if="isCleanRemoval">Nothing in flight — this frees a slot cleanly.</li>
+          <li v-if="isCleanRemoval" data-tone="work"><ProjectsIcon name="check" />Nothing in flight: this frees a slot cleanly.</li>
         </ul>
-        <label class="ap-modal-note">
-          <span>Why (optional — the Commander sees this)</span>
-          <input v-model="retireNote" class="ap-modal-input" placeholder="e.g. too expensive for what it was producing" />
+        <label class="ap-modal-note pjx-field">
+          <span class="pjx-field__label">Why (optional: the Commander sees this)</span>
+          <input v-model="retireNote" class="pjx-input" placeholder="e.g. too expensive for what it was producing" @keyup.enter="doRetire" />
         </label>
-        <div class="ap-modal-actions">
-          <button class="ap-modal-cancel" @click="confirming = null">Cancel</button>
-          <button class="ap-modal-go" :disabled="!!retiringID" @click="doRetire">
-            {{ retiringID ? 'Retiring…' : 'Retire now' }}
-          </button>
-        </div>
       </div>
-    </div>
+      <template #foot>
+        <button class="pjx-btn" @click="confirming = null">Cancel</button>
+        <button class="pjx-btn pjx-btn--danger" :disabled="!!retiringID" @click="doRetire">{{ retiringID ? 'Retiring…' : 'Retire now' }}</button>
+      </template>
+    </ProjectsDialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import ProjectsDialog from '~/components/Projects/Dialog.vue';
+import ProjectsIcon from '~/components/Projects/Icon.vue';
+import { pjxGet, pjxPost } from '~/composables/useProjectsConsole';
+import type { PjTone } from '~/scripts/projectsConsole';
 
 const props = defineProps<{ projectId: string; cap?: number }>();
 const emit = defineEmits<{
@@ -140,19 +118,18 @@ const retireNote = ref('');
 const retireError = ref('');
 let poll: ReturnType<typeof setInterval> | null = null;
 
+const isCommander = (a: any) => !!a.isCommander || a.role === 'commander';
 // Commander pinned first, then by creation time.
-const roster = computed(() => {
-  return [...agents.value].sort((a, b) => {
-    if (a.role === 'commander') return -1;
-    if (b.role === 'commander') return 1;
-    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-  });
-});
+const roster = computed(() => [...agents.value].sort((a, b) => {
+  if (isCommander(a)) return -1;
+  if (isCommander(b)) return 1;
+  return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+}));
 const cap = computed(() => props.cap ?? roster.value.length);
 const free = computed(() => Math.max(0, cap.value - roster.value.length));
 
-// "Nothing in flight" must be the absence of every other line in the modal, not just of the three it
-// originally checked — an agent with helpers is not a clean removal however idle it is itself.
+// "Nothing in flight" must be the absence of every other line in the confirm, not just of the first three:
+// an agent with helpers is not a clean removal however idle it is itself.
 const isCleanRemoval = computed(() => {
   const a = confirming.value;
   return !!a && !a.awake && !a.activeMilestoneIDs?.length && a.mission !== 'Standing' && !a.helperAgentIDs?.length;
@@ -160,17 +137,21 @@ const isCleanRemoval = computed(() => {
 
 function containerFor(a: any) {
   return containers.value.find(c => c.agentID === a.agentID)
-      || (a.role === 'commander' ? containers.value.find(c => !c.agentID) : null);
+    || (isCommander(a) ? containers.value.find(c => !c.agentID) : null);
 }
 function hasDesktop(a: any) { return !!containerFor(a); }
 function pick(a: any) { const c = containerFor(a); if (c) emit('watch', c.containerID); }
 
-function tierShort(t: string) {
-  return { Text: 'T', TextImage: 'TI', TextImageVideo: 'TIV', TextImageVideoAudio: 'TIVA' }[t] || 'T';
-}
-function tierColor(t: string) {
-  return { Text: 'var(--ot-surface-3)', TextImage: 'var(--ot-info-soft)', TextImageVideo: 'var(--ot-positive-soft)', TextImageVideoAudio: 'var(--ot-warning-soft)' }[t] || 'var(--ot-surface-3)';
-}
+const TIERS: Record<string, { short: string; title: string; tone: PjTone }> = {
+  Text: { short: 'T', title: 'Text model', tone: 'rest' },
+  TextImage: { short: 'TI', title: 'Text + image model', tone: 'info' },
+  TextImageVideo: { short: 'TIV', title: 'Text, image + video model', tone: 'work' },
+  TextImageVideoAudio: { short: 'TIVA', title: 'Text, image, video + audio model', tone: 'need' },
+};
+const tierShort = (t: string) => TIERS[t]?.short ?? 'T';
+const tierTitle = (t: string) => TIERS[t]?.title ?? 'Text model';
+const tierTone = (t: string) => TIERS[t]?.tone ?? 'rest';
+
 function reasonLabel(r: string) {
   return ({
     CapLowered: 'slot reclaimed by a lower cap',
@@ -193,105 +174,37 @@ function askRetire(a: any) {
 
 async function doRetire() {
   const target = confirming.value;
-  if (!target) return;
+  if (!target || retiringID.value) return;
   retiringID.value = target.agentID;
   retireError.value = '';
-  try {
-    const res = await RequestPOSTFromKliveAPI('/projects/agents/retire', JSON.stringify({
-      projectID: props.projectId,
-      agentID: target.agentID,
-      note: retireNote.value.trim() || undefined,
-    }), false, true);
-    if (!res.ok) {
-      retireError.value = res.status === 409
-        ? 'The Commander cannot be retired — pause or archive the project instead.'
-        : `Retire failed (HTTP ${res.status}).`;
-      return;
-    }
+  const r = await pjxPost('/projects/agents/retire', { projectID: props.projectId, agentID: target.agentID, note: retireNote.value.trim() || undefined });
+  retiringID.value = null;
+  if (!r.ok) {
+    retireError.value = r.status === 409 ? 'The Commander cannot be retired: pause or shelve the project instead.' : r.error;
     confirming.value = null;
-    await load();
-    // The cap, slot arithmetic and timeline all move with the roster, so the page reloads too.
-    emit('roster-changed');
-  } catch (e: any) {
-    retireError.value = e?.message ? `Retire failed: ${e.message}` : 'Retire failed.';
-  } finally {
-    retiringID.value = null;
+    return;
   }
+  confirming.value = null;
+  await load();
+  // The cap, slot arithmetic and timeline all move with the roster, so the page reloads too.
+  emit('roster-changed');
 }
 
 async function load() {
-  try {
-    const [ar, cr, hr] = await Promise.all([
-      RequestGETFromKliveAPI(`/projects/agents?projectID=${props.projectId}`, false, false),
-      RequestGETFromKliveAPI(`/projects/containers?projectID=${props.projectId}`, false, false),
-      RequestGETFromKliveAPI(`/projects/agents/handovers?projectID=${props.projectId}&open=true`, false, false),
-    ]);
-    if (ar.ok) agents.value = await ar.json();
-    if (cr.ok) containers.value = await cr.json();
-    if (hr.ok) handovers.value = await hr.json();
-  } catch { /* transient */ }
-  finally { loading.value = false; }
+  const id = encodeURIComponent(props.projectId);
+  const [ar, cr, hr] = await Promise.all([
+    pjxGet<any[]>(`/projects/agents?projectID=${id}`),
+    pjxGet<any[]>(`/projects/containers?projectID=${id}`),
+    pjxGet<any[]>(`/projects/agents/handovers?projectID=${id}&open=true`),
+  ]);
+  if (ar.ok && Array.isArray(ar.body)) agents.value = ar.body;
+  if (cr.ok && Array.isArray(cr.body)) containers.value = cr.body;
+  if (hr.ok && Array.isArray(hr.body)) handovers.value = hr.body;
+  loading.value = false;
 }
 
 defineExpose({ reload: load });
 
-onMounted(() => { load(); poll = setInterval(load, 5000); });
+onMounted(() => { load(); poll = setInterval(() => { if (!document.hidden) load(); }, 5000); });
 onBeforeUnmount(() => { if (poll) clearInterval(poll); });
 </script>
-
-<style scoped>
-.agents-panel { padding: 4px 2px; }
-.ap-note { font-size: 12px; color: var(--ot-muted); margin: 0 0 12px; }
-.ap-slots { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ot-muted); margin-bottom: 12px; }
-.ap-slot-count { font-weight: 600; color: var(--ot-text-2); }
-.ap-slot-free { color: var(--ot-positive); }
-.ap-slot-full { color: var(--ot-warning); }
-
-.ap-handovers { background: var(--ot-surface-2); border: 1px solid var(--ot-violet); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
-.ap-handovers-head { margin: 0 0 4px; font-size: 13px; color: var(--ot-violet); display: flex; align-items: center; gap: 8px; }
-.ap-handovers-count { background: var(--ot-violet-soft); border-radius: 10px; padding: 1px 7px; font-size: 11px; color: var(--ot-violet); }
-.ap-handovers-note { margin: 0 0 10px; font-size: 11px; color: var(--ot-muted); }
-.ap-handover-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
-.ap-handover { border-left: 2px solid var(--ot-line-strong); padding-left: 10px; }
-.ap-handover-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.ap-handover-role { font-size: 13px; color: var(--ot-text); font-weight: 600; text-transform: capitalize; }
-.ap-handover-reason { font-size: 11px; color: var(--ot-muted); }
-.ap-handover-objective { margin: 3px 0 0; font-size: 12px; color: var(--ot-text-2); }
-.ap-handover-meta { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--ot-muted); margin-top: 3px; }
-.ap-handover-when { margin-left: auto; }
-
-.ap-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
-.ap-item { display: flex; gap: 10px; align-items: center; background: var(--ot-surface-2); border-radius: 8px; padding: 10px 12px; border: 1px solid transparent; }
-.ap-item.is-commander { border-color: var(--ot-accent); }
-.ap-item.watchable .ap-badge, .ap-item.watchable .ap-body { cursor: pointer; }
-.ap-item.watchable:hover { border-color: var(--ot-accent); }
-.ap-item.is-retiring { opacity: .5; }
-.ap-badge { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--ot-positive); flex-shrink: 0; }
-.ap-body { flex: 1; min-width: 0; }
-.ap-role { font-size: 14px; color: var(--ot-text); font-weight: 600; text-transform: capitalize; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.ap-desktop { font-size: 12px; }
-.ap-tag { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; background: var(--ot-surface-3); color: var(--ot-muted); border-radius: 4px; padding: 1px 5px; }
-.ap-tag-live { background: var(--ot-positive-soft); color: var(--ot-positive); }
-.ap-tag-idle { background: var(--ot-warning-soft); color: var(--ot-warning); }
-.ap-tag-warn { background: var(--ot-negative-soft); color: var(--ot-negative); }
-.ap-objective { margin: 3px 0 0; font-size: 12px; color: var(--ot-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ap-meta { display: flex; gap: 8px; flex-wrap: wrap; font-size: 11px; color: var(--ot-muted); font-family: var(--ot-mono); margin-top: 2px; }
-.ap-retire { background: none; border: 1px solid var(--ot-negative); color: var(--ot-negative); border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; flex-shrink: 0; }
-.ap-retire:hover:not(:disabled) { background: var(--ot-negative-soft); border-color: var(--ot-negative); color: var(--ot-negative); }
-.ap-retire:disabled { opacity: .4; cursor: default; }
-.ap-info { color: var(--ot-muted); padding: 16px; text-align: center; font-size: 13px; }
-.ap-error { color: var(--ot-negative); font-size: 12px; margin: 10px 0 0; }
-
-.ap-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: flex; align-items: center; justify-content: center; z-index: 60; padding: 20px; }
-.ap-modal { background: var(--ot-surface-2); border: 1px solid var(--ot-line-strong); border-radius: 10px; padding: 20px 22px; max-width: 460px; width: 100%; }
-.ap-modal h3 { margin: 0 0 8px; font-size: 16px; color: var(--ot-text); text-transform: capitalize; }
-.ap-modal-lead { margin: 0 0 12px; font-size: 13px; color: var(--ot-text-2); line-height: 1.5; }
-.ap-modal-facts { margin: 0 0 14px; padding-left: 18px; font-size: 12px; color: var(--ot-muted); display: flex; flex-direction: column; gap: 5px; }
-.ap-modal-facts .is-warn { color: var(--ot-warning); }
-.ap-modal-note { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ot-muted); margin-bottom: 16px; }
-.ap-modal-input { background: var(--ot-surface); border: 1px solid var(--ot-line-strong); border-radius: 6px; padding: 8px 10px; color: var(--ot-text); font-size: 13px; }
-.ap-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
-.ap-modal-cancel { background: none; border: 1px solid var(--ot-line-strong); color: var(--ot-muted); border-radius: 6px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
-.ap-modal-go { background: var(--ot-negative); border: none; color: var(--ot-on-accent); border-radius: 6px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
-.ap-modal-go:disabled { opacity: .5; cursor: default; }
-</style>

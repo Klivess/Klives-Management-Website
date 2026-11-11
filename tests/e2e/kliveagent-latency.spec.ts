@@ -35,10 +35,10 @@ for (const supportsWait of [true, false]) {
         finalResponse: completed ? { conversationId, response: 'Fast reply complete.' } : null,
       }) });
     });
-    const chat = page.locator('.chat-panel');
+    const chat = page.getByTestId('kax-thread');
     await expect(chat.locator('textarea')).toBeEnabled();
     await chat.locator('textarea').fill('Reply quickly');
-    await chat.locator('.chat-send-btn').click();
+    await chat.getByTestId('kax-send').click();
     await expect(chat).toContainText('Fast reply complete.');
     expect(sequences).toEqual(['1', '2']);
     expect(await page.evaluate(() => (window as any).pendingPollDelays)).toBe(supportsWait ? 0 : 1);
@@ -71,13 +71,12 @@ test('new chat aborts a pending progress wait and ignores its late response', as
     await held;
     await route.fulfill({ headers, body: JSON.stringify({ status: 'Completed', response: 'Obsolete response', sequence: 2 }) }).catch(() => {});
   });
-  const chat = page.locator('.chat-panel');
+  const chat = page.getByTestId('kax-thread');
   await expect(chat.locator('textarea')).toBeEnabled();
   await chat.locator('textarea').fill('Start a run');
-  await chat.locator('.chat-send-btn').click();
+  await chat.getByTestId('kax-send').click();
   await expect.poll(() => waiting).toBe(true);
-  await page.locator('.ka-header').getByRole('button', { name: /Panels/ }).click();
-  await page.getByRole('button', { name: '＋ New chat' }).click();
+  await page.getByTestId('kax-new-chat').click();
   await expect.poll(() => page.evaluate(() => (window as any).pendingWaitAborted)).toBe(true);
   release();
   await expect(chat).not.toContainText('Obsolete response');

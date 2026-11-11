@@ -21,11 +21,15 @@ const props = defineProps<{ open: boolean; title: string; subtitle?: string }>()
 defineEmits<{ (e: 'close'): void }>();
 const root = ref<HTMLElement | null>(null);
 
-// Focus the first field (or the first button) so the dialog can be answered from the keyboard.
+// Focus the first field, else the action button, so the dialog can be answered from the keyboard. A destructive
+// action never takes the focus: Enter on a delete confirmation lands on the safe choice.
 watch(() => props.open, async open => {
   if (!open) return;
   await nextTick();
-  const target = root.value?.querySelector<HTMLElement>('textarea, input, select') ?? root.value?.querySelector<HTMLElement>('.pjx-dialog__foot button:last-child');
+  const buttons = Array.from(root.value?.querySelectorAll<HTMLElement>('.pjx-dialog__foot button') ?? []);
+  const last = buttons[buttons.length - 1];
+  const action = last && !last.classList.contains('pjx-btn--danger') ? last : buttons[0];
+  const target = root.value?.querySelector<HTMLElement>('textarea, input, select') ?? action;
   target?.focus();
 });
 </script>

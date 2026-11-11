@@ -186,7 +186,7 @@
             <div class="pjx-sheet__titles"><div class="pjx-sheet__title">Project defaults</div><div class="pjx-sheet__sub">What every new project inherits; existing projects keep their own settings.</div></div>
             <button class="pjx-iconbtn" aria-label="Close" @click="defaultsOpen = false"><ProjectsIcon name="x" /></button>
           </header>
-          <div class="pjx-sheet__body"><div class="ot-os pjx-embed"><ProjectsSettingsPanel system /></div></div>
+          <div class="pjx-sheet__body"><ProjectsSettingsPanel system /></div>
         </aside>
       </template>
     </Teleport>

@@ -1,136 +1,170 @@
 <template>
-  <div class="pj-overview">
-    <section v-if="gates.length" class="pj-section po-approvals" aria-label="Approvals waiting for you">
-      <h2 class="ot-sectionhead">Waiting for your decision</h2>
-      <ProjectsApprovalCard v-for="g in gates" :key="g.gateID" :gate="g" @resolve="resolveGate" />
+  <div class="pjx-ov">
+    <!-- Decisions first: the same inline cards as the fleet board. -->
+    <section v-if="gates.length" class="pjx-card" aria-label="Approvals waiting for you">
+      <header class="pjx-card__head">
+        <h2 class="pjx-card__title"><ProjectsIcon name="inbox" />Waiting for your decision</h2>
+        <span class="pjx-card__meta">{{ gates.length }} {{ gates.length === 1 ? 'approval' : 'approvals' }}</span>
+      </header>
+      <div class="pjx-needs">
+        <ProjectsNeedCard v-for="n in needs" :key="n.key" :need="n" :now="now" :busy="resolving" :can-resolve="canResolve" @resolve="resolveGate" />
+      </div>
     </section>
 
-    <section class="ot-kpis po-kpis" aria-label="Project at a glance">
-      <OmniTraderKpi label="Model spend" :value="pjMoney(ledger.tokenSpendUsd)"
-        :tone="tokenPct >= 100 ? 'bad' : tokenPct >= 80 ? 'warn' : ''"
-        :foot="`${tokenPct.toFixed(0)}% of ${pjMoney(project.tokenBudgetUsd)} budget`" :attention-soft="tokenPct >= 80 && tokenPct < 100" :attention="tokenPct >= 100" />
-      <OmniTraderKpi label="External spend" :value="pjMoney(ledger.moneySpendUsd)"
-        :foot="`${pjMoney(project.moneyBudgetUsd)} budget · ≤ ${pjMoney(project.moneyAutonomousThresholdUsd)} per action without asking`" />
-      <OmniTraderKpi label="Steps delivered" :value="`${stepCounts.done}`" :foot="stepCounts.total ? `${stepCounts.open} queued · ${stepCounts.blocked} blocked` : 'no step ledger yet'" />
-      <OmniTraderKpi label="Agents" :value="`${workingAgents.length} / ${agents.length || 1}`"
-        :foot="`working now · cap ${project.subAgentCap}`" :tone="workingAgents.length ? 'good' : ''" />
-      <OmniTraderKpi v-if="primary" :label="primary.name" :value="primary.displayValue" small
-        :spark="primarySpark" :foot="`updated ${pjAgo(primary.updatedAt, now)}`" />
-      <OmniTraderKpi label="Last activity" :value="lastActivityLabel" small :foot="lastActivityFoot" />
-    </section>
-
-    <div class="pj-main">
-      <div class="ot-stack">
-        <OmniTraderCard title="Now" :subtitle="nowSubtitle">
-          <div class="po-now">
-            <p v-if="digest.currentFocus" class="po-focus"><span class="ot-chip info">Focus</span> {{ digest.currentFocus }}</p>
-            <div v-if="activeStep" class="po-step">
-              <div class="po-step-head">
-                <span class="ot-chip ok">Active step</span>
+    <div class="pjx-ov__grid">
+      <div class="pjx-ov__col">
+        <!-- ── now ── -->
+        <section class="pjx-card" aria-label="Now">
+          <header class="pjx-card__head">
+            <h2 class="pjx-card__title"><ProjectsIcon name="zap" />Now</h2>
+            <span class="pjx-card__meta">{{ nowSubtitle }}</span>
+          </header>
+          <div class="pjx-card__body pjx-ov__now">
+            <p v-if="digest.currentFocus" class="pjx-ov__focus"><span class="pjx-chip" data-tone="info">Focus</span>{{ digest.currentFocus }}</p>
+            <div v-if="activeStep" class="pjx-ov__step">
+              <div class="pjx-ov__step-head">
+                <span class="pjx-chip" data-tone="work">Active step</span>
                 <strong>{{ activeStep.title }}</strong>
-                <span v-if="activeStep.attempts" class="pj-muted">· {{ activeStep.attempts }} attempt{{ activeStep.attempts === 1 ? '' : 's' }}</span>
+                <span v-if="activeStep.attempts" class="pjx-dim">· {{ activeStep.attempts }} {{ activeStep.attempts === 1 ? 'attempt' : 'attempts' }}</span>
               </div>
-              <p v-if="activeStep.nextConcreteAction" class="po-next">Next: {{ activeStep.nextConcreteAction }}</p>
+              <p v-if="activeStep.nextConcreteAction" class="pjx-ov__next">Next: {{ activeStep.nextConcreteAction }}</p>
             </div>
-            <p v-else-if="!digest.currentFocus" class="pj-muted po-empty">No active step. The Commander sets one when it plans its next move.</p>
+            <p v-else-if="!digest.currentFocus" class="pjx-dim" style="font-size: 12.5px">No active step. The Commander sets one when it plans its next move.</p>
 
-            <ul v-if="liveAgents.length" class="po-live" aria-label="Agents working right now">
+            <ul v-if="liveAgents.length" class="pjx-ov__live" aria-label="Agents working right now">
               <li v-for="a in liveAgents" :key="a.agentID">
-                <span class="po-live-dot" :class="'ph-' + a.phase" aria-hidden="true"></span>
+                <span class="pjx-ov__pulse" :data-phase="a.phase" aria-hidden="true"></span>
                 <strong>{{ a.agentID === 'commander' ? 'Commander' : (a.role || a.agentID) }}</strong>
-                <span class="pj-muted">{{ a.phase === 'writing' ? 'is writing' : a.phase === 'tool' ? 'is running' : 'is thinking' }}</span>
-                <code v-if="a.toolName">{{ a.toolName }}</code>
-                <span class="po-live-el pj-mono">{{ elapsed(a.startedAt) }}</span>
+                <span class="pjx-dim">{{ a.phase === 'writing' ? 'is writing' : a.phase === 'tool' ? 'is running' : 'is thinking' }}</span>
+                <code v-if="a.toolName" class="pjx-mono">{{ a.toolName }}</code>
+                <span class="pjx-ov__elapsed pjx-mono">{{ elapsed(a.startedAt) }}</span>
               </li>
             </ul>
-            <ol v-if="nextSteps.length" class="po-queue">
+            <ol v-if="nextSteps.length" class="pjx-steps" aria-label="Up next">
               <li v-for="s in nextSteps" :key="s.key">{{ s.text }}</li>
             </ol>
             <!-- Why each agent is or is not working right now, and when it next runs: the timeline shows
                  what happened, this shows what is about to happen. -->
-            <ul v-if="scheduleRows.length" class="po-schedule" aria-label="Agent schedule">
+            <ul v-if="scheduleRows.length" class="pjx-ov__schedule" aria-label="Agent schedule">
               <li v-for="row in scheduleRows" :key="row.agentID">
-                <span class="ot-chip" :class="stateOf(row).tone">{{ stateOf(row).label }}</span>
+                <span class="pjx-chip" :data-tone="scheduleTone(row.state)">{{ stateOf(row).label }}</span>
                 <strong>{{ row.label }}</strong>
-                <span class="pj-muted po-schedule-detail">{{ row.detail }}</span>
-                <span v-if="row.nextWakeAt && row.state !== 'working'" class="pj-mono pj-muted po-schedule-next">next {{ pjNextRun(row.nextWakeAt, now) }}</span>
+                <span class="pjx-dim pjx-truncate" :title="row.detail">{{ row.detail }}</span>
+                <span class="pjx-mono pjx-dim pjx-ov__nextrun">{{ row.nextWakeAt && row.state !== 'working' ? `next ${pjNextRun(row.nextWakeAt, now)}` : '' }}</span>
               </li>
             </ul>
-            <p v-if="schedule" class="pj-muted po-capacity">
+            <p v-if="schedule" class="pjx-faint" style="font-size: 11.5px">
               LLM: {{ schedule.router.inFlight }}/{{ schedule.router.slots }} slots busy · {{ schedule.router.waiting }} queued
               · {{ schedule.liveConversations }}/{{ schedule.conversationBudget }} conversations live
-              <template v-if="schedule.deferredWakes"> · {{ schedule.deferredWakes }} wake{{ schedule.deferredWakes === 1 ? '' : 's' }} waiting fleet-wide</template>
+              <template v-if="schedule.deferredWakes"> · {{ schedule.deferredWakes }} {{ schedule.deferredWakes === 1 ? 'wake' : 'wakes' }} waiting fleet-wide</template>
             </p>
           </div>
-        </OmniTraderCard>
+          <footer v-if="lastEvent" class="pjx-card__foot" style="gap: 6px">
+            <ProjectsIcon name="clock" />Last event {{ pjAgo(lastEvent.timestamp, now) }} · {{ lastEvent.type }}<template v-if="lastEvent.agentID"> · {{ lastEvent.agentID }}</template>
+          </footer>
+        </section>
 
-        <OmniTraderCard title="Recent conversation" :empty="!messages.length" empty-title="No messages yet"
-          empty-text="Say hello to the Commander from Chat, or wait for it to report in.">
-          <template #controls><button class="ot-btn ghost sm" @click="$emit('navigate', 'conversation')">Open chat →</button></template>
-          <ul class="po-messages">
-            <li v-for="m in messages" :key="m.eventID || m.sequence" :class="m.author === 'klives' ? 'from-klives' : 'from-agent'">
-              <div class="po-msg-head">
-                <strong>{{ m.author === 'klives' ? 'You' : m.author === 'commander' ? 'Commander' : (m.agentID || 'Agent') }}</strong>
-                <span class="pj-muted">{{ pjAgo(m.timestamp, now) }}</span>
-              </div>
-              <div class="pj-prose" v-html="renderMarkdown(clip(m.text, 900))"></div>
-            </li>
-          </ul>
-        </OmniTraderCard>
-
-        <OmniTraderCard title="Plan" :subtitle="planSubtitle" :empty="!milestones.length && !steps.length"
-          empty-title="No plan yet" :empty-text="project.status === 'Planning' ? 'The Commander is drafting a Grand Plan for your approval.' : 'Milestones and steps appear here as the Commander plans.'">
-          <template #controls><button class="ot-btn ghost sm" @click="$emit('navigate', 'plan')">Full plan →</button></template>
-          <div v-if="milestones.length" class="po-milestones">
-            <div class="ot-meter">
-              <div class="row"><span class="lbl">Milestones</span><span class="val">{{ milestonesDone }} / {{ milestones.length }}</span></div>
-              <div class="track"><div class="fill" :style="{ width: milestonePct + '%' }"></div></div>
-            </div>
-            <ul class="po-ms-list">
-              <li v-for="m in milestones.slice(0, 6)" :key="m.id || m.title">
-                <span class="ot-chip" :class="msTone(m.status)">{{ msLabel(m.status) }}</span>
-                <span>{{ m.title }}</span>
+        <!-- ── conversation, with a reply box ── -->
+        <section class="pjx-card" aria-label="Recent conversation">
+          <header class="pjx-card__head">
+            <h2 class="pjx-card__title"><ProjectsIcon name="message" />Recent conversation</h2>
+            <div class="pjx-card__tools"><button class="pjx-btn pjx-btn--ghost pjx-btn--sm" @click="$emit('navigate', 'conversation')">Open chat<ProjectsIcon name="arrow-right" /></button></div>
+          </header>
+          <div class="pjx-card__body">
+            <ul v-if="messages.length" class="po-messages pjx-ov__messages">
+              <li v-for="m in messages" :key="m.eventID || m.sequence" :data-from="m.author === 'klives' ? 'you' : 'agent'">
+                <div class="pjx-ov__msg-head">
+                  <strong>{{ m.author === 'klives' ? 'You' : m.author === 'commander' ? 'Commander' : (m.agentID || 'Agent') }}</strong>
+                  <span class="pjx-dim">{{ pjAgo(m.timestamp, now) }}</span>
+                </div>
+                <div class="pj-prose pjx-ov__msg" v-html="renderMarkdown(clip(m.text, 480))"></div>
               </li>
             </ul>
+            <p v-else class="pjx-dim" style="font-size: 12.5px">No messages yet. Say hello below, or wait for the Commander to report in.</p>
+            <form v-if="canMessage" class="pjx-ov__reply" @submit.prevent="sendMessage">
+              <input v-model="draft" class="pjx-input" :disabled="sending" placeholder="Ask or steer the Commander…" aria-label="Message the Commander" />
+              <button class="pjx-btn pjx-btn--primary pjx-btn--sm" type="submit" :disabled="sending || !draft.trim()"><ProjectsIcon name="arrow-right" />{{ sending ? 'Sending…' : 'Send' }}</button>
+            </form>
           </div>
-        </OmniTraderCard>
+        </section>
+
+        <!-- ── plan ── -->
+        <section class="pjx-card" aria-label="Plan">
+          <header class="pjx-card__head">
+            <h2 class="pjx-card__title"><ProjectsIcon name="plan" />Plan</h2>
+            <span class="pjx-card__meta">{{ planSubtitle }}</span>
+            <div class="pjx-card__tools"><button class="pjx-btn pjx-btn--ghost pjx-btn--sm" @click="$emit('navigate', 'plan')">Full plan<ProjectsIcon name="arrow-right" /></button></div>
+          </header>
+          <div class="pjx-card__body">
+            <template v-if="milestones.length">
+              <div class="pjx-budget__head" style="margin-bottom: 6px"><span>Milestones</span><b class="pjx-num">{{ milestonesDone }} / {{ milestones.length }}</b></div>
+              <div class="pjx-meter" style="margin-bottom: 10px"><span class="pjx-meter__fill" :style="{ width: milestonePct + '%' }"></span></div>
+              <ul class="pjx-ov__ms">
+                <li v-for="m in milestones.slice(0, 6)" :key="m.id || m.title">
+                  <span class="pjx-chip" :data-tone="msTone(m.status)">{{ msLabel(m.status) }}</span>
+                  <span>{{ m.title }}</span>
+                </li>
+              </ul>
+            </template>
+            <p v-else class="pjx-dim" style="font-size: 12.5px">{{ project.status === 'Planning' ? 'The Commander is drafting a Grand Plan for your approval.' : 'Milestones and steps appear here as the Commander plans.' }}</p>
+          </div>
+        </section>
       </div>
 
-      <div class="ot-stack">
-        <OmniTraderCard title="Computers" :subtitle="computersSubtitle" :empty="!computers.length"
-          empty-title="No computers yet" empty-text="An agent's computer appears the first time it uses a desktop, browser or terminal tool.">
-          <template #controls><button class="ot-btn ghost sm" @click="$emit('navigate', 'computers')">All →</button></template>
-          <div class="po-computers">
+      <div class="pjx-ov__col">
+        <!-- ── computers ── -->
+        <section class="pjx-card" aria-label="Computers">
+          <header class="pjx-card__head">
+            <h2 class="pjx-card__title"><ProjectsIcon name="monitor" />Computers</h2>
+            <span class="pjx-card__meta">{{ computers.length ? computersSubtitle : 'none yet' }}</span>
+            <div class="pjx-card__tools"><button class="pjx-btn pjx-btn--ghost pjx-btn--sm" @click="$emit('navigate', 'computers')">All<ProjectsIcon name="arrow-right" /></button></div>
+          </header>
+          <div class="pjx-card__body pjx-ov__computers">
             <ProjectsComputerCard v-for="c in computers.slice(0, 2)" :key="c.containerID" :computer="c" :label="computerLabel(c)"
               show-live compact @control="$emit('navigate', 'computers')" @inspect="$emit('navigate', 'computers')"
               @resume="$emit('navigate', 'computers')" @repair="$emit('navigate', 'computers')" />
-            <p v-if="computers.length > 2" class="pj-muted po-more">+ {{ computers.length - 2 }} more</p>
+            <p v-if="computers.length > 2" class="pjx-dim" style="font-size: 12px">+ {{ computers.length - 2 }} more</p>
+            <p v-if="!computers.length" class="pjx-dim" style="font-size: 12.5px">An agent's computer appears the first time it uses a desktop, browser or terminal tool.</p>
           </div>
-        </OmniTraderCard>
+        </section>
 
-        <OmniTraderCard title="Observables" :empty="!observables.length" empty-title="No observables yet"
-          empty-text="Agents publish live values here — balances, followers, items shipped.">
-          <template #controls><button class="ot-btn ghost sm" @click="$emit('navigate', 'observables')">All →</button></template>
-          <ul class="po-obs">
-            <li v-for="o in topObservables" :key="o.observableID">
-              <span class="po-obs-name" :title="o.description || o.name">{{ o.name }}</span>
-              <ProjectsObservableSparkline v-if="o.type === 'Numeric' && o.history && o.history.length > 1" :samples="o.history" :width="64" :height="18" />
-              <span class="po-obs-val pj-mono">{{ o.displayValue }}</span>
-            </li>
-          </ul>
-        </OmniTraderCard>
+        <!-- ── live values ── -->
+        <section class="pjx-card" aria-label="Observables">
+          <header class="pjx-card__head">
+            <h2 class="pjx-card__title"><ProjectsIcon name="gauge" />Live values</h2>
+            <div class="pjx-card__tools"><button class="pjx-btn pjx-btn--ghost pjx-btn--sm" @click="$emit('navigate', 'observables')">All<ProjectsIcon name="arrow-right" /></button></div>
+          </header>
+          <div class="pjx-card__body">
+            <ul v-if="observables.length" class="po-obs pjx-obs">
+              <li v-for="o in topObservables" :key="o.observableID">
+                <span class="pjx-obs__name" :title="o.description || o.name">{{ o.name }}</span>
+                <ProjectsSpark v-if="observableSeries(o).length > 1" :values="observableSeries(o)" :label="`${o.name} history`" />
+                <span class="pjx-obs__value">{{ o.displayValue }}</span>
+              </li>
+            </ul>
+            <p v-else class="pjx-dim" style="font-size: 12.5px">Agents publish live values here: balances, followers, items shipped.</p>
+          </div>
+        </section>
 
-        <OmniTraderCard title="Agents" :subtitle="`${agents.length} on the roster · cap ${project.subAgentCap}`" :empty="!agents.length">
-          <template #controls><button class="ot-btn ghost sm" @click="$emit('navigate', 'agents')">Manage →</button></template>
-          <ul class="po-team">
-            <li v-for="a in agents.slice(0, 8)" :key="a.agentID">
-              <span class="ot-dot" :class="a.awake ? 'ok' : ''" aria-hidden="true"></span>
-              <span class="po-team-role">{{ a.isCommander ? 'Commander' : a.role }}</span>
-              <span class="pj-muted po-team-obj" :title="a.objective">{{ a.objective }}</span>
-              <span class="pj-muted pj-mono">{{ a.lastReportAt ? pjAgo(a.lastReportAt, now) : '' }}</span>
-            </li>
-          </ul>
-        </OmniTraderCard>
+        <!-- ── team ── -->
+        <section class="pjx-card" aria-label="Agents">
+          <header class="pjx-card__head">
+            <h2 class="pjx-card__title"><ProjectsIcon name="users" />Team</h2>
+            <span class="pjx-card__meta">{{ agents.length }} on the roster · cap {{ project.subAgentCap }}</span>
+            <div class="pjx-card__tools"><button class="pjx-btn pjx-btn--ghost pjx-btn--sm" @click="$emit('navigate', 'agents')">Manage<ProjectsIcon name="arrow-right" /></button></div>
+          </header>
+          <div class="pjx-card__body">
+            <ul v-if="agents.length" class="pjx-ov__team">
+              <li v-for="a in agents.slice(0, 8)" :key="a.agentID">
+                <span class="pjx-chip__dot" :style="{ background: a.awake ? 'var(--pjx-work)' : 'var(--pjx-ink-4)' }" aria-hidden="true"></span>
+                <span class="pjx-ov__role">{{ a.isCommander ? 'Commander' : a.role }}</span>
+                <span class="pjx-dim pjx-truncate" :title="a.objective">{{ a.objective }}</span>
+                <span class="pjx-faint pjx-mono">{{ a.lastReportAt ? pjAgo(a.lastReportAt, now) : '' }}</span>
+              </li>
+            </ul>
+            <p v-else class="pjx-dim" style="font-size: 12.5px">The Commander recruits agents as the plan needs them.</p>
+          </div>
+        </section>
       </div>
     </div>
   </div>
@@ -138,13 +172,16 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import ProjectsApprovalCard from '~/components/Projects/ApprovalCard.vue';
 import ProjectsComputerCard from '~/components/Projects/ComputerCard.vue';
-import ProjectsObservableSparkline from '~/components/Projects/ObservableSparkline.vue';
+import ProjectsNeedCard from '~/components/Projects/NeedCard.vue';
+import ProjectsIcon from '~/components/Projects/Icon.vue';
+import ProjectsSpark from '~/components/Projects/Spark.vue';
 import { renderMarkdown } from '~/scripts/agentMarkdown';
-import { RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import { useEventStream } from '~/composables/useEventStream';
-import { PJ_SCHEDULE_STATE, pjAgo, pjGet, pjMoney, pjNextRun, useProjectSchedule, type ProjectsComputer, type ProjectsScheduleEntry } from '~/composables/useProjectsUi';
+import { useAccess } from '~/composables/useAccess';
+import { pjxPost, usePjxPoll, usePjxToasts } from '~/composables/useProjectsConsole';
+import { PJ_SCHEDULE_STATE, pjAgo, pjGet, pjNextRun, useProjectSchedule, type ProjectsComputer, type ProjectsScheduleEntry } from '~/composables/useProjectsUi';
+import { observableSeries, type PjNeed, type PjTone } from '~/scripts/projectsConsole';
 
 const props = defineProps<{
   projectId: string;
@@ -158,17 +195,22 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ navigate: [tab: string]; changed: [] }>();
 
+const access = useAccess();
+const canResolve = computed(() => access.can('projects.gates.resolve'));
+const canMessage = computed(() => access.can('projects.agents.message'));
+const { toast } = usePjxToasts();
+
 const steps = ref<any[]>([]);
 const SCHEDULE_EVENTS = new Set(['commander-wake', 'agent-wake', 'wake-completed', 'wake-waiting', 'wake-deferred', 'wake-failed', 'wake-cancelled']);
 const { schedule, reload: loadSchedule } = useProjectSchedule(() => props.projectId, 15000);
 const scheduleRows = computed<ProjectsScheduleEntry[]>(() => (schedule.value?.agents ?? []).slice(0, 8));
 function stateOf(row: ProjectsScheduleEntry) { return PJ_SCHEDULE_STATE[row.state] ?? { label: row.state, tone: '' }; }
+function scheduleTone(state: string): PjTone { return state === 'working' ? 'work' : state === 'waiting' ? 'need' : state === 'held' ? 'fault' : 'rest'; }
 const gates = ref<any[]>([]);
 const computers = ref<ProjectsComputer[]>([]);
 const activity = ref<Record<string, any>>({});
 const recent = ref<any[]>([]);
 const now = ref(Date.now());
-let poll: ReturnType<typeof setInterval> | null = null;
 let clock: ReturnType<typeof setInterval> | null = null;
 
 const stream = useEventStream({
@@ -182,24 +224,29 @@ const stream = useEventStream({
   },
 });
 
-const tokenPct = computed(() => props.project.tokenBudgetUsd > 0 ? 100 * (props.ledger.tokenSpendUsd || 0) / props.project.tokenBudgetUsd : 0);
+// Approvals in the fleet board's card shape: oldest first, each with its age.
+const needs = computed<PjNeed[]>(() => [...gates.value]
+  .sort((a, b) => (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0))
+  .map(g => ({ key: g.gateID, kind: 'approval', projectID: props.projectId, projectName: props.project?.name ?? 'This project', label: g.title, since: g.createdAt ?? null, gate: g })));
+
+const activeStep = computed(() => steps.value.find(s => s.status === 'Active') ?? null);
 const stepCounts = computed(() => ({
   total: steps.value.length,
   done: steps.value.filter(s => s.status === 'Done').length,
-  open: steps.value.filter(s => s.status === 'Pending' || s.status === 'Active').length,
   blocked: steps.value.filter(s => s.status === 'Blocked').length,
 }));
-const activeStep = computed(() => steps.value.find(s => s.status === 'Active') ?? null);
+const lastEvent = computed(() => props.events.length ? props.events[props.events.length - 1] : null);
 const nextSteps = computed(() => {
-  const pending = steps.value.filter(s => s.status === 'Pending').slice(0, 4).map(s => ({ key: s.stepID, text: s.title }));
+  // The ledger's waiting steps are 'Queued' (ProjectStepStatus); this read 'Pending' before and never matched.
+  const pending = steps.value.filter(s => s.status === 'Queued')
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).slice(0, 4).map(s => ({ key: s.stepID, text: s.title }));
   if (pending.length) return pending;
   return (props.digest.nextSteps ?? []).slice(0, 4).map((t: string, i: number) => ({ key: 'd' + i, text: t }));
 });
 const liveAgents = computed(() => Object.values(activity.value)
   .filter((a: any) => now.value - new Date(a.updatedAt).getTime() < 10 * 60 * 1000));
-const workingAgents = computed(() => props.agents.filter(a => a.awake));
 const nowSubtitle = computed(() => {
-  if (liveAgents.value.length) return `${liveAgents.value.length} agent${liveAgents.value.length === 1 ? '' : 's'} working right now`;
+  if (liveAgents.value.length) return `${liveAgents.value.length} ${liveAgents.value.length === 1 ? 'agent' : 'agents'} working right now`;
   const commander = schedule.value?.agents.find(a => a.agentID === 'commander');
   if (commander && commander.state !== 'working' && props.project.status === 'Active')
     return commander.state === 'waiting' ? 'Commander is waiting for an LLM slot'
@@ -215,24 +262,21 @@ const messages = computed(() => {
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
     .slice(-4);
 });
-const lastEvent = computed(() => props.events.length ? props.events[props.events.length - 1] : null);
-const lastActivityLabel = computed(() => lastEvent.value ? pjAgo(lastEvent.value.timestamp, now.value) : '—');
-const lastActivityFoot = computed(() => lastEvent.value ? `${lastEvent.value.type}${lastEvent.value.agentID ? ' · ' + lastEvent.value.agentID : ''}` : 'no events yet');
 
 const content = computed(() => props.grandPlan?.current?.content ?? null);
 const milestones = computed<any[]>(() => content.value?.milestones ?? []);
 const milestonesDone = computed(() => milestones.value.filter(m => m.status === 'Done').length);
 const milestonePct = computed(() => milestones.value.length ? Math.round(100 * milestonesDone.value / milestones.value.length) : 0);
-const planSubtitle = computed(() => props.grandPlan?.current
-  ? `Grand Plan v${props.grandPlan.current.version} · ${stepCounts.value.done}/${stepCounts.value.total} steps done`
-  : props.project.status === 'Planning' ? 'Awaiting your approval' : `${stepCounts.value.total} steps in the ledger`);
-function msTone(status: string) { return status === 'Done' ? 'ok' : status === 'InProgress' ? 'info' : status === 'Blocked' ? 'bad' : ''; }
+const planSubtitle = computed(() => {
+  const blocked = stepCounts.value.blocked ? ` · ${stepCounts.value.blocked} blocked` : '';
+  if (props.grandPlan?.current) return `Grand Plan v${props.grandPlan.current.version} · ${stepCounts.value.done}/${stepCounts.value.total} steps done${blocked}`;
+  return props.project.status === 'Planning' ? 'Awaiting your approval' : `${stepCounts.value.total} steps in the ledger${blocked}`;
+});
+function msTone(status: string): PjTone { return status === 'Done' ? 'work' : status === 'InProgress' ? 'info' : status === 'Blocked' ? 'fault' : 'rest'; }
 function msLabel(status: string) { return status === 'InProgress' ? 'In progress' : status || 'Pending'; }
 
 const topObservables = computed(() => [...props.observables]
   .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 6));
-const primary = computed(() => topObservables.value.find(o => o.type === 'Numeric') ?? null);
-const primarySpark = computed(() => (primary.value?.history ?? []).map((h: any) => Number(h.value)).filter((v: number) => !Number.isNaN(v)).slice(-30));
 
 const computersSubtitle = computed(() => {
   const running = computers.value.filter(c => c.state === 'running' || c.state === 'degraded').length;
@@ -257,60 +301,40 @@ async function loadActivity() {
   const r = await pjGet<any[]>(`/projects/activity?projectID=${props.projectId}`);
   if (Array.isArray(r)) activity.value = Object.fromEntries(r.map(a => [a.agentID, a]));
 }
-async function resolveGate(gateID: string, decision: string, comment: string) {
-  await RequestPOSTFromKliveAPI('/projects/gates/resolve', JSON.stringify({ projectID: props.projectId, gateID, decision, comment }), false, true);
+
+const resolving = ref(false);
+async function resolveGate(_projectID: string, gateID: string, decision: string, comment: string) {
+  if (resolving.value) return;
+  resolving.value = true;
+  const r = await pjxPost('/projects/gates/resolve', { projectID: props.projectId, gateID, decision, comment });
+  resolving.value = false;
+  if (!r.ok) { toast(r.error, 'fault', 6000); return; }
+  toast(decision === 'Discuss' ? 'Opened a discussion with the Commander.' : decision === 'Approve' ? 'Approved.' : 'Denied.', decision === 'Deny' ? 'need' : 'work');
   await loadGates();
   emit('changed');
 }
 
+// One line to the Commander without leaving the overview; the Chat tab has the full conversation.
+const draft = ref('');
+const sending = ref(false);
+async function sendMessage() {
+  const text = draft.value.trim();
+  if (!text || sending.value) return;
+  sending.value = true;
+  // A one-off steer, like the Chat tab's "Chat" kind: it ages out instead of sitting on the Commander's books.
+  const r = await pjxPost('/projects/message', { projectID: props.projectId, text, kind: 'steering' });
+  sending.value = false;
+  if (!r.ok) { toast(r.error, 'fault', 6000); return; }
+  draft.value = '';
+  recent.value = [...recent.value, { eventID: `local-${Date.now()}`, type: 'klives-message', author: 'klives', text, timestamp: new Date().toISOString() }].slice(-12);
+  toast(r.pending ? 'Message queued: the Commander reads it when the project wakes.' : 'Sent to the Commander.', r.pending ? 'need' : 'work');
+}
+
+usePjxPoll(() => { loadSteps(); loadGates(); loadComputers(); }, 15000, { immediate: false });
 onMounted(() => {
   loadSteps(); loadGates(); loadComputers(); loadActivity();
   stream.connect();
-  poll = setInterval(() => { loadSteps(); loadGates(); loadComputers(); }, 15000);
   clock = setInterval(() => { now.value = Date.now(); }, 1000);
 });
-onBeforeUnmount(() => { if (poll) clearInterval(poll); if (clock) clearInterval(clock); stream.disconnect(); });
+onBeforeUnmount(() => { if (clock) clearInterval(clock); stream.disconnect(); });
 </script>
-
-<style scoped>
-.po-schedule { list-style: none; margin: 0; padding: var(--ot-space-2) 0 0; border-top: 1px solid var(--ot-line); display: flex; flex-direction: column; gap: 6px; }
-.po-schedule li { display: grid; grid-template-columns: auto minmax(70px, auto) minmax(0, 1fr) auto; gap: var(--ot-space-2); align-items: baseline; font-size: 12.5px; }
-.po-schedule-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.po-schedule-next { font-size: 11.5px; white-space: nowrap; }
-.po-capacity { margin: 0; font-size: 11.5px; }
-@media (max-width: 720px) { .po-schedule li { grid-template-columns: auto minmax(0, 1fr); } .po-schedule-detail, .po-schedule-next { grid-column: 1 / -1; white-space: normal; } }
-.po-approvals { display: flex; flex-direction: column; gap: var(--ot-space-2); }
-.po-kpis { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
-.po-now { display: flex; flex-direction: column; gap: var(--ot-space-3); }
-.po-focus { margin: 0; font-size: 13.5px; line-height: 20px; display: flex; gap: var(--ot-space-2); align-items: baseline; }
-.po-step { border-left: 2px solid var(--ot-accent); padding-left: var(--ot-space-3); }
-.po-step-head { display: flex; align-items: center; gap: var(--ot-space-2); flex-wrap: wrap; font-size: 13.5px; }
-.po-next { margin: var(--ot-space-1) 0 0; font-size: 12.5px; color: var(--ot-text-2); }
-.po-empty { margin: 0; font-size: 12.5px; }
-.po-live { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
-.po-live li { display: flex; align-items: center; gap: var(--ot-space-2); min-width: 0; }
-.po-live code { font-family: var(--ot-mono); font-size: 11.5px; color: var(--ot-accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.po-live-el { margin-left: auto; color: var(--ot-muted); font-size: 11px; }
-.po-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ot-info); flex: 0 0 auto; animation: po-pulse 1.4s ease-in-out infinite; }
-.po-live-dot.ph-writing { background: var(--ot-accent); }
-.po-live-dot.ph-tool { background: var(--ot-warning); }
-@keyframes po-pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
-.po-queue { margin: 0; padding-left: 20px; font-size: 12.5px; color: var(--ot-text-2); display: flex; flex-direction: column; gap: 3px; }
-.po-messages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--ot-space-3); }
-.po-messages li { padding-left: var(--ot-space-3); border-left: 2px solid var(--ot-line-strong); }
-.po-messages li.from-klives { border-left-color: var(--ot-info); }
-.po-messages li.from-agent { border-left-color: var(--ot-accent); }
-.po-msg-head { display: flex; gap: var(--ot-space-2); align-items: baseline; font-size: 12px; margin-bottom: 2px; }
-.po-milestones { display: flex; flex-direction: column; gap: var(--ot-space-3); }
-.po-ms-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
-.po-ms-list li { display: flex; gap: var(--ot-space-2); align-items: center; }
-.po-computers { display: flex; flex-direction: column; gap: var(--ot-space-3); }
-.po-more { margin: 0; font-size: 12px; }
-.po-obs, .po-team { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; }
-.po-obs li { display: flex; align-items: center; gap: var(--ot-space-2); }
-.po-obs-name { flex: 1; min-width: 0; color: var(--ot-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.po-obs-val { font-weight: 600; }
-.po-team li { display: grid; grid-template-columns: 10px minmax(70px, auto) minmax(0, 1fr) auto; gap: var(--ot-space-2); align-items: center; }
-.po-team-role { font-weight: 600; text-transform: capitalize; white-space: nowrap; }
-.po-team-obj { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-</style>

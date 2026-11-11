@@ -133,10 +133,20 @@ watch(() => props.containerId, (now, before) => { if (!!now !== !!before) syncHo
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: #141414;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 14px;
+  background: var(--kax-surface, #141414);
   overflow: hidden;
+}
+
+/* The console resets every button with all: unset; these need their box back. */
+.ls-close,
+.approval-approve,
+.approval-deny {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 .ls-head {

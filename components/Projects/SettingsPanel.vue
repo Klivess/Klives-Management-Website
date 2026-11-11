@@ -1,113 +1,136 @@
 <template>
-  <div class="settings-panel">
-    <div v-if="loading" class="sp-info">Loading settings…</div>
+  <div class="pjx-set">
+    <div v-if="loading" class="pjx-empty"><ProjectsIcon name="refresh" class="pjx-spin" /><span>Loading settings…</span></div>
     <template v-else>
-      <p class="sp-note">{{ system
-        ? 'System defaults — the settings every NEW project inherits. Changing these never affects existing projects.'
-        : 'Per-project settings — this project\'s own configuration, independent of every other project.' }}</p>
+      <div v-if="loadError" class="pjx-banner" data-tone="fault" role="alert">
+        <ProjectsIcon name="alert" /><div class="pjx-banner__body"><b>These settings could not be loaded</b>{{ loadError }} Saving now would start from blank values.</div>
+        <div class="pjx-banner__actions"><button class="pjx-btn pjx-btn--sm" @click="load">Retry</button></div>
+      </div>
+      <p v-if="system" class="pjx-dim pjx-set__note">System defaults: every new project starts from these. Changing them never touches an existing project.</p>
 
-      <section class="sp-group">
-        <h4>Model routing</h4>
-        <p class="sp-route-note">Each list is isolated. The first route is preferred; failures advance downward in exactly this order.</p>
-        <ModelRouteList
-          v-for="f in modelFields"
-          :key="f.key"
-          v-model="form[f.key]"
-          v-model:parameters="form.routeParameters[f.route]"
-          :label="f.label"
-          :placeholder="f.placeholder"
-          :show-parameters="!f.parametersNote"
-          :parameters-note="f.parametersNote ?? ''"
-        />
+      <div class="pjx-set__grid">
+        <section class="pjx-set__group" aria-label="Behaviour">
+          <h4 class="pjx-gp__label">Behaviour</h4>
+          <label class="pjx-toggle">
+            <span class="pjx-toggle__copy"><b>Desktop computers</b><span>Agents get real desktops: mouse, keyboard, screen and a browser. Off for a text-only project.</span></span>
+            <span class="pjx-switchbox"><input v-model="form.containersEnabled" type="checkbox" class="pjx-switchbox__input" aria-label="Desktop computers" /><span class="pjx-switch" :data-on="form.containersEnabled || undefined" aria-hidden="true"></span></span>
+          </label>
+          <div v-if="!system && form.containersEnabled" class="pjx-toggle pjx-set__field" style="cursor: default">
+            <span class="pjx-toggle__copy"><b>Browser sign-ins</b><span>Shared puts every agent on one locked desktop, so one login is available to the whole project.</span></span>
+            <select v-model="form.desktopAllocation" class="pjx-select" aria-label="Browser sign-ins">
+              <option value="PerAgentContainers">Separate per agent</option>
+              <option value="SharedDesktopWithInputLock">One shared session</option>
+            </select>
+          </div>
+          <label class="pjx-toggle">
+            <span class="pjx-toggle__copy"><b>Vision</b><span>Feed screenshots back to video-tier agents after desktop actions.</span></span>
+            <span class="pjx-switchbox"><input v-model="form.visionEnabled" type="checkbox" class="pjx-switchbox__input" aria-label="Vision" /><span class="pjx-switch" :data-on="form.visionEnabled || undefined" aria-hidden="true"></span></span>
+          </label>
+          <label class="pjx-toggle">
+            <span class="pjx-toggle__copy"><b>Live activity</b><span>Stream model output, so the conversation shows who is generating, and what.</span></span>
+            <span class="pjx-switchbox"><input v-model="form.liveActivityStreaming" type="checkbox" class="pjx-switchbox__input" aria-label="Live activity" /><span class="pjx-switch" :data-on="form.liveActivityStreaming || undefined" aria-hidden="true"></span></span>
+          </label>
+          <label class="pjx-toggle">
+            <span class="pjx-toggle__copy"><b>Instant chat replies</b><span>Answer your messages within seconds in the Commander's voice while it gets to them.</span></span>
+            <span class="pjx-switchbox"><input v-model="form.instantRepliesEnabled" type="checkbox" class="pjx-switchbox__input" aria-label="Instant chat replies" /><span class="pjx-switch" :data-on="form.instantRepliesEnabled || undefined" aria-hidden="true"></span></span>
+          </label>
+          <label class="pjx-toggle">
+            <span class="pjx-toggle__copy"><b>Keep working between wakes</b><span>A productive Commander with open steps continues within a minute instead of waiting for its next check-in.</span></span>
+            <span class="pjx-switchbox"><input v-model="form.momentumEnabled" type="checkbox" class="pjx-switchbox__input" aria-label="Keep working between wakes" /><span class="pjx-switch" :data-on="form.momentumEnabled || undefined" aria-hidden="true"></span></span>
+          </label>
+          <div class="pjx-toggle pjx-set__field" style="cursor: default">
+            <span class="pjx-toggle__copy"><b>Desktop image</b><span>The container image each computer starts from.</span></span>
+            <input v-model="form.desktopImage" class="pjx-input pjx-mono pjx-set__image" aria-label="Desktop image" placeholder="omnipotent/projects-desktop:latest" />
+          </div>
+        </section>
+
+        <section class="pjx-set__group" aria-label="Autonomy limits">
+          <h4 class="pjx-gp__label">Autonomy limits</h4>
+          <p class="pjx-dim pjx-set__hint">Hard limits enforced when an agent calls a tool, whatever it decides. Everything else stays with the agents' judgement and the approval rules.</p>
+          <div class="pjx-set__domains">
+            <div class="pjx-field">
+              <label class="pjx-field__label" for="pjx-set-blocked">Never use these sites <span class="pjx-faint">· one host per line, subdomains included</span></label>
+              <textarea id="pjx-set-blocked" v-model="form.blockedDomainsText" class="pjx-textarea pjx-mono" rows="3" placeholder="facebook.com" aria-label="Blocked sites"></textarea>
+            </div>
+            <div class="pjx-field">
+              <label class="pjx-field__label" for="pjx-set-ask">Ask me first <span class="pjx-faint">· the first visit opens an approval; yes lasts 24 h</span></label>
+              <textarea id="pjx-set-ask" v-model="form.askFirstDomainsText" class="pjx-textarea pjx-mono" rows="3" placeholder="paypal.com" aria-label="Ask-first sites"></textarea>
+            </div>
+          </div>
+          <label class="pjx-toggle">
+            <span class="pjx-toggle__copy"><b>Host shell and scripts</b><span>PowerShell, Bash and C# on Omnipotent's own machine. Off keeps agents inside their computers.</span></span>
+            <span class="pjx-switchbox"><input v-model="form.allowHostShell" type="checkbox" class="pjx-switchbox__input" aria-label="Host shell and scripts" /><span class="pjx-switch" :data-on="form.allowHostShell || undefined" aria-hidden="true"></span></span>
+          </label>
+          <label class="pjx-toggle">
+            <span class="pjx-toggle__copy"><b>Send email</b><span>Off: agents draft messages for you instead of sending them.</span></span>
+            <span class="pjx-switchbox"><input v-model="form.allowOutboundEmail" type="checkbox" class="pjx-switchbox__input" aria-label="Send email" /><span class="pjx-switch" :data-on="form.allowOutboundEmail || undefined" aria-hidden="true"></span></span>
+          </label>
+          <label class="pjx-toggle">
+            <span class="pjx-toggle__copy"><b>Create new accounts</b><span>Off: agents reuse registered accounts or ask you.</span></span>
+            <span class="pjx-switchbox"><input v-model="form.allowAccountCreation" type="checkbox" class="pjx-switchbox__input" aria-label="Create new accounts" /><span class="pjx-switch" :data-on="form.allowAccountCreation || undefined" aria-hidden="true"></span></span>
+          </label>
+        </section>
+      </div>
+
+      <!-- Nine route lists are most of this form; each folds to the model it prefers, and opens to edit. -->
+      <section class="pjx-set__group" aria-label="Model routing">
+        <h4 class="pjx-gp__label">Model routing</h4>
+        <p class="pjx-dim pjx-set__hint">Each list is isolated. The first model is preferred; failures advance down the list in exactly this order.</p>
+        <ul class="pjx-set__routes">
+          <li v-for="f in modelFields" :key="f.key" :data-open="openRoutes.has(f.key) || undefined">
+            <button type="button" class="pjx-set__route" :aria-expanded="openRoutes.has(f.key)" @click="toggleRoute(f.key)">
+              <span class="pjx-set__route-label">{{ f.label }}</span>
+              <span class="pjx-mono pjx-truncate pjx-set__route-model">{{ form[f.key]?.[0] || 'no model' }}</span>
+              <span v-if="(form[f.key]?.length ?? 0) > 1" class="pjx-faint pjx-set__route-more">+{{ form[f.key].length - 1 }} {{ form[f.key].length === 2 ? 'fallback' : 'fallbacks' }}</span>
+              <span v-if="routeInvalid(f)" class="pjx-chip" data-tone="fault">needs a model</span>
+              <span v-else-if="routeTuned(f)" class="pjx-chip pjx-chip--quiet" title="Has its own model parameters">tuned</span>
+              <ProjectsIcon name="chevron-down" class="pjx-set__caret" />
+            </button>
+            <div v-if="openRoutes.has(f.key)" class="ot-os pjx-embed pjx-set__route-body">
+              <ModelRouteList
+                v-model="form[f.key]"
+                v-model:parameters="form.routeParameters[f.route]"
+                :label="f.label"
+                :placeholder="f.placeholder"
+                :show-parameters="!f.parametersNote"
+                :parameters-note="f.parametersNote ?? ''"
+              />
+            </div>
+          </li>
+        </ul>
       </section>
 
-      <section class="sp-group">
-        <h4>Behaviour</h4>
-        <label class="sp-row sp-toggle">
-          <span class="sp-label">Vision enabled<span class="sp-hint">feed screenshots back to video-tier agents</span></span>
-          <input type="checkbox" v-model="form.visionEnabled" />
-        </label>
-        <label class="sp-row sp-toggle">
-          <span class="sp-label">Containers enabled<span class="sp-hint">allow desktop containers (text-only project: off)</span></span>
-          <input type="checkbox" v-model="form.containersEnabled" />
-        </label>
-        <label v-if="!system && form.containersEnabled" class="sp-row">
-          <span class="sp-label">Browser sign-ins<span class="sp-hint">Shared puts every agent on one locked desktop, so one login is immediately available to the whole project.</span></span>
-          <select v-model="form.desktopAllocation" class="sp-select">
-            <option value="PerAgentContainers">Separate per agent</option>
-            <option value="SharedDesktopWithInputLock">One shared session</option>
-          </select>
-        </label>
-        <label class="sp-row sp-toggle">
-          <span class="sp-label">Live activity<span class="sp-hint">stream model output so the conversation shows who is generating, and what</span></span>
-          <input type="checkbox" v-model="form.liveActivityStreaming" />
-        </label>
-        <label class="sp-row sp-toggle">
-          <span class="sp-label">Instant chat replies<span class="sp-hint">answer your messages within seconds in the Commander's voice while it gets to them</span></span>
-          <input type="checkbox" v-model="form.instantRepliesEnabled" />
-        </label>
-        <label class="sp-row sp-toggle">
-          <span class="sp-label">Keep working between wakes<span class="sp-hint">a productive Commander with open steps continues within a minute instead of waiting for its next check-in</span></span>
-          <input type="checkbox" v-model="form.momentumEnabled" />
-        </label>
-        <label class="sp-row">
-          <span class="sp-label">Desktop image</span>
-          <input v-model="form.desktopImage" class="sp-input" placeholder="omnipotent/projects-desktop:latest" />
-        </label>
-      </section>
-
-      <section class="sp-group">
-        <h4>Autonomy limits</h4>
-        <p class="sp-route-note">Hard limits enforced when an agent calls a tool, whatever it decides. Everything else stays under the agents' own judgement and the approval rules.</p>
-        <label class="sp-row sp-stack">
-          <span class="sp-label">Never use these sites<span class="sp-hint">One host per line. Navigation, fetches and HTTP calls to them (and their subdomains) are refused.</span></span>
-          <textarea v-model="form.blockedDomainsText" class="ot-input sp-domains" rows="3" placeholder="facebook.com" aria-label="Blocked sites"></textarea>
-        </label>
-        <label class="sp-row sp-stack">
-          <span class="sp-label">Ask me first<span class="sp-hint">One host per line. An agent's first visit opens an approval card; your approval lasts 24 hours.</span></span>
-          <textarea v-model="form.askFirstDomainsText" class="ot-input sp-domains" rows="3" placeholder="paypal.com" aria-label="Ask-first sites"></textarea>
-        </label>
-        <label class="sp-row sp-toggle">
-          <span class="sp-label">Host shell and scripts<span class="sp-hint">PowerShell, Bash and C# on Omnipotent's own machine. Off keeps agents inside their computers.</span></span>
-          <input type="checkbox" v-model="form.allowHostShell" />
-        </label>
-        <label class="sp-row sp-toggle">
-          <span class="sp-label">Send email<span class="sp-hint">Off means agents draft messages for you instead of sending them.</span></span>
-          <input type="checkbox" v-model="form.allowOutboundEmail" />
-        </label>
-        <label class="sp-row sp-toggle">
-          <span class="sp-label">Create new accounts<span class="sp-hint">Off means agents reuse registered accounts or ask you.</span></span>
-          <input type="checkbox" v-model="form.allowAccountCreation" />
-        </label>
-      </section>
-
-      <p v-if="invalidRoutes" class="sp-error">Every route entry must contain a provider/model value.</p>
-      <div class="sp-actions">
-        <button class="ot-btn primary sp-save" :disabled="saving || !dirty || invalidRoutes" @click="save">{{ saving ? 'Saving…' : (dirty ? 'Save changes' : 'Saved') }}</button>
-        <button class="ot-btn ghost sp-reset" :disabled="!dirty" @click="reset">Reset</button>
-        <span v-if="saveError" class="sp-error sp-save-error" role="alert">{{ saveError }}</span>
+      <div class="pjx-set__actions">
+        <button class="pjx-btn pjx-btn--primary pjx-btn--sm" :disabled="saving || !dirty || invalidRoutes" @click="save">{{ saving ? 'Saving…' : (dirty ? 'Save changes' : 'Saved') }}</button>
+        <button class="pjx-btn pjx-btn--ghost pjx-btn--sm" :disabled="!dirty" @click="reset">Reset</button>
+        <span v-if="invalidRoutes" class="pjx-note" data-tone="fault">Every route entry needs a provider/model value.</span>
+        <span v-else-if="dirty && !saveError" class="pjx-faint" style="font-size: 11.5px">Unsaved changes</span>
+        <span v-if="saveError" class="pjx-note" data-tone="fault" role="alert">{{ saveError }}</span>
       </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue';
-import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
-import ModelRouteList from './ModelRouteList.vue';
+import { computed, onMounted, reactive, ref } from 'vue';
+import ProjectsIcon from '~/components/Projects/Icon.vue';
+import ModelRouteList from '~/components/Projects/ModelRouteList.vue';
+import { pjxGet, pjxPost } from '~/composables/useProjectsConsole';
 
 const props = defineProps<{ projectId?: string; system?: boolean }>();
-const getUrl = () => props.system ? '/projects/system/settings' : `/projects/settings?projectID=${props.projectId}`;
+const getUrl = () => props.system ? '/projects/system/settings' : `/projects/settings?projectID=${encodeURIComponent(props.projectId ?? '')}`;
 const updateUrl = () => props.system ? '/projects/system/settings/update' : '/projects/settings/update';
-const updateBody = (patch: Record<string, any>) => JSON.stringify(props.system ? patch : { projectID: props.projectId, ...patch });
+const updateBody = (patch: Record<string, any>) => props.system ? patch : { projectID: props.projectId, ...patch };
 
 const loading = ref(true);
+const loadError = ref('');
 const saving = ref(false);
 const original = ref<Record<string, any>>({});
 const form = reactive<Record<string, any>>({});
+const openRoutes = ref(new Set<string>());
 
 // `route` is the server-side RouteParameters key for the same route the `key` list configures.
-// `parametersNote`, when present, replaces the parameter panel — the route has no parameters of
+// `parametersNote`, when present, replaces the parameter panel: the route has no parameters of
 // its own because its models ride another route's request.
 type ModelField = {
   key: string; route: string; legacy: string; label: string; placeholder: string; parametersNote?: string;
@@ -166,8 +189,14 @@ function cleanRoutes(value: any, fallback = ''): string[] {
 }
 
 const dirty = computed(() => EDITABLE.some(k => !same(form[k], original.value[k])));
-const invalidRoutes = computed(() => modelFields.some(f =>
-  !Array.isArray(form[f.key]) || form[f.key].length === 0 || form[f.key].some((r: string) => !r.trim())));
+const routeInvalid = (f: ModelField) => !Array.isArray(form[f.key]) || form[f.key].length === 0 || form[f.key].some((r: string) => !r.trim());
+const routeTuned = (f: ModelField) => Object.keys(form.routeParameters?.[f.route] ?? {}).length > 0;
+const invalidRoutes = computed(() => modelFields.some(routeInvalid));
+function toggleRoute(key: string) {
+  const next = new Set(openRoutes.value);
+  if (next.has(key)) next.delete(key); else next.add(key);
+  openRoutes.value = next;
+}
 
 function applySettings(s: Record<string, any>, desktopAllocation?: string) {
   for (const f of modelFields) form[f.key] = cleanRoutes(s[f.key], s[f.legacy]);
@@ -184,67 +213,43 @@ function applySettings(s: Record<string, any>, desktopAllocation?: string) {
 
 async function load() {
   loading.value = true;
-  try {
-    const [res, projectRes] = await Promise.all([
-      RequestGETFromKliveAPI(getUrl(), false, false),
-      props.system ? Promise.resolve(null) : RequestGETFromKliveAPI(`/projects/get?projectID=${props.projectId}`, false, false),
-    ]);
-    if (res.ok) {
-      const project = projectRes?.ok ? await projectRes.json() : null;
-      applySettings(await res.json(), project?.desktopAllocation);
-      original.value = clone(form);
-    }
-  } catch { /* transient */ }
-  finally { loading.value = false; }
+  loadError.value = '';
+  const [res, projectRes] = await Promise.all([
+    pjxGet<Record<string, any>>(getUrl()),
+    props.system ? Promise.resolve(null) : pjxGet<any>(`/projects/get?projectID=${encodeURIComponent(props.projectId ?? '')}`),
+  ]);
+  if (res.ok && res.body) {
+    applySettings(res.body, projectRes?.ok ? projectRes.body?.desktopAllocation : undefined);
+    original.value = clone(form);
+  } else {
+    loadError.value = res.status ? `The server answered HTTP ${res.status}.` : 'The server did not answer.';
+  }
+  loading.value = false;
 }
 
 function reset() { for (const k of EDITABLE) form[k] = clone(original.value[k]); }
 
 async function save() {
-  if (invalidRoutes.value) return;
+  if (invalidRoutes.value || saving.value) return;
   saving.value = true;
-  try {
-    saveError.value = '';
-    const patch: Record<string, any> = {};
-    for (const k of EDITABLE) if (!same(form[k], original.value[k]))
-      patch[SERVER_KEY[k] ?? k] = SERVER_KEY[k] ? domainLines(form[k])
-        : k.endsWith('Routes') ? cleanRoutes(form[k])
-        // Routes with nothing pinned are sent as absent rather than empty, which is how the server
-        // clears a route back to its models' own defaults.
-        : k === 'routeParameters' ? Object.fromEntries(Object.entries(form[k])
-            .filter(([, values]: [string, any]) => values && Object.keys(values).length > 0))
-        : form[k];
-    const res = await RequestPOSTFromKliveAPI(updateUrl(), updateBody(patch), false, true);
-    if (res.ok) {
-      const body = await res.json();
-      if (body.settings) applySettings(body.settings, body.desktopAllocation);
-      original.value = clone(form);
-      if (Array.isArray(body.unknown) && body.unknown.length)
-        saveError.value = `This server does not know: ${body.unknown.join(', ')}. Update Omnipotent to use them.`;
-    } else saveError.value = `Save failed (HTTP ${res.status}).`;
-  } catch (e: any) { saveError.value = e?.message || 'Save failed.'; }
-  finally { saving.value = false; }
+  saveError.value = '';
+  const patch: Record<string, any> = {};
+  for (const k of EDITABLE) if (!same(form[k], original.value[k]))
+    patch[SERVER_KEY[k] ?? k] = SERVER_KEY[k] ? domainLines(form[k])
+      : k.endsWith('Routes') ? cleanRoutes(form[k])
+      // Routes with nothing pinned are sent as absent rather than empty, which is how the server
+      // clears a route back to its models' own defaults.
+      : k === 'routeParameters' ? Object.fromEntries(Object.entries(form[k])
+          .filter(([, values]: [string, any]) => values && Object.keys(values).length > 0))
+      : form[k];
+  const r = await pjxPost<any>(updateUrl(), updateBody(patch));
+  saving.value = false;
+  if (!r.ok) { saveError.value = r.error; return; }
+  if (r.body?.settings) applySettings(r.body.settings, r.body.desktopAllocation);
+  original.value = clone(form);
+  if (Array.isArray(r.body?.unknown) && r.body.unknown.length)
+    saveError.value = `This server does not know: ${r.body.unknown.join(', ')}. Update Omnipotent to use them.`;
 }
 
 onMounted(load);
 </script>
-
-<style scoped>
-.settings-panel { padding: 0; }
-.sp-note, .sp-route-note { font-size: 12px; color: var(--ot-muted); margin: 0 0 var(--ot-space-4); }
-.sp-route-note { margin: -4px 0 var(--ot-space-2); }
-.sp-group { margin-bottom: var(--ot-space-6); }
-.sp-group h4 { margin: 0 0 var(--ot-space-3); font-size: 11px; text-transform: uppercase; letter-spacing: 0.9px; color: var(--ot-muted); font-weight: 650; }
-.sp-row { display: flex; align-items: center; justify-content: space-between; gap: var(--ot-space-3); margin-bottom: var(--ot-space-2); }
-.sp-row.sp-stack { flex-direction: column; align-items: stretch; }
-.sp-label { font-size: 13px; color: var(--ot-text); display: flex; flex-direction: column; gap: 2px; }
-.sp-hint { font-size: 11.5px; color: var(--ot-muted); font-weight: 400; }
-.sp-input, .sp-select { flex: 1; max-width: 340px; background: rgba(0, 0, 0, 0.3); color: var(--ot-text); border: 1px solid var(--ot-line); border-radius: var(--ot-radius-sm); padding: 7px 10px; font-size: 13px; font-family: var(--ot-mono); }
-.sp-input:focus, .sp-select:focus { outline: none; border-color: var(--ot-accent); }
-.sp-domains { font-family: var(--ot-mono); font-size: 12.5px; }
-.sp-toggle input { width: 18px; height: 18px; accent-color: var(--ot-accent); flex: 0 0 auto; }
-.sp-error { color: var(--ot-negative); font-size: 12px; margin: 0 0 var(--ot-space-2); }
-.sp-save-error { margin: 0; align-self: center; }
-.sp-actions { display: flex; gap: var(--ot-space-2); margin-top: var(--ot-space-2); flex-wrap: wrap; position: sticky; bottom: 0; padding: var(--ot-space-2) 0; background: var(--ot-surface); }
-.sp-info { color: var(--ot-muted); padding: 20px; text-align: center; }
-</style>

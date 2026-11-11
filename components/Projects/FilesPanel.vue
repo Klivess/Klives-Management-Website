@@ -1,95 +1,135 @@
 <template>
-  <div class="pf-panel">
-    <div class="pf-head">
-      <div>
-        <h2>Shared files</h2>
-        <p>One project filesystem for you, the Commander, and every sub-agent. Changes include who made them and when.</p>
+  <div class="pjx-fs">
+    <div class="pjx-fs__bar">
+      <div class="pjx-seg" role="group" aria-label="Files view">
+        <button type="button" class="pjx-seg__opt" :aria-pressed="view === 'files'" @click="view = 'files'"><ProjectsIcon name="folder" />Files</button>
+        <button type="button" class="pjx-seg__opt" :aria-pressed="view === 'history'" @click="openHistory"><ProjectsIcon name="clock" />History</button>
       </div>
-      <div class="pf-head-actions">
-        <button :class="{ active: view === 'files' }" @click="view = 'files'">Files</button>
-        <button :class="{ active: view === 'history' }" @click="openHistory">History</button>
-      </div>
+      <template v-if="view === 'files'">
+        <nav class="pjx-fs__crumbs" aria-label="Current directory">
+          <button type="button" @click="goTo('')">project</button>
+          <template v-for="crumb in crumbs" :key="crumb.path"><span>/</span><button type="button" @click="goTo(crumb.path)">{{ crumb.name }}</button></template>
+        </nav>
+        <div class="pjx-fs__tools">
+          <label class="pjx-find"><ProjectsIcon name="search" /><input v-model.trim="search" placeholder="Search this folder" aria-label="Search this folder" @keyup.enter="searchFiles" /></label>
+          <button v-if="!readOnly" class="pjx-btn pjx-btn--sm" :aria-expanded="uploading" @click="uploading = !uploading"><ProjectsIcon :name="uploading ? 'x' : 'arrow-up'" />{{ uploading ? 'Close upload' : 'Upload' }}</button>
+          <button v-if="!readOnly" class="pjx-btn pjx-btn--sm" @click="openDialog('folder')"><ProjectsIcon name="plus" />Folder</button>
+          <button class="pjx-iconbtn pjx-iconbtn--sm" :disabled="loading" title="Refresh" aria-label="Refresh the file list" @click="load"><ProjectsIcon name="refresh" :class="{ 'pjx-spin': loading }" /></button>
+        </div>
+      </template>
     </div>
 
-    <template v-if="view === 'files'">
-      <ProjectsFileUploader
-        v-if="!readOnly"
-        purpose="existingProject"
-        :project-id="projectId"
-        :destination-prefix="currentPath"
-        title="Upload to this folder"
-        hint="Files and folders retain their relative paths. Three files upload concurrently and interrupted files can be retried."
-        @committed="afterMutation"
-      />
-      <div v-else class="pf-readonly">This project is {{ status.toLowerCase() }}. Files remain available to browse and download, but cannot be changed.</div>
+    <div v-if="error" class="pjx-banner" data-tone="fault" role="alert"><ProjectsIcon name="alert" /><div class="pjx-banner__body">{{ error }}</div>
+      <div class="pjx-banner__actions"><button class="pjx-btn pjx-btn--ghost pjx-btn--sm" @click="error = ''">Dismiss</button></div></div>
 
-      <div class="pf-toolbar">
-        <nav class="pf-crumbs" aria-label="Current directory">
-          <button @click="goTo('')">Project</button>
-          <template v-for="crumb in crumbs" :key="crumb.path">
-            <span>/</span><button @click="goTo(crumb.path)">{{ crumb.name }}</button>
-          </template>
-        </nav>
-        <div class="pf-tools">
-          <input v-model.trim="search" placeholder="Search this folder" @keyup.enter="searchFiles" />
-          <button @click="searchFiles">Search</button>
-          <button v-if="!readOnly" @click="newFolder">+ Folder</button>
-          <button title="Refresh" @click="load">↻</button>
-        </div>
+    <template v-if="view === 'files'">
+      <div v-if="readOnly" class="pjx-banner" data-tone="need"><ProjectsIcon name="lock" /><div class="pjx-banner__body">This project is {{ status.toLowerCase() }}. Its files stay available to browse and download, but cannot be changed.</div></div>
+      <div v-else-if="uploading" class="ot-os pjx-embed pjx-fs__upload">
+        <ProjectsFileUploader
+          purpose="existingProject"
+          :project-id="projectId"
+          :destination-prefix="currentPath"
+          :title="`Upload to /${currentPath || 'project'}`"
+          hint="Files and folders keep their relative paths. Three files upload at once, and an interrupted file can be retried."
+          @committed="afterMutation"
+        />
       </div>
 
-      <div v-if="error" class="pf-error">{{ error }}</div>
-      <div v-if="loading" class="pf-empty">Loading shared files…</div>
-      <div v-else-if="!entries.length" class="pf-empty">{{ search ? 'No matching files.' : 'This folder is empty.' }}</div>
-      <div v-else class="pf-table-wrap">
-        <table class="pf-table">
-          <thead><tr><th>Name</th><th>Size</th><th>Added by</th><th>Modified</th><th>Notes</th><th></th></tr></thead>
+      <div v-if="loading && !entries.length" class="pjx-dim" style="font-size: 12px"><ProjectsIcon name="refresh" class="pjx-spin" /> Loading shared files…</div>
+      <div v-else-if="!entries.length" class="pjx-empty">
+        <ProjectsIcon name="folder" /><b>{{ search ? 'No matching files' : 'This folder is empty' }}</b>
+        <span>{{ search ? 'Search looks inside this folder and below.' : 'One filesystem for you, the Commander and every agent; every change records who made it.' }}</span>
+      </div>
+      <div v-else class="pjx-fs__table">
+        <table>
+          <thead><tr><th>Name</th><th class="pjx-fs__num">Size</th><th>Added by</th><th>Modified</th><th>Notes</th><th aria-label="Actions"></th></tr></thead>
           <tbody>
-            <tr v-for="entry in entries" :key="entry.fileID" :class="{ selected: selected?.fileID === entry.fileID }" @click="selected = entry" @dblclick="openEntry(entry)">
+            <tr v-for="entry in entries" :key="entry.fileID" @dblclick="openEntry(entry)">
               <td>
-                <button class="pf-name" @click.stop="openEntry(entry)">
-                  <span class="pf-kind">{{ entry.kind === 'Directory' ? '▸' : fileIcon(entry) }}</span>
-                  <span>{{ baseName(entry.path) }}</span><span v-if="entry.important" class="pf-star" title="Important">★</span>
+                <button type="button" class="pjx-fs__name" :title="entry.path" @click="openEntry(entry)">
+                  <ProjectsIcon :name="entry.kind === 'Directory' ? 'folder' : 'copy'" :data-dir="entry.kind === 'Directory' || undefined" />
+                  <span class="pjx-truncate">{{ baseName(entry.path) }}</span>
+                  <span v-if="entry.important" class="pjx-fs__star" title="Important to the agents">★</span>
                 </button>
-                <span class="pf-origin">{{ originLabel(entry.origin) }}</span>
+                <span class="pjx-fs__origin">{{ originLabel(entry.origin) }}</span>
               </td>
-              <td class="pf-muted">{{ entry.kind === 'Directory' ? '—' : formatBytes(entry.size) }}</td>
-              <td><span :title="`${entry.createdBy?.type || 'Unknown'} · ${entry.createdBy?.id || ''}`">{{ entry.createdBy?.displayName || 'Unknown' }}</span></td>
-              <td class="pf-muted" :title="formatDate(entry.modifiedUtc)">{{ relativeDate(entry.modifiedUtc) }}</td>
-              <td class="pf-note" :title="entry.description || ''">{{ entry.description || '—' }}</td>
-              <td><button class="pf-more" @click.stop="showActions(entry)">•••</button></td>
+              <td class="pjx-fs__num pjx-dim">{{ entry.kind === 'Directory' ? '—' : formatBytes(entry.size) }}</td>
+              <td class="pjx-dim"><span :title="`${entry.createdBy?.type || 'Unknown'} · ${entry.createdBy?.id || ''}`">{{ entry.createdBy?.displayName || 'Unknown' }}</span></td>
+              <td class="pjx-dim" :title="formatDate(entry.modifiedUtc)">{{ relativeDate(entry.modifiedUtc) }}</td>
+              <td class="pjx-fs__note" :title="entry.description || ''">{{ entry.description || '—' }}</td>
+              <td class="pjx-fs__actions">
+                <button v-if="entry.kind !== 'Directory'" class="pjx-iconbtn pjx-iconbtn--sm" title="Download" :aria-label="`Download ${baseName(entry.path)}`" @click="download(entry)"><ProjectsIcon name="download" /></button>
+                <template v-if="!readOnly">
+                  <button class="pjx-iconbtn pjx-iconbtn--sm" title="Notes and importance" :aria-label="`Edit notes for ${baseName(entry.path)}`" @click="openDialog('metadata', entry)"><ProjectsIcon name="edit" /></button>
+                  <button class="pjx-iconbtn pjx-iconbtn--sm" title="Move or rename" :aria-label="`Move or rename ${baseName(entry.path)}`" @click="openDialog('move', entry)"><ProjectsIcon name="arrow-right" /></button>
+                  <button class="pjx-iconbtn pjx-iconbtn--sm" title="Copy" :aria-label="`Copy ${baseName(entry.path)}`" @click="openDialog('copy', entry)"><ProjectsIcon name="copy" /></button>
+                  <button class="pjx-iconbtn pjx-iconbtn--sm" data-tone="fault" title="Delete" :aria-label="`Delete ${baseName(entry.path)}`" @click="openDialog('delete', entry)"><ProjectsIcon name="trash" /></button>
+                </template>
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <div v-if="total > entries.length || cursorStack.length" class="pf-pages">
-        <span>{{ total }} item{{ total === 1 ? '' : 's' }}</span>
-        <button :disabled="!cursorStack.length" @click="previousPage">Previous</button>
-        <button :disabled="!nextCursor" @click="nextPage">Next</button>
+      <div v-if="total > entries.length || cursorStack.length" class="pjx-fs__pages">
+        <span class="pjx-dim">{{ total }} {{ total === 1 ? 'item' : 'items' }}</span>
+        <button class="pjx-btn pjx-btn--ghost pjx-btn--sm" :disabled="!cursorStack.length" @click="previousPage"><ProjectsIcon name="chevron-left" />Previous</button>
+        <button class="pjx-btn pjx-btn--ghost pjx-btn--sm" :disabled="!nextCursor" @click="nextPage">Next<ProjectsIcon name="chevron-right" /></button>
       </div>
     </template>
 
     <template v-else>
-      <div v-if="historyLoading" class="pf-empty">Loading file history…</div>
-      <div v-else-if="!events.length" class="pf-empty">No file activity yet.</div>
-      <ol v-else class="pf-history">
+      <div v-if="historyLoading" class="pjx-dim" style="font-size: 12px"><ProjectsIcon name="refresh" class="pjx-spin" /> Loading file history…</div>
+      <div v-else-if="!events.length" class="pjx-empty"><ProjectsIcon name="clock" /><b>No file activity yet</b></div>
+      <ol v-else class="pjx-fs__history">
         <li v-for="event in events" :key="event.eventID">
-          <span class="pf-history-op">{{ event.operation }}</span>
-          <div><strong>{{ event.path }}</strong><span v-if="event.previousPath"> from {{ event.previousPath }}</span></div>
-          <small>{{ event.actor?.displayName || 'Unknown' }} · {{ formatDate(event.timestampUtc) }}<span v-if="event.size != null"> · {{ formatBytes(event.size) }}</span></small>
+          <span class="pjx-chip" :data-tone="opTone(event.operation)">{{ String(event.operation || '').toLowerCase() }}</span>
+          <div class="pjx-fs__history-path"><b>{{ event.path }}</b><span v-if="event.previousPath" class="pjx-dim"> from {{ event.previousPath }}</span></div>
+          <span class="pjx-dim pjx-fs__history-meta">{{ event.actor?.displayName || 'Unknown' }} · {{ formatDate(event.timestampUtc) }}<template v-if="event.size != null"> · {{ formatBytes(event.size) }}</template></span>
         </li>
       </ol>
-      <button v-if="historyCursor" class="pf-load-more" @click="loadMoreHistory">Load older activity</button>
+      <button v-if="historyCursor" class="pjx-btn pjx-btn--ghost pjx-btn--sm" style="align-self: flex-start" @click="loadMoreHistory">Load older activity</button>
     </template>
+
+    <!-- One dialog for every file action, in the console's own chrome. -->
+    <ProjectsDialog :open="!!dialog" :title="dialogTitle" :subtitle="dialog?.entry?.path" @close="dialog = null">
+      <template v-if="dialog">
+        <div v-if="dialog.kind === 'delete'" class="pjx-note" data-tone="fault">
+          {{ dialog.entry?.kind === 'Directory' ? 'The folder and everything inside it will be deleted.' : 'The file will be removed from the shared project filesystem.' }}
+        </div>
+        <template v-else-if="dialog.kind === 'metadata'">
+          <div class="pjx-field">
+            <label class="pjx-field__label" for="pjx-fs-notes">Notes for the agents</label>
+            <textarea id="pjx-fs-notes" v-model="dialog.description" class="pjx-textarea" maxlength="500" rows="3" placeholder="How should agents use this file?"></textarea>
+          </div>
+          <label class="pjx-toggle">
+            <span class="pjx-toggle__copy"><b>Important</b><span>Flagged files are pointed out to every project worker.</span></span>
+            <span class="pjx-switchbox"><input v-model="dialog.important" type="checkbox" class="pjx-switchbox__input" aria-label="Important" /><span class="pjx-switch" :data-on="dialog.important || undefined" aria-hidden="true"></span></span>
+          </label>
+        </template>
+        <div v-else class="pjx-field">
+          <label class="pjx-field__label" for="pjx-fs-path">{{ dialog.kind === 'folder' ? 'Folder name or path' : 'Destination path' }}</label>
+          <input id="pjx-fs-path" v-model.trim="dialog.value" class="pjx-input pjx-mono" @keyup.enter="confirmDialog" />
+        </div>
+        <p v-if="dialogError" class="pjx-note" data-tone="fault" role="alert" style="margin-top: 8px">{{ dialogError }}</p>
+      </template>
+      <template #foot>
+        <button class="pjx-btn" @click="dialog = null">Cancel</button>
+        <button class="pjx-btn" :class="dialog?.kind === 'delete' ? 'pjx-btn--danger' : 'pjx-btn--primary'" :disabled="working" @click="confirmDialog">
+          {{ working ? 'Working…' : dialogAction }}
+        </button>
+      </template>
+    </ProjectsDialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import Swal from 'sweetalert2';
+import ProjectsDialog from '~/components/Projects/Dialog.vue';
 import ProjectsFileUploader from '~/components/Projects/FileUploader.vue';
+import ProjectsIcon from '~/components/Projects/Icon.vue';
 import { useProjectFiles, type ProjectFileEntry } from '~/composables/useProjectFiles';
+import type { PjTone } from '~/scripts/projectsConsole';
 
 const props = defineProps<{ projectId: string; status: string }>();
 const api = useProjectFiles();
@@ -102,17 +142,30 @@ const cursorStack = ref<string[]>([]);
 const search = ref('');
 const loading = ref(false);
 const error = ref('');
-const selected = ref<ProjectFileEntry | null>(null);
+const uploading = ref(false);
 const view = ref<'files' | 'history'>('files');
 const events = ref<any[]>([]);
 const historyCursor = ref('');
 const historyLoading = ref(false);
+
+type DialogKind = 'folder' | 'metadata' | 'move' | 'copy' | 'delete';
+interface FileDialog { kind: DialogKind; entry?: ProjectFileEntry; value: string; description: string; important: boolean }
+const dialog = ref<FileDialog | null>(null);
+const dialogError = ref('');
+const working = ref(false);
 
 const readOnly = computed(() => ['Completed', 'Archived'].includes(props.status));
 const crumbs = computed(() => {
   let path = '';
   return currentPath.value.split('/').filter(Boolean).map(name => ({ name, path: path = path ? `${path}/${name}` : name }));
 });
+const dialogTitle = computed(() => {
+  const d = dialog.value;
+  if (!d) return '';
+  const name = d.entry ? baseName(d.entry.path) : '';
+  return ({ folder: 'New folder', metadata: 'Notes and importance', move: `Move or rename ${name}`, copy: `Copy ${name}`, delete: `Delete ${name}?` } as Record<DialogKind, string>)[d.kind];
+});
+const dialogAction = computed(() => ({ folder: 'Create folder', metadata: 'Save', move: 'Move', copy: 'Copy', delete: 'Delete' } as Record<DialogKind, string>)[dialog.value?.kind ?? 'folder']);
 
 async function load() {
   loading.value = true;
@@ -122,8 +175,7 @@ async function load() {
     entries.value = result.entries || [];
     total.value = result.total || 0;
     nextCursor.value = result.nextCursor || '';
-    selected.value = null;
-  } catch (e: any) { error.value = e?.message || 'Could not load files.'; }
+  } catch (e: any) { error.value = e?.message || 'Could not load the files.'; }
   finally { loading.value = false; }
 }
 
@@ -140,80 +192,46 @@ function previousPage() { cursor.value = cursorStack.value.pop() || ''; load(); 
 function openEntry(entry: ProjectFileEntry) { entry.kind === 'Directory' ? goTo(entry.path) : download(entry); }
 async function download(entry: ProjectFileEntry) {
   error.value = '';
-  try { await api.download(props.projectId, entry.path); } catch (e: any) { error.value = e?.message || 'Download failed.'; }
+  try { await api.download(props.projectId, entry.path); } catch (e: any) { error.value = e?.message || 'The download failed.'; }
 }
 
-async function newFolder() {
-  const result = await prompt('New folder', 'Folder name or path', currentPath.value ? `${currentPath.value}/` : '');
-  if (!result) return;
-  await runMutation('directory', { projectID: props.projectId, path: result });
+function openDialog(kind: DialogKind, entry?: ProjectFileEntry) {
+  dialogError.value = '';
+  dialog.value = {
+    kind, entry,
+    value: kind === 'folder' ? (currentPath.value ? `${currentPath.value}/` : '') : entry?.path ?? '',
+    description: entry?.description ?? '',
+    important: !!entry?.important,
+  };
 }
 
-async function showActions(entry: ProjectFileEntry) {
-  const actions: Record<string, string> = { download: 'Download' };
-  if (entry.kind === 'Directory') delete actions.download;
-  if (!readOnly.value) {
-    actions.metadata = entry.important ? 'Edit notes / unmark important' : 'Edit notes / mark important';
-    actions.move = 'Move / rename';
-    actions.copy = 'Copy';
-    actions.delete = 'Delete';
+async function confirmDialog() {
+  const d = dialog.value;
+  if (!d || working.value) return;
+  const body: Record<string, unknown> = { projectID: props.projectId };
+  let route: string = d.kind;
+  if (d.kind === 'folder') {
+    const path = d.value.replace(/\/+$/, '');
+    if (!path) { dialogError.value = 'A folder name is required.'; return; }
+    route = 'directory'; body.path = path;
+  } else if (d.kind === 'move' || d.kind === 'copy') {
+    if (!d.value) { dialogError.value = 'A destination path is required.'; return; }
+    if (d.value === d.entry?.path) { dialog.value = null; return; }
+    body.path = d.entry?.path; body.destination = d.value;
+  } else if (d.kind === 'metadata') {
+    body.path = d.entry?.path; body.description = d.description; body.important = d.important;
+  } else {
+    body.path = d.entry?.path; body.recursive = d.entry?.kind === 'Directory';
   }
-  const result = await Swal.fire({
-    title: baseName(entry.path),
-    input: 'select', inputOptions: actions, inputPlaceholder: 'Choose an action',
-    showCancelButton: true, confirmButtonText: 'Continue', confirmButtonColor: '#4d9e39',
-    background: '#161516', color: '#fff',
-  });
-  if (!result.value) return;
-  if (result.value === 'download') return download(entry);
-  if (result.value === 'metadata') return editMetadata(entry);
-  if (result.value === 'move' || result.value === 'copy') {
-    const destination = await prompt(result.value === 'move' ? 'Move or rename' : 'Copy path', 'Destination path', entry.path);
-    if (destination && destination !== entry.path) await runMutation(result.value, { projectID: props.projectId, path: entry.path, destination });
-    return;
-  }
-  if (result.value === 'delete') await remove(entry);
-}
-
-async function editMetadata(entry: ProjectFileEntry) {
-  const result = await Swal.fire({
-    title: 'Shared-file details',
-    html: `<textarea id="pf-description" class="swal2-textarea" maxlength="500" placeholder="Describe how agents should use this file"></textarea><label style="display:flex;gap:8px;justify-content:center"><input id="pf-important" type="checkbox"> Important to project workers</label>`,
-    didOpen: () => {
-      const description = document.getElementById('pf-description') as HTMLTextAreaElement;
-      const important = document.getElementById('pf-important') as HTMLInputElement;
-      description.value = entry.description || '';
-      important.checked = entry.important;
-    },
-    preConfirm: () => ({
-      description: (document.getElementById('pf-description') as HTMLTextAreaElement).value,
-      important: (document.getElementById('pf-important') as HTMLInputElement).checked,
-    }),
-    showCancelButton: true, confirmButtonText: 'Save', confirmButtonColor: '#4d9e39', background: '#161516', color: '#fff',
-  });
-  if (result.value) await runMutation('metadata', { projectID: props.projectId, path: entry.path, ...result.value });
-}
-
-async function remove(entry: ProjectFileEntry) {
-  const result = await Swal.fire({
-    icon: 'warning', title: `Delete ${baseName(entry.path)}?`,
-    text: entry.kind === 'Directory' ? 'The folder and everything inside it will be deleted.' : 'The file will be removed from the shared project filesystem.',
-    showCancelButton: true, confirmButtonText: 'Delete', confirmButtonColor: '#a33', background: '#161516', color: '#fff',
-  });
-  if (result.isConfirmed) await runMutation('delete', { projectID: props.projectId, path: entry.path, recursive: entry.kind === 'Directory' });
-}
-
-async function runMutation(route: string, body: Record<string, unknown>) {
-  error.value = '';
-  try { await api.mutate(route, body); await afterMutation(); }
-  catch (e: any) { error.value = e?.message || `Could not ${route}.`; }
+  working.value = true;
+  try {
+    await api.mutate(route, body);
+    dialog.value = null;
+    await afterMutation();
+  } catch (e: any) { dialogError.value = e?.message || `Could not ${dialogAction.value.toLowerCase()}.`; }
+  finally { working.value = false; }
 }
 async function afterMutation() { resetPages(); await load(); }
-
-async function prompt(title: string, label: string, value: string) {
-  const result = await Swal.fire({ title, input: 'text', inputLabel: label, inputValue: value, showCancelButton: true, confirmButtonColor: '#4d9e39', background: '#161516', color: '#fff', inputValidator: v => v.trim() ? undefined : 'A path is required.' });
-  return result.value?.trim() || '';
-}
 
 async function openHistory() {
   view.value = 'history';
@@ -226,14 +244,17 @@ async function loadHistory(append: boolean) {
     const result = await api.audit(props.projectId, append ? historyCursor.value : '');
     events.value = append ? [...events.value, ...(result.events || [])] : (result.events || []);
     historyCursor.value = result.nextCursor || '';
-  } catch (e: any) { error.value = e?.message || 'Could not load history.'; }
+  } catch (e: any) { error.value = e?.message || 'Could not load the history.'; }
   finally { historyLoading.value = false; }
 }
 function loadMoreHistory() { loadHistory(true); }
 
 function baseName(path: string) { return path.split('/').pop() || path; }
-function fileIcon(entry: ProjectFileEntry) { return entry.mimeType?.startsWith('image/') ? '▧' : entry.mimeType?.includes('pdf') ? 'PDF' : '·'; }
-function originLabel(origin: string) { return ({ InitialUpload: 'project setup', UserUpload: 'user upload', AgentTool: 'agent-created', Filesystem: 'workspace' } as Record<string, string>)[origin] || origin; }
+function originLabel(origin: string) { return ({ InitialUpload: 'project setup', UserUpload: 'your upload', AgentTool: 'agent-created', Filesystem: 'workspace' } as Record<string, string>)[origin] || origin; }
+function opTone(op: string): PjTone {
+  const o = String(op || '').toLowerCase();
+  return o.includes('delete') ? 'fault' : o.includes('create') || o.includes('upload') || o.includes('write') ? 'work' : o.includes('move') || o.includes('rename') ? 'plan' : 'info';
+}
 function formatBytes(value: number) {
   if (!value) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -253,45 +274,3 @@ function relativeDate(value: string) {
 watch(() => props.projectId, () => { currentPath.value = ''; resetPages(); load(); });
 onMounted(load);
 </script>
-
-<style scoped>
-.pf-panel { background: var(--ot-surface); border: 1px solid var(--ot-line); border-radius: 9px; padding: 16px; min-height: 420px; }
-.pf-head { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 16px; }
-.pf-head h2 { margin: 0 0 4px; font-size: 16px; }
-.pf-head p { margin: 0; color: var(--ot-muted); font-size: 11px; line-height: 1.5; }
-.pf-head-actions { display: flex; align-items: flex-start; gap: 4px; }
-.pf-head-actions button, .pf-tools button, .pf-pages button, .pf-load-more { background: var(--ot-surface-2); border: 1px solid var(--ot-line-strong); color: var(--ot-text-2); border-radius: 5px; padding: 6px 10px; cursor: pointer; }
-.pf-head-actions button.active { color: var(--ot-text); border-color: var(--ot-accent); }
-.pf-readonly { color: var(--ot-warning); background: var(--ot-warning-soft); border-radius: 6px; padding: 9px 11px; font-size: 11px; margin-bottom: 12px; }
-.pf-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px 0 10px; }
-.pf-crumbs { display: flex; gap: 6px; align-items: center; min-width: 0; overflow: hidden; }
-.pf-crumbs span { color: var(--ot-muted); }
-.pf-crumbs button { border: 0; background: none; color: var(--ot-info); cursor: pointer; padding: 2px; white-space: nowrap; }
-.pf-tools { display: flex; gap: 6px; }
-.pf-tools input { width: 190px; background: var(--ot-surface); color: var(--ot-text); border: 1px solid var(--ot-line-strong); border-radius: 5px; padding: 6px 8px; }
-.pf-error { color: var(--ot-negative); background: var(--ot-negative-soft); padding: 8px; border-radius: 5px; font-size: 11px; margin-bottom: 8px; }
-.pf-empty { color: var(--ot-muted); padding: 45px 12px; text-align: center; font-size: 12px; }
-.pf-table-wrap { overflow-x: auto; border: 1px solid var(--ot-line); border-radius: 7px; }
-.pf-table { width: 100%; border-collapse: collapse; font-size: 11px; }
-.pf-table th { text-align: left; color: var(--ot-muted); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--ot-line-strong); white-space: nowrap; }
-.pf-table td { padding: 8px 10px; border-bottom: 1px solid var(--ot-line); color: var(--ot-text-2); }
-.pf-table tr:last-child td { border-bottom: 0; }
-.pf-table tbody tr:hover, .pf-table tbody tr.selected { background: var(--ot-surface-2); }
-.pf-name { border: 0; padding: 0; background: none; color: var(--ot-text); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; font-size: 12px; }
-.pf-kind { color: var(--ot-info); width: 18px; text-align: center; font-size: 9px; }
-.pf-star { color: var(--ot-warning); }
-.pf-origin { display: block; color: var(--ot-muted); margin-left: 25px; margin-top: 2px; font-size: 9px; }
-.pf-muted { color: var(--ot-muted) !important; white-space: nowrap; }
-.pf-note { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ot-muted) !important; }
-.pf-more { border: 0; background: none; color: var(--ot-muted); cursor: pointer; }
-.pf-pages { display: flex; justify-content: flex-end; align-items: center; gap: 7px; color: var(--ot-muted); font-size: 10px; margin-top: 9px; }
-.pf-pages button:disabled { opacity: .35; cursor: default; }
-.pf-history { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--ot-line); }
-.pf-history li { display: grid; grid-template-columns: 110px 1fr auto; gap: 12px; align-items: center; border-bottom: 1px solid var(--ot-line); padding: 10px 5px; font-size: 11px; }
-.pf-history-op { color: var(--ot-positive); text-transform: lowercase; }
-.pf-history div { color: var(--ot-muted); min-width: 0; overflow-wrap: anywhere; }
-.pf-history strong { color: var(--ot-text); }
-.pf-history small { color: var(--ot-muted); white-space: nowrap; }
-.pf-load-more { margin-top: 12px; }
-@media (max-width: 800px) { .pf-head, .pf-toolbar { flex-direction: column; align-items: stretch; } .pf-tools { flex-wrap: wrap; } .pf-tools input { flex: 1; } .pf-history li { grid-template-columns: 80px 1fr; } .pf-history small { grid-column: 2; } }
-</style>

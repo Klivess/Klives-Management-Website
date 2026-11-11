@@ -2,9 +2,9 @@ import { expect, test, type Page } from '@playwright/test';
 import { dashboardTestOrigin, installDashboardApiMock } from './fixtures/dashboard-api';
 
 /**
- * The Projects workspace on the ot-os design system: the project Overview (decisions first), the
- * fleet Computers page, site Playbooks and the autonomy limits in Settings. Every route is mocked;
- * these tests pin what Klives sees and the exact contracts the buttons send.
+ * The Projects workspace on the Projects console design: the project Overview (decisions first), the
+ * fleet Computers page, site Playbooks, Chat, wake triggers and the autonomy limits in Settings. Every
+ * route is mocked; these tests pin what Klives sees and the exact contracts the buttons send.
  */
 
 const now = Date.now();
@@ -56,7 +56,7 @@ async function workspace(page: Page, extra: (path: string, url: URL) => any = ()
     const url = new URL(route.request().url());
     const json = (value: any, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
     const custom = extra(url.pathname, url);
-    if (custom !== undefined) return json(custom);
+    if (custom !== undefined) return custom?.__status ? json(custom.__body ?? {}, custom.__status) : json(custom);
     if (route.request().method() === 'POST') {
       const body = route.request().postDataJSON();
       state.mutations.push({ path: url.pathname, body });
@@ -79,7 +79,9 @@ async function workspace(page: Page, extra: (path: string, url: URL) => any = ()
       case '/projects/steps': return json({ steps: [
         { stepID: 's0', title: 'Register the shop', status: 'Done' },
         { stepID: 's1', title: 'List the first ten products', status: 'Active', attempts: 2, nextConcreteAction: 'Upload the mug photos from outputs/photos' },
-        { stepID: 's2', title: 'Write the about page', status: 'Pending' },
+        // ProjectStepStatus is Queued/Active/Done/Abandoned/Blocked; this fixture once said 'Pending', which
+        // hid that the overview's "up next" never matched a real queued step.
+        { stepID: 's2', title: 'Write the about page', status: 'Queued', order: 2 },
       ] });
       case '/projects/computers/list': return json(url.searchParams.get('projectID') ? fleet.filter(c => c.projectID === url.searchParams.get('projectID')) : fleet);
       case '/projects/computers/health': return json({ available: true, daemonProblem: null, endpoint: 'npipe://./pipe/docker_engine', lastSupervisionUtc: iso(30_000),
@@ -95,7 +97,8 @@ async function workspace(page: Page, extra: (path: string, url: URL) => any = ()
         { agentID: 'w1', role: 'scraper', isCommander: false, awake: false, objective: 'Collect competitor prices.', lastReportAt: iso(3_600_000) },
       ]);
       case '/projects/observables': return json([{ observableID: 'o1', name: 'Revenue this week', type: 'Numeric', displayValue: '$120.00', updatedAt: iso(600_000),
-        history: Array.from({ length: 8 }, (_, i) => ({ timestamp: iso((8 - i) * 3_600_000), value: 40 + i * 10, numericValue: 40 + i * 10 })) }]);
+        // The server's ObservableSample shape: numericValue, no `value` (a `value` here once hid sparklines that never drew live).
+        history: Array.from({ length: 8 }, (_, i) => ({ timestamp: iso((8 - i) * 3_600_000), numericValue: 40 + i * 10, updatedBy: 'commander' })) }]);
       case '/projects/digest': return json({ currentFocus: 'Get the first ten listings live before the weekend.' });
       case '/projects/ledger': return json({ tokenSpendUsd: 12.5, moneySpendUsd: 3 });
       case '/projects/grandplan': return json({ current: { version: 2, content: { milestones: [
@@ -135,15 +138,51 @@ test('the project overview puts decisions first and summarises the work', async 
   await expect(page.getByRole('region', { name: 'Project at a glance' })).toContainText('$12.50');
   await expect(page.getByText('List the first ten products')).toBeVisible();
   await expect(page.getByText('Next: Upload the mug photos from outputs/photos')).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Up next' })).toContainText('Write the about page');
   await expect(page.locator('.po-messages')).toContainText('Two listings are live; photos for the rest are uploading.');
   await expect(page.locator('.po-obs')).toContainText('Revenue this week');
+  await expect(page.locator('.po-obs').getByRole('img', { name: 'Revenue this week history' })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('workspace-overview.png'), fullPage: true });
 
   await approvals.getByRole('button', { name: 'Approve' }).click();
   await expect.poll(() => state.mutations.find(m => m.path === '/projects/gates/resolve')?.body)
     .toEqual({ projectID: 'storefront', gateID: 'g1', decision: 'Approve', comment: '' });
   await expect(approvals).toHaveCount(0);
+
+  // A one-line steer from the overview goes as Chat (it ages out), not as a durable task.
+  await page.getByRole('textbox', { name: 'Message the Commander' }).fill('Prioritise the mugs');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect.poll(() => state.mutations.find(m => m.path === '/projects/message')?.body)
+    .toEqual({ projectID: 'storefront', text: 'Prioritise the mugs', kind: 'steering' });
   expect(errors).toEqual([]);
+});
+
+test('a message that fails to send goes back in the box', async ({ page }) => {
+  await workspace(page, path => path === '/projects/message' ? { __status: 500, __body: { error: 'The project store is offline.' } } : undefined);
+  await page.goto('/projects/storefront');
+  await page.getByRole('tab', { name: 'Chat' }).click();
+  const box = page.getByRole('textbox', { name: 'Message the Commander' });
+  await box.fill('Ship the about page today');
+  await box.press('Enter');
+  await expect(page.getByText("Your message didn't send: The project store is offline.")).toBeVisible();
+  await expect(box).toHaveValue('Ship the about page today');
+  // The optimistic bubble comes off: nothing in the thread pretends the message was sent.
+  await expect(page.locator('.cp-event.pending')).toHaveCount(0);
+});
+
+test('a wake trigger with a broken spec is refused before it is sent', async ({ page }) => {
+  const state = await workspace(page);
+  await page.goto('/projects/storefront?tab=settings');
+  await page.getByRole('button', { name: 'New trigger' }).click();
+  const spec = page.getByLabel('Source spec');
+  await spec.fill('{"intervalSeconds": 60');
+  await expect(page.getByText('not valid JSON')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Create trigger' })).toBeDisabled();
+  await spec.fill('{"intervalSeconds": 60}');
+  await page.getByRole('button', { name: 'Create trigger' }).click();
+  await expect.poll(() => state.mutations.find(m => m.path === '/projects/hooks/create')?.body).toEqual({
+    projectID: 'storefront', sourceKind: 'timer', recognitionCriterion: '', sourceSpecJson: '{"intervalSeconds":60}',
+  });
 });
 
 test('old tab links still land on the right section', async ({ page }) => {
@@ -173,7 +212,8 @@ test('the computers page shows the whole fleet and repairs gently', async ({ pag
   const state = await workspace(page);
   await page.goto('/projects/computers');
   const summary = page.getByRole('region', { name: 'Computer host summary' });
-  await expect(summary).toContainText('1 / 3');
+  await expect(summary).toContainText(/1\s*of 3 slots/);
+  await expect(page.getByTestId('computers-verdict')).toContainText('1 computer needs attention');
   await expect(page.locator('[data-container-id]')).toHaveCount(3);
   await page.screenshot({ path: testInfo.outputPath('computers-fleet.png'), fullPage: true });
 
@@ -219,9 +259,9 @@ test('playbooks can be searched, written and removed', async ({ page }, testInfo
   });
   await expect(page.locator('.pb-item')).toHaveCount(3);
 
-  page.once('dialog', dialog => dialog.accept());
   await page.locator('.pb-item', { hasText: 'tiktok.com' }).click();
-  await page.getByRole('button', { name: 'Delete' }).click();
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Delete the tiktok.com playbook?' }).getByRole('button', { name: 'Delete for every project' }).click();
   await expect.poll(() => state.mutations.find(m => m.path === '/projects/playbooks/delete')?.body).toEqual({ domain: 'tiktok.com' });
   await expect(page.locator('.pb-item')).toHaveCount(2);
 });
@@ -260,9 +300,10 @@ test('timeline lanes sit on the dark surface, not a pale band', async ({ page },
   const lane = page.locator('rect.lane-bg.lane-commander').first();
   await expect(lane).toBeAttached();
   // The Commander's lane is a faint accent tint over the dark card; the colour mapping had turned every
-  // lane into the light axis grey (rgb(111, 125, 106)), which read as a pale band across the timeline.
+  // lane into the light axis grey, which read as a pale band across the timeline. The tint is the
+  // Projects console's accent violet.
   const fill = await lane.evaluate(el => getComputedStyle(el).fill);
-  expect(fill).toBe('rgba(109, 220, 79, 0.06)');
+  expect(fill).toBe('rgba(143, 128, 255, 0.06)');
   expect(fill).not.toBe('rgb(111, 125, 106)');
   await page.screenshot({ path: testInfo.outputPath('timeline.png'), fullPage: true });
 });

@@ -1,0 +1,75 @@
+<template>
+  <svg class="kax-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path :d="path" /></svg>
+</template>
+
+<script setup lang="ts">
+import { computed } from 'vue';
+
+/* KliveAgent's own icons: one stroked path each on a 24px grid, so they share a weight. */
+const ICONS = {
+  agent: 'M12 3l2.2 5.3L20 9.5l-4.4 3.8L17 19l-5-3-5 3 1.4-5.7L4 9.5l5.8-1.2z',
+  spark: 'M12 3v4 M12 17v4 M3 12h4 M17 12h4 M6.3 6.3l2.5 2.5 M15.2 15.2l2.5 2.5 M6.3 17.7l2.5-2.5 M15.2 8.8l2.5-2.5',
+  chat: 'M4 5h16v11H9l-5 4z',
+  message: 'M4 6h16v11H8l-4 3z M8 10h8 M8 13h5',
+  insights: 'M4 20V10 M10 20V4 M16 20v-7 M22 20H2',
+  library: 'M4 4h5v16H4z M9 4h5v16H9z M15 5l4-1 3 15.5-4 1z',
+  search: 'M11 4a7 7 0 1 0 0 14a7 7 0 0 0 0-14z M21 21l-4.8-4.8',
+  refresh: 'M20 11a8 8 0 0 0-14.9-3 M4 4v4h4 M4 13a8 8 0 0 0 14.9 3 M20 20v-4h-4',
+  plus: 'M12 5v14 M5 12h14',
+  x: 'M6 6l12 12 M18 6L6 18',
+  check: 'M5 12.5l4.5 4.5L19 7.5',
+  'check-circle': 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z M8 12.3l2.7 2.7L16 9.5',
+  alert: 'M12 4L2.8 19.5h18.4z M12 10v4.5 M12 17.2h.01',
+  'octagon-x': 'M8.2 3h7.6L21 8.2v7.6L15.8 21H8.2L3 15.8V8.2z M9.5 9.5l5 5 M14.5 9.5l-5 5',
+  info: 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z M12 11v5.5 M12 7.8h.01',
+  flag: 'M5 21V4 M5 4h11l-2 4 2 4H5',
+  layers: 'M12 3l9 5-9 5-9-5z M3 13l9 5 9-5',
+  clock: 'M12 4a8 8 0 1 0 0 16a8 8 0 0 0 0-16z M12 8v4l3 2',
+  calendar: 'M4 6h16v14H4z M4 10h16 M8 3v5 M16 3v5',
+  repeat: 'M17 3l3 3-3 3 M4 11V9a3 3 0 0 1 3-3h13 M7 21l-3-3 3-3 M20 13v2a3 3 0 0 1-3 3H4',
+  monitor: 'M3 5h18v12H3z M8 21h8 M12 17v4',
+  screen: 'M3 5h18v12H3z M8 21h8 M12 17v4 M7 13l3-3 2 2 4-4',
+  inbox: 'M4 13l2.5-8h11l2.5 8v6H4z M4 13h5l1 2h4l1-2h5',
+  paperclip: 'M20 11.5l-8.2 8.2a5 5 0 0 1-7.1-7.1L13 4.4a3.4 3.4 0 0 1 4.8 4.8l-8.1 8.1a1.7 1.7 0 0 1-2.4-2.4L14.6 7.6',
+  send: 'M4 12l16-8-6 16-2.5-6.5z M11.5 13.5L20 4',
+  stop: 'M7 7h10v10H7z',
+  mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z M5 11a7 7 0 0 0 14 0 M12 18v3',
+  download: 'M12 4v11 M7 10l5 5 5-5 M5 20h14',
+  copy: 'M9 9h11v11H9z M5 15H4V4h11v1',
+  trash: 'M5 7h14 M10 4h4 M7 7l1 13h8l1-13 M10 11v6 M14 11v6',
+  code: 'M8 7l-5 5 5 5 M16 7l5 5-5 5 M14 4l-4 16',
+  terminal: 'M4 5h16v14H4z M7 9l3 3-3 3 M12 15h5',
+  memory: 'M9 4a3 3 0 0 0-3 3v1a3 3 0 0 0-2 2.8A3 3 0 0 0 6 14v1a3 3 0 0 0 3 3h1V4z M15 4a3 3 0 0 1 3 3v1a3 3 0 0 1 2 2.8A3 3 0 0 1 18 14v1a3 3 0 0 1-3 3h-1V4z',
+  bolt: 'M13 3L5 13h6l-1 8 8-10h-6z',
+  wrench: 'M14.5 4a4.5 4.5 0 0 0-4.2 6.1L4 16.4V20h3.6l6.3-6.3A4.5 4.5 0 1 0 14.5 4z',
+  tag: 'M3 12V4h8l10 10-8 8z M7.5 7.5h.01',
+  key: 'M14.5 4a5.5 5.5 0 1 0 0 11a5.5 5.5 0 0 0 0-11z M10.6 13.4L3 21 M5.5 18.5L8 21 M8 16l2.2 2.2',
+  user: 'M12 11a4 4 0 1 0 0-8a4 4 0 0 0 0 8z M4 21a8 8 0 0 1 16 0',
+  robot: 'M5 9h14v10H5z M12 5v4 M9 13h.01 M15 13h.01 M9 16h6 M3 12v4 M21 12v4',
+  discord: 'M7 7c3.3-1.3 6.7-1.3 10 0l1.5 9c-1.6 1.2-3.2 1.9-4.8 2.2L13 16.5c-.7.1-1.3.1-2 0l-.7 1.7c-1.6-.3-3.2-1-4.8-2.2z M9.5 12.5h.01 M14.5 12.5h.01',
+  'chevron-down': 'M6 9l6 6 6-6',
+  'chevron-up': 'M6 15l6-6 6 6',
+  'chevron-right': 'M9 6l6 6-6 6',
+  'chevron-left': 'M15 6l-6 6 6 6',
+  'panel-left': 'M4 4h16v16H4z M9 4v16',
+  'panel-right': 'M4 4h16v16H4z M15 4v16',
+  external: 'M14 5h5v5 M19 5l-8 8 M17 13v6H5V7h6',
+  hand: 'M8 13V5.5a1.5 1.5 0 0 1 3 0V11 M11 10V4.5a1.5 1.5 0 0 1 3 0V11 M14 10.5V6a1.5 1.5 0 0 1 3 0v7c0 4-2.5 7-6.5 7-2.5 0-4-1-5.5-3l-2-3a1.5 1.5 0 0 1 2.4-1.8L8 14',
+  eye: 'M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6z',
+  gauge: 'M4 18a8 8 0 1 1 16 0 M12 18l4-6 M7.5 13.5h.01 M12 10h.01 M16.5 13.5h.01',
+  coins: 'M12 6c4 0 7-1.1 7-2.5S16 1 12 1 5 2.1 5 3.5 8 6 12 6z M5 3.5v5C5 9.9 8 11 12 11s7-1.1 7-2.5v-5 M5 8.5v5c0 1.4 3 2.5 7 2.5s7-1.1 7-2.5v-5',
+  wave: 'M3 12h3l2-6 4 12 3-9 2 3h4',
+  pause: 'M9 5v14 M15 5v14',
+  play: 'M7 5l12 7-12 7z',
+  dot: 'M12 11.99v.02',
+  file: 'M6 3h8l4 4v14H6z M14 3v4h4',
+  image: 'M4 5h16v14H4z M4 16l5-5 4 4 3-3 4 4 M15 9h.01',
+  video: 'M4 6h12v12H4z M16 10l4-2v8l-4-2',
+  keyboard: 'M3 7h18v10H3z M6 10h.01 M9 10h.01 M12 10h.01 M15 10h.01 M18 10h.01 M7 14h10',
+  sliders: 'M4 6h9 M17 6h3 M13 4v4 M4 12h3 M11 12h9 M7 10v4 M4 18h11 M19 18h1 M15 16v4',
+  filter: 'M4 5h16l-6 7.5V19l-4 1.5v-8z',
+} as const;
+
+const props = defineProps<{ name: keyof typeof ICONS | string }>();
+const path = computed(() => (ICONS as Record<string, string>)[props.name] ?? ICONS.dot);
+</script>

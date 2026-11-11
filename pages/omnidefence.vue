@@ -1,2219 +1,835 @@
 <template>
-    <div class="od-shell">
-        <header class="od-header">
-            <div>
-                <div class="od-kicker"><span class="live-dot"></span> DEFENCE GRID ONLINE</div>
-                <h1>OmniDefence</h1>
-                <p>API telemetry, profile actions, IP reputation, honeypots, and response tools.</p>
-            </div>
-            <div class="od-header-actions">
-                <span class="refresh-stamp">{{ busyLabel || lastUpdatedLabel }}</span>
-                <button class="od-btn ghost" :disabled="isBusy" @click="refreshActive">Refresh</button>
-                <button class="od-btn danger" :disabled="loading.requests" @click="showOnlyDenied">Denied Feed</button>
-            </div>
-        </header>
+  <div class="odx" data-testid="odx-root">
+    <!-- ── bar ── -->
+    <header class="odx-bar">
+      <div class="odx-bar__id">
+        <span class="odx-bar__mark" :data-tone="verdict.tone"><DefenceIcon name="shield" /></span>
+        <h1 class="odx-bar__title">OmniDefence</h1>
+        <span class="odx-bar__sub">{{ subline }}</span>
+      </div>
 
-        <section class="od-map-panel">
-            <div class="map-head">
-                <div>
-                    <span class="panel-code">MAP</span>
-                    <h2>World Tactical Map</h2>
+      <button class="odx-search" aria-label="Search addresses and actions" aria-keyshortcuts="Control+K" data-testid="odx-search" @click="paletteOpen = true">
+        <DefenceIcon name="search" />
+        <span class="odx-search__text">Find an address, block, release, export…</span>
+        <span class="odx-kbd">Ctrl</span><span class="odx-kbd">K</span>
+      </button>
+
+      <span class="odx-bar__spacer"></span>
+
+      <div class="odx-bar__actions">
+        <button class="odx-live" :data-state="linkState" :data-tone="linkTone" :title="linkTitle" :aria-label="linkTitle" data-testid="odx-live" @click="defence.setLive(!prefs.live)">
+          <span class="odx-live__dot"></span>
+          <span class="odx-live__word">{{ linkWord }}</span>
+          <span v-if="linkState === 'live'" :key="sweepKey" class="odx-live__sweep"></span>
+        </button>
+        <button class="odx-btn odx-btn--ghost" title="Refresh now (R)" aria-label="Refresh now" aria-keyshortcuts="R" data-testid="odx-refresh" @click="defence.refreshAll()">
+          <DefenceIcon name="refresh" :class="{ 'odx-spin': busy.fast || busy.map }" />
+        </button>
+      </div>
+    </header>
+
+    <!-- The layout already provides the page's <main>. -->
+    <div class="odx-main" :class="{ 'odx-enter': firstPaint }">
+      <div v-if="!allowed.overview" class="odx-card">
+        <div class="odx-empty"><DefenceIcon name="lock" />OmniDefence is not part of your access.</div>
+      </div>
+
+      <template v-else>
+        <!-- ── verdict + figures ── -->
+        <div class="odx-top" :class="{ 'odx-stale': waiting }">
+          <DefenceVerdict :verdict="verdict" :overview="overview" :now="minuteNow" @jump="jump" />
+
+          <div class="odx-kpis">
+            <DefenceKpi label="Requests" icon="activity" :value="overview ? fmtCompact(overview.requests24h ?? 0) : null" unit="24 h" testid="kpi-requests">
+              <template #sub>
+                <template v-if="overview">7 days <b>{{ fmtCompact(overview.requests7d ?? 0) }}</b><template v-if="topOrigin"> · mostly {{ topOrigin }}</template></template>
+              </template>
+              <DefenceSpark v-if="requestSeries.length" :points="requestSeries" bars tone="info" label="Requests an hour" :format="v => `${fmtInt(v)} requests`" />
+              <div v-else-if="originMix.length" style="padding-top: 18px">
+                <div class="odx-mix" :title="originMix.map(o => `${o.label}: ${fmtInt(o.hits)}`).join('\n')">
+                  <span v-for="o in originMix" :key="o.origin" :style="{ flex: o.hits, background: o.color }"></span>
                 </div>
-                <div class="map-actions">
-                    <span class="refresh-stamp">{{ loading.map ? 'Mapping IPs' : filteredMapPoints.length + ' visible' }}</span>
-                    <div class="map-filters" role="group" aria-label="Map filter">
-                        <button :class="{ active: mapFilter === 'all' }" @click="mapFilter = 'all'">All</button>
-                        <button :class="{ active: mapFilter === 'attackers' }" @click="mapFilter = 'attackers'">Only Attackers</button>
-                        <button :class="{ active: mapFilter === 'profiled' }" @click="mapFilter = 'profiled'">Only Profiled</button>
-                        <label class="map-toggle" :class="{ active: hideApproximateMapPoints }" title="Hide country-only or fallback coordinates">
-                            <input type="checkbox" v-model="hideApproximateMapPoints" /> Exact Geo
-                        </label>
-                    </div>
-                    <div class="map-filters" role="group" aria-label="Colour points by">
-                        <button :class="{ active: mapColorBy === 'class' }" title="Colour by fingerprint class" @click="mapColorBy = 'class'">Class</button>
-                        <button :class="{ active: mapColorBy === 'status' }" title="Colour by defence status" @click="mapColorBy = 'status'">Status</button>
-                    </div>
-                    <select v-model="mapTagFilter" class="map-tag-select" aria-label="Filter by fingerprint tag">
-                        <option value="">Any tag</option>
-                        <option v-for="t in mapTagOptions" :key="t.tag" :value="t.tag">{{ t.tag }} ({{ t.count }})</option>
-                    </select>
-                    <div class="map-filters" role="group" aria-label="Map mode">
-                        <button :class="{ active: !boxMode }" @click="boxMode = false" title="Pan and zoom">Pan</button>
-                        <button :class="{ active: boxMode }" @click="boxMode = true" title="Drag a box to mass-block IPs in a region">Box Block</button>
-                    </div>
-                    <div class="map-filters" role="group" aria-label="Zoom">
-                        <button @click="zoomMap(1.4)" title="Zoom in">+</button>
-                        <button @click="zoomMap(1/1.4)" title="Zoom out">-</button>
-                        <button @click="resetMapView" title="Reset view">Reset</button>
-                    </div>
-                </div>
-            </div>
-            <div class="map-layout">
-                <div class="world-map-stage" :class="{ loading: loading.map, 'box-mode': boxMode }">
-                    <div ref="leafletMap" class="leaflet-threat-map" role="application" aria-label="World tactical threat map"></div>
-                    <div v-if="!leafletReady" class="map-loading"><span class="spinner"></span>Loading map</div>
-                    <div v-if="!filteredMapPoints.length && !loading.map" class="map-empty">No IPs for this filter</div>
-                    <div v-if="boxMode" class="map-mode-tag">BOX BLOCK MODE - drag a region</div>
-                    <div v-if="pendingBoxBlock" class="map-box-popover" :class="[{ working: boxBlockAnimating }, pendingBoxBlock.placement]" :style="boxPopoverStyle">
-                        <span>Region Block</span>
-                        <strong>Save live region block</strong>
-                        <small>{{ pendingBoxBlock.boundsLabel }} / {{ pendingBoxBlock.blockable.length }} current target{{ pendingBoxBlock.blockable.length === 1 ? '' : 's' }}</small>
-                        <input v-model="pendingBoxBlock.reason" :disabled="boxBlockAnimating" class="map-box-reason" />
-                        <div v-if="boxBlockAnimating" class="map-box-progress"><span class="spinner"></span>{{ pendingBoxBlock.statusText || 'Saving region rule' }}</div>
-                        <div v-else-if="pendingBoxBlock.statusText" class="map-box-progress complete">{{ pendingBoxBlock.statusText }}</div>
-                        <div class="map-box-actions">
-                            <button class="micro danger" :disabled="boxBlockAnimating" @click="runBoxBlock">Confirm</button>
-                            <button class="micro" :disabled="boxBlockAnimating" @click="cancelBoxBlock">Cancel</button>
-                        </div>
-                    </div>
-                    <div class="map-zoom-tag">Z{{ leafletZoom }} / Web Mercator</div>
-                </div>
-                <aside class="map-intel">
-                    <div class="map-stat"><span>Mapped</span><strong>{{ fmtNum(filteredMapPoints.length) }}</strong></div>
-                    <div class="map-stat hostile"><span>Hostile</span><strong>{{ fmtNum(mapGroupCounts.hostile) }}</strong></div>
-                    <div class="map-stat human"><span>Humans</span><strong>{{ fmtNum(mapGroupCounts.human) }}</strong></div>
-                    <div class="map-stat bot"><span>Bots</span><strong>{{ fmtNum(mapGroupCounts.bot) }}</strong></div>
-                    <div v-if="mapColorBy === 'class'" class="map-legend class-legend">
-                        <button v-for="c in classLegend" :key="c.id" class="legend-chip" :class="{ off: hiddenClasses[c.id], empty: !c.count }"
-                            :aria-pressed="!hiddenClasses[c.id]" :title="c.description + ' (click to toggle)'" @click="toggleMapClass(c.id)">
-                            <span class="legend-dot" :style="{ background: c.color, color: c.color }"></span>
-                            <span class="legend-label">{{ c.label }}</span>
-                            <strong>{{ fmtNum(c.count) }}</strong>
-                        </button>
-                        <div class="legend-status">
-                            <span><span class="legend-icon cross"></span>Blocked</span>
-                            <span><span class="legend-icon ring"></span>Honeypot</span>
-                            <span><span class="legend-icon strike"></span>Tarpit</span>
-                        </div>
-                    </div>
-                    <div v-else class="map-legend">
-                        <div><span class="legend-dot attacker"></span>Attacker</div>
-                        <div><span class="legend-dot attacker recent"></span>Recent attacker</div>
-                        <div><span class="legend-dot profile"></span>Profile</div>
-                        <div><span class="legend-dot profile recent"></span>Recent profile</div>
-                        <div><span class="legend-icon cross"></span>Blocked</div>
-                        <div><span class="legend-icon ring"></span>Honeypot trap</div>
-                        <div><span class="legend-icon strike"></span>Tarpitted</div>
-                    </div>
-                    <div v-if="selectedIp" class="map-selected">
-                        <span :style="{ color: classColor(selectedIp.classification) }">{{ classLabel(selectedIp.classification) }} {{ selectedIp.classConfidence ? '/ ' + Math.round(selectedIp.classConfidence * 100) + '%' : '' }}</span>
-                        <strong>{{ selectedIp.ip }}</strong>
-                        <small>{{ formatGeo(selectedIp) }} / {{ fmtTime(selectedIp.lastSeen) }}</small>
-                    </div>
-                </aside>
-            </div>
-            <div class="timeline-rail">
-                <div class="timeline-head">
-                    <span class="panel-code">TIMELINE</span>
-                    <select v-model="timelineMode" class="timeline-mode" aria-label="Timeline filter mode">
-                        <option value="overlap">Active during window</option>
-                        <option value="first">First appeared in window</option>
-                        <option value="last">Last seen in window</option>
-                    </select>
-                    <button class="timeline-play" :class="{ playing: timelinePlaying }" @click="toggleTimelinePlay" :title="timelinePlaying ? 'Pause' : 'Play the before handle minute by minute'">
-                        <span v-if="timelinePlaying">&#10073;&#10073; Pause</span>
-                        <span v-else>&#9654; Play</span>
-                    </button>
-                    <label class="timeline-speed" title="Playback speed (minutes advanced per second)">
-                        <span>Speed</span>
-                        <select v-model.number="timelineSpeed" aria-label="Playback speed">
-                            <option :value="1">1 min/s</option>
-                            <option :value="5">5 min/s</option>
-                            <option :value="15">15 min/s</option>
-                            <option :value="60">1 hr/s</option>
-                            <option :value="240">4 hr/s</option>
-                        </select>
-                    </label>
-                    <span class="timeline-count">{{ filteredMapPoints.length }} in window</span>
-                    <button class="timeline-reset" @click="resetTimeline">Reset</button>
-                </div>
-                <div class="timeline-track">
-                    <input
-                        type="range"
-                        class="timeline-range start"
-                        :min="timelineDomain.min"
-                        :max="timelineDomain.max"
-                        :step="3600"
-                        :value="timelineStart ?? timelineDomain.min"
-                        @input="onTimelineStartSlide" />
-                    <input
-                        type="range"
-                        class="timeline-range end"
-                        :min="timelineDomain.min"
-                        :max="timelineDomain.max"
-                        :step="3600"
-                        :value="timelineEnd ?? timelineDomain.max"
-                        @input="onTimelineEndSlide" />
-                </div>
-                <div class="timeline-fields">
-                    <label class="timeline-field">
-                        <span>From</span>
-                        <input type="datetime-local" step="3600" v-model="timelineStartInput" />
-                    </label>
-                    <span class="timeline-sep">&rarr;</span>
-                    <label class="timeline-field">
-                        <span>To</span>
-                        <input type="datetime-local" step="3600" v-model="timelineEndInput" />
-                    </label>
-                </div>
-            </div>
-        </section>
+              </div>
+            </DefenceKpi>
 
-        <section class="od-metrics">
-            <button class="metric-tile" @click="activeTab = 'activity'">
-                <span class="metric-copy"><span class="metric-label">Requests 24h</span><small>{{ fmtNum(overview?.totalRequests) }} total</small></span>
-                <strong>{{ fmtNum(overview?.requests24h) }}</strong>
-            </button>
-            <button class="metric-tile danger" @click="showOnlyDenied">
-                <span class="metric-copy"><span class="metric-label">Denied 24h</span><small>{{ fmtNum(overview?.totalDenied) }} total</small></span>
-                <strong>{{ fmtNum(overview?.denied24h) }}</strong>
-            </button>
-            <button class="metric-tile warn" @click="activeTab = 'auth'">
-                <span class="metric-copy"><span class="metric-label">Auth failures 24h</span><small>{{ fmtNum(overview?.totalAuthEvents) }} events</small></span>
-                <strong>{{ fmtNum(overview?.authFailures24h || overview?.unauth24h) }}</strong>
-            </button>
-            <button class="metric-tile cyan" @click="activeTab = 'ips'">
-                <span class="metric-copy"><span class="metric-label">Tracked IPs</span><small>{{ fmtNum(overview?.blockedIps) }} blocked</small></span>
-                <strong>{{ fmtNum(overview?.knownIps || overview?.totalIps) }}</strong>
-            </button>
-            <button class="metric-tile violet" @click="activeTab = 'honeypot'">
-                <span class="metric-copy"><span class="metric-label">Traps</span><small>{{ fmtNum(overview?.tarpitIps) }} tarpits</small></span>
-                <strong>{{ fmtNum(overview?.honeypotIps) }}</strong>
-            </button>
-        </section>
+            <DefenceKpi label="Denied" icon="block" :value="overview ? fmtCompact(overview.denied24h ?? 0) : null" unit="24 h" :tone="deniedTone" :state="deniedTone === 'crit' ? 'Surge' : ''" clickable testid="kpi-denied" @open="showDenied">
+              <template #sub>
+                <template v-if="overview"><b>{{ deniedShare }}</b> of requests · {{ fmtInt(overview.authFailures24h ?? overview.unauth24h ?? 0) }} sign-in failures</template>
+              </template>
+              <DefenceSpark v-if="deniedSeries.length" :points="deniedSeries" bars :tone="deniedTone === 'ok' ? 'neutral' : deniedTone" label="Denied an hour" :format="v => `${fmtInt(v)} denied`" />
+            </DefenceKpi>
 
-        <section class="od-grid">
-            <aside class="od-rail">
-                <nav class="od-tabs">
-                    <button v-for="tab in tabs" :key="tab.id" :class="['od-tab', { active: activeTab === tab.id }]" @click="activeTab = tab.id">
-                        <span>{{ tab.code }}</span>{{ tab.label }}
-                    </button>
-                </nav>
+            <DefenceKpi label="Visitors" icon="globe" :value="ips.length ? fmtInt(day.seen) : null" unit="24 h" clickable testid="kpi-visitors" @open="openAddresses({ seenWithinHours: 24 })">
+              <template #sub>
+                <template v-if="ips.length"><b>{{ fmtInt(day.fresh) }}</b> new · {{ fmtInt(ips.length) }} known</template>
+              </template>
+              <div v-if="dayMix.length" style="padding-top: 12px">
+                <div class="odx-mix"><span v-for="g in dayMix" :key="g.id" :style="{ flex: g.count, background: g.color }"></span></div>
+                <div class="odx-mix__legend"><span v-for="g in dayMix" :key="g.id"><i :style="{ background: g.color }"></i>{{ g.label }} {{ fmtInt(g.count) }}</span></div>
+              </div>
+            </DefenceKpi>
 
-                <div v-if="review" class="rail-section">
-                    <h3>Needs Review</h3>
-                    <div class="review-head" title="Classified as an attacker with high confidence, seen this week, and still being answered">
-                        <span>Attackers still answered</span><strong :class="review.hostileAnsweredCount ? 'bad-text' : 'good-text'">{{ fmtNum(review.hostileAnsweredCount) }}</strong>
-                    </div>
-                    <div v-for="item in review.hostileAnswered.slice(0, 6)" :key="'hostile-' + item.ip" class="review-row">
-                        <button class="threat-row" @click="selectIp(item.ip)">
-                            <span class="threat-ip">{{ item.ip }}</span>
-                            <span class="threat-meta">{{ classLabel(item.classification) }} / {{ fmtNum(item.requests) }} req / {{ item.status }}</span>
-                        </button>
-                        <button class="micro danger" :disabled="loading.action" @click="blockIp(item.ip)">Block</button>
-                    </div>
-                    <div class="review-head" title="Classified as a person or a verified crawler, but on Watch or turned away">
-                        <span>People on Watch / Blocked</span><strong :class="review.benignPenalisedCount ? 'warn-text' : 'good-text'">{{ fmtNum(review.benignPenalisedCount) }}</strong>
-                    </div>
-                    <div v-for="item in review.benignPenalised.slice(0, 6)" :key="'benign-' + item.ip" class="review-row">
-                        <button class="threat-row" :title="item.reason || ''" @click="selectIp(item.ip)">
-                            <span class="threat-ip">{{ item.ip }}</span>
-                            <span class="threat-meta">{{ classLabel(item.classification) }} / {{ item.status }} / {{ Math.round(item.score || 0) }}</span>
-                        </button>
-                        <button class="micro release" :disabled="loading.action" @click="untrapIp(item.ip)">Release</button>
-                    </div>
-                    <div v-if="defenceHealth" class="review-health" :class="{ 'bad-text': defenceHealthBad }">
-                        <template v-if="overview.stale">Figures from {{ overviewAgeLabel }} ago, a newer overview is still being built / </template>Overview {{ fmtNum(defenceHealth.overviewBuildMs) }} ms / audit queue {{ fmtNum(defenceHealth.auditQueue) }}<template v-if="defenceHealth.readPoolTimeouts"> / {{ fmtNum(defenceHealth.readPoolTimeouts) }} busy reads</template><template v-if="defenceHealth.auditRowsDropped"> / {{ fmtNum(defenceHealth.auditRowsDropped) }} rows dropped</template>
-                    </div>
-                </div>
+            <DefenceKpi label="Hostile" icon="shield-alert" :value="ips.length ? fmtInt(day.hostile) : null" unit="24 h" :tone="hostileTone" :state="review?.hostileAnsweredCount ? `${review.hostileAnsweredCount} answered` : ''" clickable testid="kpi-hostile" @open="openAddresses({ groups: ['hostile'], seenWithinHours: 24 })">
+              <template #sub>
+                <template v-if="ips.length"><b>{{ fmtInt(day.hostileFresh) }}</b> new today · {{ fmtInt(hostileKnown) }} known</template>
+              </template>
+              <div v-if="hostileMix.length" style="padding-top: 12px">
+                <div class="odx-mix"><span v-for="c in hostileMix" :key="c.id" :style="{ flex: c.count, background: c.color }"></span></div>
+                <div class="odx-mix__legend"><span v-for="c in hostileMix" :key="c.id"><i :style="{ background: c.color }"></i>{{ c.label }} {{ fmtInt(c.count) }}</span></div>
+              </div>
+            </DefenceKpi>
 
-                <div class="rail-section">
-                    <h3>Request Origin</h3>
-                    <div v-for="origin in originBreakdown" :key="origin.origin" class="origin-row">
-                        <span>{{ origin.origin }}</span><strong>{{ fmtNum(origin.hits) }}</strong>
-                    </div>
-                    <div v-if="!originBreakdown.length" class="empty-rail">No origin data</div>
-                </div>
-
-                <div class="rail-section">
-                    <h3>Top Threats</h3>
-                    <button v-for="ip in topAttackers" :key="ip.ip" class="threat-row" @click="selectIp(ip.ip)">
-                        <span class="threat-ip">{{ ip.ip }}</span>
-                        <span class="threat-meta">{{ Math.round(ip.score || 0) }} / {{ ip.status || 'Normal' }}</span>
-                    </button>
-                    <div v-if="!topAttackers.length" class="empty-rail">No threats</div>
-                </div>
-            </aside>
-
-            <main class="od-panel">
-                <div class="panel-head">
-                    <div>
-                        <span class="panel-code">{{ activeTabLabel.code }}</span>
-                        <h2>{{ activeTabLabel.label }}</h2>
-                    </div>
-                    <span class="panel-state" :class="loadError ? 'bad' : 'good'"><span v-if="isBusy" class="spinner"></span>{{ loadError ? 'API DEGRADED' : 'LIVE' }}</span>
-                </div>
-
-                <section v-if="activeTab === 'activity'" class="panel-body">
-                    <div class="control-grid activity-controls">
-                        <input v-model="filters.requests.ip" placeholder="IP" />
-                        <input v-model="filters.requests.profile" placeholder="Profile" />
-                        <input v-model="filters.requests.route" placeholder="Route" />
-                        <select v-model="filters.requests.status">
-                            <option value="">Any status</option>
-                            <option value="2xx">2xx</option><option value="3xx">3xx</option>
-                            <option value="4xx">4xx</option><option value="5xx">5xx</option>
-                        </select>
-                        <select v-model="filters.requests.method">
-                            <option value="">Any method</option>
-                            <option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option>
-                        </select>
-                        <select v-model="filters.requests.origin">
-                            <option value="">Any origin</option>
-                            <option>DirectApi</option><option>DirectApiProfile</option>
-                            <option>WebsiteProfile</option><option>WebsiteNoProfile</option>
-                            <option>WebsiteInvalidProfile</option><option>WebsitePublicNoProfile</option>
-                        </select>
-                        <label class="checkline"><input type="checkbox" v-model="filters.requests.denyOnly" /> Denied only</label>
-                        <button class="od-btn" :disabled="loading.requests" @click="loadRequests">Apply</button>
-                        <button class="od-btn ghost" :disabled="loading.action" @click="exportTable('requests')">Export CSV</button>
-                    </div>
-                    <div class="table-shell" :class="{ refreshing: loading.requests }">
-                        <div v-if="loading.requests" class="table-loading-overlay"><span class="spinner"></span>Loading activity</div>
-                        <table>
-                            <thead><tr><th>Time</th><th>IP</th><th>Origin</th><th>Method</th><th>Route</th><th>Status</th><th>Profile</th><th>Reason</th><th>Ms</th></tr></thead>
-                            <TransitionGroup name="table-row-fade" tag="tbody">
-                                <tr v-for="row in requests" :key="row.id" :class="['clickable-row', rowClass(row)]" :title="'Click for full request detail'" @click="viewRequestDetail(row.id)">
-                                    <td>{{ fmtTime(row.ts) }}</td>
-                                    <td><button class="link-btn" @click.stop="selectIp(row.ip)">{{ row.ip || 'unknown' }}</button></td>
-                                    <td><span :class="originClass(row.origin)">{{ row.origin || 'Unknown' }}</span></td>
-                                    <td>{{ row.method }}</td>
-                                    <td class="clip">{{ row.route }}</td>
-                                    <td :class="statusClass(row.status)">{{ row.status }}</td>
-                                    <td>{{ row.profile || '-' }}</td>
-                                    <td class="clip">{{ row.reason || '-' }}</td>
-                                    <td>{{ Math.round(row.duration || 0) }}</td>
-                                </tr>
-                                <tr v-if="!requests.length" key="empty-requests"><td colspan="9" class="empty-cell">No request records</td></tr>
-                            </TransitionGroup>
-                        </table>
-                    </div>
-                    <div class="pager">
-                        <button class="od-btn ghost" @click="pageRequests(-1)">Prev</button>
-                        <span>Offset {{ filters.requests.offset }} / Limit {{ filters.requests.limit }}</span>
-                        <button class="od-btn ghost" @click="pageRequests(1)">Next</button>
-                    </div>
-                </section>
-
-                <section v-if="activeTab === 'ips'" class="panel-body">
-                    <div class="control-grid ip-controls">
-                        <input v-model="filters.ips.query" placeholder="IP, country, note" />
-                        <select v-model="filters.ips.status"><option value="">Any status</option><option>Normal</option><option>Watch</option><option>Blocked</option><option>Tarpit</option><option>Honeypot</option></select>
-                        <button class="od-btn" :disabled="loading.ips" @click="loadIps">Apply</button>
-                    </div>
-                    <div v-if="loading.ips" class="loading-strip"><span class="spinner"></span>Loading IP control</div>
-                    <div class="table-shell">
-                        <table>
-                            <thead><tr><th>IP</th><th>Class</th><th>Geo</th><th>KM Profile</th><th>Status</th><th>Score</th><th>Total</th><th>Unauth</th><th>Deny</th><th>Last Seen</th><th>Response</th></tr></thead>
-                            <tbody>
-                                <tr v-for="ip in ips" :key="ip.ip" :class="ipClass(ip)" @dblclick="openActivityForIp(ip.ip)">
-                                    <td><button class="link-btn" @click="selectIp(ip.ip)">{{ ip.ip }}</button></td>
-                                    <td><span class="class-pill" :style="{ '--cls': classColor(ip.classification) }" :title="(ip.classTags || []).join(', ')">{{ classLabel(ip.classification) }}</span></td>
-                                    <td>{{ formatGeo(ip) }} <span class="muted">{{ ip.isp || ip.org || ip.asn || '' }}</span></td>
-                                    <td><span :class="ip.profileName ? 'profile-pill' : 'attacker-pill'">{{ ip.profileName || 'Attacker' }}</span></td>
-                                    <td>{{ ip.status }}</td><td>{{ Math.round(ip.score || 0) }}</td><td>{{ ip.total }}</td><td>{{ ip.unauth }}</td><td>{{ ip.deny }}</td>
-                                    <td>{{ fmtTime(ip.lastSeen) }}</td>
-                                    <td class="action-row">
-                                        <button class="micro release" :disabled="loading.action" @click="untrapIp(ip.ip)" v-if="isHostileStatus(ip.status)">Untrap</button>
-                                        <button class="micro danger" :disabled="loading.action" @click="blockIp(ip.ip)" v-if="ip.status !== 'Blocked' && !ip.isKlives">Block</button>
-                                        <button class="micro warn" :disabled="loading.action" title="Tarpit slows hostile requests with deliberate response delay." @click="setIpStatus(ip.ip, 'Tarpit')" v-if="ip.status !== 'Tarpit' && !ip.isKlives">Tarpit</button>
-                                        <button class="micro cyan" :disabled="loading.action" title="Trap serves junk honeypot responses instead of normal API data." @click="setIpStatus(ip.ip, 'Honeypot')" v-if="ip.status !== 'Honeypot' && !ip.isKlives">Trap</button>
-                                        <span v-if="ip.isKlives" class="protected-chip">Klives protected</span>
-                                        <button class="micro" :disabled="loading.action" @click="scanIp(ip.ip)">Scan</button>
-                                    </td>
-                                </tr>
-                                <tr v-if="!ips.length"><td colspan="11" class="empty-cell">No IP records</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-
-                <section v-if="activeTab === 'auth'" class="panel-body">
-                    <div class="control-grid auth-controls">
-                        <input v-model="filters.auth.ip" placeholder="IP" />
-                        <input v-model="filters.auth.profile" placeholder="Profile" />
-                        <select v-model="filters.auth.type"><option value="">Any type</option><option>WebsiteNoProfile</option><option>WebsiteInvalidProfile</option><option>UnauthRoute</option><option>InvalidPassword</option><option>InsufficientClearance</option><option>Login</option></select>
-                        <button class="od-btn" :disabled="loading.auth" @click="loadAuthEvents">Apply</button>
-                    </div>
-                    <div v-if="loading.auth" class="loading-strip"><span class="spinner"></span>Loading auth events</div>
-                    <div class="table-shell">
-                        <table>
-                            <thead><tr><th>Time</th><th>Type</th><th>IP</th><th>Profile</th><th>Route</th><th>Detail</th></tr></thead>
-                            <tbody>
-                                <tr v-for="event in authEvents" :key="event.id" :class="['clickable-row', authClass(event.type)]" :title="'Click for full auth event detail'" @click="viewAuthDetail(event)"><td>{{ fmtTime(event.ts) }}</td><td>{{ event.type }}</td><td>{{ event.ip || '-' }}</td><td>{{ event.profile || '-' }}</td><td class="clip">{{ event.route || '-' }}</td><td class="clip">{{ event.detail || '-' }}</td></tr>
-                                <tr v-if="!authEvents.length"><td colspan="6" class="empty-cell">No auth events</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-
-                <section v-if="activeTab === 'profiles'" class="panel-body">
-                    <div class="control-grid profile-controls">
-                        <input v-model="filters.profile.profile" placeholder="Profile" />
-                        <input v-model="filters.profile.category" placeholder="Category" />
-                        <button class="od-btn" :disabled="loading.profile" @click="loadProfileActions">Apply</button>
-                    </div>
-                    <div v-if="loading.profile" class="loading-strip"><span class="spinner"></span>Loading profile actions</div>
-                    <div class="table-shell">
-                        <table>
-                            <thead><tr><th>Time</th><th>Profile</th><th>Category</th><th>Action</th><th>IP</th><th>Detail</th></tr></thead>
-                            <tbody>
-                                <tr v-for="action in profileActions" :key="action.id"><td>{{ fmtTime(action.ts) }}</td><td>{{ action.profile || '-' }}</td><td>{{ action.category }}</td><td>{{ action.action }}</td><td>{{ action.ip || '-' }}</td><td class="clip">{{ action.detail || '-' }}</td></tr>
-                                <tr v-if="!profileActions.length"><td colspan="6" class="empty-cell">No profile actions</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-
-                <section v-if="activeTab === 'fingerprint'" class="panel-body">
-                    <div v-if="loading.fingerprint && !fpStatus" class="loading-strip"><span class="spinner"></span>Loading fingerprinting status</div>
-                    <template v-if="fpStatus">
-                        <div class="fp-tiles">
-                            <div class="map-stat"><span>Engine</span><strong :class="fpStatus.running ? 'good-text' : 'bad-text'">{{ fpStatus.backfillRunning ? 'Backfilling' : fpStatus.running ? 'Running' : 'Stopped' }}</strong></div>
-                            <div class="map-stat"><span>Fingerprints</span><strong>{{ fmtNum(fpStatus.fingerprints) }}</strong></div>
-                            <div class="map-stat"><span>Signals folded</span><strong>{{ fmtNum(fpStatus.signalsFolded) }}</strong></div>
-                            <div class="map-stat"><span>Backlog</span><strong>{{ fmtNum(fpStatus.backlog) }}</strong></div>
-                            <div class="map-stat"><span>Datacenter ranges</span><strong>{{ fmtNum(fpStatus.intel?.datacenterRanges) }}</strong></div>
-                            <div class="map-stat"><span>Crawler ranges</span><strong>{{ fmtNum(fpStatus.intel?.crawlerRanges) }}</strong></div>
-                            <div class="map-stat"><span>Tor exits</span><strong>{{ fmtNum(fpStatus.intel?.torExits) }}</strong></div>
-                            <div class="map-stat"><span>Classified</span><strong>{{ fmtNum(fpStatus.classifications) }}</strong></div>
-                        </div>
-                        <div class="fp-columns">
-                            <div class="table-shell">
-                                <table>
-                                    <thead><tr><th>Class</th><th>IPs</th><th>Meaning</th></tr></thead>
-                                    <tbody>
-                                        <tr v-for="c in classInfo" :key="c.id">
-                                            <td><span class="class-pill" :style="{ '--cls': c.color }">{{ c.label }}</span></td>
-                                            <td>{{ fmtNum(fpStatus.classBreakdown?.[c.id]) }}</td>
-                                            <td class="muted">{{ c.description }}</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div v-if="fpSettings" class="fp-settings">
-                                <h3>Automatic actions</h3>
-                                <p class="fp-note">Off by default. When an IP is classified into one of these classes with at least the minimum confidence, OmniDefence applies the action. Profile-linked and Klives IPs are never touched.</p>
-                                <label v-for="cls in fpSettings.actionableClasses" :key="cls" class="fp-setting-row">
-                                    <span class="class-pill" :style="{ '--cls': classColor(cls) }">{{ classLabel(cls) }}</span>
-                                    <select v-model="fpSettings.autoActions[cls]">
-                                        <option v-for="a in fpSettings.allowedActions" :key="a" :value="a">{{ a }}</option>
-                                    </select>
-                                </label>
-                                <label class="fp-setting-row">
-                                    <span>Minimum confidence</span>
-                                    <input type="number" min="0.5" max="1" step="0.05" v-model.number="fpSettings.autoActionMinConfidence" />
-                                </label>
-                                <h3>Signals</h3>
-                                <label class="checkline"><input type="checkbox" v-model="fpSettings.enabled" /> Fingerprinting enabled</label>
-                                <label class="checkline"><input type="checkbox" v-model="fpSettings.classScoreDeltas" /> Raise threat score on hostile classification</label>
-                                <label class="checkline"><input type="checkbox" v-model="fpSettings.beaconEnabled" /> Browser beacon</label>
-                                <label class="checkline"><input type="checkbox" v-model="fpSettings.robotsTrapEnabled" /> robots.txt trap <span class="muted">{{ fpSettings.robotsTrapPath }}</span></label>
-                                <h3>Intel sources</h3>
-                                <label class="checkline"><input type="checkbox" v-model="fpSettings.intelReverseDns" /> Reverse DNS + crawler verification</label>
-                                <label class="checkline"><input type="checkbox" v-model="fpSettings.intelFeeds" /> Range feeds (Tor, clouds, crawlers)</label>
-                                <label class="checkline"><input type="checkbox" v-model="fpSettings.intelAbuseIpDb" /> AbuseIPDB <span :class="fpSettings.abuseIpDbKeySet ? 'good-text' : 'muted'">{{ fpSettings.abuseIpDbKeySet ? 'key set' : 'no key (OmniSetting AbuseIPDBKey)' }}</span></label>
-                                <label class="fp-setting-row"><span>AbuseIPDB daily budget</span><input type="number" min="0" max="1000" v-model.number="fpSettings.abuseIpDbDailyBudget" /></label>
-                                <label class="checkline"><input type="checkbox" v-model="fpSettings.intelGreyNoise" /> GreyNoise Community <span :class="fpSettings.greyNoiseKeySet ? 'good-text' : 'muted'">{{ fpSettings.greyNoiseKeySet ? 'key set' : 'no key (OmniSetting GreyNoiseKey)' }}</span></label>
-                                <label class="fp-setting-row"><span>GreyNoise daily budget</span><input type="number" min="0" max="1000" v-model.number="fpSettings.greyNoiseDailyBudget" /></label>
-                                <div class="detail-actions">
-                                    <button class="od-btn" :disabled="loading.action" @click="saveFingerprintSettings">Save settings</button>
-                                    <button class="od-btn ghost" :disabled="loading.action" @click="reclassifyAll">Reclassify all</button>
-                                </div>
-                            </div>
-                        </div>
-                    </template>
-                </section>
-
-                <section v-if="activeTab === 'honeypot'" class="panel-body">
-                    <div class="control-grid honey-controls">
-                        <input v-model="newHoneypotRoute" placeholder="/wp-admin" />
-                        <button class="od-btn cyan" :disabled="loading.action" @click="addHoneypotRoute">Arm Route</button>
-                        <button class="od-btn ghost" :disabled="loading.honeypot" @click="loadHoneypotRoutes">Refresh</button>
-                    </div>
-                    <div v-if="loading.honeypot" class="loading-strip"><span class="spinner"></span>Loading honeypots</div>
-                    <div class="table-shell">
-                        <table>
-                            <thead><tr><th>Route</th><th>Kind</th><th>Hits</th><th>Last Hit</th><th>Note</th><th></th></tr></thead>
-                            <tbody>
-                                <tr v-for="route in honeypotRoutes" :key="route.route"><td>{{ route.route }}</td><td>{{ route.responseKind || 'JunkJson' }}</td><td>{{ route.hits || 0 }}</td><td>{{ fmtTime(route.lastHit) }}</td><td class="clip">{{ route.note || '-' }}</td><td><button class="micro danger" @click="removeHoneypotRoute(route.route)">Remove</button></td></tr>
-                                <tr v-if="!honeypotRoutes.length"><td colspan="6" class="empty-cell">No honeypots armed</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-            </main>
-
-            <aside class="od-detail">
-                <div class="detail-block primary" v-if="selectedIp">
-                    <div class="detail-title">{{ selectedIp.ip }}</div>
-                    <div class="detail-sub">{{ formatGeo(selectedIp) }} / {{ selectedIp.isp || selectedIp.org || selectedIp.asn || 'Unknown network' }}</div>
-                    <div :class="selectedIp.profileName ? 'identity-chip profile' : 'identity-chip attacker'">{{ selectedIp.profileName ? 'KMProfile: ' + selectedIp.profileName : 'No KMProfile matched' }}</div>
-                    <div class="class-pill detail-class" :style="{ '--cls': classColor(selectedIp.classification) }">{{ classLabel(selectedIp.classification) }}<template v-if="selectedIp.classConfidence"> / {{ Math.round(selectedIp.classConfidence * 100) }}%</template></div>
-                    <div class="score-ring"><span>{{ Math.round(selectedIp.score || 0) }}</span><small>{{ selectedIp.status }}</small></div>
-                    <div class="detail-grid">
-                        <div><span>Total</span><strong>{{ selectedIp.total }}</strong></div>
-                        <div><span>Denied</span><strong>{{ selectedIp.deny }}</strong></div>
-                        <div><span>Unauth</span><strong>{{ selectedIp.unauth }}</strong></div>
-                        <div><span>Rank</span><strong>{{ selectedIp.profileRank ?? '-' }}</strong></div>
-                        <div><span>Last Seen</span><strong>{{ fmtTime(selectedIp.lastSeen) }}</strong></div>
-                    </div>
-                    <textarea v-model="selectedIpNote" placeholder="Operator note"></textarea>
-                    <div class="detail-actions">
-                        <button class="od-btn" :disabled="loading.action" @click="saveSelectedIpNote">Save Note</button>
-                        <button class="od-btn release" :disabled="loading.action" @click="untrapIp(selectedIp.ip)" v-if="isHostileStatus(selectedIp.status)">Untrap IP</button>
-                        <button class="od-btn danger" :disabled="loading.action" @click="blockIp(selectedIp.ip)" v-if="selectedIp.status !== 'Blocked' && !selectedIp.isKlives">Block</button>
-                        <button class="od-btn ghost" :disabled="loading.action" @click="scanIp(selectedIp.ip)">Scan</button>
-                    </div>
-                </div>
-                <div class="detail-block" v-if="selectedIp">
-                    <OmniDefenceFingerprintPanel :ip="selectedIp.ip" :class-info="classInfo" :recent="selectedIpRecent" :tick="refreshTick"
-                        @select-ip="ip => selectIp(ip, false)" @changed="loadMapIps" />
-                </div>
-                <div class="detail-block" v-else>
-                    <div class="detail-title">No IP selected</div>
-                    <div class="detail-sub">Select an IP from Activity, IPs, or Top Threats.</div>
-                </div>
-
-                <div class="detail-block" v-if="lastScan">
-                    <div class="detail-title">Port Scan</div>
-                    <div class="detail-sub">{{ lastScan.ip }} / {{ lastScan.openPorts?.length || 0 }} open</div>
-                    <div class="port-list" v-if="lastScan.openPorts?.length">
-                        <div v-for="port in lastScan.openPorts" :key="port.port"><strong>{{ port.port }}</strong><span>{{ port.banner || 'open' }}</span></div>
-                    </div>
-                    <div class="empty-rail" v-else>No open ports detected</div>
-                </div>
-
-                <div class="detail-block">
-                    <div class="detail-title">Top Routes</div>
-                    <div v-for="route in topRoutes" :key="route.route" class="route-row"><span>{{ route.route }}</span><strong>{{ route.hits }}</strong></div>
-                    <div v-if="!topRoutes.length" class="empty-rail">No route data</div>
-                </div>
-            </aside>
-        </section>
-
-        <div v-if="loadError" class="od-error">{{ loadError }}</div>
-
-        <div v-if="requestDetail || loading.requestDetail" class="od-modal-backdrop" @click.self="closeRequestDetail">
-            <div class="od-modal" role="dialog" aria-modal="true" aria-labelledby="od-modal-title">
-                <header class="od-modal-head">
-                    <div>
-                        <span class="panel-code">REQ</span>
-                        <h2 id="od-modal-title">Request Detail</h2>
-                        <small v-if="requestDetail">#{{ requestDetail.id }} / {{ fmtTime(requestDetail.utc_ts) }}</small>
-                    </div>
-                    <button class="od-btn ghost" @click="closeRequestDetail">Close</button>
-                </header>
-                <div v-if="loading.requestDetail" class="od-modal-loading"><span class="spinner"></span>Loading request</div>
-                <div v-else-if="requestDetail" class="od-modal-body">
-                    <div class="od-detail-grid">
-                        <div><span>Method</span><strong>{{ requestDetail.method || '-' }}</strong></div>
-                        <div><span>Status</span><strong :class="statusClass(requestDetail.status_code)">{{ requestDetail.status_code }}</strong></div>
-                        <div><span>Duration</span><strong>{{ Math.round(Number(requestDetail.duration_ms) || 0) }} ms</strong></div>
-                        <div><span>Origin</span><strong>{{ requestDetail.request_origin || '-' }}</strong></div>
-                        <div><span>Matched Route</span><strong>{{ Number(requestDetail.matched_route) ? 'Yes' : 'No' }}</strong></div>
-                        <div><span>Perm Required</span><strong>{{ requestDetail.perm_required ?? '-' }}</strong></div>
-                        <div><span>IP</span><strong><button v-if="requestDetail.ip" class="link-btn" @click="selectIp(requestDetail.ip); closeRequestDetail();">{{ requestDetail.ip }}</button><template v-else>-</template></strong></div>
-                        <div><span>Profile</span><strong>{{ requestDetail.profile_name || requestDetail.profile_id || '-' }}<small v-if="requestDetail.profile_rank != null"> (rank {{ requestDetail.profile_rank }})</small></strong></div>
-                        <div><span>Deny Reason</span><strong>{{ requestDetail.deny_reason || '-' }}</strong></div>
-                        <div><span>Client Page</span><strong class="clip" :title="requestDetail.client_page || ''">{{ requestDetail.client_page || '-' }}</strong></div>
-                        <div><span>User-Agent</span><strong class="clip" :title="requestDetail.user_agent || ''">{{ requestDetail.user_agent || '-' }}</strong></div>
-                        <div><span>Body Length</span><strong>{{ fmtNum(requestDetail.body_length) }} bytes<small v-if="Number(requestDetail.body_truncated)"> (stored truncated)</small></strong></div>
-                    </div>
-
-                    <div class="od-detail-section">
-                        <div class="od-detail-section-head"><h3>Route</h3></div>
-                        <pre class="od-detail-code">{{ requestDetail.method }} {{ requestDetail.route }}{{ requestDetail.query || '' }}</pre>
-                    </div>
-
-                    <div class="od-detail-section" v-if="requestDetailQueryPairs.length">
-                        <div class="od-detail-section-head">
-                            <h3>Query Parameters</h3>
-                            <button class="micro" @click="copyToClipboard(requestDetail.query || '')">Copy</button>
-                        </div>
-                        <table class="od-kv-table">
-                            <thead><tr><th>Key</th><th>Value</th></tr></thead>
-                            <tbody><tr v-for="(pair, idx) in requestDetailQueryPairs" :key="idx"><td>{{ pair.key }}</td><td class="clip" :title="pair.value">{{ pair.value }}</td></tr></tbody>
-                        </table>
-                    </div>
-
-                    <div class="od-detail-section">
-                        <div class="od-detail-section-head">
-                            <h3>Headers</h3>
-                            <button class="micro" :disabled="!requestDetailHeaderPairs.length" @click="copyToClipboard(JSON.stringify(requestDetail.headers || {}, null, 2))">Copy</button>
-                        </div>
-                        <table class="od-kv-table" v-if="requestDetailHeaderPairs.length">
-                            <thead><tr><th>Header</th><th>Value</th></tr></thead>
-                            <tbody><tr v-for="(pair, idx) in requestDetailHeaderPairs" :key="idx"><td>{{ pair.key }}</td><td class="clip" :title="pair.value">{{ pair.value }}</td></tr></tbody>
-                        </table>
-                        <div v-else class="empty-rail">No headers captured</div>
-                    </div>
-
-                    <div class="od-detail-section">
-                        <div class="od-detail-section-head">
-                            <h3>Body</h3>
-                            <span class="muted" v-if="requestDetailBodyInfo">{{ requestDetailBodyInfo }}</span>
-                            <button class="micro" :disabled="!requestDetail.body_text" @click="copyToClipboard(requestDetail.body_text || '')">Copy</button>
-                        </div>
-                        <pre v-if="requestDetail.body_text" class="od-detail-code body">{{ formatBodyForDisplay(requestDetail.body_text) }}</pre>
-                        <div v-else class="empty-rail">No body captured{{ Number(requestDetail.body_length) ? ' (request had ' + fmtNum(requestDetail.body_length) + ' bytes but was not stored)' : '' }}</div>
-                        <div v-if="requestDetail.body_hash" class="muted od-body-hash">SHA-256: {{ requestDetail.body_hash }}</div>
-                    </div>
-                </div>
-            </div>
+            <DefenceKpi label="Blocked" icon="lock" :value="overview ? fmtInt(overview.blockedIps ?? 0) : null" unit="addresses" clickable testid="kpi-blocked" @open="openAddresses({ statuses: ['Blocked'] })">
+              <template #sub>
+                <template v-if="overview">{{ fmtInt(overview.watchedIps ?? 0) }} watched · {{ fmtInt((overview.tarpitIps ?? 0) + (overview.honeypotIps ?? 0)) }} trapped<template v-if="regions.length"> · {{ regions.length }} region{{ regions.length === 1 ? '' : 's' }}</template></template>
+              </template>
+              <div v-if="statusMix.length" style="padding-top: 12px">
+                <div class="odx-mix"><span v-for="m in statusMix" :key="m.id" :style="{ flex: m.count, background: m.color }"></span></div>
+                <div class="odx-mix__legend"><span v-for="m in statusMix" :key="m.id"><i :style="{ background: m.color }"></i>{{ m.label }} {{ fmtInt(m.count) }}</span></div>
+              </div>
+            </DefenceKpi>
+          </div>
         </div>
 
-        <div v-if="authDetail" class="od-modal-backdrop" @click.self="closeAuthDetail">
-            <div class="od-modal" role="dialog" aria-modal="true" aria-labelledby="od-auth-modal-title">
-                <header class="od-modal-head">
-                    <div>
-                        <span class="panel-code">AUTH</span>
-                        <h2 id="od-auth-modal-title">Auth Event Detail</h2>
-                        <small>#{{ authDetail.id }} / {{ fmtTime(authDetail.ts) }}</small>
-                    </div>
-                    <button class="od-btn ghost" @click="closeAuthDetail">Close</button>
-                </header>
-                <div class="od-modal-body">
-                    <div class="od-detail-grid">
-                        <div><span>Type</span><strong :class="authTypeClass(authDetail.type)">{{ authDetail.type || '-' }}</strong></div>
-                        <div><span>Time</span><strong>{{ fmtTime(authDetail.ts) }}</strong></div>
-                        <div><span>IP</span><strong><button v-if="authDetail.ip" class="link-btn" @click="selectIp(authDetail.ip); closeAuthDetail();">{{ authDetail.ip }}</button><template v-else>-</template></strong></div>
-                        <div><span>Profile</span><strong>{{ authDetail.profile || '-' }}<small v-if="authDetail.profileId"> ({{ authDetail.profileId }})</small></strong></div>
-                        <div><span>Route</span><strong class="clip" :title="authDetail.route || ''">{{ authDetail.route || '-' }}</strong></div>
-                        <div><span>User-Agent</span><strong class="clip" :title="authDetail.userAgent || ''">{{ authDetail.userAgent || '-' }}</strong></div>
-                    </div>
-
-                    <div class="od-detail-section">
-                        <div class="od-detail-section-head">
-                            <h3>Detail</h3>
-                            <button class="micro" :disabled="!authDetail.detail" @click="copyToClipboard(authDetail.detail || '')">Copy</button>
-                        </div>
-                        <pre v-if="authDetail.detail" class="od-detail-code">{{ formatBodyForDisplay(authDetail.detail) }}</pre>
-                        <div v-else class="empty-rail">No detail recorded</div>
-                    </div>
+        <!-- ── map + review ── -->
+        <div class="odx-mid">
+          <section id="odx-map" class="odx-card odx-map" aria-label="Threat map" :data-flash="flashing === 'map' || undefined">
+            <header class="odx-card__head">
+              <h2 class="odx-card__title"><DefenceIcon name="map" />Who is out there</h2>
+              <span class="odx-card__meta odx-num" data-testid="map-count">{{ fmtInt(mapPoints.length) }} shown</span>
+              <div class="odx-card__tools">
+                <div class="odx-seg" role="group" aria-label="Show">
+                  <button v-for="g in MAP_GROUPS" :key="g.id" class="odx-seg__opt" :aria-pressed="mapGroup === g.id" @click="mapGroup = g.id">{{ g.label }}</button>
                 </div>
-            </div>
+                <div class="odx-seg" role="group" aria-label="Seen within">
+                  <button v-for="w in MAP_WINDOWS" :key="w.hours" class="odx-seg__opt" :aria-pressed="mapHours === w.hours" @click="setWindow(w.hours)">{{ w.label }}</button>
+                </div>
+                <div class="odx-seg" role="group" aria-label="Colour by">
+                  <button class="odx-seg__opt" :aria-pressed="prefs.colour === 'class'" @click="prefs.colour = 'class'">Class</button>
+                  <button class="odx-seg__opt" :aria-pressed="prefs.colour === 'status'" @click="prefs.colour = 'status'">Status</button>
+                </div>
+                <button class="odx-btn odx-btn--sm" :aria-pressed="replaying" :disabled="!mapHours" :title="mapHours ? 'Replay arrivals across the window' : 'Pick a window to replay'" @click="toggleReplay">
+                  <DefenceIcon :name="replaying ? 'pause' : 'history'" />Replay
+                </button>
+                <button v-if="allowed.regions" class="odx-btn odx-btn--sm" :aria-pressed="boxMode" title="Drag a box on the map to block a region" data-testid="map-box" @click="boxMode = !boxMode">
+                  <DefenceIcon name="box" />Block a region
+                </button>
+                <button class="odx-iconbtn" :title="prefs.mapOpen ? 'Hide the map' : 'Show the map'" :aria-label="prefs.mapOpen ? 'Hide the map' : 'Show the map'" @click="prefs.mapOpen = !prefs.mapOpen">
+                  <DefenceIcon :name="prefs.mapOpen ? 'chevron-up' : 'chevron-down'" />
+                </button>
+              </div>
+            </header>
+
+            <template v-if="prefs.mapOpen">
+              <ClientOnly>
+                <DefenceThreatMap
+                  ref="threatMap"
+                  :points="mapPoints"
+                  :classes="classes"
+                  :colour="prefs.colour"
+                  :selected="selectedIp"
+                  :regions="regions"
+                  :box-mode="boxMode"
+                  :busy="regionBusy"
+                  :now="minuteNow"
+                  :empty-text="ips.length ? 'No address matches these filters' : 'Reading every known address…'"
+                  @select="ip => defence.openIp(ip)"
+                  @traffic="showTrafficFor"
+                  @block-region="blockRegion"
+                  @remove-region="region => (regionToRemove = region)"
+                >
+                  <template #overlay>
+                    <div v-if="replaying || replayAt" class="odx-map__replay">
+                      <DefenceIcon name="history" />
+                      <span class="odx-num" style="white-space: nowrap">{{ replayLabel }}</span>
+                      <span class="odx-map__replay-track"><span class="odx-map__replay-fill" :style="{ width: `${replayProgress * 100}%` }"></span></span>
+                      <button class="odx-btn odx-btn--xs odx-btn--ghost" @click="stopReplay">Done</button>
+                    </div>
+                  </template>
+                </DefenceThreatMap>
+              </ClientOnly>
+              <div class="odx-legend" role="group" aria-label="Classes on the map">
+                <button
+                  v-for="c in legend"
+                  :key="c.id"
+                  class="odx-legend__chip"
+                  :aria-pressed="!prefs.hiddenClasses.includes(c.id)"
+                  :data-empty="!c.count || undefined"
+                  :title="`${c.description} (click to hide or show)`"
+                  @click="toggleClass(c.id)"
+                >
+                  <DefenceClassPill :id="c.id" :classes="classes" dot-only /><span>{{ c.label }}</span><b>{{ fmtInt(c.count) }}</b>
+                </button>
+                <span class="odx-legend__sep"></span>
+                <span class="odx-dim" style="font-size: 11.5px; align-self: center">× blocked · ⌀ trapped · — tarpit · ring = seen today</span>
+              </div>
+            </template>
+          </section>
+
+          <div class="odx-side">
+            <DefenceReviewCard
+              :review="review"
+              :classes="classes"
+              :pending="pending"
+              :can-block="allowed.block"
+              :flash="flashing === 'review'"
+              @open="ip => defence.openIp(ip)"
+              @block="askBlock"
+              @release="ip => defence.release(ip)"
+              @more="goTab('review')"
+            />
+            <DefenceEventFeed :events="recentEvents" :counts24h="eventCounts ?? overview?.events24h ?? null" :now="minuteNow" @open="ip => defence.openIp(ip)" @more="goTab('events')" />
+          </div>
         </div>
+
+        <!-- ── workbench ── -->
+        <section id="odx-work" class="odx-card odx-work" aria-label="Records" :data-flash="flashing === 'work' || undefined">
+          <nav class="odx-tabs" role="tablist" aria-label="Records">
+            <button v-for="tab in tabs" :key="tab.id" class="odx-tab" role="tab" :aria-selected="prefs.tab === tab.id" :data-testid="`tab-${tab.id}`" @click="goTab(tab.id)">
+              <DefenceIcon :name="tab.icon" />{{ tab.label }}
+              <span v-if="tabCount(tab.id)" class="odx-tab__count" :data-tone="tab.id === 'review' && tabCount(tab.id) ? 'warn' : undefined">{{ tabCount(tab.id) }}</span>
+            </button>
+            <div class="odx-tabs__tools">
+              <span class="odx-dim" style="font-size: 11.5px"><span class="odx-kbd">/</span> to search</span>
+            </div>
+          </nav>
+
+          <DefenceTrafficPanel
+            v-if="prefs.tab === 'traffic'"
+            ref="trafficPanel"
+            :rows="traffic"
+            :filter="trafficFilter"
+            :busy="!!busy.traffic"
+            :error="errors.traffic"
+            :classes="classes"
+            :ip-index="ipIndex"
+            :now="now"
+            :can-export="allowed.export"
+            @apply="f => applyFilter('traffic', f)"
+            @page="d => pageList('traffic', d)"
+            @open="ip => defence.openIp(ip)"
+            @request="openRequest"
+            @export="defence.exportTable('requests')"
+          />
+          <DefenceAddressPanel
+            v-else-if="prefs.tab === 'addresses'"
+            ref="addressPanel"
+            :ips="ips"
+            :classes="classes"
+            :selected="selectedIp"
+            :pending="pending"
+            :can-block="allowed.block"
+            :can-export="allowed.export"
+            :watch-at="watchAt"
+            :block-at="blockAt"
+            :now="minuteNow"
+            :preset="addressPreset"
+            @open="ip => defence.openIp(ip)"
+            @block="askBlock"
+            @release="ip => defence.release(ip)"
+            @export="defence.exportTable('ip_records')"
+          />
+          <DefenceReviewCard
+            v-else-if="prefs.tab === 'review'"
+            full
+            :review="review"
+            :classes="classes"
+            :pending="pending"
+            :can-block="allowed.block"
+            style="border: 0; background: none; box-shadow: none"
+            @open="ip => defence.openIp(ip)"
+            @block="askBlock"
+            @release="ip => defence.release(ip)"
+          />
+          <DefenceAuthPanel
+            v-else-if="prefs.tab === 'auth'"
+            :rows="authEvents"
+            :filter="authFilter"
+            :busy="!!busy.auth"
+            :error="errors.auth"
+            :now="now"
+            :can-export="allowed.export"
+            @apply="f => applyFilter('auth', f)"
+            @page="d => pageList('auth', d)"
+            @open="ip => defence.openIp(ip)"
+            @export="defence.exportTable('auth_events')"
+          />
+          <DefenceProfilePanel
+            v-else-if="prefs.tab === 'profiles'"
+            :rows="profileActions"
+            :filter="profileFilter"
+            :busy="!!busy.profiles"
+            :error="errors.profiles"
+            :now="now"
+            :can-export="allowed.export"
+            @apply="f => applyFilter('profiles', f)"
+            @page="d => pageList('profiles', d)"
+            @open="ip => defence.openIp(ip)"
+            @export="defence.exportTable('profile_actions')"
+          />
+          <DefenceEventFeed
+            v-else-if="prefs.tab === 'events'"
+            full
+            :events="eventsSupported ? recentEvents : null"
+            :counts24h="eventCounts ?? overview?.events24h ?? null"
+            :now="minuteNow"
+            style="border: 0; background: none; box-shadow: none"
+            @open="ip => defence.openIp(ip)"
+          />
+          <DefenceTrapsPanel
+            v-else-if="prefs.tab === 'traps'"
+            :honeypots="honeypots"
+            :regions="regions"
+            :ips="ips"
+            :can-manage="allowed.honeypots"
+            :can-regions="allowed.regions"
+            :busy="!!busy.traps"
+            :now="minuteNow"
+            @arm="(route, note) => defence.addHoneypot(route, note)"
+            @remove-trap="route => defence.removeHoneypot(route)"
+            @remove-region="region => (regionToRemove = region)"
+            @draw="drawRegion"
+            @reload="defence.loadHoneypots()"
+          />
+          <DefenceFingerprintPanel
+            v-else-if="prefs.tab === 'fingerprint'"
+            :status="fpStatus"
+            :thresholds="thresholds"
+            :classes="classes"
+            :can-edit="allowed.settings"
+            :can-act="allowed.act"
+            :save="defence.saveSettings"
+            @reclassify="defence.reclassify(null)"
+          />
+        </section>
+      </template>
     </div>
+
+    <!-- ── one address ── -->
+    <DefenceIpSheet
+      :ip="selectedIp"
+      :detail="detail"
+      :loading="detailLoading"
+      :classes="classes"
+      :pending="selectedIp ? pending[selectedIp] : undefined"
+      :allowed="allowed"
+      :watch-at="watchAt"
+      :block-at="blockAt"
+      :scan="lastScan"
+      :now="now"
+      @close="defence.closeIp()"
+      @block="askBlock"
+      @release="ip => defence.release(ip)"
+      @status="(ip, status) => defence.setStatus(ip, status)"
+      @note="(ip, note) => defence.saveNote(ip, note)"
+      @scan="ip => defence.scan(ip)"
+      @reclassify="ip => defence.reclassify(ip)"
+      @set-class="(ip, cls) => defence.setClass(ip, cls)"
+      @traffic="showTrafficFor"
+      @select="ip => defence.openIp(ip)"
+      @request="openRequest"
+      @copy="() => defence.notify('ok', 'Copied')"
+    />
+
+    <DefenceRequestDialog :open="requestOpen" :loading="requestLoading" :request="requestBody" @close="requestOpen = false" @open="ip => { requestOpen = false; defence.openIp(ip); }" @copy="copyText" />
+
+    <!-- ── block: a reason first ── -->
+    <DefenceDialog :open="!!blockFor" :title="`Block ${blockFor ?? ''}`" sub="Every request from it is refused from now on. You can release it again." icon="block" tone="crit" testid="odx-block-dialog" @close="blockFor = null">
+      <div class="odx-reasons" role="group" aria-label="Reason">
+        <button v-for="reason in reasonChoices" :key="reason" class="odx-reason" :aria-pressed="blockReason === reason" @click="blockReason = reason">{{ reason }}</button>
+      </div>
+      <input v-model="blockReason" class="odx-input" placeholder="Why (kept with the block)" data-autofocus data-testid="odx-block-reason" @keydown.enter.prevent="confirmBlock" />
+      <p v-if="blockRecord" class="odx-note" style="margin-top: 10px">
+        <DefenceClassPill :id="blockRecord.classification" :classes="classes" :confidence="blockRecord.classConfidence" /> · {{ fmtInt(blockRecord.total) }} requests · {{ fmtGeo(blockRecord) }}
+      </p>
+      <template #actions>
+        <button class="odx-btn odx-btn--ghost" @click="blockFor = null">Cancel</button>
+        <button class="odx-btn odx-btn--solid-danger" data-testid="odx-block-confirm" @click="confirmBlock"><DefenceIcon name="block" />Block</button>
+      </template>
+    </DefenceDialog>
+
+    <DefenceDialog :open="!!regionToRemove" :title="`Remove region block #${regionToRemove?.id ?? ''}`" :sub="regionToRemove?.reason" icon="globe" tone="warn" @close="regionToRemove = null">
+      <p class="odx-note">New visitors from inside the box will be let through again.</p>
+      <label class="odx-check" style="margin-top: 10px"><input v-model="releaseRegionIps" type="checkbox" />Also release the addresses this rule blocked</label>
+      <template #actions>
+        <button class="odx-btn odx-btn--ghost" @click="regionToRemove = null">Cancel</button>
+        <button class="odx-btn odx-btn--danger" @click="confirmRemoveRegion"><DefenceIcon name="trash" />Remove the rule</button>
+      </template>
+    </DefenceDialog>
+
+    <DefenceCommandPalette :open="paletteOpen" :commands="commandsFor" @close="paletteOpen = false" />
+
+    <Teleport to="body">
+      <div v-if="toasts.length" class="odx-layer">
+        <div class="odx-toasts" role="status" aria-live="polite">
+          <div v-for="toast in toasts" :key="toast.id" class="odx-toast" :data-tone="toast.tone" data-testid="odx-toast">
+            <DefenceIcon :name="toast.tone === 'crit' ? 'octagon-x' : toast.tone === 'warn' ? 'alert' : toast.tone === 'info' ? 'info' : 'check-circle'" />
+            <span class="odx-toast__text">{{ toast.text }}</span>
+            <button v-if="toast.action" class="odx-btn odx-btn--xs" data-testid="odx-toast-action" @click="runToast(toast)">{{ toast.action.label }}</button>
+            <button class="odx-iconbtn odx-iconbtn--sm" aria-label="Dismiss" @click="defence.dismissToast(toast.id)"><DefenceIcon name="x" /></button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+  </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { AUTH_LIMIT, PROFILE_LIMIT, TABS, TRAFFIC_LIMIT, useOmniDefence, type DefenceTab, type DefenceToast } from '~/composables/useOmniDefence';
+import {
+  BLOCK_REASONS, GROUPS, HOSTILE_STATUSES, STATUS_COLORS, classGroup, dayActivity, fmtCompact, fmtGeo, fmtInt, hourlySeries,
+  looksLikeIp, matchesText, originLabel, type AddressFilter, type ClassGroup, type DefenceCommand, type DefenceRegion,
+} from '~/scripts/omniDefence';
+
 definePageMeta({ layout: 'navbar' });
-</script>
 
-<script>
-import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
-import { markRaw, nextTick } from 'vue';
-import Swal from 'sweetalert2';
-import 'leaflet/dist/leaflet.css';
-// Explicit import: the auto-registered name would be OmniDefenceFingerprintPanel (folder prefix).
-import OmniDefenceFingerprintPanel from '~/components/OmniDefence/FingerprintPanel.vue';
+const route = useRoute();
+const router = useRouter();
+const defence = useOmniDefence();
+const {
+  allowed, tabs, overview, classes, ips, ipIndex, regions, honeypots, fpStatus, thresholds, traffic, authEvents, profileActions,
+  recentEvents, eventCounts, eventsSupported, review, hourly, lastScan, now, busy, errors, linkState, verdict, prefs, selectedIp, detail,
+  detailLoading, trafficFilter, authFilter, profileFilter, pending, toasts, routesMissing, startup,
+} = defence;
 
-// Mirrors /omnidefence/classes so the map colours correctly before that call returns.
-const DEFAULT_CLASSES = Object.freeze([
-    { id: 'Owner', label: 'Owner', color: '#5fd3ff', malicious: false, group: 'human', description: 'Linked to a Klives-rank profile.' },
-    { id: 'Human', label: 'Human', color: '#52ffb9', malicious: false, group: 'human', description: 'Real person in a real browser: trusted input events from the browser beacon.' },
-    { id: 'LikelyHuman', label: 'Likely human', color: '#a6f5a0', malicious: false, group: 'human', description: 'Browser-consistent headers and behaviour, no beacon proof yet.' },
-    { id: 'ApiClient', label: 'API client', color: '#7aa7ff', malicious: false, group: 'bot', description: 'Authenticated non-browser tool or integration.' },
-    { id: 'VerifiedCrawler', label: 'Verified crawler', color: '#4f8dff', malicious: false, group: 'bot', description: 'Search/AI crawler proven by forward-confirmed rDNS or published ranges.' },
-    { id: 'DeclaredBot', label: 'Declared bot', color: '#c79cff', malicious: false, group: 'bot', description: 'Self-identifying bot: link previews, uptime monitors, SEO crawlers.' },
-    { id: 'ResearchScanner', label: 'Research scanner', color: '#9aa7b0', malicious: false, group: 'bot', description: 'Internet-wide survey scanner (Censys, Shodan, Shadowserver...).' },
-    { id: 'Scraper', label: 'Scraper', color: '#ffc247', malicious: true, group: 'hostile', description: 'Automated harvesting: script clients, datacenter origin, machine timing.' },
-    { id: 'HeadlessAutomation', label: 'Headless automation', color: '#ff8a3d', malicious: true, group: 'hostile', description: 'Browser automation posing as a human (webdriver, spoofed UA, no real input).' },
-    { id: 'VulnScanner', label: 'Vuln scanner', color: '#ff6071', malicious: true, group: 'hostile', description: 'Exploit/probe traffic: sensitive paths, honeypots, 404 storms.' },
-    { id: 'CredentialAttacker', label: 'Credential attacker', color: '#ff4fd8', malicious: true, group: 'hostile', description: 'Brute-force or credential-stuffing login attempts.' },
-    { id: 'Unknown', label: 'Unknown', color: '#56636b', malicious: false, group: 'unknown', description: 'Not enough evidence yet.' },
-]);
-const CLASS_GROUP = Object.freeze(Object.fromEntries(DEFAULT_CLASSES.map(c => [c.id, c.group])));
+const paletteOpen = ref(false);
+const firstPaint = ref(true);
+const flashing = ref<string | null>(null);
+const boxMode = ref(false);
+const regionBusy = ref(false);
+const regionToRemove = ref<DefenceRegion | null>(null);
+const releaseRegionIps = ref(false);
+const blockFor = ref<string | null>(null);
+const blockReason = ref('');
+const requestOpen = ref(false);
+const requestLoading = ref(false);
+const requestBody = ref<any | null>(null);
+const addressPreset = ref<Partial<AddressFilter> | null>(null);
+const threatMap = ref<{ focus: (ip: any) => void } | null>(null);
+const trafficPanel = ref<{ focus: () => void } | null>(null);
+const addressPanel = ref<{ focus: () => void } | null>(null);
 
-const COUNTRY_CENTERS = Object.freeze({
-    AF: [33.94, 67.71], AL: [41.15, 20.17], DZ: [28.03, 1.66], AR: [-38.42, -63.62], AM: [40.07, 45.04], AU: [-25.27, 133.78], AT: [47.52, 14.55], AZ: [40.14, 47.58],
-    BD: [23.68, 90.36], BY: [53.71, 27.95], BE: [50.5, 4.47], BO: [-16.29, -63.59], BA: [43.92, 17.68], BR: [-14.23, -51.93], BG: [42.73, 25.49], KH: [12.57, 104.99],
-    CA: [56.13, -106.35], CL: [-35.68, -71.54], CN: [35.86, 104.2], CO: [4.57, -74.3], CR: [9.75, -83.75], HR: [45.1, 15.2], CY: [35.13, 33.43], CZ: [49.82, 15.47],
-    DK: [56.26, 9.5], DO: [18.74, -70.16], EC: [-1.83, -78.18], EG: [26.82, 30.8], EE: [58.6, 25.01], FI: [61.92, 25.75], FR: [46.23, 2.21], GE: [42.32, 43.36],
-    DE: [51.17, 10.45], GH: [7.95, -1.02], GR: [39.07, 21.82], GT: [15.78, -90.23], HK: [22.32, 114.17], HU: [47.16, 19.5], IS: [64.96, -19.02], IN: [20.59, 78.96],
-    ID: [-0.79, 113.92], IR: [32.43, 53.69], IQ: [33.22, 43.68], IE: [53.41, -8.24], IL: [31.05, 34.85], IT: [41.87, 12.57], JP: [36.2, 138.25], JO: [30.59, 36.24],
-    KZ: [48.02, 66.92], KE: [-0.02, 37.91], KR: [35.91, 127.77], KW: [29.31, 47.48], LV: [56.88, 24.6], LB: [33.85, 35.86], LT: [55.17, 23.88], LU: [49.82, 6.13],
-    MY: [4.21, 101.98], MX: [23.63, -102.55], MD: [47.41, 28.37], MA: [31.79, -7.09], NL: [52.13, 5.29], NZ: [-40.9, 174.89], NG: [9.08, 8.68], NO: [60.47, 8.47],
-    PK: [30.38, 69.35], PA: [8.54, -80.78], PE: [-9.19, -75.02], PH: [12.88, 121.77], PL: [51.92, 19.15], PT: [39.4, -8.22], QA: [25.35, 51.18], RO: [45.94, 24.97],
-    RU: [61.52, 105.32], SA: [23.89, 45.08], RS: [44.02, 21.01], SG: [1.35, 103.82], SK: [48.67, 19.7], SI: [46.15, 14.99], ZA: [-30.56, 22.94], ES: [40.46, -3.75],
-    LK: [7.87, 80.77], SE: [60.13, 18.64], CH: [46.82, 8.23], TW: [23.7, 120.96], TH: [15.87, 100.99], TN: [33.89, 9.54], TR: [38.96, 35.24], UA: [48.38, 31.17],
-    AE: [23.42, 53.85], GB: [55.38, -3.44], US: [39.83, -98.58], UY: [-32.52, -55.77], UZ: [41.38, 64.59], VE: [6.42, -66.59], VN: [14.06, 108.28]
+/** The clock the filters use: once a minute, so the map is not redrawn every second. */
+const minuteNow = computed(() => Math.floor(now.value / 60_000) * 60_000);
+const waiting = computed(() => routesMissing.value || startup.value?.ready === false);
+
+const watchAt = computed(() => thresholds.value?.autoWatchScore ?? 50);
+const blockAt = computed(() => thresholds.value?.autoBlockScore ?? 200);
+
+// ───────────────────────────── bar ─────────────────────────────
+
+const linkTone = computed(() => ({ live: 'ok', paused: 'neutral', stale: 'warn', offline: 'crit', connecting: 'neutral', starting: 'info' } as Record<string, string>)[linkState.value]);
+const linkWord = computed(() => ({ live: 'Live', paused: 'Paused', stale: 'Stale', offline: 'Offline', connecting: 'Connecting', starting: 'Starting' } as Record<string, string>)[linkState.value]);
+const linkTitle = computed(() => {
+  if (linkState.value === 'live') return 'Live: figures every 15 seconds, addresses every minute. Click to pause.';
+  if (linkState.value === 'paused') return 'Paused. Click to resume.';
+  if (linkState.value === 'starting') return 'OmniDefence is starting on the server. This page keeps checking.';
+  if (linkState.value === 'offline') return 'No answer from the server. Still trying.';
+  return 'Connecting to the server';
+});
+const sweepKey = computed(() => overview.value?.asOfUtc ?? 'none');
+
+const subline = computed(() => {
+  if (routesMissing.value) return 'waiting for the server';
+  if (!overview.value) return '';
+  return `${fmtInt(ips.value.length || overview.value.knownIps || 0)} addresses known`;
 });
 
-const COUNTRY_ALIASES = Object.freeze({
-    'UNITED STATES': 'US', 'UNITED STATES OF AMERICA': 'US', 'UNITED KINGDOM': 'GB', 'GREAT BRITAIN': 'GB', 'ENGLAND': 'GB',
-    'RUSSIA': 'RU', 'SOUTH KOREA': 'KR', 'KOREA': 'KR', 'VIETNAM': 'VN', 'IRAN': 'IR', 'UNITED ARAB EMIRATES': 'AE', 'UAE': 'AE',
-    'NETHERLANDS': 'NL', 'CZECHIA': 'CZ', 'TAIWAN': 'TW', 'HONG KONG': 'HK'
+// ───────────────────────────── figures ─────────────────────────────
+
+const day = computed(() => dayActivity(ips.value, classes.value, minuteNow.value));
+const hostileKnown = computed(() => ips.value.reduce((n, ip) => n + (classGroup(ip.classification, classes.value) === 'hostile' ? 1 : 0), 0));
+const hostileTone = computed(() => ((review.value?.hostileAnsweredCount ?? 0) > 0 ? 'warn' : day.value.hostile ? 'neutral' : 'ok'));
+
+const GROUP_COLORS: Record<ClassGroup, string> = { hostile: '#ff5d6c', human: '#52ffb9', bot: '#7aa7ff', unknown: '#56636b' };
+const dayMix = computed(() => {
+  const since = minuteNow.value / 1000 - 86_400;
+  const counts: Record<ClassGroup, number> = { hostile: 0, human: 0, bot: 0, unknown: 0 };
+  for (const ip of ips.value) if (ip.lastSeen >= since) counts[classGroup(ip.classification, classes.value)]++;
+  return GROUPS.map(g => ({ id: g.id, label: g.label, count: counts[g.id], color: GROUP_COLORS[g.id] })).filter(g => g.count > 0);
 });
 
-const HOUR = 3600;
-const MAP_REFRESH_MS = 30_000;
+/** Today's hostile visitors by what they are. */
+const hostileMix = computed(() => {
+  const since = minuteNow.value / 1000 - 86_400;
+  const counts = new Map<string, number>();
+  for (const ip of ips.value) {
+    if (ip.lastSeen < since || classGroup(ip.classification, classes.value) !== 'hostile') continue;
+    counts.set(ip.classification, (counts.get(ip.classification) ?? 0) + 1);
+  }
+  return classes.value.filter(c => counts.has(c.id)).map(c => ({ id: c.id, label: c.label, color: c.color, count: counts.get(c.id)! }))
+    .sort((a, b) => b.count - a.count);
+});
 
-export default {
-    name: 'omnidefence',
-    layout: 'navbar',
-    components: { OmniDefenceFingerprintPanel },
-    data() {
-        return {
-            activeTab: 'activity',
-            tabs: [
-                { id: 'activity', label: 'Activity', code: 'ACT' },
-                { id: 'ips', label: 'IP Control', code: 'IP' },
-                { id: 'auth', label: 'Auth Events', code: 'AUTH' },
-                { id: 'profiles', label: 'Profiles', code: 'KM' },
-                { id: 'fingerprint', label: 'Fingerprinting', code: 'FP' },
-                { id: 'honeypot', label: 'Honeypots', code: 'HP' },
-            ],
-            overview: null,
-            requests: [], ips: [], mapIps: [], mapLoadedAt: 0, authEvents: [], profileActions: [], honeypotRoutes: [],
-            selectedIp: null, selectedIpNote: '', selectedIpRecent: [], selectedIpEvents: [], lastScan: null,
-            mapFilter: 'all',
-            mapColorBy: 'class',
-            mapTagFilter: '',
-            hiddenClasses: {},
-            classInfo: DEFAULT_CLASSES.map(c => ({ ...c })),
-            refreshTick: 0,
-            fpStatus: null,
-            fpSettings: null,
-            hideApproximateMapPoints: false,
-            timelineMode: 'overlap',        // 'overlap' | 'first' | 'last'
-            timelineStart: null,            // Unix seconds, hour-snapped
-            timelineEnd: null,              // Unix seconds, hour-snapped (the "before" handle)
-            timelineUserSet: false,         // true once the user moves a handle/input
-            timelinePlaying: false,         // play state for the "before" handle
-            timelineSpeed: 5,               // minutes advanced per real second
-            timelinePlayTimer: null,        // interval id while playing
-            leafletReady: false,
-            leafletZoom: 2,
-            boxMode: false,
-            pendingBoxBlock: null,
-            boxBlockAnimating: false,
-            blockedRegions: [],
-            newHoneypotRoute: '', loadError: null, refreshTimer: null, lastUpdated: null,
-            requestDetail: null,
-            authDetail: null,
-            loading: { overview: false, requests: false, ips: false, map: false, auth: false, profile: false, honeypot: false, action: false, ipDetail: false, requestDetail: false, fingerprint: false },
-            filters: {
-                requests: { ip: '', profile: '', route: '', status: '', method: '', origin: '', denyOnly: false, limit: 250, offset: 0 },
-                ips: { query: '', status: '', limit: 300, offset: 0 },
-                auth: { ip: '', profile: '', type: '', limit: 150, offset: 0 },
-                profile: { profile: '', category: '', limit: 150, offset: 0 },
-            }
-        };
-    },
-    computed: {
-        activeTabLabel() { return this.tabs.find(t => t.id === this.activeTab) || this.tabs[0]; },
-        topAttackers() { return this.overview?.topAttackers || []; },
-        topRoutes() { return this.overview?.topRoutes || []; },
-        originBreakdown() { return this.overview?.originBreakdown || []; },
-        review() {
-            const r = this.overview?.review;
-            if (!r) return null;
-            return { ...r, hostileAnswered: r.hostileAnswered || [], benignPenalised: r.benignPenalised || [] };
-        },
-        defenceHealth() { return this.overview?.health || null; },
-        defenceHealthBad() {
-            const h = this.defenceHealth;
-            return !!h && (this.overview?.stale === true || Number(h.overviewBuildMs) > 5000 || Number(h.auditRowsDropped) > 0 || Number(h.auditQueue) > 5000);
-        },
-        // The server serves its last overview, marked stale with its age, while a slow build runs.
-        overviewAgeLabel() {
-            const seconds = Number(this.overview?.ageSeconds || 0);
-            if (seconds >= 86400) return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
-            if (seconds >= 3600) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
-            return `${Math.max(1, Math.round(seconds / 60))} min`;
-        },
-        mapSourceIps() { return this.mapIps.length ? this.mapIps : this.ips; },
-        mapPoints() {
-            return this.mapSourceIps.map((ipRecord, index) => {
-                const coordinates = this.resolveIpCoordinates(ipRecord, index);
-                if (!coordinates) return null;
-                const activityScale = Math.log10(Number(ipRecord.total || 0) + 1);
-                const baseSize = Math.min(7, Math.max(4, 4 + activityScale * 0.75));
-                return {
-                    ...ipRecord,
-                    latitude: coordinates.latitude,
-                    longitude: coordinates.longitude,
-                    size: baseSize,
-                    hasProfile: this.hasIpProfile(ipRecord),
-                    recent: this.isRecentIp(ipRecord),
-                    coordinatesApproximate: coordinates.approximate
-                };
-            }).filter(Boolean);
-        },
-        timelineDomain() {
-            const now = Math.floor(Date.now() / 1000);
-            let min = Infinity, max = -Infinity;
-            for (const ip of this.mapSourceIps) {
-                const first = Number(ip.firstSeen || 0);
-                const last = Number(ip.lastSeen || 0);
-                if (first > 0 && first < min) min = first;
-                if (last > 0 && last > max) max = last;
-            }
-            if (!Number.isFinite(min) || !Number.isFinite(max)) {
-                return { min: now - 86400, max: now };
-            }
-            return {
-                min: Math.floor(min / HOUR) * HOUR,
-                max: Math.ceil(Math.max(max, now) / HOUR) * HOUR,
-            };
-        },
-        filteredMapPoints() {
-            const hidden = this.hiddenClasses;
-            return this.mapPointsBeforeClassFilter.filter(point => !hidden[point.classification || 'Unknown']);
-        },
-        classInfoById() { return Object.fromEntries(this.classInfo.map(c => [c.id, c])); },
-        classLegend() {
-            const counts = {};
-            for (const point of this.mapPointsBeforeClassFilter) {
-                const id = point.classification || 'Unknown';
-                counts[id] = (counts[id] || 0) + 1;
-            }
-            return this.classInfo.map(c => ({ ...c, count: counts[c.id] || 0 }));
-        },
-        mapGroupCounts() {
-            const counts = { human: 0, bot: 0, hostile: 0, unknown: 0 };
-            for (const point of this.filteredMapPoints) counts[CLASS_GROUP[point.classification] || 'unknown']++;
-            return counts;
-        },
-        mapTagOptions() {
-            const counts = {};
-            for (const point of this.mapPoints) {
-                for (const tag of point.classTags || []) {
-                    const key = tag.split(':')[0];
-                    counts[key] = (counts[key] || 0) + 1;
-                }
-            }
-            return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([tag, count]) => ({ tag, count }));
-        },
-        mapPointsBeforeClassFilter() {
-            let points = this.hideApproximateMapPoints ? this.mapPoints.filter(point => !point.coordinatesApproximate) : this.mapPoints;
-            if (this.mapTagFilter) {
-                const wanted = this.mapTagFilter;
-                points = points.filter(point => (point.classTags || []).some(tag => tag === wanted || tag.startsWith(wanted + ':')));
-            }
-            if (this.mapFilter === 'attackers') points = points.filter(point => !point.hasProfile);
-            else if (this.mapFilter === 'profiled') points = points.filter(point => point.hasProfile);
-            const domain = this.timelineDomain;
-            const start = this.timelineStart ?? domain.min;
-            const end = this.timelineEnd ?? domain.max;
-            const mode = this.timelineMode;
-            return points.filter(point => {
-                const first = Number(point.firstSeen || 0);
-                const last = Number(point.lastSeen || 0);
-                if (mode === 'first') return first >= start && first <= end;
-                if (mode === 'last') return last >= start && last <= end;
-                // overlap: active during the window
-                return last >= start && first <= end;
-            });
-        },
-        timelineStartInput: {
-            get() { return this.unixToLocalInput(this.timelineStart ?? this.timelineDomain.min); },
-            set(value) {
-                const sec = this.localInputToUnix(value);
-                if (sec === null) return;
-                const domain = this.timelineDomain;
-                let next = Math.min(Math.max(sec, domain.min), domain.max);
-                const end = this.timelineEnd ?? domain.max;
-                if (next > end) next = end;
-                this.timelineStart = next;
-                this.timelineUserSet = true;
-            }
-        },
-        timelineEndInput: {
-            get() { return this.unixToLocalInput(this.timelineEnd ?? this.timelineDomain.max); },
-            set(value) {
-                const sec = this.localInputToUnix(value);
-                if (sec === null) return;
-                this.stopTimelinePlay();
-                const domain = this.timelineDomain;
-                let next = Math.min(Math.max(sec, domain.min), domain.max);
-                const start = this.timelineStart ?? domain.min;
-                if (next < start) next = start;
-                this.timelineEnd = next;
-                this.timelineUserSet = true;
-            }
-        },
-        mapAttackersCount() { return this.filteredMapPoints.filter(point => !point.hasProfile).length; },
-        mapProfiledCount() { return this.filteredMapPoints.filter(point => point.hasProfile).length; },
-        mapRecentCount() { return this.filteredMapPoints.filter(point => point.recent).length; },
-        boxPopoverStyle() {
-            const position = this.pendingBoxBlock?.position;
-            if (!position) return {};
-            return { left: `${position.left}px`, top: `${position.top}px` };
-        },
-        isBusy() { return Object.values(this.loading).some(Boolean); },
-        busyLabel() {
-            const map = { overview: 'Refreshing overview', requests: 'Loading activity', ips: 'Loading IPs', map: 'Mapping IPs', auth: 'Loading auth', profile: 'Loading profiles', honeypot: 'Loading traps', action: 'Working', ipDetail: 'Loading IP', requestDetail: 'Loading request' };
-            const key = Object.keys(this.loading).find(k => this.loading[k]);
-            return key ? map[key] : '';
-        },
-        lastUpdatedLabel() { return this.lastUpdated ? `Updated ${this.lastUpdated.toLocaleTimeString()}` : 'Ready'; },
-        requestDetailHeaderPairs() {
-            const headers = this.requestDetail?.headers;
-            if (!headers || typeof headers !== 'object') return [];
-            return Object.keys(headers).sort((a, b) => a.localeCompare(b)).map(key => ({ key, value: String(headers[key] ?? '') }));
-        },
-        requestDetailQueryPairs() {
-            const raw = this.requestDetail?.query;
-            if (!raw || typeof raw !== 'string') return [];
-            const stripped = raw.startsWith('?') ? raw.slice(1) : raw;
-            if (!stripped) return [];
-            try {
-                const params = new URLSearchParams(stripped);
-                const pairs = [];
-                params.forEach((value, key) => { pairs.push({ key, value }); });
-                return pairs;
-            } catch { return []; }
-        },
-        requestDetailBodyInfo() {
-            if (!this.requestDetail) return '';
-            const total = Number(this.requestDetail.body_length || 0);
-            const truncated = Number(this.requestDetail.body_truncated) === 1;
-            if (!total) return '';
-            const totalLabel = `${total.toLocaleString()} bytes`;
-            return truncated ? `${totalLabel} / stored truncated to 64 KB` : totalLabel;
-        }
-    },
-    async mounted() {
-        await this.initThreatMap();
-        this.loadClassInfo();
-        await this.refreshActive(false);
-        this.refreshTimer = setInterval(() => this.refreshActive(false), 5000);
-    },
-    beforeUnmount() {
-        if (this.refreshTimer) clearInterval(this.refreshTimer);
-        this.stopTimelinePlay();
-        this.destroyThreatMap();
-    },
-    watch: {
-        activeTab(tab) {
-            if (tab === 'activity') this.loadRequests();
-            if (tab === 'ips') this.loadIps();
-            if (tab === 'auth') this.loadAuthEvents();
-            if (tab === 'profiles') this.loadProfileActions();
-            if (tab === 'honeypot') this.loadHoneypotRoutes();
-            if (tab === 'fingerprint') this.loadFingerprintStatus(true);
-        },
-        mapFilter() { this.syncThreatMapPoints(); },
-        mapColorBy() { this.syncThreatMapPoints(); },
-        mapTagFilter() { this.syncThreatMapPoints(); },
-        hiddenClasses: { deep: true, handler() { this.syncThreatMapPoints(); } },
-        hideApproximateMapPoints() { this.syncThreatMapPoints(); },
-        timelineMode() { this.syncThreatMapPoints(); },
-        timelineStart() { this.syncThreatMapPoints(); },
-        timelineEnd() { this.syncThreatMapPoints(); },
-        timelineSpeed() { if (this.timelinePlaying) this.scheduleTimelineTick(); },
-        mapIps() { this.initTimelineWindow(); this.syncThreatMapPoints(); },
-        ips() { this.syncThreatMapPoints(); },
-        blockedRegions() { this.syncThreatMapRegions(); },
-        selectedIp() { this.syncThreatMapPoints(); },
-        boxMode(enabled) { this.setThreatMapBoxMode(enabled); this.syncThreatMap(); }
-    },
-    methods: {
-        fmtNum(value) { return Number(value || 0).toLocaleString(); },
-        fmtTime(value) {
-            if (!value) return '-';
-            const date = new Date(Number(value) * 1000);
-            return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
-        },
-        unixToLocalInput(sec) {
-            const n = Number(sec);
-            if (!Number.isFinite(n) || n <= 0) return '';
-            const d = new Date(n * 1000);
-            if (Number.isNaN(d.getTime())) return '';
-            const pad = v => String(v).padStart(2, '0');
-            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-        },
-        localInputToUnix(str) {
-            if (!str) return null;
-            const d = new Date(str); // datetime-local parses as local time
-            if (Number.isNaN(d.getTime())) return null;
-            return Math.floor(d.getTime() / 1000 / HOUR) * HOUR;
-        },
-        fmtTimelineLabel(sec) { return this.fmtTime(sec); },
-        onTimelineStartSlide(event) {
-            const domain = this.timelineDomain;
-            let start = Number(event?.target?.value);
-            if (!Number.isFinite(start)) start = domain.min;
-            const end = this.timelineEnd ?? domain.max;
-            this.timelineStart = Math.min(start, end); // start cannot pass end
-            this.timelineUserSet = true;
-        },
-        onTimelineEndSlide(event) {
-            this.stopTimelinePlay(); // dragging the "before" handle takes over from playback
-            const domain = this.timelineDomain;
-            let end = Number(event?.target?.value);
-            if (!Number.isFinite(end)) end = domain.max;
-            const start = this.timelineStart ?? domain.min;
-            this.timelineEnd = Math.max(end, start); // end cannot pass start
-            this.timelineUserSet = true;
-        },
-        resetTimeline() {
-            this.stopTimelinePlay();
-            this.timelineStart = this.timelineDomain.min;
-            this.timelineEnd = this.timelineDomain.max;
-            this.timelineUserSet = false;
-        },
-        toggleTimelinePlay() {
-            if (this.timelinePlaying) this.stopTimelinePlay();
-            else this.startTimelinePlay();
-        },
-        startTimelinePlay() {
-            const domain = this.timelineDomain;
-            const start = this.timelineStart ?? domain.min;
-            // restart from the window start if the "before" handle is already at the end
-            if ((this.timelineEnd ?? domain.max) >= domain.max) this.timelineEnd = start;
-            this.timelineUserSet = true;
-            this.timelinePlaying = true;
-            this.scheduleTimelineTick();
-        },
-        scheduleTimelineTick() {
-            if (this.timelinePlayTimer) clearInterval(this.timelinePlayTimer);
-            const speed = Math.max(1, Number(this.timelineSpeed) || 1); // minutes per second
-            this.timelinePlayTimer = setInterval(this.timelinePlayTick, Math.round(1000 / speed));
-        },
-        timelinePlayTick() {
-            const domain = this.timelineDomain;
-            const next = (this.timelineEnd ?? domain.min) + 60; // advance one minute
-            if (next >= domain.max) {
-                this.timelineEnd = domain.max;
-                this.stopTimelinePlay();
-                return;
-            }
-            this.timelineEnd = next;
-        },
-        stopTimelinePlay() {
-            this.timelinePlaying = false;
-            if (this.timelinePlayTimer) { clearInterval(this.timelinePlayTimer); this.timelinePlayTimer = null; }
-        },
-        initTimelineWindow(force = false) {
-            if (this.timelineUserSet && !force) {
-                // keep the user's selection but clamp into the new domain
-                const domain = this.timelineDomain;
-                if (this.timelineStart !== null) this.timelineStart = Math.min(Math.max(this.timelineStart, domain.min), domain.max);
-                if (this.timelineEnd !== null) this.timelineEnd = Math.min(Math.max(this.timelineEnd, domain.min), domain.max);
-                return;
-            }
-            this.timelineStart = this.timelineDomain.min;
-            this.timelineEnd = this.timelineDomain.max;
-        },
-        toNumberOrNull(value) {
-            if (value === null || value === undefined || value === '') return null;
-            const parsed = Number(value);
-            return Number.isFinite(parsed) ? parsed : null;
-        },
-        statusClass(code) {
-            code = Number(code || 0);
-            if (code >= 500) return 'status bad';
-            if (code >= 400) return 'status warn';
-            if (code >= 300) return 'status mid';
-            return 'status good';
-        },
-        originClass(origin) {
-            if (!origin) return 'origin-pill';
-            if (origin.includes('NoProfile') || origin.includes('Invalid')) return 'origin-pill bad';
-            if (origin.includes('Website')) return 'origin-pill web';
-            return 'origin-pill api';
-        },
-        rowClass(row) {
-            return { 'row-bad': row.reason || Number(row.status) >= 500, 'row-warn': Number(row.status) >= 400 && Number(row.status) < 500 };
-        },
-        ipClass(ip) {
-            return { 'row-bad': ip.status === 'Blocked', 'row-warn': ip.status === 'Watch' || ip.status === 'Tarpit', 'row-trap': ip.status === 'Honeypot' };
-        },
-        isHostileStatus(status) { return ['Blocked', 'Tarpit', 'Honeypot'].includes(String(status || '')); },
-        authClass(type) { return { 'row-bad': String(type).includes('NoProfile') || String(type).includes('Invalid'), 'row-warn': type === 'InsufficientClearance' }; },
-        buildQuery(values) {
-            const p = new URLSearchParams();
-            Object.entries(values).forEach(([key, value]) => {
-                if (value === '' || value === null || value === undefined || value === false) return;
-                p.append(key, String(value));
-            });
-            const qs = p.toString();
-            return qs ? '?' + qs : '';
-        },
-        async fetchJson(url, key = null) {
-            if (key) this.loading[key] = true;
-            try {
-                const deadline = Date.now() + 15_000;
-                let delayMs = 200;
-                let r;
-                while (true) {
-                    r = await RequestGETFromKliveAPI(url, false, false);
-                    const pending = r.status === 202 ||
-                        (r.status === 503 && (await r.clone().json().catch(() => null))?.pending === true);
-                    if (!pending) break;
-                    if (Date.now() + delayMs >= deadline) throw new Error('Snapshot is still refreshing.');
-                    await new Promise(resolve => setTimeout(resolve, delayMs));
-                    delayMs = Math.min(1_000, delayMs * 2);
-                }
-                if (!r.ok) { this.loadError = `Request failed: ${url} (${r.status})`; return null; }
-                this.loadError = null;
-                return await r.json();
-            } catch (error) { this.loadError = String(error); return null; }
-            finally { if (key) this.loading[key] = false; }
-        },
-        normalizeRequest(row) {
-            return {
-                id: row.id ?? row.Id ?? `${row.utc_ts}-${row.ip}-${row.route}`,
-                ts: row.utc_ts ?? row.UtcTimestamp,
-                ip: row.ip ?? row.Ip,
-                method: row.method ?? row.Method,
-                route: row.route ?? row.Route,
-                status: row.status_code ?? row.StatusCode,
-                duration: row.duration_ms ?? row.DurationMs,
-                profile: row.profile_name ?? row.ProfileName,
-                profileRank: row.profile_rank ?? row.ProfileRank,
-                reason: row.deny_reason ?? row.DenyReason,
-                origin: row.request_origin ?? row.RequestOrigin,
-                clientPage: row.client_page ?? row.ClientPage,
-            };
-        },
-        normalizeIp(row) {
-            return {
-                ip: row.ip ?? row.Ip,
-                firstSeen: row.first_seen ?? row.FirstSeen,
-                lastSeen: row.last_seen ?? row.LastSeen,
-                total: row.total_requests ?? row.TotalRequests ?? 0,
-                successful: row.successful_requests ?? row.SuccessfulRequests ?? 0,
-                unauth: row.unauth_attempts ?? row.UnauthAttempts ?? 0,
-                deny: row.deny_count ?? row.DenyCount ?? 0,
-                score: row.threat_score ?? row.ThreatScore ?? 0,
-                status: row.status ?? row.Status ?? 'Normal',
-                country: row.country ?? row.Country,
-                asn: row.asn ?? row.Asn,
-                city: row.city ?? row.City,
-                region: row.region ?? row.regionName ?? row.region_name ?? row.Region ?? row.RegionName,
-                isp: row.isp ?? row.Isp,
-                org: row.org ?? row.Org,
-                latitude: this.toNumberOrNull(row.latitude ?? row.Latitude),
-                longitude: this.toNumberOrNull(row.longitude ?? row.Longitude),
-                notes: row.notes ?? row.Notes,
-                profileId: row.associated_profile_id ?? row.AssociatedProfileId,
-                profileName: row.associated_profile_name ?? row.AssociatedProfileName,
-                profileRank: row.associated_profile_rank ?? row.AssociatedProfileRank,
-                isKlives: Number(row.associated_profile_rank ?? row.AssociatedProfileRank ?? 0) >= 5,
-                classification: row.classification ?? row.Classification ?? 'Unknown',
-                classConfidence: this.toNumberOrNull(row.class_confidence ?? row.ClassConfidence),
-                classTags: String(row.class_tags ?? row.ClassTags ?? '').split(',').filter(Boolean),
-                isHosting: row.is_hosting ?? row.IsHosting ?? null,
-                isProxy: row.is_proxy ?? row.IsProxy ?? null,
-                isMobile: row.is_mobile ?? row.IsMobile ?? null,
-                reverseDns: row.reverse_dns ?? row.ReverseDns ?? null,
-                timezone: row.timezone ?? row.Timezone ?? null,
-                asName: row.as_name ?? row.AsName ?? null,
-            };
-        },
-        normalizeAuth(row) { return { id: row.id, ts: row.utc_ts, ip: row.ip, type: row.type, profile: row.profile_name, profileId: row.profile_id, route: row.route, userAgent: row.user_agent, detail: row.detail }; },
-        normalizeProfile(row) { return { id: row.id, ts: row.utc_ts, profile: row.profile_name || row.profile_id, category: row.category, action: row.action, ip: row.ip, detail: row.detail_json }; },
-        async loadOverview() { const data = await this.fetchJson('/omnidefence/overview', 'overview'); if (data) this.overview = data; },
-        async loadRequests() { const data = await this.fetchJson('/omnidefence/requests' + this.buildQuery(this.filters.requests), 'requests'); if (data) this.requests = data.map(this.normalizeRequest); },
-        async loadIps() { const data = await this.fetchJson('/omnidefence/ips' + this.buildQuery(this.filters.ips), 'ips'); if (data) this.ips = data.map(this.normalizeIp); },
-        async loadMapIps() { const data = await this.fetchJson('/omnidefence/ip-map', 'map'); if (data) { this.mapIps = data.map(this.normalizeIp); this.mapLoadedAt = Date.now(); } },
-        async loadAuthEvents() { const data = await this.fetchJson('/omnidefence/auth-events' + this.buildQuery(this.filters.auth), 'auth'); if (data) this.authEvents = data.map(this.normalizeAuth); },
-        async loadProfileActions() { const data = await this.fetchJson('/omnidefence/profile-actions' + this.buildQuery(this.filters.profile), 'profile'); if (data) this.profileActions = data.map(this.normalizeProfile); },
-        async loadHoneypotRoutes() { const data = await this.fetchJson('/omnidefence/honeypot-routes', 'honeypot'); if (data) this.honeypotRoutes = data; },
-        async refreshActive(manual = true) {
-            if (this.isBusy && !manual) return;
-            const jobs = [this.loadOverview(), this.loadBlockedRegions()];
-            // Every known IP (5k+ records, ~4 MB of JSON) moves slowly; the 5 s tick needn't refetch it.
-            if (manual || Date.now() - this.mapLoadedAt >= MAP_REFRESH_MS) jobs.push(this.loadMapIps());
-            if (this.activeTab === 'activity') jobs.push(this.loadRequests());
-            if (this.activeTab === 'ips') jobs.push(this.loadIps());
-            if (this.activeTab === 'auth') jobs.push(this.loadAuthEvents());
-            if (this.activeTab === 'profiles') jobs.push(this.loadProfileActions());
-            if (this.activeTab === 'honeypot') jobs.push(this.loadHoneypotRoutes());
-            if (this.activeTab !== 'ips') jobs.push(this.loadIps());
-            if (this.activeTab === 'fingerprint') jobs.push(this.loadFingerprintStatus(false));
-            if (this.selectedIp?.ip) jobs.push(this.selectIp(this.selectedIp.ip, false));
-            await Promise.allSettled(jobs);
-            this.refreshTick = Date.now();
-            this.lastUpdated = new Date();
-            if (manual && process.client) console.log('OmniDefence refreshed');
-        },
-        showOnlyDenied() { this.activeTab = 'activity'; this.filters.requests.denyOnly = true; this.filters.requests.offset = 0; this.loadRequests(); },
-        pageRequests(direction) { this.filters.requests.offset = Math.max(0, this.filters.requests.offset + direction * this.filters.requests.limit); this.loadRequests(); },
-        openActivityForIp(ip) {
-            if (!ip) return;
-            this.filters.requests.ip = ip;
-            this.filters.requests.offset = 0;
-            if (this.activeTab === 'activity') this.loadRequests();
-            else this.activeTab = 'activity';
-            this.selectIp(ip, false);
-            if (process.client) {
-                Swal.fire({
-                    toast: true,
-                    position: 'bottom-end',
-                    icon: 'info',
-                    title: `Activity filtered to ${ip}`,
-                    timer: 2200,
-                    timerProgressBar: true,
-                    showConfirmButton: false,
-                    background: '#0a1518',
-                    color: '#bcecff'
-                });
-            }
-        },
-        hasIpProfile(ipRecord) { return Boolean(ipRecord?.profileId || ipRecord?.profileName); },
-        isRecentIp(ipRecord) {
-            const lastSeen = Number(ipRecord?.lastSeen || 0);
-            if (!lastSeen) return false;
-            return lastSeen >= Math.floor(Date.now() / 1000) - 86400 * 3;
-        },
-        resolveIpCoordinates(ipRecord, index) {
-            const latitude = this.toNumberOrNull(ipRecord?.latitude);
-            const longitude = this.toNumberOrNull(ipRecord?.longitude);
-            if (latitude !== null && longitude !== null) {
-                return { latitude, longitude, approximate: false };
-            }
+/** Everyone held back, by how: blocked, trapped, slowed, watched. */
+const statusMix = computed(() => {
+  const ov = overview.value;
+  if (!ov) return [];
+  return [
+    { id: 'Blocked', label: 'Blocked', count: ov.blockedIps ?? 0, color: STATUS_COLORS.Blocked },
+    { id: 'Honeypot', label: 'Trapped', count: ov.honeypotIps ?? 0, color: STATUS_COLORS.Honeypot },
+    { id: 'Tarpit', label: 'Tarpit', count: ov.tarpitIps ?? 0, color: STATUS_COLORS.Tarpit },
+    { id: 'Watch', label: 'Watch', count: ov.watchedIps ?? 0, color: STATUS_COLORS.Watch },
+  ].filter(m => m.count > 0);
+});
 
-            const countryCode = this.countryKey(ipRecord?.country);
-            const countryCenter = countryCode ? COUNTRY_CENTERS[countryCode] : null;
-            if (countryCenter) {
-                const jitter = this.jitterForIp(ipRecord?.ip, 2.8);
-                return {
-                    latitude: Math.max(-85, Math.min(85, countryCenter[0] + jitter.latitude)),
-                    longitude: Math.max(-180, Math.min(180, countryCenter[1] + jitter.longitude)),
-                    approximate: true
-                };
-            }
+const requestSeries = computed(() => hourlySeries(hourly.value, b => b.requests, 24, minuteNow.value));
+const deniedSeries = computed(() => hourlySeries(hourly.value, b => b.denied, 24, minuteNow.value));
+const deniedShare = computed(() => {
+  const ov = overview.value;
+  if (!ov?.requests24h) return '0%';
+  return `${Math.round(((ov.denied24h ?? 0) / ov.requests24h) * 100)}%`;
+});
+const deniedTone = computed(() => {
+  const surge = verdict.value.issues.find(issue => issue.id === 'denied-surge');
+  return surge ? surge.tone : 'ok';
+});
 
-            return this.ipFallbackCoordinates(ipRecord?.ip, index);
-        },
-        mapPointTitle(point) {
-            const identity = point.hasProfile ? `Profile: ${point.profileName || point.profileId || 'matched'}` : 'No profile';
-            const location = this.formatGeo(point);
-            const network = point.isp || point.org || point.asn || 'Unknown network';
-            const recency = point.recent ? 'Recent' : 'Older';
-            const accuracy = point.coordinatesApproximate ? 'Approximate' : 'Exact';
-            const confidence = point.classConfidence ? ` ${Math.round(point.classConfidence * 100)}%` : '';
-            const tags = (point.classTags || []).slice(0, 3).join(', ');
-            const verdict = `${this.classLabel(point.classification)}${confidence}${tags ? ' [' + tags + ']' : ''}`;
-            return `${point.ip} / ${verdict} / ${identity} / ${location} / ${network} / ${point.status} / ${recency} / ${accuracy}`;
-        },
-        classLabel(id) { return this.classInfoById[id || 'Unknown']?.label || id || 'Unknown'; },
-        classColor(id) { return this.classInfoById[id || 'Unknown']?.color || '#56636b'; },
-        toggleMapClass(id) { this.hiddenClasses = { ...this.hiddenClasses, [id]: !this.hiddenClasses[id] }; },
-        async loadClassInfo() {
-            const data = await this.fetchJson('/omnidefence/classes');
-            if (!Array.isArray(data) || !data.length) return;
-            this.classInfo = data.map(c => ({ ...c, group: CLASS_GROUP[c.id] || (c.malicious ? 'hostile' : 'unknown') }));
-            this.syncThreatMapPoints();
-        },
-        async loadFingerprintStatus(showLoading = false) {
-            const data = await this.fetchJson('/omnidefence/fingerprint/status', showLoading ? 'fingerprint' : null);
-            if (!data) return;
-            this.fpStatus = data;
-            // Don't clobber an edit in progress on the 5s refresh.
-            if (!this.fpSettings || showLoading) this.fpSettings = JSON.parse(JSON.stringify(data.settings || {}));
-        },
-        async saveFingerprintSettings() {
-            if (!this.fpSettings) return;
-            this.loading.action = true;
-            try {
-                const body = { fingerprint: this.fpSettings };
-                const r = await RequestPOSTFromKliveAPI('/omnidefence/settings/update', JSON.stringify(body), false, true);
-                if (!r.ok) { this.loadError = await r.text(); return; }
-                await this.loadFingerprintStatus(true);
-                Swal.fire({ toast: true, position: 'bottom-end', icon: 'success', title: 'Fingerprinting settings saved', timer: 1600, showConfirmButton: false, background: '#0a1518', color: '#bcecff' });
-            } finally { this.loading.action = false; }
-        },
-        async reclassifyAll() {
-            this.loading.action = true;
-            try {
-                const r = await RequestPOSTFromKliveAPI('/omnidefence/ip/reclassify', JSON.stringify({ all: true }), false, true);
-                if (!r.ok) this.loadError = await r.text();
-            } finally { this.loading.action = false; }
-        },
-        formatGeo(ipRecord) {
-            const parts = [ipRecord?.city, ipRecord?.region, ipRecord?.country].filter(Boolean);
-            return parts.length ? parts.join(', ') : 'Unresolved';
-        },
-        clampLatitude(latitude) {
-            return Math.max(-85.0511287, Math.min(85.0511287, Number(latitude)));
-        },
-        clampLongitude(longitude) {
-            const value = Number(longitude);
-            if (!Number.isFinite(value)) return 0;
-            return Math.max(-180, Math.min(180, value));
-        },
-        threatMapHomeZoom(container = this.$refs.leafletMap) {
-            const width = Math.max(1, container?.clientWidth || 1024);
-            const zoom = Math.ceil(Math.log2(width / 256) * 4) / 4;
-            return Math.min(3.5, Math.max(2, zoom));
-        },
-        resizeThreatMap() {
-            if (!this._threatMap) return;
-            this._threatMap.invalidateSize({ animate: false });
-            const homeZoom = this.threatMapHomeZoom();
-            this._threatMapHomeZoom = homeZoom;
-            this._threatMap.setMinZoom(homeZoom);
-            if (this._threatMap.getZoom() < homeZoom) this._threatMap.setZoom(homeZoom, { animate: false });
-        },
-        mapPointVisual(point) {
-            if (this.mapColorBy === 'class') {
-                const color = this.classColor(point.classification);
-                const confidence = Number(point.classConfidence) || 0;
-                // Confidence reads as solidity: a tentative verdict is a faint dot.
-                return { fill: color, stroke: color, opacity: 0.4 + 0.55 * Math.min(1, confidence) };
-            }
-            if (point.status === 'Blocked') return { fill: '#4a1a22', stroke: '#ff6071', opacity: 0.88 };
-            if (point.status === 'Honeypot') return { fill: '#c79cff', stroke: '#f0ddff', opacity: 0.9 };
-            if (point.status === 'Tarpit') return { fill: '#f0a23a', stroke: '#ffe066', opacity: 0.9 };
-            if (point.hasProfile && point.recent) return { fill: '#6bffc1', stroke: '#ddfff1', opacity: 0.92 };
-            if (point.hasProfile) return { fill: '#5fd3ff', stroke: '#dbf7ff', opacity: 0.88 };
-            if (point.recent) return { fill: '#ffc247', stroke: '#fff0ba', opacity: 0.9 };
-            return { fill: '#ff6071', stroke: '#ffd0d6', opacity: 0.88 };
-        },
-        pointInLatLonBounds(point, latMin, latMax, lonMin, lonMax) {
-            const lat = this.toNumberOrNull(point.latitude);
-            const lon = this.toNumberOrNull(point.longitude);
-            return lat !== null && lon !== null && lat >= latMin && lat <= latMax && lon >= lonMin && lon <= lonMax;
-        },
-        async initThreatMap() {
-            if (!process.client || this._threatMap) return;
-            await nextTick();
-            const container = this.$refs.leafletMap;
-            if (!container) return;
+const ORIGIN_COLORS: Record<string, string> = { ok: '#4fd18b', info: '#6aa8f7', warn: '#f5b942', crit: '#ff5d6c', neutral: '#586272' };
+const originMix = computed(() => (overview.value?.originBreakdown ?? [])
+  .filter(o => Number(o.hits) > 0)
+  .map(o => ({ origin: o.origin, hits: Number(o.hits), label: originLabel(o.origin).label, color: ORIGIN_COLORS[originLabel(o.origin).tone] })));
+const topOrigin = computed(() => {
+  const top = [...originMix.value].sort((a, b) => b.hits - a.hits)[0];
+  return top ? top.label.toLowerCase() : '';
+});
 
-            const leafletModule = await import('leaflet');
-            const L = markRaw(leafletModule.default || leafletModule);
-            const bounds = L.latLngBounds([[-85.0511287, -180], [85.0511287, 180]]);
-            const map = L.map(container, {
-                preferCanvas: true,
-                zoomControl: false,
-                attributionControl: false,
-                doubleClickZoom: false,
-                minZoom: 2,
-                maxZoom: 13,
-                zoomSnap: 0.25,
-                zoomDelta: 0.5,
-                wheelPxPerZoomLevel: 140,
-                maxBounds: bounds,
-                maxBoundsViscosity: 0.85
-            });
+// ───────────────────────────── map ─────────────────────────────
 
-            L.control.zoom({ position: 'bottomright' }).addTo(map);
-            L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(map);
-            // Self-hosted basemap: Natural Earth (public domain) geometry bundled with the site and drawn
-            // on canvas. No tile server, API key or quota, so it cannot be revoked like the CARTO tiles were.
-            map.createPane('basemap').style.zIndex = 250;
-            const labelPane = map.createPane('basemapLabels');
-            labelPane.style.zIndex = 350;
-            labelPane.style.pointerEvents = 'none';
+const MAP_GROUPS: { id: 'all' | ClassGroup; label: string }[] = [{ id: 'all', label: 'Everyone' }, { id: 'hostile', label: 'Hostile' }, { id: 'human', label: 'People' }, { id: 'bot', label: 'Bots' }];
+const MAP_WINDOWS = [{ hours: 24, label: '24h' }, { hours: 168, label: '7d' }, { hours: 720, label: '30d' }, { hours: 0, label: 'All' }];
+const mapGroup = ref<'all' | ClassGroup>('all');
+const mapHours = ref(168);
+const replayAt = ref<number | null>(null);
+const replaying = ref(false);
+let replayTimer: number | null = null;
 
-            this._leaflet = L;
-            this._StatusGlyph = markRaw(L.CircleMarker.extend({
-                _updatePath() {
-                    const renderer = this._renderer;
-                    if (!renderer?._drawing || this._empty()) return;
-                    const ctx = renderer._ctx, p = this._point, r = this._radius;
-                    ctx.save();
-                    ctx.strokeStyle = this.options.color;
-                    ctx.lineWidth = this.options.weight;
-                    ctx.globalAlpha = this.options.opacity;
-                    ctx.beginPath();
-                    if (this.options.glyph === 'cross') {
-                        ctx.moveTo(p.x - r, p.y - r); ctx.lineTo(p.x + r, p.y + r);
-                        ctx.moveTo(p.x + r, p.y - r); ctx.lineTo(p.x - r, p.y + r);
-                    } else {
-                        ctx.moveTo(p.x - r - 3, p.y); ctx.lineTo(p.x + r + 3, p.y);
-                    }
-                    ctx.stroke();
-                    ctx.restore();
-                }
-            }));
-            this._threatMap = markRaw(map);
-            this._basemapRenderer = markRaw(L.canvas({ pane: 'basemap', padding: 0.5 }));
-            this._basemapLayers = {};
-            this._basemapLabels = null;
-            this._basemapDetail = null;
-            this._threatRenderer = markRaw(L.canvas({ padding: 0.3 }));
-            this._regionLayer = markRaw(L.layerGroup().addTo(map));
-            this._pointLayer = markRaw(L.layerGroup().addTo(map));
-            this._selectionLayer = markRaw(L.layerGroup().addTo(map));
-            this._blockAnimationLayer = markRaw(L.layerGroup().addTo(map));
-            this._threatMapHomeZoom = this.threatMapHomeZoom(container);
-            map.setMinZoom(this._threatMapHomeZoom);
-            this._boxHandlers = {
-                mousedown: event => this.onThreatBoxMouseDown(event),
-                mousemove: event => this.onThreatBoxMouseMove(event),
-                mouseup: event => this.onThreatBoxMouseUp(event)
-            };
-            map.on(this._boxHandlers);
-            map.on('zoomend moveend', () => { this.leafletZoom = Number(map.getZoom().toFixed(2)); });
-            map.on('zoomend', () => this.syncBasemap());
-            map.setView([18, 0], this._threatMapHomeZoom);
-            this.leafletZoom = Number(map.getZoom().toFixed(2));
-            this.syncBasemap();
-            this.leafletReady = true;
-            this.setThreatMapBoxMode(this.boxMode);
-            this.syncThreatMap();
-            if (typeof ResizeObserver !== 'undefined') {
-                this._threatMapResizeObserver = new ResizeObserver(() => this.resizeThreatMap());
-                this._threatMapResizeObserver.observe(container);
-            }
-            setTimeout(() => this.resizeThreatMap(), 80);
-        },
-        destroyThreatMap() {
-            if (this._threatMapResizeObserver) this._threatMapResizeObserver.disconnect();
-            if (this._threatMap) this._threatMap.remove();
-            this._leaflet = null;
-            this._threatMap = null;
-            this._threatMapHomeZoom = null;
-            this._threatMapResizeObserver = null;
-            this._threatRenderer = null;
-            this._basemapRenderer = null;
-            this._basemapLayers = null;
-            this._basemapLabels = null;
-            this._basemapDetail = null;
-            this._pointLayer = null;
-            this._regionLayer = null;
-            this._selectionLayer = null;
-            this._blockAnimationLayer = null;
-            this._selectionRectangle = null;
-            this._boxStartLatLng = null;
-            this._boxStartPoint = null;
-            this.leafletReady = false;
-        },
-        // 50m geometry for the world view; the ~3.6 MB 10m set is only fetched once someone zooms in.
-        async syncBasemap() {
-            const map = this._threatMap;
-            if (!map) return;
-            const detail = map.getZoom() >= 5 ? '10m' : '50m';
-            map.getContainer().dataset.labelTier = String(map.getZoom() >= 5.5 ? 3 : map.getZoom() >= 4.5 ? 2 : map.getZoom() >= 3.5 ? 1 : 0);
-            if (this._basemapDetail === detail) return;
-            this._basemapDetail = detail;
-            try {
-                if (!this._basemapLayers[detail]) {
-                    const layer = await this.buildBasemapLayer(detail);
-                    if (this._threatMap !== map) return;
-                    this._basemapLayers[detail] = layer;
-                }
-            } catch (err) {
-                console.error(`OmniDefence basemap (${detail}) failed to load`, err);
-                if (this._basemapDetail === detail) this._basemapDetail = null;
-                return;
-            }
-            if (this._basemapDetail !== detail) return; // zoom moved on while loading
-            for (const [key, layer] of Object.entries(this._basemapLayers)) {
-                if (key === detail) layer.addTo(map);
-                else layer.remove();
-            }
-        },
-        async buildBasemapLayer(detail) {
-            const L = this._leaflet;
-            const [{ feature, mesh }, topologyModule] = await Promise.all([
-                import('topojson-client'),
-                detail === '10m' ? import('world-atlas/countries-10m.json') : import('world-atlas/countries-50m.json')
-            ]);
-            const topology = topologyModule.default || topologyModule;
-            const countries = topology.objects.countries;
-            const countryFeatures = feature(topology, countries);
-            const shared = { renderer: this._basemapRenderer, pane: 'basemap', interactive: false };
-            const group = L.featureGroup();
-            L.geoJSON(this.unwrapAntimeridian(countryFeatures), {
-                ...shared,
-                attribution: 'Basemap: Natural Earth',
-                style: { stroke: false, fill: true, fillColor: '#0b2723', fillOpacity: 1 }
-            }).addTo(group);
-            L.geoJSON(this.unwrapAntimeridian(mesh(topology, countries, (a, b) => a !== b)), {
-                ...shared,
-                style: { color: '#2e7c6d', weight: 0.8, opacity: 0.6, fill: false, lineJoin: 'round' }
-            }).addTo(group);
-            L.geoJSON(this.unwrapAntimeridian(mesh(topology, countries, (a, b) => a === b)), {
-                ...shared,
-                style: { color: '#3fae93', weight: 1, opacity: 0.75, fill: false, lineJoin: 'round' }
-            }).addTo(group);
-            if (this._threatMap && !this._basemapLabels) {
-                this._basemapLabels = markRaw(this.buildBasemapLabels(countryFeatures).addTo(this._threatMap));
-            }
-            return markRaw(group);
-        },
-        // Shapes that cross the ±180° meridian (Fiji, Chukotka) jump from +180 to -180 and would draw a
-        // stroke across the whole map. Unwrap them into continuous longitudes and add a copy shifted by
-        // 360° so both halves land on the (non-wrapping) world.
-        unwrapAntimeridian(geojson) {
-            const unwrap = line => {
-                const out = [];
-                for (const [lon, lat] of line) {
-                    let x = lon;
-                    if (out.length) {
-                        const prev = out[out.length - 1][0];
-                        while (x - prev > 180) x -= 360;
-                        while (x - prev < -180) x += 360;
-                    }
-                    out.push([x, lat]);
-                }
-                return out;
-            };
-            // A ring that circles the pole (Antarctica) cannot be unwrapped into a closed shape; keep it as-is.
-            const unwrapRing = ring => {
-                const out = unwrap(ring);
-                return Math.abs(out[out.length - 1][0] - out[0][0]) > 1 ? ring : out;
-            };
-            const shift = (lines, by) => lines.map(line => line.map(([lon, lat]) => [lon + by, lat]));
-            const copies = lines => {
-                const lons = lines.flat().map(point => point[0]);
-                const out = [lines];
-                if (Math.max(...lons) > 180) out.push(shift(lines, -360));
-                if (Math.min(...lons) < -180) out.push(shift(lines, 360));
-                return out;
-            };
-            const fixGeometry = geometry => {
-                if (!geometry) return geometry;
-                switch (geometry.type) {
-                    case 'LineString': return { type: 'MultiLineString', coordinates: copies([unwrap(geometry.coordinates)]).flat() };
-                    case 'MultiLineString': return { type: 'MultiLineString', coordinates: geometry.coordinates.flatMap(line => copies([unwrap(line)]).flat()) };
-                    case 'Polygon': return { type: 'MultiPolygon', coordinates: copies(geometry.coordinates.map(unwrapRing)) };
-                    case 'MultiPolygon': return { type: 'MultiPolygon', coordinates: geometry.coordinates.flatMap(polygon => copies(polygon.map(unwrapRing))) };
-                    default: return geometry;
-                }
-            };
-            if (geojson.type === 'FeatureCollection') return { ...geojson, features: geojson.features.map(f => ({ ...f, geometry: fixGeometry(f.geometry) })) };
-            if (geojson.type === 'Feature') return { ...geojson, geometry: fixGeometry(geojson.geometry) };
-            return fixGeometry(geojson);
-        },
-        // Country names at the centroid of each country's largest polygon; bigger countries appear first.
-        buildBasemapLabels(collection) {
-            const L = this._leaflet;
-            const group = L.layerGroup();
-            const ringArea = ring => {
-                let area = 0;
-                for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) area += ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
-                return area / 2;
-            };
-            for (const country of this.unwrapAntimeridian(collection).features) {
-                const name = country.properties?.name;
-                const geometry = country.geometry;
-                if (!name || !geometry || name === 'Antarctica') continue;
-                const polygons = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.type === 'MultiPolygon' ? geometry.coordinates : [];
-                let best = null;
-                let bestArea = 0;
-                for (const polygon of polygons) {
-                    const area = Math.abs(ringArea(polygon[0]));
-                    if (area > bestArea) { bestArea = area; best = polygon[0]; }
-                }
-                if (!best || bestArea < 0.4) continue;
-                let cx = 0, cy = 0, signed = 0;
-                for (let i = 0, j = best.length - 1; i < best.length; j = i++) {
-                    const cross = best[j][0] * best[i][1] - best[i][0] * best[j][1];
-                    signed += cross;
-                    cx += (best[j][0] + best[i][0]) * cross;
-                    cy += (best[j][1] + best[i][1]) * cross;
-                }
-                if (!signed) continue;
-                const tier = bestArea >= 250 ? 0 : bestArea >= 40 ? 1 : bestArea >= 6 ? 2 : 3;
-                const label = document.createElement('span');
-                label.textContent = name;
-                const lon = ((cx / (3 * signed) + 540) % 360) - 180;
-                L.marker([cy / (3 * signed), lon], {
-                    pane: 'basemapLabels',
-                    interactive: false,
-                    keyboard: false,
-                    icon: L.divIcon({ className: `basemap-label tier-${tier}`, html: label.outerHTML, iconSize: null })
-                }).addTo(group);
-            }
-            return group;
-        },
-        syncThreatMap() {
-            this.syncThreatMapPoints();
-            this.syncThreatMapRegions();
-        },
-        syncThreatMapPoints() {
-            const L = this._leaflet;
-            if (!L || !this._pointLayer) return;
-            this._pointLayer.clearLayers();
-            for (const point of this.filteredMapPoints) {
-                const latitude = this.toNumberOrNull(point.latitude);
-                const longitude = this.toNumberOrNull(point.longitude);
-                if (latitude === null || longitude === null) continue;
-                const visual = this.mapPointVisual(point);
-                const selected = this.selectedIp?.ip === point.ip;
-                const radius = selected ? point.size + 2 : point.size;
-                const latLng = [this.clampLatitude(latitude), this.clampLongitude(longitude)];
+const windowStart = computed(() => (mapHours.value ? minuteNow.value / 1000 - mapHours.value * 3600 : 0));
 
-                if (point.recent || selected) {
-                    L.circleMarker(latLng, {
-                        renderer: this._threatRenderer,
-                        radius: radius + (selected ? 4 : 3),
-                        color: selected ? '#eafff9' : visual.fill,
-                        weight: selected ? 1.5 : 1,
-                        opacity: selected ? 0.75 : 0.32,
-                        fill: false,
-                        interactive: false
-                    }).addTo(this._pointLayer);
-                }
+/** Everyone seen in the window, of the chosen kind, before the hidden classes are taken out. */
+const inWindow = computed(() => {
+  const since = windowStart.value;
+  const group = mapGroup.value;
+  const until = replayAt.value;
+  return ips.value.filter(ip => ip.lastSeen >= since
+    && (until == null || ip.firstSeen <= until)
+    && (group === 'all' || classGroup(ip.classification, classes.value) === group));
+});
+const mapPoints = computed(() => {
+  const hidden = new Set(prefs.value.hiddenClasses);
+  return hidden.size ? inWindow.value.filter(ip => !hidden.has(ip.classification || 'Unknown')) : inWindow.value;
+});
+const legend = computed(() => {
+  const counts = new Map<string, number>();
+  for (const ip of inWindow.value) counts.set(ip.classification || 'Unknown', (counts.get(ip.classification || 'Unknown') ?? 0) + 1);
+  return classes.value.map(c => ({ ...c, count: counts.get(c.id) ?? 0 }));
+});
 
-                const marker = L.circleMarker(latLng, {
-                    renderer: this._threatRenderer,
-                    radius,
-                    color: visual.stroke,
-                    weight: selected ? 2 : 1,
-                    opacity: 0.95,
-                    fillColor: visual.fill,
-                    fillOpacity: point.coordinatesApproximate ? 0.58 : visual.opacity,
-                    interactive: !this.boxMode,
-                    bubblingMouseEvents: false
-                }).addTo(this._pointLayer);
-                this.drawStatusGlyph(L, latLng, radius, point.status);
-                marker.bindTooltip(this.mapPointTitle(point), { sticky: true, direction: 'top', className: 'od-map-tooltip' });
-                marker.on('click', () => this.selectIp(point.ip, false));
-                marker.on('dblclick', event => {
-                    L.DomEvent.stop(event);
-                    this.openActivityForIp(point.ip);
-                });
-            }
-        },
-        drawStatusGlyph(L, latLng, radius, status) {
-            if (status === 'Honeypot') {
-                L.circleMarker(latLng, { renderer: this._threatRenderer, radius: radius + 3, color: '#c79cff', weight: 1.5, opacity: 0.95, dashArray: '2 2', fill: false, interactive: false }).addTo(this._pointLayer);
-            } else if ((status === 'Blocked' || status === 'Tarpit') && this._StatusGlyph) {
-                const glyph = status === 'Blocked' ? 'cross' : 'strike';
-                const color = status === 'Blocked' ? '#ffffff' : '#ffe066';
-                new this._StatusGlyph(latLng, { renderer: this._threatRenderer, radius: Math.max(3, radius - 1), color, weight: 1.6, opacity: 0.95, fill: false, interactive: false, glyph }).addTo(this._pointLayer);
-            }
-        },
-        syncThreatMapRegions() {
-            const L = this._leaflet;
-            if (!L || !this._regionLayer) return;
-            this._regionLayer.clearLayers();
-            for (const region of this.blockedRegions || []) {
-                const latMin = this.toNumberOrNull(region.latMin);
-                const latMax = this.toNumberOrNull(region.latMax);
-                const lonMin = this.toNumberOrNull(region.lonMin);
-                const lonMax = this.toNumberOrNull(region.lonMax);
-                if ([latMin, latMax, lonMin, lonMax].some(value => value === null)) continue;
-                const bounds = L.latLngBounds([
-                    [this.clampLatitude(Math.min(latMin, latMax)), this.clampLongitude(Math.min(lonMin, lonMax))],
-                    [this.clampLatitude(Math.max(latMin, latMax)), this.clampLongitude(Math.max(lonMin, lonMax))]
-                ]);
-                const rectangle = L.rectangle(bounds, {
-                    renderer: this._threatRenderer,
-                    color: '#ff8a96',
-                    weight: 1,
-                    opacity: 0.75,
-                    fillColor: '#ff6071',
-                    fillOpacity: 0.16,
-                    dashArray: '5 4',
-                    interactive: !this.boxMode,
-                    bubblingMouseEvents: false
-                }).addTo(this._regionLayer);
-                rectangle.bindTooltip(`Region #${region.id} - ${region.reason || 'Region block'} (click to remove)`, { sticky: true, className: 'od-map-tooltip' });
-                rectangle.on('click', () => this.confirmRemoveRegion(region));
-            }
-        },
-        setThreatMapBoxMode(enabled) {
-            const map = this._threatMap;
-            if (!map) return;
-            if (enabled) map.dragging.disable();
-            else {
-                map.dragging.enable();
-                this.cancelBoxBlock();
-            }
-        },
-        clearThreatSelection() {
-            this._boxStartLatLng = null;
-            this._boxStartPoint = null;
-            if (this._selectionLayer) this._selectionLayer.clearLayers();
-            this._selectionRectangle = null;
-        },
-        cancelBoxBlock() {
-            if (this.boxBlockAnimating) return;
-            this.pendingBoxBlock = null;
-            this.clearThreatSelection();
-        },
-        onThreatBoxMouseDown(event) {
-            if (!this.boxMode || this.boxBlockAnimating || !this._leaflet || !this._selectionLayer || event.originalEvent?.button !== 0) return;
-            this.pendingBoxBlock = null;
-            this.clearThreatSelection();
-            this._boxStartLatLng = event.latlng;
-            this._boxStartPoint = this._threatMap.latLngToContainerPoint(event.latlng);
-            this._selectionRectangle = this._leaflet.rectangle(this._leaflet.latLngBounds(event.latlng, event.latlng), {
-                color: '#ff8a96',
-                weight: 1,
-                opacity: 0.95,
-                fillColor: '#ff6071',
-                fillOpacity: 0.13,
-                dashArray: '4 3',
-                interactive: false
-            }).addTo(this._selectionLayer);
-            this._leaflet.DomEvent.preventDefault(event.originalEvent);
-        },
-        onThreatBoxMouseMove(event) {
-            if (!this.boxMode || !this._boxStartLatLng || !this._selectionRectangle || !this._leaflet) return;
-            this._selectionRectangle.setBounds(this._leaflet.latLngBounds(this._boxStartLatLng, event.latlng));
-        },
-        async onThreatBoxMouseUp(event) {
-            if (!this.boxMode || this.boxBlockAnimating || !this._boxStartLatLng || !this._leaflet || !this._threatMap) return;
-            const start = this._boxStartLatLng;
-            const end = event.latlng;
-            const startPoint = this._boxStartPoint;
-            const endPoint = this._threatMap.latLngToContainerPoint(end);
-            const hasArea = startPoint && Math.abs(endPoint.x - startPoint.x) > 8 && Math.abs(endPoint.y - startPoint.y) > 8;
-            const bounds = this._leaflet.latLngBounds(start, end);
-            this._boxStartLatLng = null;
-            this._boxStartPoint = null;
-            if (!hasArea) { this.cancelBoxBlock(); return; }
-            this.prepareBoxBlock(bounds, startPoint, endPoint);
-        },
-        zoomMap(factor) {
-            if (!this._threatMap) return;
-            const delta = factor > 1 ? 1 : -1;
-            this._threatMap.setZoom(Math.max(this._threatMap.getMinZoom(), Math.min(13, this._threatMap.getZoom() + delta)));
-        },
-        resetMapView() {
-            if (!this._threatMap) return;
-            this._threatMap.setView([18, 0], this._threatMapHomeZoom || this.threatMapHomeZoom());
-            this.cancelBoxBlock();
-        },
-        prepareBoxBlock(bounds, startPoint, endPoint) {
-            const latMin = this.clampLatitude(Math.min(bounds.getSouth(), bounds.getNorth()));
-            const latMax = this.clampLatitude(Math.max(bounds.getSouth(), bounds.getNorth()));
-            const lonMin = this.clampLongitude(Math.min(bounds.getWest(), bounds.getEast()));
-            const lonMax = this.clampLongitude(Math.max(bounds.getWest(), bounds.getEast()));
-            const targets = this.filteredMapPoints.filter(point => this.pointInLatLonBounds(point, latMin, latMax, lonMin, lonMax));
-            const blockable = targets.filter(point => !point.isKlives && point.status !== 'Blocked');
-            const placement = this.boxBlockPopoverPlacement(startPoint, endPoint);
-            this.pendingBoxBlock = {
-                latMin, latMax, lonMin, lonMax,
-                targets,
-                blockable,
-                position: { left: placement.left, top: placement.top },
-                placement: placement.side,
-                boundsLabel: `${latMin.toFixed(2)}, ${lonMin.toFixed(2)} -> ${latMax.toFixed(2)}, ${lonMax.toFixed(2)}`,
-                reason: 'Region block from map',
-                progress: 0,
-                statusText: ''
-            };
-            if (this._selectionRectangle) {
-                this._selectionRectangle.setStyle({ color: '#52ffb9', fillColor: '#52ffb9', fillOpacity: 0.11, dashArray: '6 4' });
-                this._selectionRectangle.bringToFront();
-            }
-        },
-        boxBlockPopoverPlacement(startPoint, endPoint) {
-            const container = this.$refs.leafletMap;
-            const width = container?.clientWidth || 1024;
-            const height = container?.clientHeight || 520;
-            const popoverWidth = 236;
-            const popoverHeight = 148;
-            const boxLeft = Math.min(startPoint.x, endPoint.x);
-            const boxRight = Math.max(startPoint.x, endPoint.x);
-            const boxTop = Math.min(startPoint.y, endPoint.y);
-            const boxBottom = Math.max(startPoint.y, endPoint.y);
-            const side = boxRight + popoverWidth + 22 > width && boxLeft > popoverWidth + 22 ? 'left' : 'right';
-            const left = side === 'left'
-                ? Math.max(12, boxLeft - popoverWidth - 14)
-                : Math.min(width - popoverWidth - 12, boxRight + 14);
-            const verticalCenter = boxTop + (boxBottom - boxTop) / 2;
-            const top = Math.max(12, Math.min(height - popoverHeight - 12, verticalCenter - popoverHeight / 2));
-            return { left, top, side };
-        },
-        async runBoxBlock() {
-            const pending = this.pendingBoxBlock;
-            if (!pending || this.boxBlockAnimating) return;
-            const reason = (pending.reason || 'Region block from map').trim();
-            this.loading.action = true;
-            this.boxBlockAnimating = true;
-            this.clearBlockingAnimation();
-            let blockedCount = 0;
-            try {
-                pending.blockable.forEach(point => this.addBlockingMarker(point));
-                if (this.pendingBoxBlock) this.pendingBoxBlock.statusText = 'Saving region rule';
-
-                const regionResponse = await RequestPOSTFromKliveAPI('/omnidefence/regions/add', JSON.stringify({ latMin: pending.latMin, latMax: pending.latMax, lonMin: pending.lonMin, lonMax: pending.lonMax, reason }), false, true);
-                if (!regionResponse.ok) {
-                    this.loadError = await regionResponse.text();
-                    if (this.pendingBoxBlock) this.pendingBoxBlock.statusText = 'Region save failed';
-                    return;
-                }
-
-                const saved = await regionResponse.json().catch(() => ({}));
-                blockedCount = Number(saved.blockedCount ?? 0);
-                await Promise.allSettled([this.loadIps(), this.loadMapIps(), this.loadOverview(), this.loadBlockedRegions()]);
-                if (this.pendingBoxBlock) this.pendingBoxBlock.statusText = `Region active / blocked ${blockedCount}`;
-                await this.wait(350);
-            } catch (error) {
-                this.loadError = `Region save failed: ${error}`;
-                if (this.pendingBoxBlock) this.pendingBoxBlock.statusText = 'Region save failed';
-                await this.wait(350);
-            } finally {
-                this.loading.action = false;
-                this.boxBlockAnimating = false;
-                this.pendingBoxBlock = null;
-                this.clearThreatSelection();
-                setTimeout(() => this.clearBlockingAnimation(), 450);
-            }
-        },
-        addBlockingMarker(point) {
-            const L = this._leaflet;
-            if (!L || !this._blockAnimationLayer) return;
-            const latitude = this.toNumberOrNull(point.latitude);
-            const longitude = this.toNumberOrNull(point.longitude);
-            if (latitude === null || longitude === null) return;
-            L.marker([this.clampLatitude(latitude), this.clampLongitude(longitude)], {
-                icon: L.divIcon({ className: 'od-blocking-marker', html: '<span class="od-block-cross"></span>', iconSize: [28, 28], iconAnchor: [14, 14] }),
-                interactive: false,
-                zIndexOffset: 900
-            }).addTo(this._blockAnimationLayer);
-        },
-        clearBlockingAnimation() {
-            if (this._blockAnimationLayer) this._blockAnimationLayer.clearLayers();
-        },
-        wait(milliseconds) {
-            return new Promise(resolve => setTimeout(resolve, milliseconds));
-        },
-        countryKey(value) {
-            const text = String(value || '').trim();
-            if (!text) return '';
-            const upper = text.toUpperCase();
-            if (upper.length === 2 && COUNTRY_CENTERS[upper]) return upper;
-            return COUNTRY_ALIASES[upper] || '';
-        },
-        jitterForIp(ip, spread) {
-            const hash = this.hashString(`${ip || 'unknown'}:jitter`);
-            const angleRadians = (hash % 360) * Math.PI / 180;
-            const radius = (((hash >>> 8) % 100) / 100) * spread;
-            return {
-                latitude: Math.sin(angleRadians) * radius * 0.7,
-                longitude: Math.cos(angleRadians) * radius
-            };
-        },
-        ipFallbackCoordinates(ip, index) {
-            const hash = this.hashString(`${ip || index}:fallback`);
-            const longitude = ((hash % 36000) / 100) - 180;
-            const latitude = (((Math.floor(hash / 36000) % 15000) / 100) - 75);
-            return { latitude, longitude, approximate: true };
-        },
-        hashString(value) {
-            let hash = 2166136261;
-            for (let index = 0; index < value.length; index++) {
-                hash ^= value.charCodeAt(index);
-                hash = Math.imul(hash, 16777619);
-            }
-            return hash >>> 0;
-        },
-        async loadBlockedRegions() {
-            const data = await this.fetchJson('/omnidefence/regions');
-            if (Array.isArray(data)) this.blockedRegions = data;
-        },
-        async confirmRemoveRegion(region) {
-            if (!region || !process.client) return;
-            const result = await Swal.fire({
-                title: `Remove region block #${region.id}?`,
-                html: `<div style="text-align:left;font-size:12px;color:#9fb8b1">${region.reason || 'Region block'}<br>Lat ${Number(region.latMin).toFixed(1)} to ${Number(region.latMax).toFixed(1)}, Lon ${Number(region.lonMin).toFixed(1)} to ${Number(region.lonMax).toFixed(1)}</div><label style="display:flex;gap:8px;align-items:center;margin-top:12px;text-align:left;color:#d9fff0;font-size:12px"><input id="od-unblock-region-ips" type="checkbox" style="accent-color:#13b66b" /> Unblock blocked IPs in this box</label>`,
-                showCancelButton: true,
-                confirmButtonText: 'Remove',
-                background: '#080b0d',
-                color: '#e8fff7',
-                confirmButtonColor: '#c0283f',
-                cancelButtonColor: '#2a3338',
-                preConfirm: () => document.getElementById('od-unblock-region-ips')?.checked === true
-            });
-            if (!result.isConfirmed) return;
-            this.loading.action = true;
-            try {
-                const response = await RequestPOSTFromKliveAPI('/omnidefence/regions/remove', JSON.stringify({ id: region.id, unblockIpsInRegion: result.value === true }), false, true);
-                if (!response.ok) {
-                    this.loadError = await response.text();
-                    return;
-                }
-                const data = await response.json().catch(() => ({}));
-                await Promise.allSettled([this.loadBlockedRegions(), this.loadIps(), this.loadMapIps(), this.loadOverview()]);
-                if (result.value === true) {
-                    await Swal.fire({
-                        toast: true,
-                        position: 'bottom-end',
-                        icon: 'success',
-                        title: `Unblocked ${Number(data.unblockedCount ?? 0)} IPs`,
-                        showConfirmButton: false,
-                        timer: 1800,
-                        background: '#080b0d',
-                        color: '#e8fff7'
-                    });
-                }
-            } finally { this.loading.action = false; }
-        },
-        async selectIp(ip, switchTab = true) {
-            if (!ip) return;
-            if (switchTab) this.activeTab = 'ips';
-            const data = await this.fetchJson('/omnidefence/ip?ip=' + encodeURIComponent(ip), 'ipDetail');
-            if (!data) return;
-            const record = data.record || data.Record || data;
-            this.selectedIp = this.normalizeIp(record);
-            this.selectedIpNote = this.selectedIp.notes || '';
-            this.selectedIpRecent = (data.recentRequests || []).map(this.normalizeRequest);
-            this.selectedIpEvents = data.events || [];
-        },
-        async blockIp(ip) {
-            const reason = await this.askText('Block reason', 'manual');
-            if (reason === null) return;
-            this.loading.action = true;
-            try {
-                const r = await RequestPOSTFromKliveAPI('/omnidefence/ip/block', JSON.stringify({ ip, reason }), false, true);
-                if (!r.ok) { this.loadError = await r.text(); return; }
-                await this.loadIps(); await this.selectIp(ip);
-            } finally { this.loading.action = false; }
-        },
-        async unblockIp(ip) { this.loading.action = true; try { const r = await RequestPOSTFromKliveAPI('/omnidefence/ip/unblock', JSON.stringify({ ip }), false, true); if (!r.ok) { this.loadError = await r.text(); return; } await this.loadIps(); await this.selectIp(ip); } finally { this.loading.action = false; } },
-        async untrapIp(ip) { this.loading.action = true; try { const r = await RequestPOSTFromKliveAPI('/omnidefence/ip/untrap', JSON.stringify({ ip, reason: 'Dashboard untrap' }), false, true); if (!r.ok) { this.loadError = await r.text(); return; } await this.loadOverview(); await this.loadIps(); await this.selectIp(ip); } finally { this.loading.action = false; } },
-        async setIpStatus(ip, status) { this.loading.action = true; try { const r = await RequestPOSTFromKliveAPI('/omnidefence/ip/status', JSON.stringify({ ip, status }), false, true); if (!r.ok) { this.loadError = await r.text(); return; } await this.loadIps(); await this.selectIp(ip); } finally { this.loading.action = false; } },
-        async saveSelectedIpNote() {
-            if (!this.selectedIp) return;
-            this.loading.action = true;
-            try {
-                const r = await RequestPOSTFromKliveAPI('/omnidefence/ip/note', JSON.stringify({ ip: this.selectedIp.ip, note: this.selectedIpNote }), false, true);
-                if (!r.ok) { this.loadError = await r.text(); return; }
-                await this.selectIp(this.selectedIp.ip);
-            } finally { this.loading.action = false; }
-        },
-        async scanIp(ip) {
-            this.loading.action = true;
-            try {
-                const r = await RequestPOSTFromKliveAPI('/omnidefence/ip/scan', JSON.stringify({ ip }), false, true);
-                if (!r.ok) { this.loadError = await r.text(); return; }
-                this.lastScan = await r.json(); await this.selectIp(ip);
-            } finally { this.loading.action = false; }
-        },
-        async addHoneypotRoute() {
-            const route = this.newHoneypotRoute.trim();
-            if (!route) return;
-            this.loading.action = true;
-            try {
-                const r = await RequestPOSTFromKliveAPI('/omnidefence/honeypot-routes/add', JSON.stringify({ route }), false, true);
-                if (!r.ok) { this.loadError = await r.text(); return; }
-                this.newHoneypotRoute = ''; await this.loadHoneypotRoutes();
-            } finally { this.loading.action = false; }
-        },
-        async removeHoneypotRoute(route) { this.loading.action = true; try { const r = await RequestPOSTFromKliveAPI('/omnidefence/honeypot-routes/remove', JSON.stringify({ route }), false, true); if (!r.ok) { this.loadError = await r.text(); return; } await this.loadHoneypotRoutes(); } finally { this.loading.action = false; } },
-        async exportTable(table) {
-            this.loading.action = true;
-            try {
-            const r = await RequestGETFromKliveAPI(`/omnidefence/export?format=csv&table=${encodeURIComponent(table)}`, false, false);
-            if (!r.ok) return;
-            const blob = await r.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = `omnidefence-${table}.csv`; a.click();
-            URL.revokeObjectURL(url);
-            } finally { this.loading.action = false; }
-        },
-        async askText(title, def) {
-            if (!process.client) return def;
-            const { value } = await Swal.fire({ title, input: 'text', inputValue: def, showCancelButton: true, background: '#080b0d', color: '#e8fff7', confirmButtonColor: '#13b66b' });
-            return value === undefined ? null : value;
-        },
-        async viewRequestDetail(id) {
-            if (id === null || id === undefined) return;
-            this.requestDetail = null;
-            const data = await this.fetchJson('/omnidefence/request?id=' + encodeURIComponent(id), 'requestDetail');
-            if (data) this.requestDetail = data;
-        },
-        closeRequestDetail() {
-            if (this.loading.requestDetail) return;
-            this.requestDetail = null;
-        },
-        viewAuthDetail(event) {
-            if (!event) return;
-            this.authDetail = { ...event };
-        },
-        closeAuthDetail() { this.authDetail = null; },
-        authTypeClass(type) {
-            const t = String(type || '');
-            if (t.includes('NoProfile') || t.includes('Invalid')) return 'status bad';
-            if (t === 'InsufficientClearance') return 'status warn';
-            return 'status good';
-        },
-        formatBodyForDisplay(body) {
-            if (body === null || body === undefined) return '';
-            const text = String(body);
-            const trimmed = text.trim();
-            if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
-                try { return JSON.stringify(JSON.parse(trimmed), null, 2); }
-                catch { /* fall through */ }
-            }
-            return text;
-        },
-        async copyToClipboard(value) {
-            if (!process.client || value === null || value === undefined) return;
-            try {
-                if (navigator?.clipboard?.writeText) await navigator.clipboard.writeText(String(value));
-                else {
-                    const ta = document.createElement('textarea');
-                    ta.value = String(value);
-                    document.body.appendChild(ta);
-                    ta.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(ta);
-                }
-                Swal.fire({ toast: true, position: 'bottom-end', icon: 'success', title: 'Copied', timer: 1200, showConfirmButton: false, background: '#0a1518', color: '#bcecff' });
-            } catch (e) {
-                this.loadError = 'Copy failed: ' + e;
-            }
-        }
-    }
-};
-</script>
-
-<style scoped>
-.od-shell {
-    min-height: 100vh;
-    padding: 18px;
-    color: #d9fff0;
-    background:
-        linear-gradient(rgba(9, 21, 24, 0.92), rgba(8, 10, 13, 0.96)),
-        repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 28px),
-        repeating-linear-gradient(90deg, rgba(54, 255, 178, 0.04) 0 1px, transparent 1px 32px);
-    border: 1px solid rgba(69, 255, 186, 0.12);
+function toggleClass(id: string) {
+  const hidden = prefs.value.hiddenClasses;
+  prefs.value = { ...prefs.value, hiddenClasses: hidden.includes(id) ? hidden.filter(x => x !== id) : [...hidden, id] };
 }
-.od-header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; margin-bottom: 14px; }
-.od-kicker { font: 700 11px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: 1.2px; color: #57f0b3; }
-.live-dot { display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: #46f08e; box-shadow: 0 0 14px #46f08e; animation: pulse 1.4s infinite; }
-.od-header h1 { margin: 4px 0 2px; font-size: 42px; line-height: 1; letter-spacing: 0; color: #eafff9; text-shadow: 0 0 22px rgba(65,255,186,0.24); }
-.od-header p { margin: 0; color: #94b6ad; font-size: 14px; }
-.od-header-actions { display: flex; gap: 8px; align-items: center; }
-.refresh-stamp { min-width: 128px; text-align: right; color: #83aca2; font: 700 11px ui-monospace, Consolas, monospace; text-transform: uppercase; }
-.od-map-panel { margin-bottom: 12px; border: 1px solid rgba(82,255,185,.16); border-radius: 6px; background: rgba(4, 8, 10, .86); box-shadow: inset 0 0 22px rgba(71, 255, 183, .04); overflow: hidden; }
-.map-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid rgba(82,255,185,.14); background: linear-gradient(90deg, rgba(14,50,52,.7), rgba(9,12,15,.45)); }
-.map-head h2 { margin: 0; font-size: 20px; color: #eafff9; }
-.map-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 10px; }
-.map-tag-select { min-height: 36px; padding: 6px 8px; border: 1px solid rgba(116,255,198,.16); border-radius: 5px; background: #081013; color: #cfeee5; font-size: 11px; font-weight: 800; text-transform: uppercase; }
-.map-stat.hostile strong { color: #ff8d9a; } .map-stat.human strong { color: #7dffc5; } .map-stat.bot strong { color: #a9c2ff; }
-.class-legend { gap: 3px; }
-.legend-chip { display: flex; align-items: center; gap: 7px; width: 100%; padding: 3px 4px; border: 0; border-radius: 3px; background: transparent; color: #a9c8bf; font-size: 11px; font-weight: 700; text-align: left; cursor: pointer; }
-.legend-chip:hover { background: rgba(255,255,255,.05); }
-.legend-chip .legend-label { flex: 1; color: #a9c8bf; }
-.legend-chip strong { color: #eafff9; font-size: 11px; }
-.legend-chip.empty { opacity: .45; }
-.legend-chip.off { opacity: .35; }
-.legend-chip.off .legend-label { text-decoration: line-through; }
-.legend-status { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.06); }
-.legend-status > span { display: inline-flex; align-items: center; gap: 5px; color: #a9c8bf; font-size: 11px; font-weight: 700; }
-.class-pill { display: inline-block; padding: 2px 7px; border: 1px solid color-mix(in srgb, var(--cls) 45%, transparent); border-radius: 4px; background: color-mix(in srgb, var(--cls) 14%, transparent); color: color-mix(in srgb, var(--cls) 70%, #ffffff); font-size: 11px; font-weight: 800; white-space: nowrap; }
-.detail-class { display: block; width: fit-content; margin-top: 6px; }
-.fp-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
-.fp-columns { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, 1fr); gap: 12px; align-items: start; }
-.fp-settings { padding: 10px; border: 1px solid rgba(255,255,255,.07); border-radius: 5px; background: rgba(255,255,255,.025); }
-.fp-settings h3 { margin: 10px 0 6px; color: #7d948e; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
-.fp-settings h3:first-child { margin-top: 0; }
-.fp-note { margin: 0 0 8px; color: #86a39b; font-size: 11px; line-height: 1.4; }
-.fp-setting-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0; color: #cfeee5; font-size: 12px; }
-.fp-setting-row select, .fp-setting-row input { width: 120px; padding: 4px 6px; border: 1px solid rgba(82,255,185,.2); border-radius: 4px; background: #081013; color: #eafff9; font-size: 12px; }
-.fp-settings .checkline { display: flex; align-items: center; gap: 6px; padding: 3px 0; color: #cfeee5; font-size: 12px; }
-.good-text { color: #7dffc5; } .bad-text { color: #ff8d9a; }
-.map-filters { display: flex; gap: 4px; padding: 3px; border: 1px solid rgba(116,255,198,.16); border-radius: 5px; background: rgba(255,255,255,.035); }
-.map-filters button { min-height: 30px; padding: 6px 9px; border: 0; border-radius: 3px; background: transparent; color: #9fb8b1; font-size: 11px; font-weight: 800; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
-.map-filters button.active { color: #ecfffa; background: rgba(82,255,185,.16); box-shadow: inset 0 0 0 1px rgba(82,255,185,.2); }
-.map-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 6px 9px; border-radius: 3px; color: #b9d8cf; font-size: 11px; font-weight: 800; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
-.map-toggle.active { color: #ecfffa; background: rgba(95,211,255,.14); box-shadow: inset 0 0 0 1px rgba(95,211,255,.22); }
-.map-toggle input { width: 13px; height: 13px; margin: 0; accent-color: #5fd3ff; cursor: pointer; }
-.map-layout { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 10px; padding: 12px; }
-.timeline-rail { padding: 12px 14px 14px; border-top: 1px solid rgba(82,255,185,.14); background: linear-gradient(90deg, rgba(9,18,20,.6), rgba(6,9,12,.4)); }
-.timeline-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
-.timeline-mode { min-height: 30px; padding: 5px 10px; border: 1px solid rgba(116,255,198,.22); border-radius: 5px; background: #11181a; color: #ecfffa; font: 700 11px ui-monospace, Consolas, monospace; letter-spacing: .4px; cursor: pointer; }
-.timeline-mode:focus { outline: none; border-color: rgba(95,211,255,.5); }
-.timeline-play { min-height: 30px; padding: 6px 12px; border: 1px solid rgba(82,255,185,.32); border-radius: 5px; background: rgba(82,255,185,.12); color: #ecfffa; font: 800 11px ui-monospace, Consolas, monospace; letter-spacing: .5px; text-transform: uppercase; cursor: pointer; }
-.timeline-play:hover { background: rgba(82,255,185,.2); }
-.timeline-play.playing { border-color: rgba(95,211,255,.4); background: rgba(95,211,255,.16); box-shadow: 0 0 8px rgba(95,211,255,.25); }
-.timeline-speed { display: inline-flex; align-items: center; gap: 6px; font: 700 10px ui-monospace, Consolas, monospace; color: #9fb8b1; text-transform: uppercase; letter-spacing: .6px; }
-.timeline-speed select { min-height: 30px; padding: 5px 8px; border: 1px solid rgba(116,255,198,.22); border-radius: 5px; background: #11181a; color: #ecfffa; font: 700 11px ui-monospace, Consolas, monospace; cursor: pointer; }
-.timeline-speed select:focus { outline: none; border-color: rgba(95,211,255,.5); }
-.timeline-count { font: 700 11px ui-monospace, Consolas, monospace; color: #5fd3ff; letter-spacing: .5px; text-transform: uppercase; }
-.timeline-reset { min-height: 30px; margin-left: auto; padding: 6px 12px; border: 1px solid rgba(116,255,198,.16); border-radius: 4px; background: rgba(255,255,255,.035); color: #9fb8b1; font-size: 11px; font-weight: 800; text-transform: uppercase; cursor: pointer; }
-.timeline-reset:hover { color: #ecfffa; background: rgba(82,255,185,.16); }
-.timeline-track { position: relative; height: 28px; }
-.timeline-track::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 4px; transform: translateY(-50%); border-radius: 3px; background: rgba(95,211,255,.15); }
-.timeline-range { position: absolute; top: 0; left: 0; width: 100%; height: 28px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; pointer-events: none; }
-.timeline-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 50%; border: 2px solid #04080a; background: #52ffb9; box-shadow: 0 0 6px rgba(82,255,185,.5); cursor: pointer; pointer-events: auto; }
-.timeline-range.end::-webkit-slider-thumb { background: #5fd3ff; box-shadow: 0 0 6px rgba(95,211,255,.5); }
-.timeline-range::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #04080a; background: #52ffb9; box-shadow: 0 0 6px rgba(82,255,185,.5); cursor: pointer; pointer-events: auto; }
-.timeline-range.end::-moz-range-thumb { background: #5fd3ff; box-shadow: 0 0 6px rgba(95,211,255,.5); }
-.timeline-range::-webkit-slider-runnable-track { background: transparent; }
-.timeline-range::-moz-range-track { background: transparent; }
-.timeline-fields { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
-.timeline-field { display: inline-flex; align-items: center; gap: 6px; font: 700 10px ui-monospace, Consolas, monospace; color: #9fb8b1; text-transform: uppercase; letter-spacing: .6px; }
-.timeline-field input { min-height: 30px; padding: 5px 9px; border: 1px solid rgba(116,255,198,.22); border-radius: 5px; background: #11181a; color: #ecfffa; font: 600 12px ui-monospace, Consolas, monospace; color-scheme: dark; }
-.timeline-field input:focus { outline: none; border-color: rgba(95,211,255,.5); }
-.timeline-sep { color: #5fd3ff; font-weight: 800; }
-.world-map-stage { position: relative; height: clamp(500px, 56vh, 760px); min-height: 500px; overflow: hidden; border: 1px solid rgba(82,255,185,.24); border-radius: 5px; background: radial-gradient(circle at 50% 20%, rgba(35,144,118,.2), transparent 45%), linear-gradient(180deg, #031512, #05090b); cursor: grab; }
-.world-map-stage.box-mode { cursor: crosshair; }
-.world-map-stage.loading { box-shadow: inset 0 0 28px rgba(95,211,255,.08); }
-.leaflet-threat-map { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; background: #031512; }
-.leaflet-threat-map::after { content: ''; position: absolute; inset: 0; z-index: 450; pointer-events: none; background: linear-gradient(rgba(38,214,166,.08), rgba(4,15,16,.08)), repeating-linear-gradient(0deg, rgba(82,255,185,.038) 0 1px, transparent 1px 48px), repeating-linear-gradient(90deg, rgba(82,255,185,.03) 0 1px, transparent 1px 54px); mix-blend-mode: screen; opacity: .46; }
-.world-map-stage :deep(.leaflet-container) { background: #031512; color: #d9fff0; font: 700 11px ui-monospace, Consolas, monospace; }
-.world-map-stage :deep(.basemap-label) { width: 0; height: 0; background: none; border: 0; }
-.world-map-stage :deep(.basemap-label span) { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; color: rgba(150, 214, 196, .62); font: 700 10px ui-monospace, Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; text-shadow: 0 0 3px #031512, 0 0 6px #031512; }
-.world-map-stage :deep(.basemap-label.tier-0 span) { font-size: 11px; color: rgba(160, 226, 207, .7); }
-.world-map-stage :deep([data-label-tier="0"] .basemap-label:not(.tier-0)),
-.world-map-stage :deep([data-label-tier="1"] .basemap-label.tier-2),
-.world-map-stage :deep([data-label-tier="1"] .basemap-label.tier-3),
-.world-map-stage :deep([data-label-tier="2"] .basemap-label.tier-3) { display: none; }
-.world-map-stage :deep(.leaflet-control-zoom) { border: 1px solid rgba(95,211,255,.18); border-radius: 4px; overflow: hidden; background: rgba(5,13,16,.82); box-shadow: none; }
-.world-map-stage :deep(.leaflet-control-zoom a) { width: 28px; height: 28px; border: 0; border-bottom: 1px solid rgba(95,211,255,.14); background: rgba(8,17,22,.92); color: #bcecff; line-height: 28px; text-shadow: none; }
-.world-map-stage :deep(.leaflet-control-zoom a:hover) { background: rgba(31,92,110,.86); color: #fff; }
-.world-map-stage :deep(.leaflet-control-attribution) { padding: 2px 5px; border: 1px solid rgba(95,211,255,.12); border-radius: 3px; background: rgba(4,8,10,.66); color: #71918a; font-size: 10px; }
-.world-map-stage :deep(.leaflet-control-attribution a) { color: #8fd0e8; }
-.world-map-stage :deep(.leaflet-interactive) { outline: none; }
-.world-map-stage :deep(.od-map-tooltip) { border: 1px solid rgba(95,211,255,.2); border-radius: 4px; background: rgba(4,9,11,.92); color: #d9fff0; box-shadow: 0 8px 22px rgba(0,0,0,.28); font: 700 11px ui-monospace, Consolas, monospace; }
-.world-map-stage :deep(.od-map-tooltip::before) { border-top-color: rgba(4,9,11,.92); }
-.world-map-stage :deep(.od-blocking-marker) { width: 28px; height: 28px; margin: 0; border: 0; background: transparent; pointer-events: none; }
-.world-map-stage :deep(.od-block-cross) { position: relative; display: block; width: 28px; height: 28px; border: 1px solid rgba(255,96,113,.9); border-radius: 50%; background: rgba(255,96,113,.15); box-shadow: 0 0 18px rgba(255,96,113,.55); animation: blockPulse .42s ease-out both; }
-.world-map-stage :deep(.od-block-cross::before), .world-map-stage :deep(.od-block-cross::after) { content: ''; position: absolute; left: 4px; right: 4px; top: 13px; height: 2px; border-radius: 999px; background: #ffd7dc; transform-origin: center; animation: blockStrike .34s ease-out both; }
-.world-map-stage :deep(.od-block-cross::before) { transform: rotate(45deg) scaleX(0); }
-.world-map-stage :deep(.od-block-cross::after) { transform: rotate(-45deg) scaleX(0); animation-delay: .11s; }
-.world-map-stage.box-mode :deep(.leaflet-container) { cursor: crosshair; }
-.map-loading, .map-empty { position: absolute; inset: 0; z-index: 500; display: grid; place-items: center; color: #78928b; font: 700 12px ui-monospace, Consolas, monospace; text-transform: uppercase; pointer-events: none; }
-.map-loading { background: radial-gradient(circle at center, rgba(10,42,47,.36), rgba(3,7,10,.68)); color: #bcecff; }
-.map-mode-tag { position: absolute; z-index: 600; top: 8px; left: 8px; padding: 4px 8px; border: 1px solid rgba(255,138,150,.4); border-radius: 3px; background: rgba(60,12,18,.78); color: #ff8a96; font: 700 10px ui-monospace, Consolas, monospace; letter-spacing: 1px; pointer-events: none; }
-.map-zoom-tag { position: absolute; z-index: 600; bottom: 8px; left: 8px; padding: 3px 7px; border: 1px solid rgba(95,211,255,.25); border-radius: 3px; background: rgba(8,17,22,.78); color: #8fd0e8; font: 700 10px ui-monospace, Consolas, monospace; letter-spacing: 1px; pointer-events: none; }
-.map-box-popover { position: absolute; z-index: 760; width: 236px; padding: 10px; border: 1px solid rgba(82,255,185,.38); border-radius: 5px; background: linear-gradient(180deg, rgba(5,22,20,.96), rgba(3,9,11,.96)); box-shadow: 0 12px 28px rgba(0,0,0,.38), 0 0 22px rgba(82,255,185,.1); color: #d9fff0; animation: mapPopoverIn .16s ease-out both; }
-.map-box-popover::before { content: ''; position: absolute; top: 50%; width: 14px; height: 1px; background: rgba(82,255,185,.72); box-shadow: 0 0 8px rgba(82,255,185,.45); }
-.map-box-popover.right::before { left: -14px; }
-.map-box-popover.left::before { right: -14px; }
-.map-box-popover span { display: block; color: #57f0b3; font: 800 10px ui-monospace, Consolas, monospace; text-transform: uppercase; letter-spacing: 1px; }
-.map-box-popover strong { display: block; margin-top: 4px; color: #f3fffb; font-size: 15px; line-height: 1.15; }
-.map-box-popover small { display: block; margin-top: 4px; color: #86a39b; font-size: 10px; }
-.map-box-reason { width: 100%; margin-top: 8px; padding: 6px 7px; font-size: 11px; }
-.map-box-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
-.map-box-progress { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: #bcecff; font: 800 10px ui-monospace, Consolas, monospace; text-transform: uppercase; }
-.map-box-progress.complete { color: #7dffc5; }
-.map-intel { display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 8px; }
-.map-stat { padding: 9px; border: 1px solid rgba(255,255,255,.07); border-radius: 4px; background: rgba(255,255,255,.035); }
-.map-stat span { display: block; color: #7d948e; font-size: 11px; text-transform: uppercase; }
-.map-stat strong { display: block; margin-top: 3px; color: #f3fffb; font-size: 20px; line-height: 1; }
-.map-legend, .map-selected { grid-column: 1 / -1; padding: 9px; border: 1px solid rgba(255,255,255,.07); border-radius: 4px; background: rgba(255,255,255,.03); }
-.map-legend { display: grid; gap: 7px; }
-.map-legend div { display: flex; align-items: center; gap: 7px; color: #a9c8bf; font-size: 11px; font-weight: 700; }
-.legend-dot { width: 10px; height: 10px; border-radius: 50%; background: #ff6071; box-shadow: 0 0 10px currentColor; color: #ff6071; }
-.legend-dot.attacker.recent { background: #ffc247; color: #ffc247; }
-.legend-dot.profile { background: #5fd3ff; color: #5fd3ff; }
-.legend-dot.profile.recent { background: #6bffc1; color: #6bffc1; }
-.legend-icon { display: inline-block; position: relative; width: 12px; height: 12px; border-radius: 50%; background: #2a3338; border: 1px solid rgba(255,255,255,.18); }
-.legend-icon.cross::before, .legend-icon.cross::after { content: ''; position: absolute; left: 50%; top: 50%; width: 12px; height: 1.5px; background: #fff; transform: translate(-50%, -50%) rotate(45deg); }
-.legend-icon.cross::after { transform: translate(-50%, -50%) rotate(-45deg); }
-.legend-icon.ring { border: 1.5px dashed #c79cff; background: rgba(199,156,255,.25); }
-.legend-icon.strike { background: #f0a23a; }
-.legend-icon.strike::after { content: ''; position: absolute; left: -2px; right: -2px; top: 50%; height: 1.5px; background: #ffe066; transform: translateY(-50%); }
-.map-selected span { display: block; color: #7d948e; font-size: 11px; text-transform: uppercase; }
-.map-selected strong { display: block; margin-top: 4px; color: #eafff9; font-size: 15px; }
-.map-selected small { display: block; margin-top: 3px; color: #86a39b; font-size: 11px; }
-.od-metrics { display: grid; grid-template-columns: repeat(5, minmax(145px, 1fr)); gap: 10px; margin-bottom: 12px; }
-.metric-tile { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; text-align: left; padding: 12px 14px; min-height: 82px; border: 1px solid rgba(82,255,185,.22); border-radius: 6px; background: linear-gradient(180deg, rgba(12,31,32,.95), rgba(6,11,13,.96)); color: inherit; cursor: pointer; }
-.metric-copy { min-width: 0; }
-.metric-tile strong { display: block; min-width: 54px; margin: 0; font-size: 30px; line-height: 1; color: #7dffc5; text-align: right; letter-spacing: 0; }
-.metric-label, .metric-tile small { display: block; color: #8ea9a1; font-size: 11px; line-height: 1.45; text-transform: uppercase; letter-spacing: .8px; }
-.metric-tile.danger strong { color: #ff5a6a; } .metric-tile.warn strong { color: #ffc247; } .metric-tile.cyan strong { color: #5fd3ff; } .metric-tile.violet strong { color: #c79cff; }
-.od-grid { display: grid; grid-template-columns: 230px minmax(0, 1fr) 290px; gap: 12px; }
-.od-rail, .od-panel, .od-detail { border: 1px solid rgba(82,255,185,.16); border-radius: 6px; background: rgba(4, 8, 10, .86); box-shadow: inset 0 0 22px rgba(71, 255, 183, .04); }
-.od-rail, .od-detail { padding: 10px; }
-.od-tabs { display: grid; gap: 6px; margin-bottom: 12px; }
-.od-tab { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border: 1px solid rgba(255,255,255,.08); border-radius: 4px; background: rgba(255,255,255,.03); color: #c3ded6; text-align: left; cursor: pointer; }
-.od-tab span { width: 42px; color: #58ffd0; font: 700 11px ui-monospace, Consolas, monospace; }
-.od-tab.active { border-color: #52ffb9; color: #fff; background: linear-gradient(90deg, rgba(32,155,111,.25), rgba(30,62,82,.15)); }
-.rail-section, .detail-block { border-top: 1px solid rgba(255,255,255,.08); padding-top: 10px; margin-top: 10px; }
-.rail-section h3 { margin: 0 0 8px; font-size: 11px; color: #82f8c1; text-transform: uppercase; letter-spacing: .9px; }
-.origin-row, .route-row, .threat-row { display: flex; justify-content: space-between; gap: 8px; width: 100%; padding: 6px 0; color: #cfeee5; font-size: 12px; border: 0; border-bottom: 1px solid rgba(255,255,255,.05); background: transparent; text-align: left; }
-.threat-row { cursor: pointer; }
-.threat-ip { color: #f6fffe; } .threat-meta, .muted, .empty-rail { color: #78928b; font-size: 11px; }
-.review-head { display: flex; justify-content: space-between; gap: 8px; margin: 8px 0 2px; color: #a9c9c0; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
-.review-row { display: flex; align-items: center; gap: 6px; }
-.review-row .threat-row { min-width: 0; flex: 1; flex-direction: column; gap: 1px; }
-.review-row .threat-ip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.review-health { margin-top: 10px; color: #78928b; font-size: 10px; line-height: 1.4; }
-.warn-text { color: #ffd98a; }
-.od-panel { min-width: 0; overflow: hidden; }
-.panel-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid rgba(82,255,185,.14); background: linear-gradient(90deg, rgba(14,50,52,.7), rgba(9,12,15,.45)); }
-.panel-head h2 { margin: 0; font-size: 20px; color: #eafff9; }
-.panel-code { font: 700 11px ui-monospace, Consolas, monospace; color: #57f0b3; letter-spacing: 1px; }
-.panel-state { padding: 4px 8px; border-radius: 4px; font: 700 11px ui-monospace, Consolas, monospace; }
-.panel-state.good { color: #6bffc1; background: rgba(31,154,101,.18); } .panel-state.bad { color: #ff8993; background: rgba(192,40,63,.2); }
-.panel-body { padding: 12px; }
-.loading-strip { display: flex; align-items: center; gap: 8px; margin: -2px 0 10px; padding: 6px 8px; border: 1px solid rgba(95,211,255,.18); border-radius: 4px; background: rgba(48,111,135,.13); color: #bcecff; font: 700 11px ui-monospace, Consolas, monospace; text-transform: uppercase; }
-.spinner { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border: 2px solid rgba(125,255,197,.22); border-top-color: #7dffc5; border-radius: 50%; animation: spin .75s linear infinite; vertical-align: -1px; }
-.control-grid { display: grid; gap: 8px; margin-bottom: 10px; }
-.activity-controls { grid-template-columns: repeat(3, minmax(120px, 1fr)) repeat(3, 135px) 110px 92px 112px; }
-.ip-controls { grid-template-columns: minmax(220px, 1fr) 160px 92px; }
-.auth-controls { grid-template-columns: 1fr 1fr 180px 92px; } .profile-controls { grid-template-columns: 1fr 1fr 92px; } .honey-controls { grid-template-columns: minmax(240px, 1fr) 120px 92px; }
-input, select, textarea { min-width: 0; border: 1px solid rgba(116,255,198,.16); border-radius: 4px; background: #071012; color: #e7fff7; padding: 8px 9px; outline: none; }
-textarea { width: 100%; min-height: 70px; resize: vertical; margin: 10px 0 8px; }
-input:focus, select:focus, textarea:focus { border-color: #52ffb9; box-shadow: 0 0 0 1px rgba(82,255,185,.15); }
-.map-toggle input[type="checkbox"] { min-width: 13px; width: 13px; height: 13px; padding: 0; border: 1px solid rgba(95,211,255,.42); background: #071012; accent-color: #5fd3ff; }
-.checkline { display: flex; align-items: center; gap: 6px; color: #a8c3bb; font-size: 12px; }
-.od-btn, .micro { border: 1px solid rgba(82,255,185,.28); border-radius: 4px; background: linear-gradient(180deg, rgba(28,111,85,.38), rgba(10,25,26,.9)); color: #eafff9; cursor: pointer; font-weight: 700; }
-.od-btn:disabled, .micro:disabled { opacity: .52; cursor: wait; }
-.od-btn { padding: 8px 11px; } .od-btn.ghost { background: rgba(255,255,255,.04); } .od-btn.danger, .micro.danger { border-color: rgba(255,83,104,.45); color: #ffb9c1; } .od-btn.cyan, .micro.cyan { border-color: rgba(95,211,255,.45); color: #bcecff; } .od-btn.release, .micro.release { border-color: rgba(93,255,174,.5); color: #baffdc; background: linear-gradient(180deg, rgba(32,132,89,.44), rgba(8,30,25,.92)); } .micro.warn { color: #ffd98a; border-color: rgba(255,194,71,.4); }
-.micro { padding: 4px 7px; font-size: 11px; }
-.table-shell { position: relative; max-height: 590px; overflow: auto; border: 1px solid rgba(255,255,255,.08); border-radius: 5px; }
-.table-shell table { transition: opacity .18s ease; }
-.table-shell.refreshing table { opacity: .72; }
-.table-loading-overlay { position: absolute; top: 8px; left: 8px; z-index: 5; display: inline-flex; align-items: center; gap: 7px; padding: 6px 9px; border: 1px solid rgba(95,211,255,.24); border-radius: 4px; background: rgba(4,15,18,.84); color: #bcecff; backdrop-filter: blur(6px); box-shadow: 0 8px 18px rgba(0,0,0,.26); font: 800 11px ui-monospace, Consolas, monospace; text-transform: uppercase; animation: softFadeIn .16s ease-out both; }
-.table-row-fade-enter-active, .table-row-fade-leave-active { transition: opacity .18s ease, transform .18s ease; }
-.table-row-fade-enter-from, .table-row-fade-leave-to { opacity: 0; transform: translateY(4px); }
-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-th, td { padding: 7px 9px; border-bottom: 1px solid rgba(255,255,255,.055); text-align: left; vertical-align: top; }
-th { position: sticky; top: 0; z-index: 1; background: #0a1113; color: #73ffbf; font: 700 11px ui-monospace, Consolas, monospace; text-transform: uppercase; }
-tr:hover td { background: rgba(78,255,182,.035); }
-.clickable-row { cursor: pointer; }
-.clickable-row:hover td { background: rgba(78,255,182,.085); }
-.row-bad td { background: rgba(149, 31, 50, .12); } .row-warn td { background: rgba(169, 116, 24, .11); } .row-trap td { background: rgba(92, 57, 159, .12); }
-.clip { max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.link-btn { padding: 0; border: 0; background: transparent; color: #7dffc5; cursor: pointer; text-decoration: underline; }
-.status.good { color: #6bffc1; } .status.warn { color: #ffc247; } .status.bad { color: #ff5a6a; } .status.mid { color: #5fd3ff; }
-.origin-pill { display: inline-block; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,.06); color: #cbded8; }
-.origin-pill.web { color: #9be7ff; background: rgba(55,169,211,.15); } .origin-pill.api { color: #baf0c7; background: rgba(77,170,87,.13); } .origin-pill.bad { color: #ffb1bb; background: rgba(226,59,83,.16); }
-.profile-pill, .attacker-pill, .protected-chip, .identity-chip { display: inline-block; padding: 3px 7px; border-radius: 4px; font-size: 11px; font-weight: 800; }
-.profile-pill, .identity-chip.profile { color: #bfffe1; background: rgba(52,162,99,.18); border: 1px solid rgba(89,238,153,.18); }
-.attacker-pill, .identity-chip.attacker { color: #ffc4cc; background: rgba(204,54,77,.16); border: 1px solid rgba(255,83,104,.2); }
-.protected-chip { color: #c79cff; background: rgba(139,92,246,.16); border: 1px solid rgba(199,156,255,.22); }
-.identity-chip { margin-top: 9px; }
-.action-row { display: flex; flex-wrap: wrap; gap: 4px; min-width: 220px; }
-.detail-actions { display: flex; flex-wrap: wrap; gap: 7px; }
-.empty-cell { text-align: center; color: #70837e; padding: 28px; }
-.pager { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 10px; color: #8ba59d; font-size: 12px; }
-.detail-block:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
-.detail-title { font-weight: 800; color: #eafff9; font-size: 16px; }
-.detail-sub { margin-top: 3px; color: #86a39b; font-size: 12px; }
-.score-ring { margin: 14px auto; width: 124px; height: 124px; border-radius: 50%; border: 1px solid rgba(82,255,185,.35); display: grid; place-items: center; background: radial-gradient(circle, rgba(82,255,185,.17), rgba(9,13,15,.86) 62%); }
-.score-ring span { display: block; font-size: 32px; color: #7dffc5; text-align: center; }.score-ring small { display: block; color: #9fb8b1; text-align: center; margin-top: -18px; }
-.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.detail-grid div { padding: 8px; border: 1px solid rgba(255,255,255,.07); border-radius: 4px; background: rgba(255,255,255,.03); }
-.detail-grid span { display: block; color: #7d948e; font-size: 11px; } .detail-grid strong { display: block; margin-top: 3px; color: #f3fffb; font-size: 12px; }
-.port-list { display: grid; gap: 6px; margin-top: 8px; } .port-list div { display: flex; gap: 8px; justify-content: space-between; padding: 6px; background: rgba(255,255,255,.04); border-radius: 4px; }
-.od-error { margin-top: 12px; padding: 10px 12px; border: 1px solid rgba(255,83,104,.35); border-radius: 5px; background: rgba(120,22,36,.35); color: #ffc7cd; }
-@keyframes pulse { 0%,100% { opacity: .45; } 50% { opacity: 1; } }
-@keyframes spin { to { transform: rotate(360deg); } }
-@keyframes softFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes mapPopoverIn { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
-@keyframes blockPulse { 0% { opacity: 0; transform: scale(.55); } 65% { opacity: 1; transform: scale(1.14); } 100% { opacity: 1; transform: scale(1); } }
-@keyframes blockStrike { from { transform: rotate(45deg) scaleX(0); } to { transform: rotate(45deg) scaleX(1); } }
-.world-map-stage :deep(.od-block-cross::after) { animation-name: blockStrikeReverse; }
-@keyframes blockStrikeReverse { from { transform: rotate(-45deg) scaleX(0); } to { transform: rotate(-45deg) scaleX(1); } }
-@media (max-width: 1320px) { .od-grid { grid-template-columns: 210px 1fr; } .od-detail { grid-column: 1 / -1; } .activity-controls { grid-template-columns: repeat(3, 1fr); } .map-layout { grid-template-columns: 1fr; } .map-intel { grid-template-columns: repeat(4, minmax(0, 1fr)); } .map-legend, .map-selected { grid-column: auto; } }
-@media (max-width: 1100px) { .fp-columns { grid-template-columns: 1fr; } .fp-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 820px) { .od-header { align-items: flex-start; flex-direction: column; } .od-header-actions { width: 100%; flex-wrap: wrap; } .refresh-stamp { min-width: 0; text-align: left; } .map-head { align-items: flex-start; flex-direction: column; } .map-actions { width: 100%; align-items: flex-start; flex-direction: column; } .map-filters { width: 100%; flex-wrap: wrap; } .map-filters button, .map-toggle { flex: 1 1 130px; } .world-map-stage { height: 52vh; min-height: 340px; } .map-intel { grid-template-columns: repeat(2, minmax(0, 1fr)); } .map-legend, .map-selected { grid-column: 1 / -1; } .od-metrics { grid-template-columns: repeat(2, 1fr); } .od-grid { grid-template-columns: 1fr; } .activity-controls, .auth-controls, .profile-controls, .honey-controls, .ip-controls { grid-template-columns: 1fr; } }
-.od-modal-backdrop { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: flex-start; justify-content: center; padding: 5vh 16px; background: rgba(2, 6, 8, 0.78); backdrop-filter: blur(4px); animation: softFadeIn .14s ease-out both; }
-.od-modal { width: min(960px, 100%); max-height: 90vh; display: flex; flex-direction: column; border: 1px solid rgba(82,255,185,.32); border-radius: 6px; background: linear-gradient(180deg, rgba(7,18,20,.98), rgba(4,8,10,.98)); box-shadow: 0 24px 64px rgba(0,0,0,.55), 0 0 36px rgba(82,255,185,.08); color: #d9fff0; overflow: hidden; }
-.od-modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 14px 16px; border-bottom: 1px solid rgba(82,255,185,.18); background: linear-gradient(90deg, rgba(14,50,52,.7), rgba(9,12,15,.45)); }
-.od-modal-head h2 { margin: 4px 0 0; font-size: 22px; color: #eafff9; }
-.od-modal-head small { display: block; margin-top: 4px; color: #86a39b; font: 700 11px ui-monospace, Consolas, monospace; }
-.od-modal-loading { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 60px 16px; color: #bcecff; font: 700 12px ui-monospace, Consolas, monospace; text-transform: uppercase; }
-.od-modal-body { padding: 14px 16px 20px; overflow: auto; }
-.od-detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-bottom: 14px; }
-.od-detail-grid div { padding: 8px 10px; border: 1px solid rgba(255,255,255,.07); border-radius: 4px; background: rgba(255,255,255,.03); min-width: 0; }
-.od-detail-grid span { display: block; color: #7d948e; font: 700 10px ui-monospace, Consolas, monospace; text-transform: uppercase; letter-spacing: .8px; }
-.od-detail-grid strong { display: block; margin-top: 3px; color: #f3fffb; font-size: 13px; word-break: break-word; }
-.od-detail-grid strong small { color: #86a39b; font-weight: 600; font-size: 11px; margin-left: 4px; }
-.od-detail-section { margin-top: 14px; border: 1px solid rgba(82,255,185,.16); border-radius: 5px; background: rgba(255,255,255,.025); }
-.od-detail-section-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid rgba(82,255,185,.12); background: rgba(255,255,255,.02); }
-.od-detail-section-head h3 { margin: 0; font: 700 12px ui-monospace, Consolas, monospace; color: #82f8c1; text-transform: uppercase; letter-spacing: 1px; }
-.od-detail-code { margin: 0; padding: 10px 12px; background: #050b0d; color: #c5e9d9; font: 12px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; word-break: break-all; max-height: 360px; overflow: auto; }
-.od-detail-code.body { max-height: 460px; }
-.od-kv-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.od-kv-table th, .od-kv-table td { padding: 6px 12px; border-bottom: 1px solid rgba(255,255,255,.05); text-align: left; vertical-align: top; }
-.od-kv-table th { background: rgba(255,255,255,.025); color: #73ffbf; font: 700 11px ui-monospace, Consolas, monospace; text-transform: uppercase; }
-.od-kv-table td:first-child { color: #bcecff; font: 700 12px ui-monospace, Consolas, monospace; white-space: nowrap; }
-.od-kv-table td:nth-child(2) { color: #d9fff0; max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.od-body-hash { padding: 6px 12px; font: 11px ui-monospace, Consolas, monospace; word-break: break-all; border-top: 1px solid rgba(82,255,185,.08); }
-</style>
+
+function setWindow(hours: number) {
+  stopReplay();
+  mapHours.value = hours;
+}
+
+const replayProgress = computed(() => {
+  if (replayAt.value == null || !mapHours.value) return 0;
+  const start = windowStart.value;
+  const end = minuteNow.value / 1000;
+  return Math.min(1, Math.max(0, (replayAt.value - start) / Math.max(1, end - start)));
+});
+const replayLabel = computed(() => {
+  if (replayAt.value == null) return '';
+  const at = new Date(replayAt.value * 1000);
+  return at.toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+});
+
+/** Replays the window from its start: addresses appear as they first arrived, in about 12 seconds. */
+function toggleReplay() {
+  if (replaying.value) { replaying.value = false; if (replayTimer != null) window.clearInterval(replayTimer); replayTimer = null; return; }
+  if (!mapHours.value) return;
+  const start = windowStart.value;
+  const end = minuteNow.value / 1000;
+  if (replayAt.value == null || replayAt.value >= end) replayAt.value = start;
+  replaying.value = true;
+  const step = (end - start) / 120;
+  replayTimer = window.setInterval(() => {
+    const next = (replayAt.value ?? start) + step;
+    if (next >= end) { replayAt.value = end; replaying.value = false; if (replayTimer != null) window.clearInterval(replayTimer); replayTimer = null; return; }
+    replayAt.value = next;
+  }, 100);
+}
+
+function stopReplay() {
+  replaying.value = false;
+  if (replayTimer != null) window.clearInterval(replayTimer);
+  replayTimer = null;
+  replayAt.value = null;
+}
+
+async function blockRegion(box: { latMin: number; latMax: number; lonMin: number; lonMax: number }, reason: string) {
+  regionBusy.value = true;
+  try {
+    await defence.addRegion(box, reason);
+    boxMode.value = false;
+  } finally { regionBusy.value = false; }
+}
+
+async function confirmRemoveRegion() {
+  const region = regionToRemove.value;
+  if (!region) return;
+  regionToRemove.value = null;
+  await defence.removeRegion(region.id, releaseRegionIps.value);
+  releaseRegionIps.value = false;
+}
+
+function drawRegion() {
+  prefs.value = { ...prefs.value, mapOpen: true };
+  boxMode.value = true;
+  void jump('map');
+}
+
+// Keep the open address in view on the map.
+watch(selectedIp, ip => {
+  if (!ip) return;
+  const record = ipIndex.value.get(ip);
+  if (record) threatMap.value?.focus(record);
+});
+
+// ───────────────────────────── records ─────────────────────────────
+
+function tabCount(id: DefenceTab): string {
+  if (id === 'addresses') return ips.value.length ? fmtCompact(ips.value.length) : '';
+  if (id === 'review') {
+    const total = (review.value?.hostileAnsweredCount ?? 0) + (review.value?.benignPenalisedCount ?? 0);
+    return total ? fmtInt(total) : '';
+  }
+  if (id === 'traps') {
+    const n = (honeypots.value?.length ?? 0) + regions.value.length;
+    return n ? fmtInt(n) : '';
+  }
+  return '';
+}
+
+function goTab(tab: DefenceTab) {
+  defence.setTab(tab);
+  void jump('work');
+}
+
+function applyFilter(list: 'traffic' | 'auth' | 'profiles', filter: any) {
+  if (list === 'traffic') trafficFilter.value = { ...filter, offset: 0 };
+  else if (list === 'auth') authFilter.value = { ...filter, offset: 0 };
+  else profileFilter.value = { ...filter, offset: 0 };
+  void defence.refreshList();
+}
+
+function pageList(list: 'traffic' | 'auth' | 'profiles', direction: number) {
+  if (list === 'traffic') trafficFilter.value = { ...trafficFilter.value, offset: Math.max(0, trafficFilter.value.offset + direction * TRAFFIC_LIMIT) };
+  else if (list === 'auth') authFilter.value = { ...authFilter.value, offset: Math.max(0, authFilter.value.offset + direction * AUTH_LIMIT) };
+  else profileFilter.value = { ...profileFilter.value, offset: Math.max(0, profileFilter.value.offset + direction * PROFILE_LIMIT) };
+  void defence.refreshList();
+}
+
+function openAddresses(preset: Partial<AddressFilter>) {
+  addressPreset.value = { ...preset };
+  defence.setTab('addresses');
+  void jump('work');
+}
+
+function showDenied() {
+  trafficFilter.value = { ...trafficFilter.value, ip: '', denyOnly: true, offset: 0 };
+  if (prefs.value.tab === 'traffic') void defence.refreshList(); else defence.setTab('traffic');
+  void jump('work');
+}
+
+function showTrafficFor(ip: string) {
+  trafficFilter.value = { ip: ip, profile: '', route: '', status: '', method: '', origin: '', denyOnly: false, offset: 0 };
+  if (prefs.value.tab === 'traffic') void defence.refreshList(); else defence.setTab('traffic');
+  defence.closeIp();
+  void jump('work');
+}
+
+async function openRequest(id: number | string) {
+  requestOpen.value = true;
+  requestLoading.value = true;
+  requestBody.value = null;
+  try { requestBody.value = await defence.loadRequest(id); } finally { requestLoading.value = false; }
+}
+
+async function copyText(text: string) {
+  try { await navigator.clipboard.writeText(text); defence.notify('ok', 'Copied'); } catch { defence.notify('warn', 'The browser would not copy that'); }
+}
+
+// ───────────────────────────── block ─────────────────────────────
+
+const blockRecord = computed(() => (blockFor.value ? ipIndex.value.get(blockFor.value) ?? (detail.value?.ip === blockFor.value ? detail.value.record : null) : null));
+const reasonChoices = computed(() => {
+  const last = prefs.value.lastReason;
+  return last && !BLOCK_REASONS.includes(last) ? [last, ...BLOCK_REASONS] : BLOCK_REASONS;
+});
+
+function askBlock(ip: string) {
+  if (!allowed.value.block) return;
+  const record = ipIndex.value.get(ip);
+  if (record?.isKlives) { defence.notify('warn', `${ip} belongs to a Klives-rank profile and cannot be blocked`); return; }
+  blockReason.value = suggestReason(ip);
+  blockFor.value = ip;
+}
+
+/** A reason that fits what the classifier saw, so Enter is usually enough. */
+function suggestReason(ip: string): string {
+  const cls = ipIndex.value.get(ip)?.classification
+    ?? review.value?.hostileAnswered.find(item => item.ip === ip)?.classification
+    ?? (detail.value?.ip === ip ? detail.value.record?.classification : null);
+  if (cls === 'VulnScanner') return 'Exploit probes';
+  if (cls === 'CredentialAttacker') return 'Credential stuffing';
+  if (cls === 'Scraper') return 'Scraping';
+  if (cls === 'HeadlessAutomation') return 'Headless automation';
+  return prefs.value.lastReason || 'Abuse';
+}
+
+async function confirmBlock() {
+  const ip = blockFor.value;
+  if (!ip) return;
+  blockFor.value = null;
+  await defence.block(ip, blockReason.value);
+}
+
+function runToast(toast: DefenceToast) {
+  defence.dismissToast(toast.id);
+  void toast.action?.run();
+}
+
+// ───────────────────────────── moving around ─────────────────────────────
+
+async function jump(target: string) {
+  if (target === 'review' || target === 'traffic' || target === 'fingerprint' || target === 'traps') {
+    if (target === 'traffic') { showDenied(); return; }
+    defence.setTab(target as DefenceTab);
+    target = 'work';
+  }
+  if (target === 'status') target = 'work';
+  await nextTick();
+  const el = document.getElementById(`odx-${target}`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  flashing.value = target;
+  window.setTimeout(() => { if (flashing.value === target) flashing.value = null; }, 1_400);
+}
+
+function commandsFor(query: string): DefenceCommand[] {
+  const list: DefenceCommand[] = [];
+  const text = query.trim();
+
+  // Addresses first when something address-like is typed.
+  if (text.length >= 2) {
+    const found = ips.value
+      .filter(ip => matchesText(ip, text))
+      .sort((a, b) => (a.ip.startsWith(text) ? 0 : 1) - (b.ip.startsWith(text) ? 0 : 1) || b.lastSeen - a.lastSeen)
+      .slice(0, 8);
+    for (const ip of found) {
+      const cls = classes.value.find(c => c.id === ip.classification)?.label ?? ip.classification;
+      list.push({ id: `ip-${ip.ip}`, group: 'Addresses', title: [ip.ip, cls, [ip.city, ip.country].filter(Boolean).join(', ')].filter(Boolean).join('  ·  '), icon: 'globe', hint: ip.status !== 'Normal' ? ip.status : '', run: () => defence.openIp(ip.ip) });
+    }
+    if (looksLikeIp(text) && !found.some(ip => ip.ip === text)) {
+      list.push({ id: `ip-open-${text}`, group: 'Addresses', title: `Open ${text}`, icon: 'globe', hint: 'not seen yet', run: () => defence.openIp(text) });
+    }
+    if (looksLikeIp(text) && allowed.value.block) {
+      list.push({ id: `ip-block-${text}`, group: 'Actions', title: `Block ${text}`, icon: 'block', danger: true, keywords: 'block ban refuse', run: () => askBlock(text) });
+    }
+  }
+
+  for (const tab of tabs.value) list.push({ id: `go-${tab.id}`, group: 'Go to', title: tab.label, icon: tab.icon, run: () => goTab(tab.id) });
+  list.push({ id: 'go-map', group: 'Go to', title: 'Map', icon: 'map', keywords: 'world where', run: () => { prefs.value = { ...prefs.value, mapOpen: true }; void jump('map'); } });
+
+  list.push({ id: 'refresh', group: 'Actions', title: 'Refresh now', icon: 'refresh', hint: 'R', run: () => defence.refreshAll() });
+  list.push({ id: 'live', group: 'Actions', title: prefs.value.live ? 'Pause live updates' : 'Resume live updates', icon: prefs.value.live ? 'pause' : 'play', run: () => defence.setLive(!prefs.value.live) });
+  if (allowed.value.traffic) list.push({ id: 'denied', group: 'Actions', title: 'Show denied traffic', icon: 'block', keywords: 'refused 403 blocked requests', run: showDenied });
+  list.push({ id: 'hostile', group: 'Actions', title: 'Show hostile addresses seen today', icon: 'shield-alert', keywords: 'attackers scanners', run: () => openAddresses({ groups: ['hostile'], seenWithinHours: 24 }) });
+  list.push({ id: 'blocked', group: 'Actions', title: 'Show blocked addresses', icon: 'lock', run: () => openAddresses({ statuses: ['Blocked'] }) });
+  list.push({ id: 'colour', group: 'Actions', title: prefs.value.colour === 'class' ? 'Colour the map by status' : 'Colour the map by class', icon: 'layers', run: () => { prefs.value = { ...prefs.value, colour: prefs.value.colour === 'class' ? 'status' : 'class' }; } });
+  if (allowed.value.regions) list.push({ id: 'region', group: 'Actions', title: 'Block a region on the map…', icon: 'box', keywords: 'country area geo', run: drawRegion });
+  if (allowed.value.honeypots) list.push({ id: 'trap', group: 'Actions', title: 'Arm a honeypot route…', icon: 'trap', keywords: 'trap path', run: () => goTab('traps') });
+  if (allowed.value.act) list.push({ id: 'reclassify-all', group: 'Actions', title: 'Reclassify every address', icon: 'fingerprint', danger: true, run: () => defence.reclassify(null) });
+  if (allowed.value.export) {
+    for (const [table, label] of [['requests', 'requests'], ['ip_records', 'IP records'], ['auth_events', 'sign-in events'], ['ip_events', 'IP history'], ['profile_actions', 'profile actions']] as const) {
+      list.push({ id: `export-${table}`, group: 'Actions', title: `Export ${label} (CSV)`, icon: 'download', keywords: 'download csv', run: () => defence.exportTable(table) });
+    }
+  }
+
+  const ip = selectedIp.value;
+  if (ip) {
+    if (allowed.value.block) {
+      const status = ipIndex.value.get(ip)?.status ?? detail.value?.record?.status ?? 'Normal';
+      if (HOSTILE_STATUSES.includes(status as any)) list.push({ id: 'sel-release', group: 'This address', title: `Release ${ip}`, icon: 'release', hint: 'U', run: () => defence.release(ip) });
+      if (status !== 'Blocked') list.push({ id: 'sel-block', group: 'This address', title: `Block ${ip}`, icon: 'block', hint: 'B', danger: true, run: () => askBlock(ip) });
+    }
+    if (allowed.value.act) list.push({ id: 'sel-scan', group: 'This address', title: `Port scan ${ip}`, icon: 'radar', run: () => defence.scan(ip) });
+    if (allowed.value.traffic) list.push({ id: 'sel-traffic', group: 'This address', title: `Traffic from ${ip}`, icon: 'activity', run: () => showTrafficFor(ip) });
+  }
+  return list;
+}
+
+function isTyping(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el?.tagName) return false;
+  return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
+}
+
+function onKeydown(event: KeyboardEvent) {
+  const mod = event.ctrlKey || event.metaKey;
+  if (mod && event.key.toLowerCase() === 'k') {
+    event.preventDefault();
+    paletteOpen.value = !paletteOpen.value;
+    return;
+  }
+  if (event.key === 'Escape' && !paletteOpen.value && !blockFor.value && !requestOpen.value && !regionToRemove.value) {
+    if (boxMode.value) { boxMode.value = false; return; }
+    if (selectedIp.value) { defence.closeIp(); return; }
+  }
+  if (mod || event.altKey || paletteOpen.value || blockFor.value || requestOpen.value || isTyping(event.target)) return;
+  const key = event.key.toLowerCase();
+  if (event.key === '/') {
+    event.preventDefault();
+    if (prefs.value.tab === 'traffic') trafficPanel.value?.focus();
+    else { if (prefs.value.tab !== 'addresses') defence.setTab('addresses'); void nextTick(() => addressPanel.value?.focus()); }
+  } else if (key === 'r') {
+    void defence.refreshAll();
+  } else if (key === 'b' && selectedIp.value) {
+    askBlock(selectedIp.value);
+  } else if (key === 'u' && selectedIp.value) {
+    void defence.release(selectedIp.value);
+  }
+}
+
+// ───────────────────────────── the address bar ─────────────────────────────
+
+// ?ip= opens an address and ?tab= a tab, so a link to either can be shared or bookmarked.
+watch([selectedIp, () => prefs.value.tab], ([ip, tab]) => {
+  const query: Record<string, string> = { ...(route.query as Record<string, string>) };
+  if (ip) query.ip = ip; else delete query.ip;
+  query.tab = tab;
+  if (query.ip === route.query.ip && query.tab === route.query.tab) return;
+  void router.replace({ query });
+});
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown);
+  window.setTimeout(() => { firstPaint.value = false; }, 900);
+  const tab = String(route.query.tab ?? '');
+  if (TABS.some(t => t.id === tab)) defence.setTab(tab as DefenceTab);
+  const ip = String(route.query.ip ?? '').trim();
+  if (ip) defence.openIp(ip);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown);
+  if (replayTimer != null) window.clearInterval(replayTimer);
+});
+</script>
+
+<style lang="scss" src="~/assets/scss/omnidefence.scss"></style>

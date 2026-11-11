@@ -646,10 +646,11 @@ const positionCost = (p: Cs2Purchase) => (p.PurchaseCostPence ? fmtPence(p.Purch
 const positionProfit = (p: Cs2Purchase) => {
   if (p.CurrentStrategicStage === 7) return `${fmtGbp(p.ActualAbsoluteProfitInPounds)} realised`;
   if (p.CurrentStrategicStage === 8) return 'refunded';
+  if (p.CurrentStrategicStage === 10) return 'sold outside the bot';
   return `${fmtGbp(p.ExpectedAbsoluteProfitInPounds)} expected`;
 };
 const profitTone = (p: Cs2Purchase): Cs2Tone => {
-  if (p.CurrentStrategicStage === 8) return 'neutral';
+  if (p.CurrentStrategicStage === 8 || p.CurrentStrategicStage === 10) return 'neutral';
   const value = p.CurrentStrategicStage === 7 ? p.ActualAbsoluteProfitInPounds : p.ExpectedAbsoluteProfitInPounds;
   return (value ?? 0) >= 0 ? 'good' : 'danger';
 };

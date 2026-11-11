@@ -258,13 +258,14 @@ export const CS2_STAGES: Record<number, Cs2StageMeta> = {
   7: { label: 'Completed', short: 'Done', tone: 'good' },
   8: { label: 'Trade cancelled (refunded)', short: 'Cancelled', tone: 'danger' },
   9: { label: 'Relisted on CSFloat — waiting for a buyer', short: 'Resale', tone: 'info' },
+  10: { label: 'Left the inventory (sold or moved by hand)', short: 'Gone', tone: 'neutral' },
 };
 
 export const stageMeta = (stage: number): Cs2StageMeta =>
   CS2_STAGES[stage] ?? { label: `Unknown stage ${stage}`, short: '?', tone: 'neutral' };
 
-/** Purchases still in play (not completed or cancelled). */
-export const isOpenPurchase = (p: Cs2Purchase) => p.CurrentStrategicStage !== 7 && p.CurrentStrategicStage !== 8;
+/** Purchases still in play (not completed, cancelled, or closed because the unit left the inventory). */
+export const isOpenPurchase = (p: Cs2Purchase) => p.CurrentStrategicStage !== 7 && p.CurrentStrategicStage !== 8 && p.CurrentStrategicStage !== 10;
 
 /** Server serialises ExitRoute as an int (0 None, 1 SteamMarket, 2 CSFloatRelist); tolerate names too. */
 export const routeName = (route: number | string | undefined | null): 'Steam' | 'CSFloat relist' | '—' => {

@@ -1,15 +1,16 @@
 <template>
   <div>
     <div class="odx-stats">
-      <div class="odx-stat"><div class="odx-stat__label">Classifier</div><div class="odx-stat__value" :data-tone="engineTone">{{ engineWord }}</div></div>
-      <div class="odx-stat"><div class="odx-stat__label">Fingerprints</div><div class="odx-stat__value">{{ fmtInt(status?.fingerprints) }}</div></div>
-      <div class="odx-stat"><div class="odx-stat__label">Signals folded</div><div class="odx-stat__value">{{ fmtCompact(status?.signalsFolded) }}</div></div>
-      <div class="odx-stat"><div class="odx-stat__label">Waiting</div><div class="odx-stat__value" :data-tone="(status?.backlog ?? 0) > 5000 ? 'warn' : undefined">{{ fmtInt(status?.backlog) }}</div></div>
-      <div class="odx-stat"><div class="odx-stat__label">Classified</div><div class="odx-stat__value">{{ fmtCompact(status?.classifications) }}</div></div>
+      <div class="odx-stat"><div class="odx-stat__label">Classifier</div><div class="odx-stat__value" :data-tone="engineTone" data-testid="fp-engine">{{ engineWord }}</div></div>
+      <div class="odx-stat"><div class="odx-stat__label">Fingerprints</div><div class="odx-stat__value">{{ fmtInt(engine?.fingerprints) }}</div></div>
+      <div class="odx-stat"><div class="odx-stat__label">Signals folded</div><div class="odx-stat__value">{{ fmtCompact(engine?.signalsFolded) }}</div></div>
+      <div class="odx-stat"><div class="odx-stat__label">Waiting</div><div class="odx-stat__value" :data-tone="(engine?.backlog ?? 0) > 5000 ? 'warn' : undefined">{{ fmtInt(engine?.backlog) }}</div></div>
+      <div class="odx-stat"><div class="odx-stat__label">Classified</div><div class="odx-stat__value">{{ fmtCompact(engine?.classifications) }}</div></div>
       <div class="odx-stat"><div class="odx-stat__label">Cloud ranges</div><div class="odx-stat__value">{{ fmtCompact(status?.intel?.datacenterRanges) }}</div></div>
       <div class="odx-stat"><div class="odx-stat__label">Crawler ranges</div><div class="odx-stat__value">{{ fmtCompact(status?.intel?.crawlerRanges) }}</div></div>
       <div class="odx-stat"><div class="odx-stat__label">Tor exits</div><div class="odx-stat__value">{{ fmtCompact(status?.intel?.torExits) }}</div></div>
     </div>
+    <p v-if="loading" class="odx-note" style="margin: 0; padding: 0 14px 12px" data-testid="fp-loading">The engine loads once the routes are up. Until it has, new visitors are not classified.</p>
 
     <div class="odx-two">
       <section aria-label="Classes">
@@ -115,7 +116,9 @@ import { fmtCompact, fmtInt, type ClassInfo } from '~/scripts/omniDefence';
 /** The classifier: whether it is keeping up, what it has found, and the rules it acts on. */
 const props = defineProps<{
   status: any | null;
-  thresholds: { autoWatchScore: number; autoBlockScore: number; escalation2: number; escalation3: number } | null;
+  /** Start-up is still loading the engine: its counts read zero because it does not exist yet. */
+  loading?: boolean;
+  thresholds:{ autoWatchScore: number; autoBlockScore: number; escalation2: number; escalation3: number } | null;
   classes: readonly ClassInfo[];
   canEdit: boolean;
   canAct: boolean;
@@ -154,11 +157,14 @@ async function save() {
 
 const engineWord = computed(() => {
   const s = props.status;
+  if (props.loading && !s?.running) return 'Loading';
   if (!s) return '—';
   if (s.backfillRunning) return 'Backfilling';
   return s.running ? 'Running' : 'Stopped';
 });
-const engineTone = computed(() => (!props.status ? undefined : props.status.running ? 'ok' : 'crit'));
+const engineTone = computed(() => (props.loading && !props.status?.running ? 'info' : !props.status ? undefined : props.status.running ? 'ok' : 'crit'));
+/** The engine's own counts, which do not exist until it has loaded. */
+const engine = computed(() => (props.loading && !props.status?.running ? null : props.status));
 
 const totalClassified = computed(() => Object.values(props.status?.classBreakdown ?? {}).reduce((n: number, v: any) => n + (Number(v) || 0), 0));
 const classRows = computed(() => {

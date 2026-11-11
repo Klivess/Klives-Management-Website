@@ -9,7 +9,7 @@ import { catalogPayload, mePayload } from './permissions';
  * Actions change the state, so a test can block an address and watch the page agree.
  */
 
-export type DefenceScenario = 'normal' | 'starting' | 'legacy';
+export type DefenceScenario = 'normal' | 'starting' | 'engine-loading' | 'legacy';
 
 export interface DefenceMockOptions {
   scenario?: DefenceScenario;
@@ -27,6 +27,8 @@ export interface DefenceApiMock {
   events: any[];
   regions: any[];
   honeypots: any[];
+  /** For 'engine-loading': the fingerprint engine has loaded, so start-up is over. */
+  finishStartup: () => void;
 }
 
 export const defenceTestOrigin = new URL(
@@ -68,6 +70,8 @@ export async function installDefenceApiMock(page: Page, options: DefenceMockOpti
   const scenario = options.scenario ?? 'normal';
   const legacy = scenario === 'legacy';
   let missingReads = scenario === 'starting' ? options.missingReads ?? 2 : 0;
+  // The routes answer first and the fingerprint engine loads behind them (OmniDefence.FinishStartupAsync).
+  let engineUp = scenario !== 'engine-loading';
   const now = () => Math.floor(Date.now() / 1000);
   const t0 = now();
   let eventId = 100;
@@ -114,7 +118,7 @@ export async function installDefenceApiMock(page: Page, options: DefenceMockOpti
   const regions: any[] = [{ id: 1, latMin: 55.0, latMax: 60.0, lonMin: 35.0, lonMax: 45.0, reason: 'Probe source block', createdUtc: t0 - 86_400 * 9, createdBy: 'Klives' }];
   const honeypots: any[] = [{ route: '/wp-admin', createdUtc: t0 - 86_400 * 40, responseKind: 'JunkJson', note: 'Classic', hits: 412, lastHit: t0 - 5_000 }];
 
-  const state: DefenceApiMock = { requestedPaths: [], directGets: [], batchCalls: [], posts: [], ips, events, regions, honeypots };
+  const state: DefenceApiMock = { requestedPaths: [], directGets: [], batchCalls: [], posts: [], ips, events, regions, honeypots, finishStartup: () => { engineUp = true; } };
 
   // ── payloads ──
 
@@ -215,7 +219,23 @@ export async function installDefenceApiMock(page: Page, options: DefenceMockOpti
       autoActionMinConfidence: 0.9, robotsTrapEnabled: true, robotsTrapPath: '/archive/ab12cd34/export', intelReverseDns: true, intelFeeds: true,
       intelAbuseIpDb: true, intelGreyNoise: true, abuseIpDbDailyBudget: 200, greyNoiseDailyBudget: 200, beaconEnabled: true, abuseIpDbKeySet: false, greyNoiseKeySet: false,
     },
+    // Until the engine exists the route still answers: zero counts and no intel.
+    ...(engineUp ? {} : { running: false, fingerprints: 0, signalsFolded: 0, classifications: 0, intel: null }),
   });
+
+  // Start-up as OmniDefenceStartupTrace.Status() reports it: the steps in the order they ran, the
+  // ones after "routes" while the service already answered.
+  const statusBody = () => {
+    const steps: Record<string, number> = { 'opening the database': 61_200, 'checking the schema': 4_100, 'scrubbing settings audits': 2_800, 'IP records': 53_400, routes: 1_300 };
+    if (engineUp) steps.fingerprinting = 193_800;
+    return {
+      overview: { hasSnapshot: true, ageSeconds: 4, stale: false, building: false, lastBuildMs: 23 }, auditQueue: 4, auditRowsDropped: 0, readPoolTimeouts: 0,
+      startup: {
+        ready: true, startedUtc: new Date((t0 - 400) * 1000).toISOString(), readyUtc: new Date((t0 - 277) * 1000).toISOString(),
+        seconds: 122.8, step: engineUp ? null : 'fingerprinting', steps, error: null,
+      },
+    };
+  };
 
   const getResponse = (pathWithQuery: string): { status: number; body: unknown } => {
     const url = new URL(pathWithQuery, 'https://klive.dev');
@@ -228,7 +248,7 @@ export async function installDefenceApiMock(page: Page, options: DefenceMockOpti
     }
     switch (path) {
       case '/omnidefence/overview': return { status: 200, body: overview() };
-      case '/omnidefence/overview/status': return { status: 200, body: { overview: { hasSnapshot: true, ageSeconds: 4, stale: false, building: false, lastBuildMs: 23 }, auditQueue: 4, auditRowsDropped: 0, readPoolTimeouts: 0, startup: { ready: true, seconds: 6.2, steps: { 'IP records': 900 } } } };
+      case '/omnidefence/overview/status': return { status: 200, body: statusBody() };
       case '/omnidefence/regions': return { status: 200, body: regions };
       case '/omnidefence/requests': return { status: 200, body: requests(url.searchParams) };
       case '/omnidefence/auth-events': return { status: 200, body: [{ id: 5, utc_ts: t0 - 600, ip: '198.51.100.31', type: 'InvalidPassword', profile_id: null, profile_name: null, route: '/KMProfiles/Login', user_agent: 'curl/8.0', detail: 'Wrong password' }] };

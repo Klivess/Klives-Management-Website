@@ -151,6 +151,32 @@ test.describe('OmniDefence console', () => {
     await expect(page.getByTestId('odx-verdict-title')).toHaveText('2 things to look at');
   });
 
+  test('routes that answer while the fingerprint engine loads read "loading", never "not running"', async ({ page }) => {
+    await page.clock.install({ time: Date.now() });
+    const api = await openDefence(page, { scenario: 'engine-loading' });
+    await expect(page.getByTestId('issue-finishing')).toContainText('Loading the fingerprint engine');
+    await expect(page.getByTestId('issue-fp-stopped')).toHaveCount(0);
+    await expect(page.getByTestId('odx-startup')).toContainText('2m 2s');
+
+    await page.getByTestId('tab-fingerprint').click();
+    await expect(page.getByTestId('fp-engine')).toHaveText('Loading');
+    await expect(page.getByTestId('fp-loading')).toBeVisible();
+
+    // The status is asked for every 15 s while start-up finishes. Once the engine is up its own
+    // figures are read straight away, not at the next minute's read, so "not running" never shows.
+    await page.clock.runFor(15_500);
+    await expect(page.getByTestId('issue-finishing')).toBeVisible();
+    const fpReads = () => api.requestedPaths.filter(path => path === '/omnidefence/fingerprint/status').length;
+    const before = fpReads();
+    api.finishStartup();
+    await page.clock.runFor(15_500);
+    await expect(page.getByTestId('issue-finishing')).toHaveCount(0);
+    await expect(page.getByTestId('fp-engine')).toHaveText('Running');
+    await expect(page.getByTestId('issue-fp-stopped')).toHaveCount(0);
+    await expect(page.getByTestId('fp-loading')).toHaveCount(0);
+    expect(fpReads()).toBeGreaterThan(before);
+  });
+
   test('an older server: the full map is read instead, and the missing feed is said so', async ({ page }) => {
     const api = await openDefence(page, { scenario: 'legacy' });
     await expect(page.getByTestId('odx-verdict-title')).toHaveText('2 things to look at');

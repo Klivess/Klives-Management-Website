@@ -345,7 +345,7 @@ onMounted(loadDefaults);
 .np-recap-row .ellip { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .np-error { color: var(--ot-negative); font-size: 12px; background: var(--ot-negative-soft); padding: 8px 10px; border-radius: 6px; margin: 0 0 12px; }
 .np-deploy { width: 100%; background: var(--ot-accent); color: var(--ot-on-accent); border: none; padding: 11px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; }
-.np-deploy:hover:not(:disabled) { background: #7ee85f; }
+.np-deploy:hover:not(:disabled) { background: color-mix(in srgb, var(--ot-accent) 82%, white); }
 .np-deploy:disabled { opacity: 0.45; cursor: default; }
 .np-cancel { width: 100%; background: none; color: var(--ot-muted); border: none; padding: 9px; margin-top: 6px; cursor: pointer; font-size: 13px; }
 .np-cancel:hover:not(:disabled) { color: var(--ot-text-2); }

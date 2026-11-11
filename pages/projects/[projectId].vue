@@ -1,72 +1,98 @@
 <template>
-  <ProjectsShell :status="shellStatus" :status-tone="shellTone" :working="liveCount > 0" :crumb="project?.name">
-    <div v-if="loadError" class="ot-banner" role="alert">
-      <span class="glyph" aria-hidden="true">⚠</span>
-      <div><strong>This project could not be loaded</strong>{{ loadError }}</div>
-      <div class="actions"><button class="ot-btn sm" @click="refresh">Retry</button></div>
+  <ProjectsShell :status="shellStatus" :status-tone="shellTone" :working="liveCount > 0" :crumb="project?.name" :commands="paletteCommands">
+    <div v-if="loadError" class="pjx-banner" data-tone="fault" role="alert">
+      <ProjectsIcon name="alert" />
+      <div class="pjx-banner__body"><b>This project could not be loaded</b>{{ loadError }}</div>
+      <div class="pjx-banner__actions"><button class="pjx-btn pjx-btn--sm" @click="refresh">Retry</button><NuxtLink class="pjx-btn pjx-btn--ghost pjx-btn--sm" to="/projects">All projects</NuxtLink></div>
     </div>
 
-    <template v-else-if="project">
-      <header class="pw-head">
-        <div class="pw-titles">
-          <div class="pw-title-row">
+    <div v-else-if="project" class="pjx-ws">
+      <!-- ── header: who, what state, what next ── -->
+      <header class="pjx-card pjx-ws-head" :data-tone="state.tone">
+        <div class="pjx-ws-head__titles">
+          <div class="pjx-ws-head__row">
             <template v-if="!renaming">
-              <h1 class="pw-title">{{ project.name }}</h1>
-              <button class="ot-btn ghost sm pw-rename" title="Rename project" aria-label="Rename project" @click="startRename">✎</button>
+              <h1>{{ project.name }}</h1>
+              <button v-if="can.manage" class="pjx-iconbtn pjx-iconbtn--sm" title="Rename project" aria-label="Rename project" @click="startRename"><ProjectsIcon name="edit" /></button>
             </template>
             <template v-else>
-              <input ref="renameInput" v-model="renameValue" class="ot-input pw-rename-input" aria-label="Project name"
-                @keyup.enter="commitRename" @keyup.esc="cancelRename" />
-              <button class="ot-btn primary sm" :disabled="renameSaving" @click="commitRename">{{ renameSaving ? '…' : 'Save' }}</button>
-              <button class="ot-btn ghost sm" @click="cancelRename">Cancel</button>
+              <input ref="renameInput" v-model="renameValue" class="pjx-input" style="max-width: 420px; height: 34px; font-size: 16px" aria-label="Project name" @keyup.enter="commitRename" @keyup.esc="renaming = false" />
+              <button class="pjx-btn pjx-btn--primary pjx-btn--sm" :disabled="renameSaving" @click="commitRename">{{ renameSaving ? 'Saving…' : 'Save' }}</button>
+              <button class="pjx-btn pjx-btn--ghost pjx-btn--sm" @click="renaming = false">Cancel</button>
             </template>
-            <span class="ot-chip" :class="pjStatusTone(project.status)" data-testid="project-status">{{ pjStatusLabel(project.status) }}</span>
-            <span v-if="liveCount" class="ot-chip ok">● {{ liveCount }} working</span>
-            <button v-if="pendingGates > 0" class="ot-chip warn pw-approvals" @click="setTab('overview')">
-              {{ pendingGates }} approval{{ pendingGates === 1 ? '' : 's' }} waiting
-            </button>
+            <span class="pjx-chip" :data-tone="state.tone" :data-live="state.live || undefined" data-testid="project-status"><span class="pjx-chip__dot"></span>{{ statusLabel }}</span>
+            <span v-if="liveCount" class="pjx-chip" data-tone="work" data-live><span class="pjx-chip__dot"></span>{{ liveCount }} working</span>
+            <button v-if="pendingGates > 0" class="pjx-chip" data-tone="need" style="cursor: pointer" @click="setTab('overview')"><ProjectsIcon name="inbox" />{{ pendingGates }} {{ pendingGates === 1 ? 'approval' : 'approvals' }} waiting</button>
           </div>
-          <p class="pw-goal" :class="{ open: goalOpen }" :title="goalOpen ? '' : 'Show the full goal'" @click="goalOpen = !goalOpen">{{ project.goal }}</p>
+          <p class="pjx-ws-head__goal" :data-open="goalOpen || undefined" :title="goalOpen ? '' : 'Show the full goal'" @click="goalOpen = !goalOpen">{{ project.goal }}</p>
         </div>
-        <div class="ot-actions">
+
+        <div class="pjx-ws-head__actions">
           <ProjectsHistoryExport :project-id="projectId" />
-          <button v-if="project.status === 'Active' || project.status === 'Planning'" class="ot-btn warn" :disabled="actionBusy"
-            title="Halt the fleet — stops the in-flight wake too" @click="pause">Halt</button>
-          <button v-else-if="project.status === 'Paused' || project.status === 'BudgetPaused'" class="ot-btn primary" :disabled="actionBusy" @click="resume">Resume</button>
-          <button v-else-if="project.status === 'Blocked'" class="ot-btn primary" :disabled="actionBusy"
-            title="Clear the block and resume — do this once you've remediated the cause" @click="unblock">Unblock</button>
-          <button v-if="project.status === 'Archived'" class="ot-btn" :disabled="actionBusy" @click="unarchive">Unshelve</button>
-          <button v-else class="ot-btn ghost" :disabled="actionBusy" title="Shelve this project" @click="archive">Archive</button>
+          <template v-if="can.manage">
+            <button v-if="project.status === 'Active' || project.status === 'Planning'" class="pjx-btn pjx-btn--stop" :disabled="actionBusy" title="Pause: stops the in-flight wake too" @click="runAction('pause')"><ProjectsIcon name="pause" />Pause</button>
+            <button v-else-if="project.status === 'Paused' || project.status === 'BudgetPaused'" class="pjx-btn pjx-btn--go" :disabled="actionBusy" @click="runAction('resume')"><ProjectsIcon name="play" />Resume</button>
+            <button v-else-if="project.status === 'Blocked'" class="pjx-btn pjx-btn--go" :disabled="actionBusy" title="Clear the block and resume, once the cause is fixed" @click="runAction('resume')"><ProjectsIcon name="play" />Unblock</button>
+            <button v-if="project.status === 'Archived'" class="pjx-btn" :disabled="actionBusy" @click="runAction('unarchive')"><ProjectsIcon name="unarchive" />Unshelve</button>
+            <button v-else class="pjx-iconbtn" :disabled="actionBusy" title="Shelve this project" aria-label="Shelve this project" @click="runAction('archive')"><ProjectsIcon name="archive" /></button>
+          </template>
+        </div>
+
+        <!-- The figures that answer "is it healthy and what is it costing", one click from the detail. -->
+        <div class="pjx-ws-pulse" aria-label="Project vitals">
+          <button class="pjx-pulse" @click="openBudget">
+            <span class="pjx-pulse__label">Model budget</span>
+            <span class="pjx-pulse__value pjx-num" :data-tone="tokenTone">{{ pjUsd(ledger.tokenSpendUsd) }}<span class="pjx-dim" style="font-weight: 500">{{ isUnlimited(project.tokenBudgetUsd) ? ' · no cap' : ` of ${pjUsd(project.tokenBudgetUsd)}` }}</span></span>
+            <div v-if="tokenPct != null" class="pjx-meter" :data-tone="tokenTone === 'fault' ? 'fault' : tokenTone === 'need' ? 'need' : undefined"><span class="pjx-meter__fill" :style="{ width: `${tokenPct}%` }"></span></div>
+            <span v-else class="pjx-pulse__sub">lifetime spend</span>
+          </button>
+          <button class="pjx-pulse" @click="openBudget">
+            <span class="pjx-pulse__label">External money</span>
+            <span class="pjx-pulse__value pjx-num">{{ pjUsd(ledger.moneySpendUsd) }}<span class="pjx-dim" style="font-weight: 500"> of {{ pjUsd(project.moneyBudgetUsd) }}</span></span>
+            <span class="pjx-pulse__sub">autonomous up to {{ pjUsd(project.moneyAutonomousThresholdUsd) }} an action</span>
+          </button>
+          <button class="pjx-pulse" @click="setTab('agents')">
+            <span class="pjx-pulse__label">Task force</span>
+            <span class="pjx-pulse__value" :data-tone="liveCount ? 'work' : undefined">{{ liveCount }} working<span class="pjx-dim" style="font-weight: 500"> · {{ agents.length }} on roster</span></span>
+            <span class="pjx-pulse__sub">cap {{ project.subAgentCap }} agents</span>
+          </button>
+          <button class="pjx-pulse" @click="setTab('plan')">
+            <span class="pjx-pulse__label">Plan</span>
+            <span class="pjx-pulse__value" :data-tone="grandPlan.current ? undefined : 'plan'">{{ grandPlan.current ? `Grand Plan v${grandPlan.current.version}` : project.status === 'Planning' ? 'Drafting' : 'No plan yet' }}</span>
+            <span class="pjx-pulse__sub" :title="digest.currentFocus || ''">{{ digest.currentFocus || (digest.nextSteps?.[0] ?? 'no focus recorded') }}</span>
+          </button>
+          <button class="pjx-pulse" @click="setTab('observables')">
+            <span class="pjx-pulse__label">{{ topObservable?.name || 'Live values' }}</span>
+            <span class="pjx-pulse__value pjx-num">{{ topObservable?.displayValue ?? '—' }}</span>
+            <span class="pjx-pulse__sub">{{ topObservable ? `updated ${ageWords(topObservable.updatedAt, now)} ago` : 'agents publish these as they work' }}</span>
+          </button>
         </div>
       </header>
 
-      <div v-if="actionError" class="ot-banner" role="alert">
-        <span class="glyph" aria-hidden="true">⚠</span><div>{{ actionError }}</div>
-        <div class="actions"><button class="ot-btn ghost sm" @click="actionError = ''">Dismiss</button></div>
+      <div v-if="actionError" class="pjx-banner" data-tone="fault" role="alert">
+        <ProjectsIcon name="alert" /><div class="pjx-banner__body">{{ actionError }}</div>
+        <div class="pjx-banner__actions"><button class="pjx-btn pjx-btn--ghost pjx-btn--sm" @click="actionError = ''">Dismiss</button></div>
       </div>
-      <div v-if="project.status === 'Blocked'" class="ot-banner warn blocked-banner" role="alert">
-        <span class="glyph" aria-hidden="true">⛔</span>
-        <div>
-          <strong>Blocked — action required</strong>
-          <span v-if="project.blockedReason">{{ project.blockedReason }}</span>
-          <span class="pj-muted"> Remediate the cause, then Unblock to set the fleet back to work.</span>
-        </div>
-        <div class="actions"><button class="ot-btn primary sm" :disabled="actionBusy" @click="unblock">Unblock</button></div>
+      <div v-if="project.status === 'Blocked'" class="pjx-banner" data-tone="fault" role="alert">
+        <ProjectsIcon name="octagon-x" />
+        <div class="pjx-banner__body"><b>Blocked: action required</b>{{ project.blockedReason || 'The Commander stopped and is waiting for you.' }} Fix the cause, then Unblock to set the fleet back to work.</div>
+        <div v-if="can.manage" class="pjx-banner__actions"><button class="pjx-btn pjx-btn--go pjx-btn--sm" :disabled="actionBusy" @click="runAction('resume')">Unblock</button></div>
       </div>
-      <div v-if="detailsLoading" class="ot-banner info" role="status">
-        <span class="glyph" aria-hidden="true">↻</span><div>{{ detailsLoading }}</div>
-      </div>
+      <div v-if="detailsLoading" class="pjx-banner" role="status"><ProjectsIcon name="refresh" class="pjx-spin" /><div class="pjx-banner__body">{{ detailsLoading }}</div></div>
 
-      <nav class="pw-tabs" role="tablist" aria-label="Project sections">
-        <button v-for="t in tabs" :key="t.id" type="button" role="tab" :aria-selected="tab === t.id" :class="{ active: tab === t.id }" @click="setTab(t.id)">
-          {{ t.label }}
-          <span v-if="t.id === 'overview' && pendingGates > 0" class="ot-badge warn">{{ pendingGates }}</span>
-          <span v-if="t.id === 'agents' && agents.length" class="pw-tab-count">{{ agents.length }}</span>
+      <!-- ── sections ── -->
+      <nav class="pjx-tabs" role="tablist" aria-label="Project sections">
+        <button v-for="(t, i) in tabs" :key="t.id" class="pjx-tab" type="button" role="tab" :aria-selected="tab === t.id" :title="`${t.label} (${(i + 1) % 10})`" @click="setTab(t.id)">
+          <ProjectsIcon :name="t.icon" />{{ t.label }}
+          <span v-if="t.id === 'overview' && pendingGates > 0" class="pjx-tab__count" data-tone="need">{{ pendingGates }}</span>
+          <span v-else-if="t.id === 'agents' && agents.length" class="pjx-tab__count">{{ agents.length }}</span>
+          <span v-else-if="t.id === 'observables' && observables.length" class="pjx-tab__count">{{ observables.length }}</span>
         </button>
+        <span class="pjx-tabs__keys"><span class="pjx-kbd">1</span>–<span class="pjx-kbd">0</span> switch</span>
       </nav>
 
-      <div class="pw-body" :class="{ 'with-rail': showRail }">
-        <section class="pw-main" :aria-label="currentTabLabel">
+      <div class="pjx-ws-body" :data-rail="showRail || undefined">
+        <section class="pjx-ws-main" :aria-label="currentTabLabel">
           <ProjectsOverviewTab v-if="tab === 'overview'" :project-id="projectId" :project="project" :digest="digest" :ledger="ledger"
             :agents="agents" :observables="observables" :grand-plan="grandPlan" :events="events"
             @navigate="setTab" @changed="refresh" />
@@ -78,7 +104,7 @@
           </OmniTraderCard>
           <div v-if="tab === 'plan'" class="ot-stack">
             <OmniTraderCard title="Step ledger" subtitle="The linear path the Commander is walking right now"><ProjectsStepsPanel :project-id="projectId" /></OmniTraderCard>
-            <OmniTraderCard title="Grand Plan" subtitle="The approved north star — mission, milestones, risks and success criteria">
+            <OmniTraderCard title="Grand Plan" subtitle="The approved north star: mission, milestones, risks and success criteria">
               <ProjectsGrandPlanPanel :project-id="projectId" :grand-plan="grandPlan" />
             </OmniTraderCard>
             <OmniTraderCard title="Councils" subtitle="Adversarial reviews the Commander convened before big decisions" :empty="!councils.length"
@@ -90,13 +116,13 @@
             <ProjectsAgentsPanel :project-id="projectId" :cap="project.subAgentCap" @watch="() => setTab('computers')" @roster-changed="loadAgents" />
           </OmniTraderCard>
           <ProjectsComputersPanel v-if="tab === 'computers'" :project-id="projectId" />
-          <OmniTraderCard v-if="tab === 'files'" title="Files" subtitle="/project — shared by you and every agent"><ProjectsFilesPanel :project-id="projectId" :status="project.status" /></OmniTraderCard>
+          <OmniTraderCard v-if="tab === 'files'" title="Files" subtitle="/project: shared by you and every agent"><ProjectsFilesPanel :project-id="projectId" :status="project.status" /></OmniTraderCard>
           <OmniTraderCard v-if="tab === 'observables'" title="Observables" subtitle="Live values the agents maintain for you">
             <ProjectsObservablesPanel :project-id="projectId" :observables="observables" @changed="loadObservables" />
           </OmniTraderCard>
           <ProjectsAnalyticsDashboard v-if="tab === 'analytics'" :project-id="projectId" />
           <div v-if="tab === 'settings'" class="ot-stack">
-            <OmniTraderCard title="Settings" subtitle="This project's own configuration — independent of every other project">
+            <OmniTraderCard title="Settings" subtitle="This project's own configuration, independent of every other project">
               <ProjectsSettingsPanel :project-id="projectId" />
             </OmniTraderCard>
             <OmniTraderCard title="Wake triggers" subtitle="Timers, webhooks, email and screen watches that wake the agents">
@@ -105,82 +131,79 @@
           </div>
         </section>
 
-        <aside v-if="showRail" class="pw-rail ot-stack" aria-label="Project at a glance">
-          <OmniTraderCard title="Budget">
-            <template #controls>
-              <button class="ot-btn ghost sm budget-edit-btn" :title="editingBudget ? 'Cancel' : 'Edit budgets'" @click="toggleBudgetEdit">{{ editingBudget ? 'Cancel' : 'Edit' }}</button>
-            </template>
-            <div class="pw-budget">
-              <div class="ot-meter" :class="{ warn: tokenPct >= 80 && tokenPct < 100, bad: tokenPct >= 100 }">
-                <div class="row"><span class="lbl">Model</span><span class="val">{{ pjMoney(ledger.tokenSpendUsd) }} / {{ pjMoney(project.tokenBudgetUsd) }}</span></div>
-                <div class="track"><div class="fill" :style="{ width: Math.min(100, tokenPct) + '%' }"></div></div>
+        <aside v-if="showRail" class="pjx-rail" aria-label="Budget, plan and live values">
+          <div class="pjx-card">
+            <section id="pjx-budget" class="pjx-rail__section" aria-label="Budget">
+              <div class="pjx-rail__label">Budget
+                <button v-if="can.manage" class="pjx-btn pjx-btn--ghost pjx-btn--xs budget-edit-btn" @click="toggleBudgetEdit">{{ editingBudget ? 'Cancel' : 'Edit' }}</button>
               </div>
-              <div class="ot-meter">
-                <div class="row"><span class="lbl">External</span><span class="val">{{ pjMoney(ledger.moneySpendUsd) }} / {{ pjMoney(project.moneyBudgetUsd) }}</span></div>
-                <div class="track"><div class="fill" :style="{ width: Math.min(100, moneyPct) + '%' }"></div></div>
-                <div class="foot"><span>Autonomous ≤ {{ pjMoney(project.moneyAutonomousThresholdUsd) }} per action</span><span>cap {{ project.subAgentCap }} agents</span></div>
+              <div class="pjx-budget">
+                <div class="pjx-budget__row">
+                  <div class="pjx-budget__head"><span>Model</span><b>{{ pjUsd(ledger.tokenSpendUsd) }} {{ isUnlimited(project.tokenBudgetUsd) ? '· no cap' : `/ ${pjUsd(project.tokenBudgetUsd)}` }}</b></div>
+                  <div v-if="tokenPct != null" class="pjx-meter" :data-tone="tokenTone === 'fault' ? 'fault' : tokenTone === 'need' ? 'need' : undefined"><span class="pjx-meter__fill" :style="{ width: `${tokenPct}%` }"></span></div>
+                </div>
+                <div class="pjx-budget__row">
+                  <div class="pjx-budget__head"><span>External</span><b>{{ pjUsd(ledger.moneySpendUsd) }} / {{ pjUsd(project.moneyBudgetUsd) }}</b></div>
+                  <div class="pjx-meter"><span class="pjx-meter__fill" :style="{ width: `${moneyPct ?? 0}%` }"></span></div>
+                  <span class="pjx-budget__foot">Autonomous up to {{ pjUsd(project.moneyAutonomousThresholdUsd) }} an action · cap {{ project.subAgentCap }} agents</span>
+                </div>
               </div>
-            </div>
-            <div v-if="editingBudget" class="budget-form">
-              <div class="ot-formgrid">
-                <div class="ot-field"><label for="bf-token">Model budget ($)</label><input id="bf-token" v-model.number="budgetDraft.tokenBudgetUsd" type="number" min="0.01" step="1" class="ot-input mono" /></div>
-                <div class="ot-field"><label for="bf-money">External budget ($)</label><input id="bf-money" v-model.number="budgetDraft.moneyBudgetUsd" type="number" min="0" step="1" class="ot-input mono" /></div>
-                <div class="ot-field"><label for="bf-auto">Autonomous ≤ ($)</label><input id="bf-auto" v-model.number="budgetDraft.moneyAutonomousThresholdUsd" type="number" min="0" step="0.5" class="ot-input mono" /></div>
-                <div class="ot-field"><label for="bf-cap">Agent cap</label><input id="bf-cap" v-model.number="budgetDraft.subAgentCap" type="number" min="1" step="1" class="ot-input mono" /></div>
-              </div>
-              <!-- Lowering the cap under the live roster retires agents the moment you save, so the
-                   cost is stated before the click rather than discovered after it. -->
-              <p v-if="capReduction > 0" class="bf-warn">
-                {{ capReduction }} agent{{ capReduction === 1 ? '' : 's' }} will be retired immediately and
-                {{ capReduction === 1 ? 'its' : 'their' }} desktop{{ capReduction === 1 ? '' : 's' }} destroyed.
-                The Commander picks the least disruptive ones and is handed everything they were working on —
-                objectives, milestones and their exact next action — so no work is lost.
-              </p>
-              <p v-if="budgetError" class="bf-error">{{ budgetError }}</p>
-              <div class="bf-actions">
-                <button class="ot-btn sm" :class="capReduction > 0 ? 'danger' : 'primary'" :disabled="budgetSaving" @click="saveBudgets">
-                  {{ budgetSaving ? 'Saving…' : (capReduction > 0 ? `Save and retire ${capReduction}` : 'Save budgets') }}
-                </button>
-              </div>
-              <p v-if="retiredSummary" class="bf-retired">{{ retiredSummary }}</p>
-              <p v-if="project.status === 'BudgetPaused'" class="bf-hint">Raising the model budget above current spend resumes the project.</p>
-            </div>
-          </OmniTraderCard>
+              <template v-if="editingBudget">
+                <div class="pjx-budget-form">
+                  <div class="pjx-field"><label for="bf-token">Model budget ($)</label><input id="bf-token" v-model.number="budgetDraft.tokenBudgetUsd" type="number" min="0.01" step="1" class="pjx-input pjx-num" /></div>
+                  <div class="pjx-field"><label for="bf-money">External budget ($)</label><input id="bf-money" v-model.number="budgetDraft.moneyBudgetUsd" type="number" min="0" step="1" class="pjx-input pjx-num" /></div>
+                  <div class="pjx-field"><label for="bf-auto">Autonomous ≤ ($)</label><input id="bf-auto" v-model.number="budgetDraft.moneyAutonomousThresholdUsd" type="number" min="0" step="0.5" class="pjx-input pjx-num" /></div>
+                  <div class="pjx-field"><label for="bf-cap">Agent cap</label><input id="bf-cap" v-model.number="budgetDraft.subAgentCap" type="number" min="1" step="1" class="pjx-input pjx-num" /></div>
+                </div>
+                <!-- Lowering the cap under the live roster retires agents the moment you save, so the cost is stated before the click. -->
+                <p v-if="capReduction > 0" class="pjx-note bf-warn" data-tone="need" style="margin-top: 8px">
+                  {{ capReduction }} {{ capReduction === 1 ? 'agent' : 'agents' }} will be retired immediately and {{ capReduction === 1 ? 'its desktop' : 'their desktops' }} destroyed. The Commander picks the least disruptive ones and is handed everything they were working on, so no work is lost.
+                </p>
+                <p v-if="budgetError" class="pjx-note" data-tone="fault" style="margin-top: 8px">{{ budgetError }}</p>
+                <div style="display: flex; justify-content: flex-end; margin-top: 8px">
+                  <button class="pjx-btn pjx-btn--sm" :class="capReduction > 0 ? 'pjx-btn--danger' : 'pjx-btn--primary'" :disabled="budgetSaving" @click="saveBudgets">{{ budgetSaving ? 'Saving…' : capReduction > 0 ? `Save and retire ${capReduction}` : 'Save budgets' }}</button>
+                </div>
+                <p v-if="retiredSummary" class="pjx-note bf-retired" data-tone="work" style="margin-top: 8px">{{ retiredSummary }}</p>
+                <p v-if="project.status === 'BudgetPaused'" class="pjx-note" data-tone="need" style="margin-top: 8px">Raising the model budget above current spend resumes the project.</p>
+              </template>
+            </section>
 
-          <OmniTraderCard title="Plan" :subtitle="grandPlan.current ? `Grand Plan v${grandPlan.current.version}` : project.status === 'Planning' ? 'Drafting — awaiting your approval' : ''">
-            <template #controls><button class="ot-btn ghost sm" @click="setTab('plan')">View →</button></template>
-            <template v-if="digest.currentFocus || (digest.nextSteps && digest.nextSteps.length)">
-              <p v-if="digest.currentFocus" class="digest-focus"><span class="ot-chip info">Focus</span> {{ digest.currentFocus }}</p>
-              <ol v-if="digest.nextSteps && digest.nextSteps.length" class="digest-steps">
-                <li v-for="(s, i) in digest.nextSteps" :key="i">{{ s }}</li>
-              </ol>
-            </template>
-            <p v-else class="digest-text">{{ digest.currentPlan || 'No plan yet.' }}</p>
-            <template v-if="digest.openThreads">
-              <h3 class="ot-sectionhead pw-rail-sub">Open threads</h3>
-              <p class="digest-text">{{ digest.openThreads }}</p>
-            </template>
-          </OmniTraderCard>
+            <section class="pjx-rail__section" aria-label="Plan">
+              <div class="pjx-rail__label">{{ grandPlan.current ? `Plan · Grand Plan v${grandPlan.current.version}` : project.status === 'Planning' ? 'Plan · drafting' : 'Plan' }}
+                <button class="pjx-btn pjx-btn--ghost pjx-btn--xs" @click="setTab('plan')">Open</button>
+              </div>
+              <template v-if="digest.currentFocus || digest.nextSteps?.length">
+                <p v-if="digest.currentFocus" class="pjx-focus">{{ digest.currentFocus }}</p>
+                <ol v-if="digest.nextSteps?.length" class="pjx-steps" style="margin-top: 8px">
+                  <li v-for="(s, i) in digest.nextSteps" :key="i">{{ s }}</li>
+                </ol>
+              </template>
+              <p v-else class="pjx-prose">{{ digest.currentPlan || 'No plan yet.' }}</p>
+              <template v-if="digest.openThreads">
+                <div class="pjx-rail__label" style="margin-top: 12px">Open threads</div>
+                <p class="pjx-prose">{{ digest.openThreads }}</p>
+              </template>
+            </section>
 
-          <OmniTraderCard v-if="observables.length" title="Observables">
-            <template #controls><button class="ot-btn ghost sm" @click="setTab('observables')">All →</button></template>
-            <ul class="obs-mini-list">
-              <li v-for="o in topObservables" :key="o.observableID" class="obs-mini-row">
-                <span class="obs-mini-name" :title="o.name">{{ o.name }}</span>
-                <ProjectsObservableSparkline v-if="o.type === 'Numeric' && o.history && o.history.length > 1" :samples="o.history" :width="52" :height="16" />
-                <span class="obs-mini-value">{{ o.displayValue }}</span>
-              </li>
-            </ul>
-          </OmniTraderCard>
+            <section v-if="observables.length" class="pjx-rail__section" aria-label="Live values">
+              <div class="pjx-rail__label">Live values <button class="pjx-btn pjx-btn--ghost pjx-btn--xs" @click="setTab('observables')">All {{ observables.length }}</button></div>
+              <ul class="pjx-obs">
+                <li v-for="o in topObservables" :key="o.observableID">
+                  <span class="pjx-obs__name" :title="o.name">{{ o.name }}</span>
+                  <ProjectsSpark v-if="o.type === 'Numeric' && o.history?.length > 1" :values="o.history.map((h: any) => Number(h.value))" :label="`${o.name} history`" />
+                  <span class="pjx-obs__value">{{ o.displayValue }}</span>
+                </li>
+              </ul>
+            </section>
+          </div>
         </aside>
       </div>
 
       <ProjectsEventDetail :project-id="projectId" :event="selectedEvent" @close="selectedEvent = null" />
-    </template>
+    </div>
 
-    <div v-else class="pw-loading" role="status">
-      <span class="pw-spinner" aria-hidden="true"></span>
-      <div><strong>{{ loadingStage }}</strong><small>The workspace opens as soon as this step finishes.</small></div>
+    <div v-else class="pjx-card" role="status" style="padding: 40px 16px">
+      <div class="pjx-empty"><ProjectsIcon name="refresh" class="pjx-spin" /><b>{{ loadingStage }}</b><span>The workspace opens as soon as this step finishes.</span></div>
     </div>
   </ProjectsShell>
 </template>
@@ -190,8 +213,12 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router';
 import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import { useEventStream } from '~/composables/useEventStream';
-import { pjMoney, pjStatusLabel, pjStatusTone } from '~/composables/useProjectsUi';
+import { useAccess } from '~/composables/useAccess';
+import { pjxPost, usePjxToasts } from '~/composables/useProjectsConsole';
+import { ageWords, budgetPct, isUnlimited, pjUsd, projectState, type PjCommand } from '~/scripts/projectsConsole';
 import ProjectsShell from '~/components/Projects/Shell.vue';
+import ProjectsIcon from '~/components/Projects/Icon.vue';
+import ProjectsSpark from '~/components/Projects/Spark.vue';
 import ProjectsOverviewTab from '~/components/Projects/OverviewTab.vue';
 import ProjectsTimeline from '~/components/Projects/Timeline.vue';
 import ProjectsConversationPanel from '~/components/Projects/ConversationPanel.vue';
@@ -199,7 +226,6 @@ import ProjectsAnalyticsDashboard from '~/components/Projects/AnalyticsDashboard
 import ProjectsComputersPanel from '~/components/Projects/ComputersPanel.vue';
 import ProjectsAgentsPanel from '~/components/Projects/AgentsPanel.vue';
 import ProjectsObservablesPanel from '~/components/Projects/ObservablesPanel.vue';
-import ProjectsObservableSparkline from '~/components/Projects/ObservableSparkline.vue';
 import ProjectsCouncilsPanel from '~/components/Projects/CouncilsPanel.vue';
 import ProjectsGrandPlanPanel from '~/components/Projects/GrandPlanPanel.vue';
 import ProjectsStepsPanel from '~/components/Projects/StepsPanel.vue';
@@ -214,18 +240,21 @@ definePageMeta({ layout: 'navbar' });
 const route = useRoute();
 const router = useRouter();
 const projectId = String(route.params.projectId);
+const access = useAccess();
+const { toast } = usePjxToasts();
+const can = computed(() => ({ manage: access.can('projects.lifecycle.manage') }));
 
 const tabs = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'conversation', label: 'Chat' },
-  { id: 'timeline', label: 'Timeline' },
-  { id: 'plan', label: 'Plan' },
-  { id: 'agents', label: 'Agents' },
-  { id: 'computers', label: 'Computers' },
-  { id: 'files', label: 'Files' },
-  { id: 'observables', label: 'Observables' },
-  { id: 'analytics', label: 'Analytics' },
-  { id: 'settings', label: 'Settings' },
+  { id: 'overview', label: 'Overview', icon: 'layers' },
+  { id: 'conversation', label: 'Chat', icon: 'message' },
+  { id: 'timeline', label: 'Timeline', icon: 'timeline' },
+  { id: 'plan', label: 'Plan', icon: 'plan' },
+  { id: 'agents', label: 'Agents', icon: 'users' },
+  { id: 'computers', label: 'Computers', icon: 'monitor' },
+  { id: 'files', label: 'Files', icon: 'folder' },
+  { id: 'observables', label: 'Observables', icon: 'gauge' },
+  { id: 'analytics', label: 'Analytics', icon: 'chart' },
+  { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
 // Older links name tabs that were folded into others.
 const TAB_ALIASES: Record<string, string> = { desktops: 'computers', councils: 'plan', hooks: 'settings', chat: 'conversation' };
@@ -257,22 +286,31 @@ const loadingStage = ref('Connecting to Omnipotent…');
 const detailsLoading = ref('');
 const selectedEvent = ref<any>(null);
 const goalOpen = ref(false);
+const now = ref(Date.now());
 let poll: ReturnType<typeof setInterval> | null = null;
+let clock: ReturnType<typeof setInterval> | null = null;
 let projectRetry: ReturnType<typeof setTimeout> | null = null;
 
 const pendingGates = computed(() =>
   Math.max(0, events.value.filter(e => e.type === 'approval-requested').length -
   events.value.filter(e => e.type === 'approval-resolved').length));
 const liveCount = computed(() => Object.keys(activity.value).length);
-const tokenPct = computed(() => project.value?.tokenBudgetUsd > 0 ? 100 * (ledger.value.tokenSpendUsd || 0) / project.value.tokenBudgetUsd : 0);
-const moneyPct = computed(() => project.value?.moneyBudgetUsd > 0 ? 100 * (ledger.value.moneySpendUsd || 0) / project.value.moneyBudgetUsd : 0);
+const state = computed(() => projectState({ status: project.value?.status ?? 'Paused', halted: !!project.value?.haltedFromStatus, workingAgents: liveCount.value, executionDisposition: '' }));
+const statusLabel = computed(() => {
+  const s = project.value?.status;
+  if (s === 'Paused' && project.value?.haltedFromStatus) return 'Halted';
+  return ({ BudgetPaused: 'Out of budget', Archived: 'Shelved' } as Record<string, string>)[s] ?? s ?? '';
+});
+const tokenPct = computed(() => project.value ? budgetPct(ledger.value.tokenSpendUsd || 0, project.value.tokenBudgetUsd) : null);
+const moneyPct = computed(() => project.value?.moneyBudgetUsd > 0 ? Math.min(100, 100 * (ledger.value.moneySpendUsd || 0) / project.value.moneyBudgetUsd) : null);
+const tokenTone = computed(() => tokenPct.value == null ? undefined : tokenPct.value >= 100 ? 'fault' : tokenPct.value >= 80 ? 'need' : undefined);
 
 const shellStatus = computed(() => {
   if (!project.value) return '';
   if (project.value.status === 'Blocked') return `Blocked${project.value.blockedReason ? ': ' + project.value.blockedReason : ''}`;
   if (pendingGates.value) return `${pendingGates.value} approval${pendingGates.value === 1 ? '' : 's'} waiting for you`;
   if (liveCount.value) return `${liveCount.value} agent${liveCount.value === 1 ? '' : 's'} working`;
-  return pjStatusLabel(project.value.status);
+  return statusLabel.value;
 });
 useHead({ title: computed(() => project.value?.name ? `${project.value.name} · Projects` : 'Project · Projects') });
 const shellTone = computed(() => !project.value ? '' : project.value.status === 'Blocked' ? 'bad'
@@ -322,9 +360,7 @@ async function loadProject(): Promise<boolean> {
       return false;
     }
     if (!res.ok) {
-      loadError.value = res.status === 404
-        ? 'This project does not exist or has been removed.'
-        : `The project could not be loaded (HTTP ${res.status}).`;
+      loadError.value = res.status === 404 ? 'This project does not exist or has been removed.' : `The project could not be loaded (HTTP ${res.status}).`;
       return false;
     }
     project.value = await res.json();
@@ -358,28 +394,22 @@ async function loadActivity() {
 
 const topObservables = computed(() =>
   [...observables.value].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 6));
+const topObservable = computed(() => topObservables.value[0] ?? null);
 
+// ── lifecycle actions ──
 const actionBusy = ref(false);
 const actionError = ref('');
-async function runAction(url: string) {
+async function runAction(kind: 'pause' | 'resume' | 'archive' | 'unarchive') {
   if (actionBusy.value) return;
   actionBusy.value = true;
   actionError.value = '';
-  try {
-    const res = await RequestPOSTFromKliveAPI(url, JSON.stringify({ projectID: projectId }), false, true);
-    if (!res.ok) { actionError.value = `That didn't work (HTTP ${res.status}). Try again.`; return; }
-    await loadProject();
-  } catch (e: any) {
-    actionError.value = e?.message ? `That didn't work: ${e.message}` : "That didn't work. Try again.";
-  } finally {
-    actionBusy.value = false;
-  }
+  const r = await pjxPost(`/projects/${kind}`, { projectID: projectId });
+  actionBusy.value = false;
+  if (!r.ok) { actionError.value = r.error; return; }
+  const done = { pause: 'Paused', resume: 'Resumed', archive: 'Shelved', unarchive: 'Unshelved' }[kind];
+  toast(r.pending ? `${done.replace(/ed$/, 'ing')}: still settling, this page updates when it lands.` : `${done}.`, r.pending ? 'need' : 'work');
+  await loadProject();
 }
-async function pause() { await runAction('/projects/pause'); }
-async function resume() { await runAction('/projects/resume'); }
-async function unblock() { await runAction('/projects/resume'); }
-async function archive() { await runAction('/projects/archive'); }
-async function unarchive() { await runAction('/projects/unarchive'); }
 
 // ── budget editing ──
 const editingBudget = ref(false);
@@ -407,6 +437,12 @@ function toggleBudgetEdit() {
   }
   editingBudget.value = !editingBudget.value;
 }
+async function openBudget() {
+  if (!showRail.value) setTab('plan');
+  await nextTick();
+  if (!editingBudget.value && can.value.manage) toggleBudgetEdit();
+  document.getElementById('pjx-budget')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
 async function saveBudgets() {
   const d = budgetDraft.value;
   if (!(d.tokenBudgetUsd > 0)) { budgetError.value = 'Model budget must be greater than 0.'; return; }
@@ -422,14 +458,14 @@ async function saveBudgets() {
     const retired: any[] = Array.isArray(saved.retiredAgents) ? saved.retiredAgents : [];
     if (retired.length) {
       const unowned = retired.reduce((n, h) => n + (h.activeMilestoneIDs?.length || 0), 0);
-      retiredSummary.value =
-        `Retired ${retired.map(h => `${h.role} (${h.agentID})`).join(', ')}. `
-        + (unowned ? `${unowned} milestone${unowned === 1 ? '' : 's'} now unowned — ` : '')
+      retiredSummary.value = `Retired ${retired.map(h => `${h.role} (${h.agentID})`).join(', ')}. `
+        + (unowned ? `${unowned} milestone${unowned === 1 ? '' : 's'} now unowned; ` : '')
         + 'their work is preserved and the Commander has been told.';
       await loadAgents();
     } else {
       retiredSummary.value = '';
       editingBudget.value = false;
+      toast('Budgets saved.', 'work');
     }
   } catch (e: any) {
     budgetError.value = e?.message ? `Save failed: ${e.message}` : 'Save failed.';
@@ -448,18 +484,15 @@ function startRename() {
   renaming.value = true;
   nextTick(() => renameInput.value?.focus());
 }
-function cancelRename() { renaming.value = false; }
 async function commitRename() {
   const name = renameValue.value.trim();
   if (!name || name === project.value?.name) { renaming.value = false; return; }
   renameSaving.value = true;
-  try {
-    const res = await RequestPOSTFromKliveAPI('/projects/rename', JSON.stringify({ projectID: projectId, name }), false, true);
-    if (res.ok) { project.value = await res.json(); renaming.value = false; }
-    else actionError.value = `Rename failed (HTTP ${res.status}).`;
-  } catch (e: any) {
-    actionError.value = e?.message ? `Rename failed: ${e.message}` : 'Rename failed.';
-  } finally { renameSaving.value = false; }
+  const r = await pjxPost('/projects/rename', { projectID: projectId, name });
+  renameSaving.value = false;
+  if (!r.ok) { actionError.value = r.error; return; }
+  if (r.body) project.value = r.body;
+  renaming.value = false;
 }
 
 async function refresh() {
@@ -475,63 +508,47 @@ async function refresh() {
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleRefresh() { if (refreshTimer) return; refreshTimer = setTimeout(() => { refreshTimer = null; refresh(); }, 1000); }
 
+const paletteCommands = computed<PjCommand[]>(() => {
+  const list: PjCommand[] = tabs.map((t, i) => ({ id: `tab:${t.id}`, title: `${t.label}`, group: 'Go to' as const, icon: t.icon, hint: `tab ${(i + 1) % 10}`, keywords: `${project.value?.name ?? ''} section`, run: () => setTab(t.id) }));
+  const p = project.value;
+  if (p && can.value.manage) {
+    if (p.status === 'Active' || p.status === 'Planning') list.unshift({ id: 'pause', title: `Pause ${p.name}`, group: 'Actions', icon: 'pause', keywords: 'stop halt', run: () => runAction('pause') });
+    else if (['Paused', 'BudgetPaused', 'Blocked'].includes(p.status)) list.unshift({ id: 'resume', title: `${p.status === 'Blocked' ? 'Unblock' : 'Resume'} ${p.name}`, group: 'Actions', icon: 'play', keywords: 'start continue', run: () => runAction('resume') });
+    list.push({ id: 'budget', title: 'Edit budgets', group: 'Actions', icon: 'coins', keywords: 'money cap agents', run: openBudget });
+    list.push({ id: 'rename', title: 'Rename project', group: 'Actions', icon: 'edit', run: startRename });
+  }
+  return list;
+});
+
+function onKey(e: KeyboardEvent) {
+  const target = e.target as HTMLElement | null;
+  if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (document.querySelector('.pjx-layer.pjx-dialog, .pjx-layer.pjx-palette, .pjx-layer.pjx-sheet, .ot-drawer')) return;
+  if (/^[0-9]$/.test(e.key)) {
+    const index = e.key === '0' ? 9 : Number(e.key) - 1;
+    if (tabs[index]) { e.preventDefault(); setTab(tabs[index].id); }
+  }
+}
+
 onMounted(() => {
   refresh();
   activityStream.connect();
-  poll = setInterval(refresh, 30000); // safety net only
+  // Safety net only; never while the tab is hidden.
+  poll = setInterval(() => { if (!document.hidden) refresh(); }, 30000);
+  clock = setInterval(() => { now.value = Date.now(); }, 30000);
+  window.addEventListener('keydown', onKey);
 });
 onBeforeUnmount(() => {
   if (poll) clearInterval(poll);
+  if (clock) clearInterval(clock);
   if (refreshTimer) clearTimeout(refreshTimer);
   if (projectRetry) clearTimeout(projectRetry);
   activityStream.disconnect();
+  window.removeEventListener('keydown', onKey);
 });
 </script>
 
 <style scoped>
-.pw-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--ot-space-4); flex-wrap: wrap; margin-bottom: var(--ot-space-3); }
-.pw-titles { min-width: 0; flex: 1 1 520px; }
-.pw-title-row { display: flex; align-items: center; gap: var(--ot-space-2); flex-wrap: wrap; }
-.pw-title { margin: 0; font-size: 24px; line-height: 32px; font-weight: 620; letter-spacing: -0.2px; overflow-wrap: anywhere; }
-.pw-rename { color: var(--ot-muted); }
-.pw-rename-input { max-width: 420px; height: 34px; font-size: 18px; }
-.pw-approvals { cursor: pointer; }
-.pw-goal { margin: var(--ot-space-1) 0 0; color: var(--ot-text-2); font-size: 13px; line-height: 19px; max-width: 110ch; cursor: pointer;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
-.pw-goal.open { display: block; -webkit-line-clamp: unset; }
-.blocked-banner strong { display: block; }
-.pw-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--ot-line); margin-bottom: var(--ot-gutter); overflow-x: auto; scrollbar-width: none; }
-.pw-tabs::-webkit-scrollbar { height: 0; }
-.pw-tabs button { display: inline-flex; align-items: center; gap: 6px; padding: 10px 14px; font-size: 13px; font-weight: 550; color: var(--ot-text-2);
-  border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; cursor: pointer; }
-.pw-tabs button:hover { color: var(--ot-text); }
-.pw-tabs button.active { color: var(--ot-accent); border-bottom-color: var(--ot-accent); }
-.pw-tab-count { font-size: 10.5px; color: var(--ot-muted); font-family: var(--ot-mono); }
-.pw-body { display: grid; gap: var(--ot-gutter); grid-template-columns: minmax(0, 1fr); align-items: start; }
-@media (min-width: 1240px) { .pw-body.with-rail { grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); } }
-.pw-main { min-width: 0; }
-.pw-chat { height: clamp(460px, calc(100vh - 290px), 900px); overflow: hidden; }
-.pw-rail { position: sticky; top: 108px; }
-@media (max-width: 1239px) { .pw-rail { position: static; } }
-.pw-budget { display: flex; flex-direction: column; gap: var(--ot-space-3); }
-.budget-form { margin-top: var(--ot-space-3); border-top: 1px solid var(--ot-line); padding-top: var(--ot-space-3); display: flex; flex-direction: column; gap: var(--ot-space-2); }
-.bf-error { font-size: 12px; color: var(--ot-negative); margin: 0; }
-.bf-actions { display: flex; justify-content: flex-end; }
-.bf-hint { font-size: 11.5px; color: var(--ot-warning); margin: 0; }
-.bf-warn { font-size: 11.5px; color: #ffe6b0; line-height: 1.5; margin: 0; background: var(--ot-warning-soft); border-left: 2px solid var(--ot-warning); border-radius: 4px; padding: 8px 10px; }
-.bf-retired { font-size: 11.5px; color: var(--ot-positive); line-height: 1.5; margin: 0; }
-.pw-rail-sub { margin-top: var(--ot-space-3); }
-.digest-text { font-size: 12.5px; color: var(--ot-text-2); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; line-height: 1.5; }
-.digest-focus { font-size: 12.5px; color: var(--ot-text); margin: 0 0 var(--ot-space-2); line-height: 1.5; overflow-wrap: anywhere; }
-.digest-steps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
-.digest-steps li { font-size: 12.5px; color: var(--ot-text-2); line-height: 1.45; overflow-wrap: anywhere; }
-.obs-mini-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.obs-mini-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
-.obs-mini-name { color: var(--ot-text-2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.obs-mini-value { font-weight: 600; font-family: var(--ot-mono); flex-shrink: 0; }
-.pw-loading { min-height: 300px; display: flex; align-items: center; justify-content: center; gap: 14px; }
-.pw-loading > div { display: flex; flex-direction: column; gap: 4px; }
-.pw-loading small { color: var(--ot-muted); }
-.pw-spinner { width: 26px; height: 26px; border: 3px solid var(--ot-line-strong); border-top-color: var(--ot-accent); border-radius: 50%; animation: pw-spin .8s linear infinite; }
-@keyframes pw-spin { to { transform: rotate(360deg); } }
+.pw-chat { height: clamp(460px, calc(100vh - 330px), 900px); overflow: hidden; }
 </style>

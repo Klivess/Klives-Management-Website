@@ -564,6 +564,42 @@ export function readStarting(body: unknown): StartupState | null {
   return null;
 }
 
+/**
+ * The step start-up is still on although the routes answer. Newer servers register the routes first
+ * and load the fingerprint engine afterwards (194 s of a 318 s start on 11 Nov 2026), so `ready` is
+ * true while `step` names what is still loading.
+ */
+export function finishingStep(startup: StartupState | null | undefined): string | null {
+  return startup?.ready === true && startup.step ? startup.step : null;
+}
+
+/** The fingerprint engine is loading after the routes came up, which is not the same as stopped. */
+export function engineLoading(startup: StartupState | null | undefined): boolean {
+  return finishingStep(startup) === 'fingerprinting';
+}
+
+/**
+ * The start's steps in the order they ran, split where the routes came up: the ones before are how
+ * long OmniDefence was missing, the ones after ran while it already answered.
+ */
+export function startupBreakdown(startup: StartupState | null | undefined): { before: Array<[string, number]>; after: Array<[string, number]> } | null {
+  const steps = startup?.steps;
+  if (!steps || typeof steps !== 'object') return null;
+  const before: Array<[string, number]> = [];
+  const after: Array<[string, number]> = [];
+  let answering = false;
+  // Keys, not destructured entries: Nuxt's auto-import scanner reads a destructured for-of as one
+  // declaration running on to a later closing bracket, misses the DASH constant below, and imports
+  // useTerminal's DASH over it, which fails the whole page with a 500.
+  for (const name of Object.keys(steps)) {
+    const ms = steps[name];
+    if (!isNum(ms)) continue;
+    (answering ? after : before).push([name, ms]);
+    if (name === 'routes') answering = true;
+  }
+  return { before, after };
+}
+
 // ───────────────────────────── formatting ─────────────────────────────
 
 const DASH = '—';
@@ -762,6 +798,21 @@ export function computeVerdict(input: VerdictInput): Verdict {
         : `${startup.step ? `Now: ${startup.step}` : 'Loading'}${isNum(startup.seconds) ? `, ${fmtDuration(startup.seconds)} in` : ''}. Requests are still gated; the figures appear when it is ready.`,
     });
   }
+  // Answering, but start-up has not finished: on newer servers the fingerprint engine loads after
+  // the routes, and the classifier reads "not running" until it has.
+  const finishing = finishingStep(startup);
+  const loadingEngine = finishing === 'fingerprinting';
+  if (finishing) {
+    const since = startup?.readyUtc ? Date.parse(startup.readyUtc) : NaN;
+    const answering = Number.isFinite(since) ? Math.max(0, (input.nowMs - since) / 1000) : null;
+    issues.push({
+      id: 'finishing',
+      tone: 'info',
+      title: loadingEngine ? 'Loading the fingerprint engine' : `Finishing start-up: ${finishing}`,
+      detail: `${answering != null ? `Answering for ${fmtDuration(answering)}` : 'Answering'}${loadingEngine ? '. New visitors are classified once the engine has loaded.' : '.'}`,
+      action: loadingEngine ? { label: 'Fingerprinting', target: 'fingerprint' } : undefined,
+    });
+  }
 
   const review = ov?.review;
   if (review && review.hostileAnsweredCount > 0) {
@@ -806,7 +857,7 @@ export function computeVerdict(input: VerdictInput): Verdict {
   }
 
   const fp = input.fingerprint;
-  if (fp && fp.running === false && fp.settings?.enabled !== false) {
+  if (fp && fp.running === false && fp.settings?.enabled !== false && !loadingEngine) {
     issues.push({ id: 'fp-stopped', tone: 'warn', title: 'Fingerprinting is not running', detail: 'New visitors are not being classified.', action: { label: 'Fingerprinting', target: 'fingerprint' } });
   } else if (fp && (fp.backlog ?? 0) > 5000) {
     issues.push({ id: 'fp-backlog', tone: 'info', title: `${fmtInt(fp.backlog)} signals waiting to be classified`, detail: 'The classifier is behind live traffic.', action: { label: 'Fingerprinting', target: 'fingerprint' } });
@@ -837,6 +888,7 @@ export function computeVerdict(input: VerdictInput): Verdict {
   if (!issues.length) return { tone: 'ok', headline: 'Holding. Nothing needs you', detail: tail, issues };
   if (worst === 'crit') return { tone: 'crit', headline: issues[0].title, detail: tail, issues };
   if (worst === 'warn') return { tone: 'warn', headline: issues.length === 1 ? issues[0].title : `${issues.length} things to look at`, detail: tail, issues };
+  if (finishing) return { tone: 'info', headline: issues.find(issue => issue.id === 'finishing')!.title, detail: tail, issues };
   return { tone: 'ok', headline: 'Holding', detail: tail, issues };
 }
 

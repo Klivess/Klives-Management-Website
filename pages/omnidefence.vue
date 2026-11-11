@@ -37,7 +37,7 @@
       <template v-else>
         <!-- ── verdict + figures ── -->
         <div class="odx-top" :class="{ 'odx-stale': waiting }">
-          <DefenceVerdict :verdict="verdict" :overview="overview" :now="minuteNow" @jump="jump" />
+          <DefenceVerdict :verdict="verdict" :overview="overview" :startup="startup" :now="minuteNow" @jump="jump" />
 
           <div class="odx-kpis">
             <DefenceKpi label="Requests" icon="activity" :value="overview ? fmtCompact(overview.requests24h ?? 0) : null" unit="24 h" testid="kpi-requests">
@@ -294,6 +294,7 @@
           <DefenceFingerprintPanel
             v-else-if="prefs.tab === 'fingerprint'"
             :status="fpStatus"
+            :loading="loadingEngine"
             :thresholds="thresholds"
             :classes="classes"
             :can-edit="allowed.settings"
@@ -390,7 +391,7 @@ const defence = useOmniDefence();
 const {
   allowed, tabs, overview, classes, ips, ipIndex, regions, honeypots, fpStatus, thresholds, traffic, authEvents, profileActions,
   recentEvents, eventCounts, eventsSupported, review, hourly, lastScan, now, busy, errors, linkState, verdict, prefs, selectedIp, detail,
-  detailLoading, trafficFilter, authFilter, profileFilter, pending, toasts, routesMissing, startup,
+  detailLoading, trafficFilter, authFilter, profileFilter, pending, toasts, routesMissing, startup, loadingEngine,
 } = defence;
 
 const paletteOpen = ref(false);

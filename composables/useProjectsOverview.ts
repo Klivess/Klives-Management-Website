@@ -133,7 +133,8 @@ export function useProjectsOverview() {
   watch(range, refresh);
   onMounted(() => {
     refresh(); stream.connect();
-    poll = setInterval(() => { if (!refreshing.value) refresh(); }, 30000);
+    // Safety net only (the event stream drives refreshes); never while the tab is hidden.
+    poll = setInterval(() => { if (!refreshing.value && !document.hidden) refresh(); }, 30000);
     clock = setInterval(() => { now.value = Date.now(); }, 15000);
   });
   onBeforeUnmount(() => {

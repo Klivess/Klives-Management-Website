@@ -2,7 +2,7 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import { RequestBatchFromKliveAPI, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, type KliveBatchItem } from '~/scripts/APIInterface';
 import { useCurrentProfile } from '~/composables/useCurrentProfile';
 import {
-  DEFAULT_CLASSES, buildQuery, computeVerdict, decodeIpMap, mergeClasses, normalizeAuth, normalizeEvent, normalizeHoneypot,
+  DEFAULT_CLASSES, buildQuery, computeVerdict, decodeIpMap, engineLoading, finishingStep, mergeClasses, normalizeAuth, normalizeEvent, normalizeHoneypot,
   normalizeIp, normalizeProfileAction, normalizeRegion, normalizeRequest, normalizeReviewItem, normalizeScan, readHourly, readStarting,
   type ClassInfo, type DefenceAuthEvent, type DefenceEvent, type DefenceHoneypot, type DefenceIp, type DefenceOverview,
   type DefenceProfileAction, type DefenceRegion, type DefenceRequest, type DefenceStatus, type HourBucket, type StartupState,
@@ -205,6 +205,9 @@ export function useOmniDefence() {
     return 'live';
   });
 
+  /** Routes answer, but the classifier behind them is still loading. */
+  const loadingEngine = computed(() => engineLoading(startup.value));
+
   const verdict = computed(() => computeVerdict({
     overview: overview.value,
     status: status.value,
@@ -337,8 +340,10 @@ export function useOmniDefence() {
     try {
       const list = activeListPath();
       const paths: string[] = ['/omnidefence/overview'];
-      // Only worth asking while there is something to explain: no overview, an old one, or no routes.
-      const wantStatus = !overview.value || overview.value.stale || routesMissing.value || startup.value?.ready === false;
+      // Only worth asking while there is something to explain: no overview, an old one, no routes,
+      // or a start that is still finishing behind routes that already answer.
+      const wantStatus = !overview.value || overview.value.stale || routesMissing.value || startup.value?.ready === false
+        || !!finishingStep(startup.value);
       if (wantStatus) paths.push('/omnidefence/overview/status');
       if (allowed.value.regions) paths.push('/omnidefence/regions');
       if (list) paths.push(list.path);
@@ -354,7 +359,12 @@ export function useOmniDefence() {
         const body = parseBody<DefenceStatus>(st.body);
         if (body) {
           status.value = body;
-          if (body.startup) startup.value = body.startup;
+          if (body.startup) {
+            // The engine has just loaded: read its status before saying so, or the minute until the
+            // next slow read would show it as "not running".
+            if (engineLoading(startup.value) && !engineLoading(body.startup)) await refreshSlow(true);
+            startup.value = body.startup;
+          }
         }
       }
 
@@ -819,7 +829,7 @@ export function useOmniDefence() {
 
   return {
     can, allowed, tabs,
-    overview, status, startup, classes, ips, ipIndex, regions, honeypots, fpStatus, thresholds, traffic, authEvents, profileActions,
+    overview, status, startup, loadingEngine, classes, ips, ipIndex, regions, honeypots, fpStatus, thresholds, traffic, authEvents, profileActions,
     recentEvents, eventCounts, eventsSupported, compactSupported, review, hourly, lastScan,
     now, ready, hidden, lastOkAt, busy, routesMissing, missingSince, mapLoadedAt, mapCompact, errors, linkState, verdict,
     prefs, selectedIp, detail, detailLoading, trafficFilter, authFilter, profileFilter, pending, toasts,

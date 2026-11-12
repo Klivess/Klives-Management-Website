@@ -1,7 +1,41 @@
-// Copied from the backend: Docs/omniscience-v3/api-contracts.ts (WS-C branch claude/omniscience-v3-ws-c-99fa83, which merges into
-// omniscience-v3), which the C# contract test regenerates. Re-copy it when the backend contract changes; never edit the types here.
+// Copied from the backend: Docs/omniscience-v3/api-contracts.ts on branch omniscience-v3 (all workstreams merged), which the
+// C# contract test regenerates. Re-copy it when the backend contract changes; never edit the types here.
 // Generated from the C# contract types by TypeScriptContracts. Do not edit by hand.
 // Instants are UTC epoch milliseconds; durations are milliseconds.
+
+export interface AgeBandDto {
+  personId: string;
+  band: string;
+  restricted: boolean;
+  markedMinorByKlives: boolean;
+  atMs: number;
+  statements: AgeStatementDto[];
+}
+
+export interface AgeReviewRequest {
+  evidenceId: string;
+  verdict: string;
+  note?: string | null;
+}
+
+export interface AgeStatementDto {
+  evidenceId: string;
+  kind: string;
+  status: string;
+  sourceKind: string;
+  assertedAtMs: number;
+  messageId: string;
+  probability: number;
+  quote?: string | null;
+}
+
+export interface AgendaDto {
+  asOfMs: number;
+  zone: string;
+  upcoming: PlanItemDto[];
+  overdue: PlanItemDto[];
+  klivesPromises: PlanItemDto[];
+}
 
 export interface AlertDto {
   alertId: string;
@@ -81,6 +115,30 @@ export interface AlertStateResultDto {
 
 export type AlertVerdict = "Correct" | "Wrong";
 
+export interface AliasDto {
+  aliasId: string;
+  personId: string;
+  alias: string;
+  nameKind: string;
+  scopeKind: string;
+  scopeId?: string | null;
+  validFromMs: number;
+  validToMs?: number | null;
+  usages: number;
+  speakers: number;
+  selfClaims: number;
+  probability: number;
+  status: string;
+  commonWord: boolean;
+  alertEligible: boolean;
+}
+
+export interface AliasReviewRequest {
+  aliasId: string;
+  verdict: string;
+  note?: string | null;
+}
+
 export interface AnalysisOffListDto {
   people: AnalysisOffPersonDto[];
 }
@@ -103,6 +161,63 @@ export interface AnalysisOnRequest {
 export interface ApiError {
   code: string;
   message: string;
+}
+
+export interface AskPlanDto {
+  tactic: string;
+  parameters?: unknown | null;
+  restatement: string;
+  people: PersonCandidateDto[];
+  reason?: string | null;
+}
+
+export interface AskRequest {
+  question: string;
+  personIds?: string[] | null;
+  tactic?: string | null;
+  asOfMs?: number | null;
+  standing: boolean;
+}
+
+export interface AskStartedDto {
+  runId: string;
+  tactic: string;
+}
+
+export interface AssertionDetailDto {
+  fact: KnowledgeFactDto;
+  naturalKey: string;
+  modality?: string | null;
+  derivationJson?: string | null;
+  detailJson?: string | null;
+  evidence: EvidenceContextDto[];
+  history: AssertionVersionDto[];
+  goldVerdict?: string | null;
+  goldDecidedAtMs?: number | null;
+}
+
+export interface AssertionVersionDto {
+  assertionId: string;
+  status: string;
+  probability?: number | null;
+  recordedAtMs: number;
+  supersededAtMs?: number | null;
+  retractedAtMs?: number | null;
+  value?: string | null;
+  validFromLatestMs?: number | null;
+  validToLatestMs?: number | null;
+  promptVersion?: string | null;
+  model?: string | null;
+}
+
+export interface AssistantVoiceMetrics {
+  realSamples: number;
+  assistantSamples: number;
+  testSamples: number;
+  accuracy: number;
+  precision: number;
+  recall: number;
+  auc: number;
 }
 
 export interface BackupDto {
@@ -232,9 +347,40 @@ export interface BundleListDto {
   bundles: BundleDto[];
 }
 
+export interface ChoiceDto {
+  option: string;
+  probability: number;
+}
+
 export interface CitedPoint {
   text: string;
   refs: string[];
+}
+
+export interface ClaimDto {
+  claimId: string;
+  runId: string;
+  personId: string;
+  attribute: string;
+  category: string;
+  value?: string | null;
+  modality?: string | null;
+  sourceKind?: string | null;
+  probability?: number | null;
+  agreement: string;
+  verdict: string;
+  reason?: string | null;
+  critic?: string | null;
+  assertedAtMs: number;
+  recordedAtMs: number;
+  promptVersion: string;
+  model?: string | null;
+  conversationId?: string | null;
+}
+
+export interface ClaimPageDto {
+  items: ClaimDto[];
+  nextCursor?: string | null;
 }
 
 export interface ClassifyCorrectRequest {
@@ -309,6 +455,20 @@ export interface CorpusTotalsDto {
   guilds: number;
   attachments: number;
   sources: number;
+}
+
+export interface CoverageDto {
+  subjects: string[];
+  fromMs?: number | null;
+  toMs: number;
+  messagesConsidered: number;
+  factsConsidered: number;
+  itemsInDossier: number;
+  excludedAsJokeOrFiction: number;
+  excludedAfterAsOf: number;
+  vectorSearch: boolean;
+  platforms: string[];
+  notes: string[];
 }
 
 export interface DatasetCatalogDto {
@@ -462,6 +622,34 @@ export interface DirectoryPageDto {
 
 export type DirectorySort = "LastSeen" | "Messages" | "Recent" | "Name";
 
+export interface DisambiguationDto {
+  mention: string;
+  candidates: PersonCandidateDto[];
+}
+
+export interface DiscordBackfillRequest {
+  channelId: string;
+}
+
+export interface DiscordBotStatusDto {
+  enabled: boolean;
+  attached: boolean;
+  botUserId?: string | null;
+  contentIntent: boolean;
+  sourceStatus: string;
+  sourceStatusDetail?: string | null;
+  eventsReceived: number;
+  eventsWritten: number;
+  eventsDropped: number;
+  lastEventAtMs?: number | null;
+  lastError?: string | null;
+  channels: number;
+  channelsComplete: number;
+  channelsForbidden: number;
+  channelsGone: number;
+  apiRequests: number;
+}
+
 export interface DossierCoverageDto {
   platforms: string[];
   conversations: number;
@@ -527,6 +715,38 @@ export interface EngineHealthDto {
   rollupDirty: number;
   corpusSeq: number;
   problems: string[];
+}
+
+export interface EntityDto {
+  entityId: string;
+  ownerPersonId: string;
+  kind: string;
+  name: string;
+  attributesJson: string;
+  firstEvidenceMs: number;
+  lastEvidenceMs: number;
+  mentions: number;
+  status: string;
+}
+
+export interface EvidenceContextDto {
+  messageId: string;
+  version: number;
+  role: string;
+  quote?: string | null;
+  weight: number;
+  sentAtMs?: number | null;
+  authorPersonId?: string | null;
+  authorName?: string | null;
+  conversationId?: string | null;
+  conversationKind?: string | null;
+  conversationTitle?: string | null;
+  guildId?: string | null;
+  guildName?: string | null;
+  platform?: string | null;
+  deleted: boolean;
+  edited: boolean;
+  text?: string | null;
 }
 
 export interface ExploreColumn {
@@ -618,6 +838,39 @@ export interface ExploreResult {
 
 export type ExportFormat = "Csv" | "Json" | "Parquet";
 
+export interface ExtractionRunDto {
+  runId: string;
+  personId: string;
+  jobId?: number | null;
+  promptVersion: string;
+  model?: string | null;
+  slices: number;
+  messages: number;
+  claimsRaw: number;
+  claimsAgreed: number;
+  claimsVerified: number;
+  claimsRejected: number;
+  rejectionsJson?: string | null;
+  llmCalls: number;
+  outcome: string;
+  startedAtMs: number;
+  finishedAtMs?: number | null;
+}
+
+export interface ExtractionRunPageDto {
+  items: ExtractionRunDto[];
+  nextCursor?: string | null;
+}
+
+export interface FactReviewRequest {
+  assertionId: string;
+  verdict: string;
+  value?: string | null;
+  validFromMs?: number | null;
+  validToMs?: number | null;
+  note?: string | null;
+}
+
 export type FilterOp = "Eq" | "NotEq" | "In" | "NotIn" | "Between" | "Gte" | "Lte" | "Contains" | "IsNull" | "IsNotNull";
 
 export interface ForgetConfirmRequest {
@@ -661,6 +914,16 @@ export interface ForgetRunDto {
   finishedAtMs?: number | null;
 }
 
+export interface GenerationConfig {
+  temperature: number;
+  topP: number;
+  candidates: number;
+  retrieved: number;
+  burstSampling: boolean;
+  llmJudge: boolean;
+  key: string;
+}
+
 export interface HealthIssueDto {
   issueId: string;
   kind: string;
@@ -679,12 +942,185 @@ export interface HealthListDto {
   checkedAtMs?: number | null;
 }
 
+export interface HypothesisDto {
+  hypothesisId: string;
+  personId: string;
+  statement: string;
+  attribute?: string | null;
+  probability: number;
+  status: string;
+  createdAtMs: number;
+  expiresAtMs: number;
+  resolvedAtMs?: number | null;
+  resolutionNote?: string | null;
+  derivedFromJson: string;
+}
+
+export interface IdentityLinkDecisionDto {
+  link: IdentityLinkDto;
+  merge?: MergeResultDto | null;
+}
+
+export interface IdentityLinkDecisionRequest {
+  linkId: string;
+  accept: boolean;
+  confirm: boolean;
+  note?: string | null;
+}
+
+export interface IdentityLinkDto {
+  linkId: string;
+  identityA: string;
+  identityB: string;
+  personA: string;
+  personB: string;
+  signals: LinkSignalDto[];
+  independentSignals: number;
+  probability: number;
+  verdict: string;
+  judgeJson?: string | null;
+  createdAtMs: number;
+  updatedAtMs: number;
+  decidedAtMs?: number | null;
+  mergeId?: number | null;
+}
+
+export interface IdentityLinkPageDto {
+  items: IdentityLinkDto[];
+  nextCursor?: string | null;
+}
+
 export interface IdentitySummaryDto {
   identityId: string;
   platform: string;
   kind: string;
   firstSeenMs: number;
   lastSeenMs: number;
+}
+
+export interface ImportFormatDto {
+  id: string;
+  title: string;
+  needsZone: boolean;
+}
+
+export interface ImportInboxEntryDto {
+  name: string;
+  isFolder: boolean;
+  bytes: number;
+  modifiedAtMs: number;
+}
+
+export interface ImportJobPayload {
+  name: string;
+  format?: string | null;
+  options?: ImportOptions | null;
+}
+
+export interface ImportJobStartedDto {
+  jobId: number;
+}
+
+export interface ImportLedgerEntryDto {
+  importId: string;
+  format: string;
+  sha256: string;
+  zone?: string | null;
+  state: string;
+  createdAtMs: number;
+  committedAtMs?: number | null;
+  error?: string | null;
+  countsJson?: string | null;
+}
+
+export interface ImportListDto {
+  inboxPath: string;
+  inbox: ImportInboxEntryDto[];
+  ledger: ImportLedgerEntryDto[];
+  formats: ImportFormatDto[];
+}
+
+export interface ImportOptions {
+  zone?: string | null;
+  dayFirst?: boolean | null;
+  ownerName?: string | null;
+  conversationTitle?: string | null;
+  conversationKind?: string | null;
+  platform?: string | null;
+  columns?: Record<string, string> | null;
+}
+
+export interface ImportPreview {
+  name: string;
+  format: string;
+  formatTitle: string;
+  sha256: string;
+  messages: number;
+  systemMessages: number;
+  firstMs?: number | null;
+  lastMs?: number | null;
+  alreadyInCorpus: number;
+  committedBeforeMs?: number | null;
+  conversations: ImportPreviewConversation[];
+  senders: ImportPreviewSender[];
+  senderCount: number;
+  zoneUsed?: string | null;
+  dateOrder?: string | null;
+  ambiguousTimes: number;
+  invalidTimes: number;
+  mediaFound: number;
+  mediaMissing: number;
+  repairedText: number;
+  skippedRecords: number;
+  ownerDetected?: string | null;
+  unreadableFiles: ImportUnreadableFile[];
+  warnings: string[];
+  decisionNeeded?: string | null;
+}
+
+export interface ImportPreviewConversation {
+  conversationId: string;
+  title?: string | null;
+  kind: string;
+  messages: number;
+}
+
+export interface ImportPreviewSender {
+  name: string;
+  identityId: string;
+  messages: number;
+  isOwner: boolean;
+}
+
+export interface ImportResult {
+  importId: string;
+  format: string;
+  sha256: string;
+  read: number;
+  inserted: number;
+  updated: number;
+  unchanged: number;
+  rejected: number;
+  newIdentities: number;
+  newConversations: number;
+  attachmentsAdded: number;
+  attachmentsStored: number;
+  mediaTooLarge: number;
+  mediaFailed: number;
+  skippedRecords: number;
+  unreadableFiles: ImportUnreadableFile[];
+  warnings: string[];
+}
+
+export interface ImportUnreadableFile {
+  file: string;
+  reason: string;
+}
+
+export interface ImportUploadedDto {
+  name: string;
+  bytes: number;
+  previewJobId: number;
 }
 
 export type InboxAction = "Dismiss" | "Snooze" | "Reopen";
@@ -728,6 +1164,97 @@ export interface InboxResolveResultDto {
   changed: number;
   open: number;
 }
+
+export type InquiryAnswerType = "Binary" | "Choice" | "Ranking" | "Numeric" | "DateInterval" | "Open" | "ChangePoint" | "Prediction";
+
+export interface InquiryEvidenceDto {
+  id: string;
+  kind: string;
+  messageId?: string | null;
+  assertionId?: string | null;
+  authorPersonId?: string | null;
+  atMs: number;
+  quote: string;
+  conversationId?: string | null;
+  guildId?: string | null;
+  platform?: string | null;
+  where?: string | null;
+  reliability: string;
+  facet: string;
+}
+
+export interface InquiryFeedbackRequest {
+  inquiryId: string;
+  feedback: string;
+  note?: string | null;
+}
+
+export interface InquiryPageDto {
+  items: InquiryRowDto[];
+  nextCursor?: string | null;
+}
+
+export interface InquiryReportDto {
+  inquiryId: string;
+  runId: string;
+  question: string;
+  restatement: string;
+  answerType: InquiryAnswerType;
+  verdict: InquiryVerdict;
+  probability?: number | null;
+  probabilityRaw?: number | null;
+  bandLow?: number | null;
+  bandHigh?: number | null;
+  calibrated: boolean;
+  distribution: ChoiceDto[];
+  ranking: RankedPersonDto[];
+  estimate?: number | null;
+  changeFromMs?: number | null;
+  changeToMs?: number | null;
+  evidenceFor: InquiryEvidenceDto[];
+  evidenceAgainst: InquiryEvidenceDto[];
+  reasoning?: string | null;
+  temporalNote?: string | null;
+  wouldChange: string[];
+  questionsToAsk: string[];
+  coverage: CoverageDto;
+  evidenceStrength: number;
+  passes: number;
+  passesDropped: number;
+  disagreement: number;
+  devilsAdvocate?: string | null;
+  priorProbability?: number | null;
+  priorRationale?: string | null;
+  worldKnowledgeDependent: boolean;
+  isPrediction: boolean;
+  policyNote?: string | null;
+  disambiguation: DisambiguationDto[];
+  asOfMs: number;
+  asOfNote?: string | null;
+  promptVersion: string;
+  model?: string | null;
+  assertionId?: string | null;
+  standingId?: string | null;
+}
+
+export interface InquiryRowDto {
+  inquiryId: string;
+  runId: string;
+  tacticKey: string;
+  question: string;
+  restatement?: string | null;
+  answerType: string;
+  primarySubjectId?: string | null;
+  asOfMs: number;
+  verdict?: string | null;
+  probability?: number | null;
+  state: string;
+  feedback?: string | null;
+  standingId?: string | null;
+  createdAtMs: number;
+}
+
+export type InquiryVerdict = "Yes" | "LeansYes" | "Uncertain" | "LeansNo" | "No" | "InsufficientEvidence" | "Refused" | "NeedsDisambiguation" | "Answered";
 
 export interface InsightsRefreshDto {
   jobId: number;
@@ -775,6 +1302,82 @@ export interface JobRecord {
   runId?: string | null;
 }
 
+export interface KnowledgeCategoryDto {
+  category: string;
+  facts: KnowledgeFactDto[];
+}
+
+export interface KnowledgeFactDto {
+  assertionId: string;
+  attribute: string;
+  attributeTitle: string;
+  category: string;
+  value: string;
+  polarity: string;
+  objectPersonId?: string | null;
+  status: string;
+  probability: number;
+  storedProbability: number;
+  calibrated: boolean;
+  validFromEarliestMs?: number | null;
+  validFromLatestMs?: number | null;
+  validToEarliestMs?: number | null;
+  validToLatestMs?: number | null;
+  lastEvidenceMs?: number | null;
+  firstEvidenceMs?: number | null;
+  recordedAtMs: number;
+  sourceKind?: string | null;
+  sensitivity: string;
+  producer?: string | null;
+}
+
+export interface KnowledgeFactsPageDto {
+  personId: string;
+  mode: string;
+  atMs: number;
+  minorRestricted: boolean;
+  items: KnowledgeFactDto[];
+  nextCursor?: string | null;
+}
+
+export interface KnowledgeJobStartedDto {
+  jobId: number;
+  detail?: string | null;
+}
+
+export interface KnowledgeProfileDto {
+  personId: string;
+  asOfMs: number;
+  minorRestricted: boolean;
+  categories: KnowledgeCategoryDto[];
+  inferences: KnowledgeFactDto[];
+  coveredMessages: number;
+  lastExtractMs?: number | null;
+  backlogPending: boolean;
+  promptVersion: string;
+}
+
+export interface KnowledgeReviewItemDto {
+  itemId: string;
+  kind: string;
+  subjectId?: string | null;
+  title: string;
+  detailJson?: string | null;
+  priority: number;
+  state: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+  resolvedAtMs?: number | null;
+  resolution?: string | null;
+  actor?: string | null;
+}
+
+export interface KnowledgeReviewPageDto {
+  asOfMs: number;
+  items: KnowledgeReviewItemDto[];
+  nextCursor?: string | null;
+}
+
 export interface LabelMixDto {
   recent: Record<string, Record<string, number>>;
   baseline: Record<string, Record<string, number>>;
@@ -791,6 +1394,32 @@ export interface LaneJobsDto {
   succeeded: number;
   dead: number;
   cancelled: number;
+}
+
+export interface LifeEventDto {
+  eventId: string;
+  category: string;
+  title: string;
+  attribute: string;
+  assertionId: string;
+  earliestMs?: number | null;
+  latestMs?: number | null;
+  midpointMs?: number | null;
+  precision: string;
+  probability: number;
+  evidenceCount: number;
+  evidenceMessageIds: string[];
+}
+
+export interface LifeTimelineDto {
+  personId: string;
+  asOfMs: number;
+  events: LifeEventDto[];
+  totalEvents: number;
+}
+
+export interface LinkActionRequest {
+  linkId: string;
 }
 
 export interface LinkCountDto {
@@ -835,6 +1464,12 @@ export interface LinkShareDto {
   atMs: number;
   reactions: number;
   link: LinkDto;
+}
+
+export interface LinkSignalDto {
+  kind: string;
+  strength: number;
+  detail: string;
 }
 
 export interface LinkTrackDto {
@@ -925,6 +1560,31 @@ export interface MeasureDescriptor {
   aggregate: string;
   column?: string | null;
   unit: string;
+}
+
+export interface MergeRequest {
+  personA: string;
+  personB: string;
+  confirm: boolean;
+  reason?: string | null;
+}
+
+export interface MergeResultDto {
+  mergeId: number;
+  survivor: string;
+  absorbed: string;
+  changed: boolean;
+  rule: string;
+}
+
+export interface MergeRowDto {
+  mergeId: number;
+  fromPersonId: string;
+  intoPersonId: string;
+  mergedAtMs: number;
+  actor: string;
+  reason?: string | null;
+  undoneAtMs?: number | null;
 }
 
 export interface MessageLabelsDto {
@@ -1227,6 +1887,12 @@ export interface PersonBriefRequest {
   personId: string;
 }
 
+export interface PersonCandidateDto {
+  personId: string;
+  label: string;
+  detail?: string | null;
+}
+
 export interface PersonCardDto {
   personId: string;
   displayName: string;
@@ -1273,10 +1939,41 @@ export interface PersonRelationshipsDto {
   asOfMs: number;
 }
 
+export interface PersonRequest {
+  personId: string;
+}
+
 export interface PersonTraitDto {
   trait: string;
   text: string;
   z: number;
+}
+
+export interface PlanItemDto {
+  planId: string;
+  kind: string;
+  subtype?: string | null;
+  ownerPersonId: string;
+  counterpartyPersonId?: string | null;
+  involvesKlives: boolean;
+  klivesPromised: boolean;
+  title: string;
+  scheduledEarliestMs?: number | null;
+  scheduledLatestMs?: number | null;
+  nextOccurrenceMs?: number | null;
+  localZone?: string | null;
+  allDay: boolean;
+  firmness: string;
+  status: string;
+  recurrence?: string | null;
+  evidenceCount: number;
+  evidenceMessageIds: string[];
+  conversationId?: string | null;
+}
+
+export interface PlanPageDto {
+  items: PlanItemDto[];
+  nextCursor?: string | null;
 }
 
 export interface Playbook {
@@ -1352,10 +2049,22 @@ export interface PlaybookValidationDto {
   nextDueMs?: number | null;
 }
 
+export interface QualityRunRequest {
+  kind: string;
+}
+
 export interface RankedCountDto {
   id: string;
   name: string;
   count: number;
+}
+
+export interface RankedPersonDto {
+  personId: string;
+  label: string;
+  score: number;
+  reason?: string | null;
+  evidenceIds: string[];
 }
 
 export interface ReadModelCatalogDto {
@@ -1380,6 +2089,419 @@ export interface ReadModelDto {
   sourceSeq: number;
   computedAtMs: number;
   body: unknown;
+}
+
+export interface ReplicaActionResultDto {
+  changed: boolean;
+  detail?: string | null;
+}
+
+export interface ReplicaAutoRetrainRequest {
+  personId: string;
+  enabled: boolean;
+}
+
+export interface ReplicaBlindAnswerDto {
+  index: number;
+  choice: string;
+  real: string;
+  correct: boolean;
+  answered: number;
+  correctTotal: number;
+}
+
+export interface ReplicaBlindAnswerRequest {
+  sessionId: string;
+  index: number;
+  choice: string;
+}
+
+export interface ReplicaBlindItemDto {
+  index: number;
+  stimulus: string;
+  optionA: string;
+  optionB: string;
+  answered?: string | null;
+  correct?: boolean | null;
+}
+
+export interface ReplicaBlindResultsDto {
+  personId: string;
+  sessions: number;
+  answered: number;
+  correct: number;
+  accuracy?: number | null;
+  recent: ReplicaBlindSessionDto[];
+}
+
+export interface ReplicaBlindSessionDto {
+  sessionId: string;
+  personId: string;
+  versionId: string;
+  createdAtMs: number;
+  items: ReplicaBlindItemDto[];
+  answered: number;
+  correct: number;
+  accuracy?: number | null;
+  finishedAtMs?: number | null;
+}
+
+export interface ReplicaBlindStartRequest {
+  personId: string;
+  count: number;
+}
+
+export interface ReplicaChatActionRequest {
+  chatId: string;
+}
+
+export interface ReplicaChatCreateRequest {
+  personId: string;
+  title?: string | null;
+  asOfMs?: number | null;
+  contextKind?: string | null;
+  addresseePersonId?: string | null;
+}
+
+export interface ReplicaChatDto {
+  chatId: string;
+  kind: string;
+  personId: string;
+  title?: string | null;
+  asOfMs?: number | null;
+  contextKind: string;
+  addresseePersonId?: string | null;
+  archived: boolean;
+  createdAtMs: number;
+  updatedAtMs: number;
+  members: string[];
+  topic?: string | null;
+}
+
+export interface ReplicaChatMessageDto {
+  chatId: string;
+  seq: number;
+  role: string;
+  content: string;
+  atMs: number;
+  personId?: string | null;
+  speaker?: string | null;
+  turnId?: string | null;
+  status?: string | null;
+  error?: string | null;
+  simulated: boolean;
+  versionId?: string | null;
+  generationId?: string | null;
+  burstIndex?: number | null;
+  burstSize?: number | null;
+}
+
+export interface ReplicaChatMessagePageDto {
+  items: ReplicaChatMessageDto[];
+  nextCursor?: number | null;
+}
+
+export interface ReplicaChatPageDto {
+  items: ReplicaChatDto[];
+  nextCursor?: string | null;
+}
+
+export interface ReplicaChatRateRequest {
+  chatId: string;
+  seq: number;
+  rating: number;
+  note?: string | null;
+}
+
+export interface ReplicaChatSendRequest {
+  chatId: string;
+  content: string;
+}
+
+export interface ReplicaChatUpdateRequest {
+  chatId: string;
+  title?: string | null;
+  archived?: boolean | null;
+}
+
+export interface ReplicaCountsDto {
+  pairs: number;
+  replies: number;
+  initiations: number;
+  train: number;
+  holdoutTune: number;
+  holdoutTest: number;
+  shadow: number;
+  eras: number;
+  slices: number;
+  personaItems: number;
+  personaDropped: number;
+  reflexLabelled: number;
+  vectors: number;
+}
+
+export interface ReplicaEraDto {
+  index: number;
+  fromMs: number;
+  toMs: number;
+  pairs: number;
+  means: Record<string, number>;
+}
+
+export interface ReplicaEvalItemDto {
+  pairId: string;
+  configKey: string;
+  split: string;
+  contextKind: string;
+  occurredMs: number;
+  asOfMs: number;
+  stimulus?: string | null;
+  realReply?: string | null;
+  generatedReply?: string | null;
+  outcome: string;
+  judgeCorrect?: boolean | null;
+  judgeConfidence?: number | null;
+  embeddingSimilarity?: number | null;
+  styleDistance?: number | null;
+  lengthError?: number | null;
+  model?: string | null;
+}
+
+export interface ReplicaEvalPageDto {
+  items: ReplicaEvalItemDto[];
+  nextCursor?: string | null;
+  textsIncluded: boolean;
+}
+
+export interface ReplicaFidelityPointDto {
+  versionId: string;
+  number: number;
+  finishedAtMs: number;
+  discriminationAccuracy?: number | null;
+  embeddingSimilarity?: number | null;
+  styleDistance?: number | null;
+  evaluated: number;
+}
+
+export interface ReplicaGroupAdvanceRequest {
+  chatId: string;
+  turns: number;
+}
+
+export interface ReplicaGroupCreateRequest {
+  personIds: string[];
+  topic: string;
+  conversationId?: string | null;
+  turns: number;
+}
+
+export interface ReplicaGroupSendRequest {
+  chatId: string;
+  content: string;
+  turns: number;
+}
+
+export interface ReplicaHouseModelDto {
+  modelId: string;
+  version: number;
+  state: string;
+  trainedAtMs?: number | null;
+  metrics?: AssistantVoiceMetrics | null;
+  detail?: string | null;
+}
+
+export interface ReplicaJobStartedDto {
+  personId: string;
+  jobId: number;
+}
+
+export interface ReplicaMetricsDto {
+  evaluated: number;
+  failed: number;
+  discriminationAccuracy?: number | null;
+  discriminationCiLow?: number | null;
+  discriminationCiHigh?: number | null;
+  embeddingSimilarity?: number | null;
+  styleDistance?: number | null;
+  lengthError?: number | null;
+  burstError?: number | null;
+  configKey?: string | null;
+  tuning: ReplicaTuneResultDto[];
+  discriminationByContext: Record<string, number>;
+  model?: string | null;
+  evaluatedAtMs?: number | null;
+  note: string;
+}
+
+export interface ReplicaModuleStatusDto {
+  encoderModel?: string | null;
+  encoderAvailable: boolean;
+  assistantVoice?: ReplicaHouseModelDto | null;
+  replicas: number;
+  ready: number;
+  building: number;
+  failed: number;
+  blocked: number;
+  stale: number;
+  nowMs: number;
+}
+
+export interface ReplicaPersonDto {
+  personId: string;
+  name: string;
+  status: string;
+  statusDetail?: string | null;
+  stale: boolean;
+  staleReason?: string | null;
+  staleSinceMs?: number | null;
+  newMessagesSinceServing: number;
+  autoRetrain: boolean;
+  readiness?: ReplicaReadinessDto | null;
+  serving?: ReplicaVersionSummaryDto | null;
+  building?: ReplicaVersionSummaryDto | null;
+  fidelityTrend: ReplicaFidelityPointDto[];
+  updatedAtMs: number;
+}
+
+export interface ReplicaPersonPageDto {
+  items: ReplicaPersonDto[];
+  nextCursor?: string | null;
+}
+
+export interface ReplicaPersonRequest {
+  personId: string;
+}
+
+export interface ReplicaReadinessDto {
+  personId: string;
+  name: string;
+  tier: ReplicaTier;
+  mode: string;
+  reason: string;
+  replies: number;
+  initiations: number;
+  effective: number;
+  explicitReplies: number;
+  repliesToKlives: number;
+  authoredMessages: number;
+  nonAuthored: number;
+  deleted: number;
+  minorPeriodExcluded: number;
+  byContext: Record<string, number>;
+  firstMs?: number | null;
+  lastMs?: number | null;
+  conversations: number;
+  ageBand: string;
+  adultFromMs?: number | null;
+  thresholdExperimental: number;
+  thresholdReady: number;
+  isSelf: boolean;
+  isBot: boolean;
+  truncated: boolean;
+  computedAtMs: number;
+  sourceSeq: number;
+}
+
+export interface ReplicaStageDto {
+  stage: string;
+  state: string;
+  attempts: number;
+  startedAtMs?: number | null;
+  finishedAtMs?: number | null;
+  detail?: string | null;
+  error?: string | null;
+  total: number;
+  completed: number;
+  failed: number;
+}
+
+export interface ReplicaStreamEventDto {
+  type: string;
+  chatId: string;
+  turnId?: string | null;
+  stage?: string | null;
+  index?: number | null;
+  of?: number | null;
+  message?: ReplicaChatMessageDto | null;
+  code?: string | null;
+  text?: string | null;
+}
+
+export interface ReplicaStyleDto {
+  bursts: number;
+  fromMs: number;
+  toMs: number;
+  charsP50: number;
+  charsP90: number;
+  burstShares: number[];
+  latencyP50Ms?: number | null;
+  casing: Record<string, number>;
+  endings: Record<string, number>;
+  emojiLines: number;
+  topEmoji: string[];
+  laughter: string[];
+  distinctive: string[];
+  scripts: Record<string, number>;
+  peakLocalHours: number[];
+}
+
+export type ReplicaTier = "Ready" | "Experimental" | "NotPossible" | "Blocked";
+
+export interface ReplicaTrainRequest {
+  personId: string;
+  reason?: string | null;
+}
+
+export interface ReplicaTrainResultDto {
+  personId: string;
+  versionId: string;
+  number: number;
+  jobId: number;
+  alreadyRunning: boolean;
+  readiness?: ReplicaReadinessDto | null;
+}
+
+export interface ReplicaTuneResultDto {
+  configKey: string;
+  temperature: number;
+  retrieved: number;
+  burstSampling: boolean;
+  pairs: number;
+  discriminationAccuracy?: number | null;
+  embeddingSimilarity?: number | null;
+  styleDistance?: number | null;
+  chosen: boolean;
+}
+
+export interface ReplicaVersionDto {
+  summary: ReplicaVersionSummaryDto;
+  personId: string;
+  moduleVersion: number;
+  requestedBy: string;
+  eras: ReplicaEraDto[];
+  style?: ReplicaStyleDto | null;
+  config?: GenerationConfig | null;
+}
+
+export interface ReplicaVersionListDto {
+  versions: ReplicaVersionSummaryDto[];
+}
+
+export interface ReplicaVersionSummaryDto {
+  versionId: string;
+  number: number;
+  state: string;
+  reason: string;
+  createdAtMs: number;
+  finishedAtMs?: number | null;
+  dataFromMs?: number | null;
+  dataToMs?: number | null;
+  encoderModel?: string | null;
+  stages: ReplicaStageDto[];
+  metrics?: ReplicaMetricsDto | null;
+  degraded: string[];
+  counts?: ReplicaCountsDto | null;
+  error?: string | null;
 }
 
 export interface RerunRequest {
@@ -1409,6 +2531,12 @@ export interface RetentionDto {
 
 export interface RetentionListDto {
   streams: RetentionDto[];
+}
+
+export interface ReviewResolveRequest {
+  itemId: string;
+  state: string;
+  resolution: string;
 }
 
 export interface RunActionRequest {
@@ -1679,6 +2807,24 @@ export interface SpaceToneDto {
   conflictBaseline: number;
 }
 
+export interface StandingEnabledRequest {
+  questionId: string;
+  enabled: boolean;
+}
+
+export interface StandingQuestionDto {
+  questionId: string;
+  question: string;
+  personIds: string[];
+  enabled: boolean;
+  minIntervalMs: number;
+  lastEvaluatedMs?: number | null;
+  lastVerdict?: string | null;
+  lastProbability?: number | null;
+  pending: boolean;
+  createdAtMs: number;
+}
+
 export interface StoreHealthDto {
   name: string;
   fileBytes: number;
@@ -1866,6 +3012,10 @@ export interface TranslationsDto {
   target: string;
   fromCache: number;
   translated: number;
+}
+
+export interface UnmergeRequest {
+  mergeId: number;
 }
 
 export type V3Phase = "Disabled" | "Starting" | "Ready" | "Failed" | "Stopping";

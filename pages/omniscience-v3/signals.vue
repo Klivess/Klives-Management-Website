@@ -238,7 +238,7 @@ const ALERT_STATES: { value: AlertState | ''; label: string }[] = [
     { value: 'New', label: 'New' }, { value: 'Seen', label: 'Seen' }, { value: 'Dismissed', label: 'Dismissed' }, { value: '', label: 'All' },
 ];
 const INBOX_STATES = ['open', 'snoozed', 'answered', 'dismissed', 'stale'];
-const NOTICE_KINDS = ['person_activity', 'new_person', 'topic_surge', 'klives_tone', 'data_health', 'relationship', 'wellbeing'];
+const NOTICE_KINDS = ['person_activity', 'new_person', 'topic_surge', 'klives_tone', 'data_health', 'relationship', 'wellbeing', 'plan_reminder', 'standing_question'];
 const DAY = 86_400_000;
 
 const { can } = useAccess();

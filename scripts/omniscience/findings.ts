@@ -2,7 +2,7 @@ import { omniCount, omniDuration, omniPercent } from '~/scripts/omniscience/form
 
 /**
  * One sentence for each kind of finding the engine hands to the notices (monitors, relationships,
- * check-ins) and for each data-health problem, written from the finding's own data. A kind this
+ * check-ins, plan reminders, standing questions) and for each data-health problem, written from the finding's own data. A kind this
  * build does not know falls back to its name, so a newer server never shows a blank row.
  */
 
@@ -52,6 +52,14 @@ export function findingText(kind: string, data: unknown, who?: string | null, ot
             return `${name} and ${other ?? 'someone'}: ${omniHumanise(str(d.change) ?? 'changed').toLowerCase()} (week ${str(d.week) ?? '?'}).`;
         case 'wellbeing':
             return `${name} might welcome a check-in (${omniHumanise(str(d.suggestion) ?? 'wellbeing').toLowerCase()}).`;
+        case 'plan_reminder': {
+            const when = ({ day_before: 'Tomorrow', same_day: 'Today', before: 'In about two hours', due: 'Due now' } as Record<string, string>)[str(d.kind) ?? ''] ?? 'Coming up';
+            const people = who ? ` (${who}${other ? ` with ${other}` : ''})` : '';
+            const late = (num(d.latenessMs) ?? 0) > 10 * 60_000 ? `, reminded ${omniDuration(num(d.latenessMs))} late` : '';
+            return `${when}: “${str(d.title) ?? 'a plan'}”${people}${late}.`;
+        }
+        case 'standing_question':
+            return `Your standing question “${str(d.question) ?? '?'}” changed: ${str(d.from) ?? '?'} → ${str(d.to) ?? '?'} (${omniPercent(num(d.fromProbability))} → ${omniPercent(num(d.toProbability))}).`;
         default:
             return omniHumanise(kind);
     }

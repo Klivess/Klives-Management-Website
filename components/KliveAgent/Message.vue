@@ -30,6 +30,28 @@
         <button v-if="message.pending" class="kax-btn kax-btn--xs kax-btn--danger" type="button" data-testid="msg-stop" @click="emit('stop')"><KliveAgentIcon name="stop" />Stop</button>
       </div>
 
+      <!-- The plan the run keeps for itself (task_ledger): open while it works, a line afterwards. -->
+      <div v-if="ledger" class="kax-ledger" data-testid="msg-ledger">
+        <button class="kax-ledger__head" type="button" :aria-expanded="ledgerShown" @click="ledgerOpen = !ledgerShown">
+          <KliveAgentIcon name="chevron-right" />
+          <b>{{ ledger.steps.length ? 'Plan' : 'Notes' }}</b>
+          <span>{{ ledgerSummary(ledger) }}</span>
+          <span v-if="ledger.steps.length" class="kax-ledger__bar" aria-hidden="true"><span :style="{ width: `${ledgerPct}%` }"></span></span>
+        </button>
+        <template v-if="ledgerShown">
+          <ol v-if="ledger.steps.length" class="kax-ledger__steps">
+            <li v-for="(step, i) in ledger.steps" :key="i" class="kax-ledger__step" :data-done="step.done">
+              <KliveAgentIcon v-if="step.done" name="check" />
+              <i v-else class="kax-ledger__todo" aria-hidden="true"></i>
+              <span>{{ step.text }}<small v-if="step.note"> · {{ step.note }}</small></span>
+            </li>
+          </ol>
+          <ul v-if="ledger.facts.length" class="kax-ledger__facts" aria-label="What the run noted">
+            <li v-for="(fact, i) in ledger.facts" :key="i">{{ fact }}</li>
+          </ul>
+        </template>
+      </div>
+
       <div v-if="message.content" class="kax-md" v-html="renderMarkdown(message.content)"></div>
       <div v-else-if="message.pending" class="kax-typing" aria-label="Working"><span></span><span></span><span></span></div>
 
@@ -63,7 +85,7 @@
 import { computed, ref } from 'vue';
 import { renderMarkdown } from '~/scripts/agentMarkdown';
 import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
-import { OUTCOME_LABELS, PHASE_LABELS, fmtCompact, fmtInt, fmtSize, runOutcome } from '~/scripts/agentConsole';
+import { OUTCOME_LABELS, PHASE_LABELS, fmtCompact, fmtInt, fmtSize, ledgerSummary, readRunLedger, runOutcome } from '~/scripts/agentConsole';
 import KliveAgentIcon from '~/components/KliveAgent/Icon.vue';
 import KliveAgentScriptCard from '~/components/KliveAgent/ScriptCard.vue';
 
@@ -83,6 +105,15 @@ const activity = computed<any[]>(() => (Array.isArray(props.message.activity) ? 
 const scripts = computed<any[]>(() => (Array.isArray(props.message.scripts) ? props.message.scripts : []));
 const failedScripts = computed(() => scripts.value.filter(s => s.success === false).length);
 const attachments = computed<any[]>(() => (Array.isArray(props.message.attachments) ? props.message.attachments : []));
+
+const ledger = computed(() => (isUser.value ? null : readRunLedger(props.message.ledger)));
+const ledgerPct = computed(() => {
+  const steps = ledger.value?.steps ?? [];
+  return steps.length ? (steps.filter(step => step.done).length / steps.length) * 100 : 0;
+});
+// Open while the run is working, closed once it has answered; a click decides from then on.
+const ledgerOpen = ref<boolean | null>(null);
+const ledgerShown = computed(() => ledgerOpen.value ?? !!props.message.pending);
 
 const outcome = computed(() => runOutcome(props.message));
 const tokens = computed(() => {

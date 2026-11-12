@@ -41,7 +41,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import { telHoverT, fmtTime, fmtUnit, type TelUnit, type TelSeries } from '~/scripts/apiTelemetryShared';
-import { Chart, ensureChartsRegistered, cssVar, theme, tooltipOptions, axisTicks, crosshairPlugin, selectionPlugin } from '~/scripts/telChart';
+import { Chart, ensureChartsRegistered, cssVar, theme, tooltipOptions, axisTicks, crosshairPlugin, selectionPlugin, marksPlugin } from '~/scripts/telChart';
 
 const props = withDefaults(defineProps<{
   t0: number;
@@ -55,6 +55,8 @@ const props = withDefaults(defineProps<{
   dim?: boolean;
   /** Fixed y max (e.g. 100 for percentages, 1 for Apdex). */
   yMax?: number;
+  /** Event marks drawn as dashed lines (routing changes, restarts). None by default. */
+  marks?: { t: number; label?: string }[];
 }>(), { unit: 'count', label: 'Chart', height: 110 });
 
 const emit = defineEmits<{ zoom: [from: number, to: number]; pick: [t: number] }>();
@@ -138,7 +140,7 @@ function build() {
   chart.value = new Chart(el, {
     type: 'line',
     data: { labels, datasets: datasets(el) as any },
-    plugins: [crosshairPlugin, selectionPlugin],
+    plugins: [crosshairPlugin, selectionPlugin, marksPlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -146,6 +148,7 @@ function build() {
       normalized: true,
       // Page-wide time mapping used by the crosshair plugin.
       telTime: { t0: props.t0, step: props.step },
+      telMarks: props.marks ?? [],
       layout: { padding: { top: 4, right: 4 } },
       interaction: { mode: 'index', intersect: false, axis: 'x' },
       plugins: {
@@ -201,6 +204,7 @@ function refresh() {
   const next = datasets(el);
   next.forEach((d, i) => Object.assign(c.data.datasets[i], d));
   (c.options as any).telTime = { t0: props.t0, step: props.step };
+  (c.options as any).telMarks = props.marks ?? [];
   c.update('none');
 }
 
@@ -277,7 +281,7 @@ const ariaSummary = computed(() => {
   return `${props.label}. ${parts.join('; ')}. Arrow keys step through buckets; drag to zoom; click to open traces.`;
 });
 
-watch(() => [props.series, props.t0, props.step], refresh);
+watch(() => [props.series, props.t0, props.step, props.marks], refresh);
 watch(() => [props.stacked, props.log, props.yMax, props.unit, props.series.length], () => build());
 watch(tableView, v => { if (!v) nextTick(build); });
 

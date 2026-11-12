@@ -123,6 +123,86 @@ test('Insights reads the history once and labels the flat-fee model honestly', a
   await expect(page).toHaveURL(/view=insights/);
 });
 
+test('Insights says how scripts are doing and where a model call spends its time', async ({ page }) => {
+  const api = await openKliveAgent(page);
+  await page.getByTestId('view-insights').click();
+
+  const health = page.getByTestId('kax-script-health');
+  // 121 scripts, one of them stopped by hand: 100 of the 120 that count ran.
+  await expect(health.getByTestId('script-verdict')).toContainText('100 of 120 scripts ran (83%)');
+  await expect(health.getByTestId('script-verdict')).toContainText('9 did not compile, 8 threw, 2 ran out of time');
+  await expect(health.getByTestId('script-verdict')).toContainText('14 ran only because the engine fixed them first');
+  // A percentile is the edge of a histogram bucket, and days before tracking began are unknown, not zero.
+  await expect(health).toContainText('< 250 ms');
+  await expect(health).toContainText('recorded since');
+  await expect(health.getByTestId('script-failures')).toContainText("'Widget' does not contain a definition for 'Depth'");
+  await expect(health.getByTestId('script-failures')).toContainText('did not compile');
+
+  const causes = page.getByTestId('kax-script-causes');
+  await expect(causes.getByTestId('script-repairs')).toContainText('member of an object-typed value');
+  await expect(causes.getByTestId('script-codes')).toContainText('CS1061');
+
+  const split = page.getByTestId('kax-model-split');
+  await expect(split).toContainText('Waiting for the provider');
+  await expect(split).toContainText('45.0%');
+  await expect(split).toContainText('One other call in flight');
+  // 250 calls at the "high" effort averaged 25.4 s each.
+  await expect(split).toContainText('by the reasoning effort asked for');
+  await expect(split).toContainText('25.40 s');
+  await expect(split.getByTestId('provider-slow')).toHaveCount(0);
+
+  // The parts of a model call are not listed again beside the whole.
+  const stages = page.getByTestId('kax-stages');
+  await expect(stages).toContainText('Native tools');
+  await expect(stages).not.toContainText('Waiting for the provider');
+  await expect(stages).not.toContainText('Later compiles');
+
+  await expect(page.getByTestId('kax-slow-tools')).toContainText('example_research');
+  await expect(page.getByTestId('kax-slow-tools')).toContainText('hit the limit');
+
+  // One read per range, and a range the server keeps the same days for is not read twice.
+  await page.getByTestId('range-7D').click();
+  await expect.poll(() => api.directGets.filter(p => p.startsWith('/kliveagent/stats/scripts'))).toEqual(['/kliveagent/stats/scripts?days=30', '/kliveagent/stats/scripts?days=7']);
+  await page.getByTestId('range-30D').click();
+  await expect(health.getByTestId('script-verdict')).toBeVisible();
+  expect(api.directGets.filter(p => p.startsWith('/kliveagent/stats/scripts')).length).toBe(2);
+});
+
+test('a server without script health says so instead of showing zeros', async ({ page }) => {
+  await openKliveAgent(page, { legacyServer: true });
+  await expect(page.getByTestId('kax-vitals').getByTestId('vitals-provider')).toHaveCount(0);
+  await page.getByTestId('view-insights').click();
+  await expect(page.getByTestId('kax-script-health')).toContainText('does not report script health yet');
+  await expect(page.getByTestId('kax-script-causes')).toContainText('Not reported by this server yet');
+  await expect(page.getByTestId('kax-slow-tools')).toContainText('Not reported by this server yet');
+});
+
+test('a slow provider is said beside the chat, where the waiting happens', async ({ page }) => {
+  await openKliveAgent(page, { providerSlow: true });
+  const line = page.getByTestId('kax-vitals').getByTestId('vitals-provider');
+  await expect(line).toContainText('The model provider is slow right now');
+  await expect(line).toContainText('47.00 s');
+  await expect(line).toContainText('9 calls in the last 15 minutes');
+  // The server also files it under Results; that entry has no conversation, so it opens the figures.
+  await page.getByTestId('kax-inbox').getByTestId('inbox-row').filter({ hasText: 'The model provider is slow' }).click();
+  await expect(page.getByTestId('kax-insights')).toBeVisible();
+  await expect(page.getByTestId('kax-model-split').getByTestId('provider-slow')).toContainText('not in this server');
+});
+
+test('a run that kept a plan shows it with its answer', async ({ page }) => {
+  await openKliveAgent(page);
+  await page.getByTestId('kax-rail').getByTestId('rail-conv').first().click();
+  const ledger = page.getByTestId('msg-agent').getByTestId('msg-ledger');
+  await expect(ledger).toContainText('Plan');
+  await expect(ledger).toContainText('2 of 3 done');
+  // The run has answered, so the plan is one line until it is opened.
+  await expect(ledger).not.toContainText('Check the watchdog log');
+  await ledger.getByRole('button').click();
+  await expect(ledger).toContainText('Check the watchdog log for forced restarts');
+  await expect(ledger).toContainText('35 starts in 7 days');
+  await expect(ledger).toContainText('/api/uptime/periods');
+});
+
 test('Library filters memories and deletes only after a confirmation', async ({ page }) => {
   const api = await openKliveAgent(page);
   await page.getByTestId('view-library').click();

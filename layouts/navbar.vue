@@ -124,6 +124,7 @@ const NAV_GROUPS = [
     items: [
       { to: '/botSchedule', label: 'Schedule', icon: '◷' },
       { to: '/admin', label: 'Admin', icon: '★' },
+      { to: '/klivellm', label: 'KliveLLM', icon: '⌬' },
       { to: '/administration/profiles', label: 'Profiles', icon: '◉' },
       { to: '/administration/api-telemetry', label: 'API telemetry', icon: '⌇' },
     ],

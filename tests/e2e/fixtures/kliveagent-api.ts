@@ -13,6 +13,8 @@ export interface AgentMockOptions {
   legacyServer?: boolean;
   /** KliveAgent still warming up until this many status reads have been answered. */
   startingReads?: number;
+  /** The server's rolling check says the model provider is slow right now. */
+  providerSlow?: boolean;
 }
 
 export interface AgentApiMock {
@@ -59,8 +61,65 @@ function conversationDetail(id: string) {
     ],
     recentRuns: [
       { requestId: 'r1', status: 'Completed', promptTokens: 52_000, completionTokens: 1_200, iteration: 3,
-        activity: [{ iteration: 1, kind: 'script', text: 'Read the uptime periods' }, { iteration: 2, kind: 'think', text: 'Matched starts to commits' }] },
+        activity: [{ iteration: 1, kind: 'script', text: 'Read the uptime periods' }, { iteration: 2, kind: 'think', text: 'Matched starts to commits' }],
+        // The run's own plan and notes (AgentRunLedger), as the run record keeps them.
+        ledger: {
+          steps: [
+            { text: 'Read the uptime periods', done: true, note: '35 starts in 7 days' },
+            { text: 'Match each start to a commit', done: true },
+            { text: 'Check the watchdog log for forced restarts', done: false },
+          ],
+          facts: ['Uptime periods are served by /api/uptime/periods'],
+          updatedAt: iso(21 * MIN),
+        } },
     ],
+  };
+}
+
+/** GET /kliveagent/stats/scripts, in the shape KliveAgentStats.BuildScriptHealth produces. */
+function scriptHealthPayload(days: number, providerSlow: boolean) {
+  const slice = (extra: Record<string, unknown>) => ({
+    total: 0, failed: 0, compile: 0, runtime: 0, timeout: 0, compileTimeout: 0, stopped: 0, repaired: 0, repairedButFailed: 0,
+    firstPassPct: null, failurePct: null, coldCompiles: 0, coldCompileAvgMs: null, coldCompileP50Ms: null, coldCompileP95Ms: null,
+    coldCompileMaxMs: null, warmCompiles: 0, warmCompileAvgMs: null, warmCompileP50Ms: null, warmCompileP95Ms: null, warmCompileMaxMs: null,
+    runAvgMs: null, longestFailureStreak: 0, ...extra,
+  });
+  const day = (msAgo: number, total: number, failed: number) => slice({
+    date: new Date(Date.now() - msAgo).toISOString().slice(0, 10), total, failed, compile: failed, firstPassPct: total ? ((total - failed) / total) * 100 : null,
+  });
+  return {
+    windowDays: days,
+    trackingSince: new Date(Date.now() - 2 * DAY).toISOString().slice(0, 10),
+    totals: slice({
+      window: `${days}d`, total: 121, failed: 20, compile: 9, runtime: 8, timeout: 2, compileTimeout: 1, stopped: 1, repaired: 14, repairedButFailed: 3,
+      firstPassPct: 83.3, failurePct: 16.7, coldCompiles: 12, coldCompileAvgMs: 210, coldCompileP50Ms: 250, coldCompileP95Ms: 1000, coldCompileMaxMs: 940,
+      warmCompiles: 105, warmCompileAvgMs: 80, warmCompileP50Ms: 100, warmCompileP95Ms: 500, warmCompileMaxMs: 460, runAvgMs: 340, longestFailureStreak: 4,
+    }),
+    days: [day(2 * DAY, 30, 8), day(DAY, 50, 8), day(0, 41, 4)],
+    weeks: [slice({ week: '2026-W46', total: 121, failed: 20, firstPassPct: 83.3 })],
+    repairKinds: [
+      { kind: 'member of an object-typed value', count: 9 },
+      { kind: 'top-level using declaration', count: 4 },
+      { kind: 'missing await', count: 1 },
+    ],
+    topErrorCodes: [{ code: 'CS1061', count: 33 }, { code: 'NullReferenceException', count: 21 }, { code: 'CS1503', count: 17 }],
+    recentFailures: [
+      { at: iso(30 * MIN), kind: 'compile', code: 'CS1061', summary: "[CS1061] line 4:19 — 'Widget' does not contain a definition for 'Depth'" },
+      { at: iso(3 * HOUR), kind: 'runtime', code: 'NullReferenceException', summary: 'Runtime error: NullReferenceException: Object reference not set to an instance of an object.' },
+    ],
+    slowTools: [{ at: iso(5 * HOUR), tool: 'example_research', operation: 'evaluate', durationMs: 600_000, timedOut: true }],
+    compileBucketsMs: [50, 100, 250, 500, 1000, 2000, 5000, 10000, 30000],
+    watch: healthPayload(providerSlow),
+  };
+}
+
+/** The server's two rolling checks, as /kliveagent/status and the script-health route carry them. */
+function healthPayload(providerSlow: boolean) {
+  return {
+    scripts: { window: 50, sampled: 50, failed: 8, firstPassPct: 84, floorPct: 60, belowFloor: false, lastAlertAt: null },
+    provider: providerSlow
+      ? { windowMinutes: 15, calls: 9, medianWaitMs: 47_000, limitMs: 30_000, slow: true, lastAlertAt: iso(4 * MIN) }
+      : { windowMinutes: 15, calls: 3, medianWaitMs: 4_000, limitMs: 30_000, slow: false, lastAlertAt: null },
   };
 }
 
@@ -93,6 +152,18 @@ function statsPayload() {
         { name: 'model', calls: 7207, avgMs: 24_506, totalMs: 176_612_000, maxMs: 300_000 },
         { name: 'nativeTool', calls: 3874, avgMs: 10_822, totalMs: 41_924_000, maxMs: 200_000 },
         { name: 'prompt.repoMap', calls: 102, avgMs: 891, totalMs: 91_000, maxMs: 2_000 },
+        // The parts of a model call and of a script (recorded since the script-health release).
+        { name: 'model.queued', calls: 40, avgMs: 500, totalMs: 20_000, maxMs: 4_000 },
+        { name: 'model.awaiting', calls: 400, avgMs: 9_000, totalMs: 3_600_000, maxMs: 120_000 },
+        { name: 'model.reasoning', calls: 380, avgMs: 6_000, totalMs: 2_280_000, maxMs: 60_000 },
+        { name: 'model.streaming', calls: 400, avgMs: 5_250, totalMs: 2_100_000, maxMs: 90_000 },
+        { name: 'model.alone', calls: 320, avgMs: 18_000, totalMs: 5_760_000, maxMs: 200_000 },
+        { name: 'model.with1other', calls: 80, avgMs: 28_000, totalMs: 2_240_000, maxMs: 260_000 },
+        { name: 'model.think.low', calls: 150, avgMs: 11_000, totalMs: 1_650_000, maxMs: 90_000 },
+        { name: 'model.think.high', calls: 250, avgMs: 25_400, totalMs: 6_350_000, maxMs: 260_000 },
+        { name: 'script.coldCompile', calls: 12, avgMs: 210, totalMs: 2_520, maxMs: 940 },
+        { name: 'script.compile', calls: 105, avgMs: 80, totalMs: 8_400, maxMs: 460 },
+        { name: 'script.run', calls: 117, avgMs: 340, totalMs: 39_780, maxMs: 30_000 },
       ],
       recent: [
         { startedAtUtc: iso(3 * HOUR), outcome: 'completed', durationMs: 55_500, iterations: 10, promptTokens: 1, completionTokens: 1, stages: { model: { count: 10, totalMs: 51_700 }, nativeTool: { count: 4, totalMs: 2_400 } } },
@@ -139,6 +210,8 @@ export async function installAgentApiMock(page: Page, options: AgentMockOptions 
     { notificationId: 'run-unread', kind: 'chat-completed', title: 'KliveAgent finished a conversation', body: 'The KliveAPI restarts were deploys.', conversationId: 'conv_mine_recent', requestId: 'r1', createdAt: iso(25 * MIN), readAt: null },
     { notificationId: 'msg-read', kind: 'agent-message', title: 'KliveAgent messaged you', body: 'Your Tumblr keys are ready.', conversationId: 'conv_mine_older', createdAt: iso(3 * DAY), readAt: iso(3 * DAY) },
     { notificationId: 'run-interrupted', kind: 'chat-interrupted', title: 'KliveAgent run was interrupted by a restart', body: 'Interrupted.', conversationId: 'conv_mine_older', createdAt: iso(4 * DAY), readAt: iso(4 * DAY) },
+    // What the server's own watch files when the provider is slow: no conversation behind it.
+    ...(options.providerSlow ? [{ notificationId: 'hlt-provider', kind: 'health-provider', title: 'The model provider is slow', body: 'The model provider is slow right now: a median of 47 s for each reply to start (9 calls).', conversationId: null, createdAt: iso(4 * MIN), readAt: iso(3 * MIN) }] : []),
   ];
   const state: AgentApiMock = {
     requestedPaths: [], directGets: [], batchCalls: [], posts: [],
@@ -161,8 +234,10 @@ export async function installAgentApiMock(page: Page, options: AgentMockOptions 
       case '/kliveagent/status': {
         statusReads++;
         const ready = statusReads > (options.startingReads ?? 0);
+        // A server from before the health watch sends no "health" at all.
+        const health = options.legacyServer ? undefined : healthPayload(!!options.providerSlow);
         return { status: 200, body: ready
-          ? { ready: true, state: 'ready', progress: 100, message: 'KliveAgent is ready.', codebase: { ready: true } }
+          ? { ready: true, state: 'ready', progress: 100, message: 'KliveAgent is ready.', codebase: { ready: true }, health }
           : { ready: false, state: 'starting', progress: 45, message: 'Restoring background tasks…' } };
       }
       case '/kliveagent/computer': return { status: 200, body: { enabled: true, computer: { target: 'container', setting: 'auto', containerId: 'c0ffee', suspended: true, ready: false, pendingTakeovers: [] } } };
@@ -182,6 +257,9 @@ export async function installAgentApiMock(page: Page, options: AgentMockOptions 
       }
       case '/kliveagent/stats': return { status: 200, body: statsPayload() };
       case '/kliveagent/stats/prompt-cache': return { status: 200, body: PROMPT_CACHE };
+      case '/kliveagent/stats/scripts': return options.legacyServer
+        ? { status: 404, body: { error: 'Route not found' } }
+        : { status: 200, body: scriptHealthPayload(Number(url.searchParams.get('days')) || 30, !!options.providerSlow) };
       case '/kliveagent/memories': return { status: 200, body: url.searchParams.get('query') ? MEMORIES.filter(m => m.content.toLowerCase().includes(url.searchParams.get('query')!.toLowerCase())) : MEMORIES };
       case '/kliveagent/shortcuts': return { status: 200, body: [{ id: 'sc-1', title: 'Restart a service', content: 'await RestartService("X");', memoryType: 'Shortcut', tags: ['ops'], createdAt: iso(DAY) }] };
       case '/kliveagent/capabilities': return { status: 200, body: [

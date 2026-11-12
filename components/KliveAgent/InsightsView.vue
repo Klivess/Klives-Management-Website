@@ -10,7 +10,7 @@
           <div class="kax-seg" role="group" aria-label="Range">
             <button v-for="r in USAGE_RANGES" :key="r.id" class="kax-seg__opt" type="button" :aria-pressed="range === r.id" :data-testid="`range-${r.id}`" @click="range = r.id">{{ r.label }}</button>
           </div>
-          <button class="kax-btn kax-btn--sm" type="button" :disabled="loading" @click="refresh"><KliveAgentIcon name="refresh" :class="{ 'kax-spin': loading || cacheLoading }" />Refresh</button>
+          <button class="kax-btn kax-btn--sm" type="button" :disabled="loading" @click="refresh"><KliveAgentIcon name="refresh" :class="{ 'kax-spin': loading || cacheLoading || scriptsLoading }" />Refresh</button>
         </div>
       </div>
 
@@ -111,7 +111,7 @@
             </div>
           </section>
 
-          <section class="kax-card">
+          <section class="kax-card" data-testid="kax-stages">
             <header class="kax-card__head">
               <h3 class="kax-card__title"><KliveAgentIcon name="gauge" />Where run time goes</h3>
               <span class="kax-card__meta">all measured runs</span>
@@ -134,6 +134,161 @@
         </div>
 
         <div class="kax-grid-3">
+          <section class="kax-card" data-testid="kax-script-health">
+            <header class="kax-card__head">
+              <h3 class="kax-card__title"><KliveAgentIcon name="code" />Script health</h3>
+              <span class="kax-card__meta">{{ scriptsMeta }}</span>
+            </header>
+            <div class="kax-card__body">
+              <p v-if="!scriptsSupported" class="kax-dim">This server does not report script health yet. It appears after the next deploy.</p>
+              <p v-else-if="scriptsError" class="kax-verdict-line" data-tone="crit"><KliveAgentIcon name="alert" />{{ scriptsError }}</p>
+              <p v-else-if="!scripts" class="kax-dim">{{ scriptsLoading ? 'Reading script outcomes…' : '—' }}</p>
+              <template v-else>
+                <p class="kax-verdict-line" :data-tone="scriptVerdict.tone" data-testid="script-verdict"><KliveAgentIcon :name="scriptVerdict.tone === 'ok' ? 'check-circle' : 'alert'" /><span>{{ scriptVerdict.text }}</span></p>
+                <div class="kax-vitals kax-vitals--4" style="margin-top: 10px">
+                  <div class="kax-vital" :title="`The first script of a conversation: ${fmtInt(scripts.totals.coldCompiles)} compiled, the slowest in ${fmtMs(scripts.totals.coldCompileMaxMs)}`">
+                    <span class="kax-vital__v">{{ fmtUnder(scripts.totals.coldCompileP50Ms) }}</span>
+                    <span class="kax-vital__l">first compile · p95 {{ fmtUnder(scripts.totals.coldCompileP95Ms) }}</span>
+                  </div>
+                  <div class="kax-vital" :title="`Every later script: ${fmtInt(scripts.totals.warmCompiles)} compiled, the slowest in ${fmtMs(scripts.totals.warmCompileMaxMs)}`">
+                    <span class="kax-vital__v">{{ fmtUnder(scripts.totals.warmCompileP50Ms) }}</span>
+                    <span class="kax-vital__l">later compiles · p95 {{ fmtUnder(scripts.totals.warmCompileP95Ms) }}</span>
+                  </div>
+                  <div class="kax-vital" :title="`Scripts the engine corrected before running them. ${fmtInt(scripts.totals.repairedButFailed)} more were corrected and still failed.`">
+                    <span class="kax-vital__v">{{ fmtInt(scripts.totals.repaired) }}</span>
+                    <span class="kax-vital__l">fixed by the engine</span>
+                  </div>
+                  <div class="kax-vital" :data-tone="scripts.totals.longestFailureStreak > 5 ? 'warn' : undefined" title="The most scripts that failed one after another in a single run">
+                    <span class="kax-vital__v">{{ fmtInt(scripts.totals.longestFailureStreak) }}</span>
+                    <span class="kax-vital__l">longest failure streak</span>
+                  </div>
+                </div>
+                <template v-if="scriptPoints.length > 1">
+                  <KliveAgentSpark :points="scriptPoints" bars color="var(--kax-ok)" label="Scripts per day, failed scripts in red" :format="v => `${v} scripts`" />
+                  <div class="kax-spark__caption"><span>{{ scriptPoints[0].label }}</span><span>scripts a day · failed in red</span><span>{{ scriptPoints[scriptPoints.length - 1].label }}</span></div>
+                </template>
+                <h4 class="kax-subhead">Latest failures</h4>
+                <p v-if="!scripts.recentFailures.length" class="kax-dim">None recorded.</p>
+                <!-- A list, not a table: the compiler's sentence needs the full width at any screen size. -->
+                <ul v-else class="kax-fails" data-testid="script-failures">
+                  <li v-for="(failure, i) in scripts.recentFailures.slice(0, 8)" :key="`${failure.at}-${i}`" class="kax-fail">
+                    <div class="kax-fail__head">
+                      <span class="kax-chip" :data-tone="failure.kind === 'compile' ? 'warn' : 'crit'">{{ FAILURE_KIND_LABELS[failure.kind] || failure.kind }}</span>
+                      <span class="kax-mono">{{ failure.code }}</span>
+                      <span class="kax-fail__when">{{ shortWhen(failure.at, now) }}</span>
+                    </div>
+                    <div class="kax-fail__text">{{ failure.summary }}</div>
+                  </li>
+                </ul>
+              </template>
+            </div>
+          </section>
+
+          <section class="kax-card" data-testid="kax-script-causes">
+            <header class="kax-card__head">
+              <h3 class="kax-card__title"><KliveAgentIcon name="wrench" />Fixed, and still failing</h3>
+              <span class="kax-card__meta">{{ scripts ? 'all time' : '' }}</span>
+            </header>
+            <div v-if="!scripts" class="kax-card__empty">{{ scriptsSupported ? '—' : 'Not reported by this server yet.' }}</div>
+            <div v-else class="kax-card__body">
+              <h4 class="kax-subhead" style="margin-top: 2px">Fixed before running</h4>
+              <p v-if="!scripts.repairKinds.length" class="kax-dim">The engine has not had to fix a script yet.</p>
+              <table v-else class="kax-table" data-testid="script-repairs">
+                <tbody>
+                  <tr v-for="repair in scripts.repairKinds" :key="repair.kind">
+                    <td>{{ repair.kind }}</td>
+                    <td class="kax-bar-cell" data-tone="ok"><span class="kax-bar-cell__fill" :style="{ width: `${(repair.count / repairMax) * 100}%` }"></span></td>
+                    <td class="kax-num" style="width: 1%">{{ fmtInt(repair.count) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <h4 class="kax-subhead">Most common failures</h4>
+              <p v-if="!scripts.topErrorCodes.length" class="kax-dim">None recorded.</p>
+              <table v-else class="kax-table" data-testid="script-codes">
+                <tbody>
+                  <tr v-for="code in scripts.topErrorCodes.slice(0, 8)" :key="code.code">
+                    <td class="kax-mono">{{ code.code }}</td>
+                    <td class="kax-bar-cell" data-tone="crit"><span class="kax-bar-cell__fill" :style="{ width: `${(code.count / codeMax) * 100}%` }"></span></td>
+                    <td class="kax-num" style="width: 1%">{{ fmtInt(code.count) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <div class="kax-grid-2">
+          <section class="kax-card" data-testid="kax-model-split">
+            <header class="kax-card__head">
+              <h3 class="kax-card__title"><KliveAgentIcon name="clock" />Inside a model call</h3>
+              <span class="kax-card__meta">{{ split ? `${fmtMs(split.totalMs)} over all measured runs` : '' }}</span>
+            </header>
+            <div class="kax-card__body">
+              <p v-for="line in providerLines" :key="line.id" class="kax-verdict-line" :data-tone="line.tone" style="margin-bottom: 8px" data-testid="provider-slow"><KliveAgentIcon name="alert" /><span><b>{{ line.title }}.</b> {{ line.detail }}</span></p>
+              <p v-if="!split" class="kax-dim">The server splits a model call into its parts from the first run after its next deploy.</p>
+              <template v-else>
+                <div class="kax-stack" role="img" :aria-label="split.states.map(s => `${s.label} ${s.sharePct.toFixed(0)}%`).join(', ')">
+                  <span v-for="state in split.states" :key="state.name" class="kax-stack__part" :data-tone="stateTone(state.name)" :style="{ width: `${state.sharePct}%` }" :title="`${state.label}: ${fmtMs(state.totalMs)} (${state.sharePct.toFixed(1)}%)`"></span>
+                </div>
+                <div class="kax-tablewrap">
+                  <table class="kax-table">
+                    <thead><tr><th>Part of the call</th><th class="kax-num">Share</th><th class="kax-num">Total</th><th class="kax-num">Each time</th></tr></thead>
+                    <tbody>
+                      <tr v-for="state in split.states" :key="state.name" :title="state.name === 'model.awaiting' ? 'From sending the request to the first output. A call that does not stream counts wholly here.' : undefined">
+                        <td><i class="kax-swatch" :data-tone="stateTone(state.name)"></i>{{ state.label }}</td>
+                        <td class="kax-num">{{ state.sharePct.toFixed(1) }}%</td>
+                        <td class="kax-num">{{ fmtMs(state.totalMs) }}</td>
+                        <td class="kax-num">{{ fmtMs(state.avgMs) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <template v-if="split.concurrency.length">
+                  <h4 class="kax-subhead">A whole call, by what else was in flight when it was sent</h4>
+                  <table class="kax-table">
+                    <thead><tr><th>Other KliveAgent calls</th><th class="kax-num">Calls</th><th class="kax-num">Each call</th></tr></thead>
+                    <tbody>
+                      <tr v-for="row in split.concurrency" :key="row.name"><td>{{ row.label }}</td><td class="kax-num">{{ fmtInt(row.calls) }}</td><td class="kax-num">{{ fmtMs(row.avgMs) }}</td></tr>
+                    </tbody>
+                  </table>
+                </template>
+                <template v-if="split.thinking.length">
+                  <h4 class="kax-subhead">A whole call, by the reasoning effort asked for</h4>
+                  <table class="kax-table">
+                    <thead><tr><th>Effort</th><th class="kax-num">Calls</th><th class="kax-num">Each call</th></tr></thead>
+                    <tbody>
+                      <tr v-for="row in split.thinking" :key="row.level"><td style="text-transform: capitalize">{{ row.level }}</td><td class="kax-num">{{ fmtInt(row.calls) }}</td><td class="kax-num">{{ fmtMs(row.avgMs) }}</td></tr>
+                    </tbody>
+                  </table>
+                </template>
+              </template>
+            </div>
+          </section>
+
+          <section class="kax-card" data-testid="kax-slow-tools">
+            <header class="kax-card__head">
+              <h3 class="kax-card__title"><KliveAgentIcon name="alert" />Slow tool calls</h3>
+              <span class="kax-card__meta">a minute or more</span>
+            </header>
+            <div v-if="!scripts" class="kax-card__empty">{{ scriptsSupported ? '—' : 'Not reported by this server yet.' }}</div>
+            <div v-else-if="!scripts.slowTools.length" class="kax-card__empty">No tool call has taken a minute or more.</div>
+            <div v-else class="kax-tablewrap" style="padding: 0 6px 8px">
+              <table class="kax-table">
+                <thead><tr><th>When</th><th>Tool</th><th>Operation</th><th class="kax-num">Took</th></tr></thead>
+                <tbody>
+                  <tr v-for="(tool, i) in scripts.slowTools.slice(0, 10)" :key="`${tool.at}-${i}`">
+                    <td class="kax-num kax-dim" style="white-space: nowrap">{{ shortWhen(tool.at, now) }}</td>
+                    <td class="kax-mono">{{ tool.tool }}</td>
+                    <td class="kax-dim kax-truncate" style="max-width: 220px" :title="tool.operation || ''">{{ tool.operation || '—' }}</td>
+                    <td class="kax-num" style="white-space: nowrap">{{ fmtMs(tool.durationMs) }}<span v-if="tool.timedOut" class="kax-chip" data-tone="crit" style="margin-left: 6px" title="The call was still running at its deadline, so the run moved on without it">hit the limit</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <div class="kax-grid-3">
           <section class="kax-card" data-testid="kax-cache">
             <header class="kax-card__head">
               <h3 class="kax-card__title"><KliveAgentIcon name="bolt" />Prompt cache</h3>
@@ -144,7 +299,7 @@
               <p v-else-if="!cache" class="kax-dim">{{ cacheLoading ? 'Reading the provider’s cache measurements…' : '—' }}</p>
               <template v-else>
                 <p class="kax-verdict-line" :data-tone="cache.meetsCacheHitTarget ? 'ok' : 'warn'"><KliveAgentIcon :name="cache.meetsCacheHitTarget ? 'check-circle' : 'alert'" /><span><b style="text-transform: capitalize">{{ cache.status }}</b> · {{ cache.verdict }}</span></p>
-                <div class="kax-vitals" style="margin-top: 10px; grid-template-columns: repeat(4, minmax(0, 1fr))">
+                <div class="kax-vitals kax-vitals--4" style="margin-top: 10px">
                   <div class="kax-vital"><span class="kax-vital__v">{{ fmtPct(cache.firstTurnHitRatePct, 0) }} / {{ fmtPct(cache.continuationHitRatePct, 0) }}</span><span class="kax-vital__l">first / later turns</span></div>
                   <div class="kax-vital"><span class="kax-vital__v">{{ fmtTokens(cache.uncachedTokens) }}</span><span class="kax-vital__l">uncached tokens</span></div>
                   <div class="kax-vital"><span class="kax-vital__v">{{ fmtInt(cache.zeroHitRequests) }}</span><span class="kax-vital__l">calls with no hit</span></div>
@@ -191,8 +346,9 @@
 import { computed, ref, watch } from 'vue';
 import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 import {
-  USAGE_RANGES, bucketsFor, costLabel, fmtInt, fmtMs, fmtPct, fmtTokens, scriptTone, shortWhen, stageLabel, summarise,
-  type UsageRangeId, type UsageStats,
+  FAILURE_KIND_LABELS, USAGE_RANGES, bucketsFor, costLabel, fmtInt, fmtMs, fmtPct, fmtTokens, fmtUnder, isSubStage, modelCallSplit,
+  readScriptHealth, scriptHealthVerdict, scriptTone, shortWhen, stageLabel, summarise, watchLines,
+  type AgentTone, type ScriptHealth, type UsageRangeId, type UsageStats,
 } from '~/scripts/agentConsole';
 import KliveAgentIcon from '~/components/KliveAgent/Icon.vue';
 import KliveAgentSpark from '~/components/KliveAgent/Spark.vue';
@@ -250,8 +406,10 @@ const tokenArea = computed(() => {
 
 // ── runs ──
 const recentRuns = computed<any[]>(() => (Array.isArray(perf.value?.recent) ? perf.value.recent.slice(0, 12) : []));
+// The parts of a model call and of a script have their own cards: listed here beside "Model" and
+// "C# scripts" they would count the same time twice.
 const stages = computed<any[]>(() => (Array.isArray(perf.value?.stages) ? [...perf.value.stages] : [])
-  .filter(s => (s.totalMs ?? 0) > 0 && !String(s.name).startsWith('talk.'))
+  .filter(s => (s.totalMs ?? 0) > 0 && !String(s.name).startsWith('talk.') && !isSubStage(String(s.name)))
   .sort((a, b) => b.totalMs - a.totalMs)
   .slice(0, 10));
 const stageMax = computed(() => Math.max(1, ...stages.value.map(s => s.totalMs)));
@@ -287,9 +445,63 @@ async function loadCache(force = false) {
 }
 watch(cacheRange, () => void loadCache(), { immediate: true });
 
+// ── script health: read on its own, per range. The server keeps 180 days of it. ──
+const scripts = ref<ScriptHealth | null>(null);
+const scriptsLoading = ref(false);
+const scriptsError = ref('');
+/** False on a server from before /kliveagent/stats/scripts (404): the cards say so instead of showing zeros. */
+const scriptsSupported = ref(true);
+const scriptDays = computed(() => ({ '7D': 7, '30D': 30, '90D': 90, '6M': 180, '1Y': 180, ALL: 180 } as Record<UsageRangeId, number>)[range.value]);
+const scriptsMemo = new Map<number, ScriptHealth>();
+const scriptVerdict = computed(() => (scripts.value ? scriptHealthVerdict(scripts.value) : { tone: 'neutral' as AgentTone, text: '' }));
+const scriptsMeta = computed(() => {
+  const health = scripts.value;
+  if (!health) return '';
+  const days = `last ${health.windowDays} day${health.windowDays === 1 ? '' : 's'}`;
+  // Days before the server kept these figures are unknown, not zero.
+  const since = health.trackingSince ? new Date(`${health.trackingSince}T00:00:00Z`) : null;
+  return since && !Number.isNaN(since.getTime())
+    ? `${days} · recorded since ${since.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })}`
+    : days;
+});
+const scriptPoints = computed(() => (scripts.value?.days ?? []).map(day => ({ v: day.total - day.stopped, failed: day.failed, label: day.key.slice(5) })));
+const repairMax = computed(() => Math.max(1, ...(scripts.value?.repairKinds ?? []).map(r => r.count)));
+const codeMax = computed(() => Math.max(1, ...(scripts.value?.topErrorCodes ?? []).map(c => c.count)));
+
+async function loadScripts(force = false) {
+  const days = scriptDays.value;
+  if (!force && scriptsMemo.has(days)) { scripts.value = scriptsMemo.get(days) ?? null; return; }
+  scriptsLoading.value = true;
+  scriptsError.value = '';
+  try {
+    const response = await RequestGETFromKliveAPI(`/kliveagent/stats/scripts?days=${days}`, false, false);
+    if (response.status === 404) { scriptsSupported.value = false; scripts.value = null; return; }
+    const data = await response.json().catch(() => null);
+    const parsed = readScriptHealth(data);
+    if (!response.ok || !parsed) throw new Error(data?.error || `HTTP ${response.status}`);
+    scriptsSupported.value = true;
+    scriptsMemo.set(days, parsed);
+    if (days === scriptDays.value) scripts.value = parsed;
+  } catch (error: any) {
+    scriptsError.value = `Could not read script health: ${error?.message ?? error}`;
+  } finally {
+    scriptsLoading.value = false;
+  }
+}
+watch(scriptDays, () => void loadScripts(), { immediate: true });
+
+// ── inside a model call ──
+const split = computed(() => modelCallSplit(perf.value?.stages));
+const providerLines = computed(() => watchLines(scripts.value?.watch ?? null).filter(line => line.id === 'provider'));
+function stateTone(name: string): AgentTone {
+  return ({ 'model.queued': 'warn', 'model.awaiting': 'info', 'model.reasoning': 'accent', 'model.streaming': 'ok', 'model.retrying': 'crit' } as Record<string, AgentTone>)[name] ?? 'neutral';
+}
+
 function refresh() {
   cacheMemo.clear();
+  scriptsMemo.clear();
   emit('refresh');
   void loadCache(true);
+  void loadScripts(true);
 }
 </script>

@@ -564,6 +564,9 @@
 .kax-vital { background: var(--kax-surface); padding: 8px 9px; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .kax-vital__v { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; white-space: nowrap; color: var(--tone, var(--kax-ink)); }
 .kax-vital__l { font-size: 10.5px; color: var(--kax-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Four across where there is room, two where the labels would otherwise be cut ("first com…"). */
+.kax-vitals--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 720px) { .kax-vitals--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .kax-spark { display: block; width: 100%; height: 34px; margin-top: 8px; }
 .kax-spark__caption { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--kax-ink-4); margin-top: 2px; }
 
@@ -629,6 +632,41 @@
 .kax-bar-cell { position: relative; min-width: 120px; }
 .kax-bar-cell__fill { position: absolute; left: 0; top: 50%; height: 6px; transform: translateY(-50%); border-radius: 3px; background: var(--tone, var(--kax-accent)); opacity: 0.55; }
 .kax-bar-cell__text { position: relative; }
+
+/* One bar split by share (where the time inside a model call went), and the key beside each row. */
+.kax-stack { display: flex; gap: 2px; height: 10px; border-radius: 5px; overflow: hidden; margin: 6px 0 6px; background: var(--kax-line); }
+.kax-stack__part { display: block; min-width: 3px; background: var(--tone, var(--kax-ink-3)); opacity: 0.85; }
+.kax-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 7px; vertical-align: -0.02em; background: var(--tone, var(--kax-ink-3)); }
+/* Written with the .kax prefix throughout: the page's resets (.kax h4, .kax button, .kax ol) are one
+   class and one element, so a bare class loses to them. */
+.kax .kax-subhead { font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--kax-ink-4); margin: 14px 0 4px; }
+
+/* Latest script failures: what it was, its code and when, then the compiler's own sentence on a full line. */
+.kax .kax-fails { display: flex; flex-direction: column; }
+.kax-fail { padding: 7px 0; border-top: 1px solid var(--kax-line); }
+.kax-fail:first-child { border-top: 0; padding-top: 2px; }
+.kax-fail__head { display: flex; align-items: center; gap: 8px; font-size: 12px; min-width: 0; }
+.kax-fail__when { margin-left: auto; color: var(--kax-ink-4); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.kax-fail__text { margin-top: 3px; color: var(--kax-ink-3); font-size: 11.5px; line-height: 1.45; word-break: break-word; }
+
+/* The plan a long run keeps for itself: ticked steps, then the facts it wants to keep. */
+.kax-ledger { margin-top: 8px; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--kax-line); background: var(--kax-inset); font-size: 12px; }
+.kax .kax-ledger__head { display: flex; align-items: center; gap: 7px; width: 100%; color: var(--kax-ink-3); font-size: 11.5px; }
+.kax .kax-ledger__head:hover { color: var(--kax-ink-2); }
+.kax-ledger__head b { color: var(--kax-ink-2); font-weight: 600; }
+.kax-ledger__head .kax-icon:first-child { transition: transform 120ms; }
+.kax-ledger__head[aria-expanded='true'] .kax-icon:first-child { transform: rotate(90deg); }
+.kax-ledger__bar { flex: 1; height: 4px; border-radius: 2px; background: var(--kax-line); overflow: hidden; min-width: 40px; }
+.kax-ledger__bar span { display: block; height: 100%; background: var(--kax-ok); transition: width 300ms; }
+.kax .kax-ledger__steps { margin-top: 7px; display: flex; flex-direction: column; gap: 3px; }
+.kax-ledger__step { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 6px; color: var(--kax-ink-2); line-height: 1.45; }
+.kax-ledger__step .kax-icon { margin-top: 2px; font-size: 12px; color: var(--kax-ink-4); }
+.kax-ledger__step[data-done='true'] { color: var(--kax-ink-3); }
+.kax-ledger__step[data-done='true'] .kax-icon { color: var(--kax-ok); }
+.kax-ledger__step small { color: var(--kax-ink-4); font-size: 11px; }
+.kax-ledger__todo { width: 9px; height: 9px; margin: 4px 0 0 1px; border-radius: 50%; border: 1.5px solid var(--kax-ink-4); }
+.kax .kax-ledger__facts { margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--kax-line); display: flex; flex-direction: column; gap: 3px; color: var(--kax-ink-3); font-size: 11.5px; line-height: 1.45; }
+.kax-ledger__facts li { word-break: break-word; }
 
 .kax-tabs { display: flex; align-items: center; gap: 2px; border-bottom: 1px solid var(--kax-line); padding: 0 4px; overflow-x: auto; }
 .kax .kax-tab { display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 12px; color: var(--kax-ink-3); font-size: 12.5px; font-weight: 500; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }

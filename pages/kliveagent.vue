@@ -458,6 +458,8 @@ function startNewChat() {
 async function openNote(note: AgentNote) {
   void agent.markRead(note);
   if (note.kind === 'job-attention' && note.projectId) { await navigateTo(`/projects/${note.projectId}`); return; }
+  // A message from the server's own watch (scripts failing more, provider slow): the figures are in Insights.
+  if (note.kind?.startsWith('health-')) { setView('insights'); return; }
   if (note.conversationId) await openConversation(note.conversationId);
 }
 

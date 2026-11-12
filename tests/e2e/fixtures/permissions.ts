@@ -2655,6 +2655,140 @@ export const PERMISSIONS: FixturePermission[] = [
       "omniblox.studio.act"
     ],
     "sensitive": true
+  },
+  {
+    "key": "klivellm.overview.view",
+    "service": "KliveLLM",
+    "serviceKey": "klivellm",
+    "area": "Overview",
+    "tier": "Glance",
+    "tierValue": 1,
+    "title": "View KliveLLM",
+    "description": "Which service uses which router and model, router health, the routing in force and headline usage.",
+    "legacyRank": 5,
+    "implies": [],
+    "sensitive": false
+  },
+  {
+    "key": "klivellm.analytics.read",
+    "service": "KliveLLM",
+    "serviceKey": "klivellm",
+    "area": "Analytics",
+    "tier": "Read",
+    "tierValue": 2,
+    "title": "Read LLM analytics",
+    "description": "Time series, breakdowns, latency distributions, the cost simulator and forecasts.",
+    "legacyRank": 5,
+    "implies": [
+      "klivellm.overview.view"
+    ],
+    "sensitive": false
+  },
+  {
+    "key": "klivellm.calls.read",
+    "service": "KliveLLM",
+    "serviceKey": "klivellm",
+    "area": "Calls",
+    "tier": "Read",
+    "tierValue": 2,
+    "title": "Read the call log",
+    "description": "Every model call with its service, router, model, tokens, timings, cost and error (no prompt text).",
+    "legacyRank": 5,
+    "implies": [
+      "klivellm.overview.view"
+    ],
+    "sensitive": false
+  },
+  {
+    "key": "klivellm.content.read",
+    "service": "KliveLLM",
+    "serviceKey": "klivellm",
+    "area": "Calls",
+    "tier": "Read",
+    "tierValue": 2,
+    "title": "Read kept prompt and reply text",
+    "description": "The prompts and replies of calls made while text capture was switched on for their service.",
+    "legacyRank": 5,
+    "implies": [
+      "klivellm.calls.read"
+    ],
+    "sensitive": true
+  },
+  {
+    "key": "klivellm.routing.manage",
+    "service": "KliveLLM",
+    "serviceKey": "klivellm",
+    "area": "Routing",
+    "tier": "Manage",
+    "tierValue": 4,
+    "title": "Change model routing",
+    "description": "Assign routers and models to services, set fallbacks, budgets and spending, pause a service, set an override.",
+    "legacyRank": 5,
+    "implies": [
+      "klivellm.overview.view"
+    ],
+    "sensitive": false
+  },
+  {
+    "key": "klivellm.routers.manage",
+    "service": "KliveLLM",
+    "serviceKey": "klivellm",
+    "area": "Routers",
+    "tier": "Critical",
+    "tierValue": 5,
+    "title": "Manage routers and their keys",
+    "description": "Add, change, test and remove routers, and set their API keys.",
+    "legacyRank": 5,
+    "implies": [
+      "klivellm.overview.view"
+    ],
+    "sensitive": false
+  },
+  {
+    "key": "klivellm.prices.manage",
+    "service": "KliveLLM",
+    "serviceKey": "klivellm",
+    "area": "Costs",
+    "tier": "Manage",
+    "tierValue": 4,
+    "title": "Edit model prices",
+    "description": "The per-token prices calls are costed and simulated with.",
+    "legacyRank": 5,
+    "implies": [
+      "klivellm.overview.view"
+    ],
+    "sensitive": false
+  },
+  {
+    "key": "klivellm.data.export",
+    "service": "KliveLLM",
+    "serviceKey": "klivellm",
+    "area": "Data",
+    "tier": "Manage",
+    "tierValue": 4,
+    "title": "Export LLM data",
+    "description": "Download the call log and time series as CSV.",
+    "legacyRank": 5,
+    "implies": [
+      "klivellm.analytics.read",
+      "klivellm.calls.read"
+    ],
+    "sensitive": false
+  },
+  {
+    "key": "klivellm.settings.manage",
+    "service": "KliveLLM",
+    "serviceKey": "klivellm",
+    "area": "Settings",
+    "tier": "Critical",
+    "tierValue": 5,
+    "title": "Change KliveLLM ledger settings",
+    "description": "Retention, router probes and the ledger's other settings.",
+    "legacyRank": 5,
+    "implies": [
+      "klivellm.overview.view"
+    ],
+    "sensitive": false
   }
 ];
 

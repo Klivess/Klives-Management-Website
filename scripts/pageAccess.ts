@@ -82,6 +82,7 @@ const ENTRIES: Entry[] = [
 
     { prefix: '/botSchedule', label: 'Schedule', rule: anyOf('system.scheduler.read') },
     { prefix: '/admin', label: 'Admin', rule: anyOf('system.') },
+    { prefix: '/klivellm', label: 'KliveLLM', rule: anyOf('klivellm.') },
     { prefix: '/administration/api-telemetry', label: 'API telemetry', rule: anyOf('system.api.telemetry.read') },
     { prefix: '/administration/omnisettings', label: 'OmniSettings', rule: anyOf('system.settings.read') },
     { prefix: '/administration/botlogs', label: 'Service logs', rule: anyOf('system.logs.read') },

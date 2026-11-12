@@ -17,6 +17,14 @@
           </div>
         </div>
       </div>
+      <!-- The server's two rolling checks: nothing here while both are quiet. -->
+      <div v-for="line in healthLines" :key="line.id" class="kax-verdict-line" :data-tone="line.tone" style="margin-bottom: 8px" :data-testid="`vitals-${line.id}`">
+        <KliveAgentIcon name="alert" />
+        <div style="flex: 1; min-width: 0">
+          <div><b>{{ line.title }}</b></div>
+          <div class="kax-dim">{{ line.detail }}</div>
+        </div>
+      </div>
       <div class="kax-vitals">
         <div class="kax-vital" :title="`${fmtInt(summary?.TodayIterations)} model steps today`">
           <span class="kax-vital__v">{{ fmtInt(summary?.TodayMessages) }}</span>
@@ -53,7 +61,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { bucketsFor, costLabel, fmtInt, fmtMs, fmtTokens, scriptTone, summarise, type FlatSummary, type UsageStats } from '~/scripts/agentConsole';
+import { bucketsFor, costLabel, fmtInt, fmtMs, fmtTokens, readHealthWatch, scriptTone, summarise, watchLines, type FlatSummary, type UsageStats } from '~/scripts/agentConsole';
 import KliveAgentIcon from '~/components/KliveAgent/Icon.vue';
 import KliveAgentSpark from '~/components/KliveAgent/Spark.vue';
 
@@ -68,4 +76,6 @@ const cost = computed(() => costLabel(week.value.costUsd, week.value.totalTokens
 const fortnight = computed(() => bucketsFor(props.stats, '30D', props.now).slice(-14));
 const fortnightTokens = computed(() => fortnight.value.reduce((t, b) => t + b.totalTokens, 0));
 const days = computed(() => (props.stats ? fortnight.value.map(b => ({ v: b.messages, label: b.label })) : []));
+// Rides on the status the page already polls, so a slow provider is said here within 15 seconds.
+const healthLines = computed(() => watchLines(readHealthWatch(props.status?.health)));
 </script>

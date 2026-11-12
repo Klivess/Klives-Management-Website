@@ -185,7 +185,8 @@ export interface AgentNote {
 }
 
 export function noteTone(kind: string | undefined): AgentTone {
-  if (kind === 'chat-interrupted' || kind === 'job-attention') return 'warn';
+  // "health-scripts" and "health-provider" come from the server's own watch, not from a run.
+  if (kind === 'chat-interrupted' || kind === 'job-attention' || kind?.startsWith('health-')) return 'warn';
   if (kind === 'agent-message') return 'accent';
   if (kind === 'job-completed' || kind === 'chat-completed') return 'ok';
   return 'neutral';
@@ -193,7 +194,7 @@ export function noteTone(kind: string | undefined): AgentTone {
 
 export function noteIcon(kind: string | undefined): string {
   if (kind === 'agent-message') return 'message';
-  if (kind === 'chat-interrupted') return 'alert';
+  if (kind === 'chat-interrupted' || kind?.startsWith('health-')) return 'alert';
   if (kind === 'job-attention') return 'flag';
   if (kind?.startsWith('job')) return 'layers';
   return 'check';
@@ -465,12 +466,214 @@ export const STAGE_LABELS: Record<string, string> = {
   attachments: 'Attachments', model: 'Model', firstToken: 'First token', modelError: 'Model errors', modelRetry: 'Model retries',
   retryBackoff: 'Retry wait', firstVisibleText: 'Start → first text', script: 'C# scripts', nativeTool: 'Native tools',
   computerTool: 'Computer', waitTool: 'Explicit waits',
+  'script.coldCompile': 'First compile of a conversation', 'script.compile': 'Later compiles', 'script.run': 'Script run time',
+  'model.queued': 'Queued on this server', 'model.awaiting': 'Waiting for the provider', 'model.reasoning': 'Reasoning',
+  'model.streaming': 'Writing', 'model.retrying': 'Retrying', 'model.other': 'Other',
+  'model.alone': 'No other call in flight', 'model.with1other': 'One other call in flight', 'model.with2others': 'Two or more others in flight',
 };
 export function stageLabel(name: string): string {
   if (STAGE_LABELS[name]) return STAGE_LABELS[name];
   if (name.startsWith('prompt.')) return `Prompt · ${name.slice(7)}`;
   if (name.startsWith('talk.')) return `Talk · ${name.slice(5)}`;
+  if (name.startsWith('model.think.')) return `Reasoning effort · ${name.slice(12)}`;
   return name;
+}
+
+/** Stages that are a part of another stage on the same list: counting both would say the time twice. */
+export function isSubStage(name: string): boolean {
+  return name.startsWith('model.') || name.startsWith('script.');
+}
+
+// ───────────────────────────── script health and the model call ─────────────────────────────
+
+/** The two rolling checks the server keeps (KliveAgentStats.Watch): are scripts failing more, is the provider slow. */
+export interface AgentHealthWatch {
+  scripts: { window: number; sampled: number; failed: number; firstPassPct: number | null; floorPct: number; belowFloor: boolean; lastAlertAt: string | null };
+  provider: { windowMinutes: number; calls: number; medianWaitMs: number | null; limitMs: number; slow: boolean; lastAlertAt: string | null };
+}
+
+const numOrNull = (value: unknown) => (value == null || value === '' || !Number.isFinite(Number(value)) ? null : Number(value));
+
+export function readHealthWatch(raw: any): AgentHealthWatch | null {
+  if (!raw || typeof raw !== 'object' || !raw.scripts || !raw.provider) return null;
+  return {
+    scripts: {
+      window: num(raw.scripts.window, 50), sampled: num(raw.scripts.sampled), failed: num(raw.scripts.failed),
+      firstPassPct: numOrNull(raw.scripts.firstPassPct), floorPct: num(raw.scripts.floorPct, 60),
+      belowFloor: raw.scripts.belowFloor === true, lastAlertAt: raw.scripts.lastAlertAt ?? null,
+    },
+    provider: {
+      windowMinutes: num(raw.provider.windowMinutes, 15), calls: num(raw.provider.calls),
+      medianWaitMs: numOrNull(raw.provider.medianWaitMs), limitMs: num(raw.provider.limitMs, 30_000),
+      slow: raw.provider.slow === true, lastAlertAt: raw.provider.lastAlertAt ?? null,
+    },
+  };
+}
+
+/** What the page says about the watch, or nothing while both checks are quiet. */
+export function watchLines(watch: AgentHealthWatch | null): Array<{ id: 'provider' | 'scripts'; tone: AgentTone; title: string; detail: string }> {
+  if (!watch) return [];
+  const lines: Array<{ id: 'provider' | 'scripts'; tone: AgentTone; title: string; detail: string }> = [];
+  if (watch.provider.slow) {
+    lines.push({
+      id: 'provider', tone: 'warn', title: 'The model provider is slow right now',
+      detail: `Replies take a median of ${fmtMs(watch.provider.medianWaitMs)} to start (${fmtInt(watch.provider.calls)} calls in the last ${watch.provider.windowMinutes} minutes). That wait is at the provider, not in this server's queue.`,
+    });
+  }
+  if (watch.scripts.belowFloor) {
+    lines.push({
+      id: 'scripts', tone: 'warn', title: 'Scripts are failing more than usual',
+      detail: `${fmtInt(watch.scripts.sampled - watch.scripts.failed)} of the last ${fmtInt(watch.scripts.sampled)} ran. The alert level is ${Math.round(watch.scripts.floorPct)}%.`,
+    });
+  }
+  return lines;
+}
+
+/** One day, week or whole window of script outcomes (KliveAgentStats.Scripts). */
+export interface ScriptHealthSlice {
+  key: string;
+  total: number; failed: number; compile: number; runtime: number; timeout: number; compileTimeout: number; stopped: number;
+  repaired: number; repairedButFailed: number; firstPassPct: number | null;
+  coldCompiles: number; coldCompileP50Ms: number | null; coldCompileP95Ms: number | null; coldCompileMaxMs: number | null;
+  warmCompiles: number; warmCompileP50Ms: number | null; warmCompileP95Ms: number | null; warmCompileMaxMs: number | null;
+  runAvgMs: number | null; longestFailureStreak: number;
+}
+
+export interface ScriptHealth {
+  windowDays: number;
+  /** The first day the server kept these figures. Earlier days in the range are not zero, they are unknown. */
+  trackingSince: string | null;
+  totals: ScriptHealthSlice;
+  days: ScriptHealthSlice[];
+  weeks: ScriptHealthSlice[];
+  repairKinds: Array<{ kind: string; count: number }>;
+  topErrorCodes: Array<{ code: string; count: number }>;
+  recentFailures: Array<{ at: string; kind: string; code: string; summary: string }>;
+  slowTools: Array<{ at: string; tool: string; operation: string | null; durationMs: number; timedOut: boolean }>;
+  watch: AgentHealthWatch | null;
+}
+
+function readSlice(raw: any, keyName: 'date' | 'week' | 'window'): ScriptHealthSlice {
+  return {
+    key: typeof raw?.[keyName] === 'string' ? raw[keyName] : '',
+    total: num(raw?.total), failed: num(raw?.failed), compile: num(raw?.compile), runtime: num(raw?.runtime),
+    timeout: num(raw?.timeout), compileTimeout: num(raw?.compileTimeout), stopped: num(raw?.stopped),
+    repaired: num(raw?.repaired), repairedButFailed: num(raw?.repairedButFailed), firstPassPct: numOrNull(raw?.firstPassPct),
+    coldCompiles: num(raw?.coldCompiles), coldCompileP50Ms: numOrNull(raw?.coldCompileP50Ms), coldCompileP95Ms: numOrNull(raw?.coldCompileP95Ms),
+    coldCompileMaxMs: numOrNull(raw?.coldCompileMaxMs),
+    warmCompiles: num(raw?.warmCompiles), warmCompileP50Ms: numOrNull(raw?.warmCompileP50Ms), warmCompileP95Ms: numOrNull(raw?.warmCompileP95Ms),
+    warmCompileMaxMs: numOrNull(raw?.warmCompileMaxMs),
+    runAvgMs: numOrNull(raw?.runAvgMs), longestFailureStreak: num(raw?.longestFailureStreak),
+  };
+}
+
+export function readScriptHealth(raw: any): ScriptHealth | null {
+  if (!raw || typeof raw !== 'object' || !raw.totals) return null;
+  const list = (value: unknown) => (Array.isArray(value) ? value : []);
+  return {
+    windowDays: num(raw.windowDays, 30),
+    trackingSince: typeof raw.trackingSince === 'string' ? raw.trackingSince : null,
+    totals: readSlice(raw.totals, 'window'),
+    days: list(raw.days).map((d: any) => readSlice(d, 'date')),
+    weeks: list(raw.weeks).map((w: any) => readSlice(w, 'week')),
+    repairKinds: list(raw.repairKinds).map((r: any) => ({ kind: String(r?.kind ?? ''), count: num(r?.count) })).filter(r => r.kind && r.count > 0),
+    topErrorCodes: list(raw.topErrorCodes).map((e: any) => ({ code: String(e?.code ?? ''), count: num(e?.count) })).filter(e => e.code && e.count > 0),
+    recentFailures: list(raw.recentFailures).map((f: any) => ({ at: String(f?.at ?? ''), kind: String(f?.kind ?? ''), code: String(f?.code ?? ''), summary: String(f?.summary ?? '') })),
+    slowTools: list(raw.slowTools).map((t: any) => ({ at: String(t?.at ?? ''), tool: String(t?.tool ?? ''), operation: t?.operation ? String(t.operation) : null, durationMs: num(t?.durationMs), timedOut: t?.timedOut === true })),
+    watch: readHealthWatch(raw.watch),
+  };
+}
+
+/**
+ * A compile-time percentile. The server keeps a histogram, so the figure is the upper edge of the bucket
+ * the percentile fell in: "< 250 ms" is the honest reading, "250 ms" is not.
+ */
+export function fmtUnder(ms: number | null): string {
+  if (ms == null) return NONE;
+  if (ms > 30_000) return '> 30 s';
+  return `< ${ms >= 1000 ? `${ms / 1000} s` : `${ms} ms`}`;
+}
+
+export const FAILURE_KIND_LABELS: Record<string, string> = {
+  compile: 'did not compile', runtime: 'threw', timeout: 'ran out of time', 'compile-timeout': 'compile too slow', stopped: 'stopped',
+};
+
+/** The one sentence about scripts in the range: how many ran, why the others did not, and what the engine saved. */
+export function scriptHealthVerdict(health: ScriptHealth): { tone: AgentTone; text: string } {
+  const t = health.totals;
+  const counted = t.total - t.stopped;
+  if (counted <= 0) return { tone: 'neutral', text: 'No scripts ran in this range.' };
+  const reasons: string[] = [];
+  if (t.compile) reasons.push(`${fmtInt(t.compile)} did not compile`);
+  if (t.runtime) reasons.push(`${fmtInt(t.runtime)} threw`);
+  if (t.timeout) reasons.push(`${fmtInt(t.timeout)} ran out of time`);
+  if (t.compileTimeout) reasons.push(`${fmtInt(t.compileTimeout)} took too long to compile`);
+  const ran = counted - t.failed;
+  const pct = Math.round((ran / counted) * 100);
+  let text = `${fmtInt(ran)} of ${fmtInt(counted)} scripts ran (${pct}%).`;
+  if (reasons.length) text += ` Of the rest, ${reasons.join(', ')}.`;
+  if (t.repaired) text += ` ${fmtInt(t.repaired)} ran only because the engine fixed ${t.repaired === 1 ? 'it' : 'them'} first.`;
+  return { tone: scriptTone((ran / counted) * 100), text };
+}
+
+export interface ModelCallSplit {
+  /** Where the time inside model calls went, largest first. */
+  states: Array<{ name: string; label: string; totalMs: number; calls: number; avgMs: number; sharePct: number }>;
+  totalMs: number;
+  /** The same calls by how many other KliveAgent calls were in flight when each was sent. */
+  concurrency: Array<{ name: string; label: string; calls: number; avgMs: number }>;
+  /** Whole-call time by the reasoning effort asked for. */
+  thinking: Array<{ level: string; calls: number; avgMs: number; totalMs: number }>;
+}
+
+const MODEL_STATES = ['model.queued', 'model.awaiting', 'model.reasoning', 'model.streaming', 'model.retrying', 'model.other'];
+const MODEL_CONCURRENCY = ['model.alone', 'model.with1other', 'model.with2others'];
+
+/** The split of a model call from the stage list, or null on a server that does not record it yet. */
+export function modelCallSplit(stages: unknown): ModelCallSplit | null {
+  const list: any[] = Array.isArray(stages) ? stages : [];
+  const byName = new Map<string, any>(list.map(stage => [String(stage?.name ?? ''), stage]));
+  const read = (name: string) => {
+    const stage = byName.get(name);
+    const totalMs = num(stage?.totalMs);
+    const calls = num(stage?.calls ?? stage?.count);
+    return { name, label: stageLabel(name), totalMs, calls, avgMs: calls ? totalMs / calls : 0 };
+  };
+  const states = MODEL_STATES.map(read).filter(state => state.totalMs > 0 || state.calls > 0);
+  if (!states.length) return null;
+  const totalMs = states.reduce((sum, state) => sum + state.totalMs, 0);
+  return {
+    states: states.map(state => ({ ...state, sharePct: totalMs ? (state.totalMs / totalMs) * 100 : 0 })).sort((a, b) => b.totalMs - a.totalMs),
+    totalMs,
+    concurrency: MODEL_CONCURRENCY.map(read).filter(row => row.calls > 0).map(({ name, label, calls, avgMs }) => ({ name, label, calls, avgMs })),
+    thinking: list.filter(stage => String(stage?.name ?? '').startsWith('model.think.'))
+      .map(stage => { const row = read(String(stage.name)); return { level: row.name.slice(12), calls: row.calls, avgMs: row.avgMs, totalMs: row.totalMs }; })
+      .filter(row => row.calls > 0)
+      .sort((a, b) => ['low', 'medium', 'high'].indexOf(a.level) - ['low', 'medium', 'high'].indexOf(b.level)),
+  };
+}
+
+/** The ledger a long run keeps: its plan with ticks, and the facts it wants to survive (AgentRunLedger on the server). */
+export interface RunLedger {
+  steps: Array<{ text: string; done: boolean; note: string | null }>;
+  facts: string[];
+  updatedAt: string | null;
+}
+
+export function readRunLedger(raw: any): RunLedger | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const steps = (Array.isArray(raw.steps) ? raw.steps : [])
+    .map((step: any) => ({ text: String(step?.text ?? '').trim(), done: step?.done === true, note: step?.note ? String(step.note) : null }))
+    .filter((step: { text: string }) => step.text);
+  const facts = (Array.isArray(raw.facts) ? raw.facts : []).map((fact: unknown) => String(fact ?? '').trim()).filter(Boolean);
+  if (!steps.length && !facts.length) return null;
+  return { steps, facts, updatedAt: raw.updatedAt ?? null };
+}
+
+/** "3 of 7 done", or the number of notes when there is no plan. */
+export function ledgerSummary(ledger: RunLedger): string {
+  if (ledger.steps.length) return `${ledger.steps.filter(step => step.done).length} of ${ledger.steps.length} done`;
+  return `${ledger.facts.length} note${ledger.facts.length === 1 ? '' : 's'}`;
 }
 
 // ───────────────────────────── what the page says first ─────────────────────────────

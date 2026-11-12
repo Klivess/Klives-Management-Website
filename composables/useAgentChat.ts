@@ -184,6 +184,8 @@ export function useAgentChat(options: { agentReady: Ref<boolean>; threadEl: Ref<
     if (data.status) msg.status = data.status;
     if (data.stopReason !== undefined) msg.stopReason = data.stopReason;
     if (Array.isArray(data.activity)) msg.activity = data.activity;
+    // The run's own plan and notes. Absent until the run writes one, so never cleared by a snapshot without it.
+    if (data.ledger) msg.ledger = data.ledger;
     if (data.computerContainerId) liveContainerId.value = data.computerContainerId;
     if (data.pendingApproval?.containerId) liveContainerId.value = data.pendingApproval.containerId;
     // A new frame slides the live view out (unless dismissed this run); a pending approval always does.
@@ -531,6 +533,7 @@ export function useAgentChat(options: { agentReady: Ref<boolean>; threadEl: Ref<
           message.promptTokens = run.promptTokens;
           message.completionTokens = run.completionTokens;
           message.iteration = run.iteration;
+          message.ledger = run.ledger || null;
           message.phase = 'final';
         }
         return message;

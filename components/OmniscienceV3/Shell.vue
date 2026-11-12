@@ -95,11 +95,22 @@ const NAV = [
         { to: `${OMNI_BASE}/cohorts`, label: 'Cohorts' },
         { to: `${OMNI_BASE}/live`, label: 'Live' },
     ] },
+    { label: 'People', items: [
+        { to: `${OMNI_BASE}/people`, label: 'People' },
+        { to: `${OMNI_BASE}/communities`, label: 'Communities' },
+        { to: `${OMNI_BASE}/links`, label: 'Links' },
+    ] },
+    { label: 'Watch', items: [
+        { to: `${OMNI_BASE}/signals`, label: 'Signals' },
+        { to: `${OMNI_BASE}/digests`, label: 'Digests' },
+        { to: `${OMNI_BASE}/health`, label: 'Health' },
+    ] },
     { label: 'Engine', items: [
         { to: OMNI_BASE, label: 'Overview' },
         { to: `${OMNI_BASE}/modules`, label: 'Modules' },
         { to: `${OMNI_BASE}/jobs`, label: 'Jobs' },
         { to: `${OMNI_BASE}/llm`, label: 'LLM' },
+        { to: `${OMNI_BASE}/data`, label: 'Data controls' },
         { to: `${OMNI_BASE}/settings`, label: 'Settings' },
     ] },
 ];

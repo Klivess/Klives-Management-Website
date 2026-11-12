@@ -26,6 +26,8 @@ const view = computed(() => {
         case 'forbidden': return { kind: 'nopermission' as const, title: `You do not have access to ${what.toLowerCase()}`, detail: e.message, retry: false };
         case 'not_built': return { kind: 'empty' as const, title: 'Not computed yet', detail: e.message, retry: true };
         case 'not_found': return { kind: 'empty' as const, title: 'Not found', detail: e.message, retry: false };
+        // A guardrail said no (someone under 18, analysis switched off): that is an answer, not a failure.
+        case 'refused': return { kind: 'empty' as const, title: 'Withheld by policy', detail: e.message, retry: false };
         case 'bad_request': return { kind: 'error' as const, title: 'The request was not accepted', detail: e.message, retry: false };
         case 'network': return { kind: 'error' as const, title: 'The server could not be reached', detail: e.message, retry: true };
         default: return { kind: 'error' as const, title: `${what} could not load`, detail: e.message, retry: true };

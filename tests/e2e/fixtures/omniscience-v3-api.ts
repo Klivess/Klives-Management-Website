@@ -4,6 +4,7 @@ import type {
     Playbook, Selection, SettingDto, StreamEventDto, TacticDescriptor, TacticRunDto, V3Phase, V3StatusDto,
 } from '../../../scripts/omniscience/contracts';
 import { catalogPayload, mePayload } from './permissions';
+import { domainState, handleDomain } from './omniscience-v3-domain';
 
 /**
  * Mocked Omniscience v3 API. Every payload is typed against the contract generated from the C#
@@ -147,6 +148,8 @@ export async function mockV3(page: Page, options: V3MockOptions = {}) {
         }] as Playbook[],
         cohorts: [{ cohortId: 'c-close', name: 'Close friends', members: 3, createdAtMs: NOW - 10 * 86_400_000, updatedAtMs: NOW - 3_600_000 }] as CohortDto[],
         refuseRuns: null as { status: number; code: string; message: string } | null,
+        /** People, signals, digests, communities, links, data controls and health (the WS-C routes). */
+        domain: domainState(),
         /** Push a live-stream frame to every open socket. */
         push(frame: StreamEventDto) { for (const s of state.sockets) s.ws.send(JSON.stringify(frame)); },
     };
@@ -344,6 +347,8 @@ export async function mockV3(page: Page, options: V3MockOptions = {}) {
             }
             case 'GET rm/catalog': return json({ models: [] });
         }
+        const text = (content: string, contentType: string) => route.fulfill({ status: 200, headers: cors, contentType, body: content });
+        if (await handleDomain(`${method} ${sub}`, p, body, state.domain, json, fail, can, text)) return;
         state.unknown.push(`${method} ${path}`);
         return fail(500, 'internal', `e2e: no fixture for ${method} ${path}`);
     });

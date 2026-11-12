@@ -142,7 +142,7 @@ export function omniPercent(ratio: number | null | undefined, digits = 0): strin
 /** Tone class (ok / warn / bad / info / '') for a job or run state. */
 export function omniStateTone(state: string | null | undefined): string {
     switch ((state ?? '').toLowerCase()) {
-        case 'succeeded': case 'ok': case 'ready': return 'ok';
+        case 'succeeded': case 'ok': case 'ready': case 'done': case 'active': return 'ok';
         case 'running': case 'leased': case 'starting': return 'info';
         case 'queued': case 'paused': case 'stopping': return 'warn';
         case 'dead': case 'failed': return 'bad';

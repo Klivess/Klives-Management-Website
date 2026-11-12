@@ -110,6 +110,15 @@ export async function omniPost<T>(path: string, body: unknown, signal?: AbortSig
     return read<T>(res, route, signal);
 }
 
+/** A POST whose answer is a file (a person export): its text, for `omniDownload`. Errors are classified as for JSON. */
+export async function omniPostText(path: string, body: unknown, signal?: AbortSignal): Promise<string> {
+    const route = `${OMNI_API}/${path}`;
+    const res = await RequestPOSTFromKliveAPI(route, JSON.stringify(body ?? {}), false, true, signal);
+    if (signal?.aborted) throw new OmniApiError('aborted', 'Cancelled.', 0, route);
+    if (!res.ok) return fail(res, route);
+    return res.text();
+}
+
 /**
  * Reads an NDJSON answer (a tactic run, an inquiry report) line by line as it arrives. Uses
  * fetch + ReadableStream rather than EventSource, which cannot send the Bearer header. A

@@ -42,14 +42,14 @@
             <div class="kcp-none-name">{{ item.name }}</div>
             <div class="kcp-none-meta">{{ describeItem(item) }} · {{ formatBytes(item.bytes) }}</div>
             <p v-if="problem" class="kcp-problem">{{ problem }}</p>
-            <a class="ot-btn primary kcp-none-download" :href="api.download(item)"><KliveCloudIcon name="download" :size="16" /> Download</a>
+            <a class="kcp-none-download" :class="downloadClass" :href="saveUrl"><KliveCloudIcon name="download" :size="16" /> Download</a>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import { BROWSER_IMAGES, BROWSER_VIDEOS, describeItem, formatBytes, hasThumbnail, shareApi, type ShareItem } from '~/scripts/klivecloud/shared';
+import { BROWSER_IMAGES, BROWSER_VIDEOS, describeItem, formatBytes, hasThumbnail, shareApi, type PreviewSource, type ShareItem } from '~/scripts/klivecloud/shared';
 
 /* Shows one shared file as well as the browser allows: the image (click for full size), the
    video or audio player, the PDF, or the text of a document, code or CSV. Anything else, or
@@ -72,16 +72,22 @@ const LANGUAGES: Record<string, string> = {
 
 const props = withDefaults(defineProps<{
     item: ShareItem;
-    code: string;
+    /** The share the file is in (the public page). */
+    code?: string;
     /** The file is the whole share, so it is addressed by the code alone. */
     single?: boolean;
+    /** Where the bytes come from instead of a share (the owner's page passes ticket links). */
+    source?: PreviewSource | null;
     variant?: 'viewer' | 'page';
     autoplay?: boolean;
-}>(), { single: false, variant: 'viewer', autoplay: false });
+    /** The download card's button. */
+    downloadClass?: string;
+}>(), { code: '', single: false, source: null, variant: 'viewer', autoplay: false, downloadClass: 'ot-btn primary' });
 
 const emit = defineEmits<{ zoom: [zoomed: boolean] }>();
 
-const api = computed(() => shareApi(props.code, props.single));
+const api = computed<PreviewSource>(() => props.source ?? shareApi(props.code, props.single));
+const saveUrl = computed(() => api.value.save?.(props.item) ?? api.value.download(props.item));
 const ext = props.item.ext;
 const failed = ref(false);
 const problem = ref('');

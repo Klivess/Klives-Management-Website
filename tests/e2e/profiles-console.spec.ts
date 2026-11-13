@@ -174,13 +174,13 @@ test('KliveCloud items are shared with people, not ranks', async ({ page, contex
   await page.goto('/klivecloud');
   await ready(page);
 
-  const designs = page.locator('.file-item').filter({ hasText: 'Designs' });
+  const designs = page.getByTestId('row-Designs');
   await expect(designs).toContainText('2 people');
-  await expect(page.locator('.file-item').filter({ hasText: 'Quarterly report.pdf' })).toContainText('View only');
+  await expect(page.getByTestId('row-Quarterly report.pdf')).toContainText('View only');
 
-  await designs.hover();
-  await designs.getByTitle('Share with people').click();
-  const dialog = page.getByRole('dialog', { name: 'Share “Designs”' });
+  await designs.click({ button: 'right' });
+  await page.getByTestId('menu-people').click();
+  const dialog = page.getByRole('dialog', { name: 'Who can use “Designs”' });
   await expect(dialog).toContainText('Sam Carter');
   await expect(dialog).toContainText('from Team');
 

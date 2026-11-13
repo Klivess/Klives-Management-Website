@@ -1,2321 +1,1210 @@
 <template>
-  <div class="klive-cloud-page">
-    <!-- Header Section -->
-    <div class="page-header">
-      <div class="header-content">
-        <div>
-          <h1 class="page-title">KliveCloud</h1>
-          <p class="page-subtitle">File Storage & Management</p>
-        </div>
-        
-        <!-- Drive Capacity Widget -->
-        <div v-if="driveInfo" class="drive-capacity">
-            <div class="capacity-labels">
-                <span>{{ driveInfo.DriveName }} ({{ driveInfo.DriveFormat }})</span>
-                <span>{{ driveInfo.UsedCapacityGB.toFixed(2) }} GB / {{ driveInfo.TotalCapacityGB.toFixed(2) }} GB</span>
-            </div>
-            <div class="progress-bar-container">
-                <div 
-                    class="progress-bar-fill" 
-                    :style="{ width: driveInfo.UsagePercentage + '%' }"
-                    :class="{ 'high-usage': driveInfo.UsagePercentage > 80, 'critical-usage': driveInfo.UsagePercentage > 90 }"
-                ></div>
-            </div>
-        </div>
-        <div v-else class="drive-capacity loading-capacity">
-            <span>Loading Storage Info...</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Navigation / Breadcrumbs & Actions -->
-    <div class="cloud-controls">
-      <div class="breadcrumbs">
-        <span
-          class="breadcrumb-item"
-          @click="navigateToRoot"
-          :class="{ active: currentPath.length === 0 && !inSharedView }"
-        >
-          My Drive
-        </span>
-        <span v-if="inSharedView || sharedRoot">
-          <span class="breadcrumb-separator">/</span>
-          <span class="breadcrumb-item" :class="{ active: inSharedView }" @click="openSharedWithMe">Shared with me</span>
-        </span>
-        <button
-          v-else-if="sharedWithMeCount > 0 && currentPath.length === 0"
-          type="button"
-          class="shared-pill"
-          @click="openSharedWithMe"
-        >
-          Shared with me · {{ sharedWithMeCount }}
-        </button>
-        <span v-for="(folder, index) in currentPath" :key="folder.ItemID">
-          <span class="breadcrumb-separator">/</span>
-          <span
-            class="breadcrumb-item"
-            @click="navigateToFolder(folder, index)"
-            :class="{ active: index === currentPath.length - 1 }"
-          >
-            {{ folder.Name }}
-          </span>
-        </span>
+  <div ref="root" class="kcl" :data-size="size" data-testid="kcl-root" @dragenter="onDragEnter" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
+    <!-- ── bar ── -->
+    <header class="kcl-bar">
+      <button class="kcl-iconbtn kcl-only-narrow" aria-label="Places and folders" @click="railOpen = !railOpen"><KliveCloudIcon name="menu" :size="17" /></button>
+      <div class="kcl-bar__id">
+        <span class="kcl-bar__mark"><KliveCloudIcon name="cloud" :size="17" /></span>
+        <h1 class="kcl-bar__title">KliveCloud</h1>
+        <span class="kcl-bar__sub" data-testid="kcl-subline">{{ subline }}</span>
       </div>
 
-      <div class="actions">
-        <!-- New Bulk Actions -->
-        <template v-if="selectedItems.size > 0">
-            <button v-if="can('klivecloud.files.delete')" class="action-btn delete-btn" :disabled="!selectionEditable"
-                    :title="selectionEditable ? '' : 'Some selected items are view-only for you'" @click="deleteSelectedItems">
-                🗑️ Delete ({{ selectedItems.size }})
-            </button>
-            <button class="action-btn download-btn" @click="downloadSelectedItems">
-                ⬇️ Download ({{ selectedItems.size }})
-            </button>
-            <div class="separator">|</div>
-        </template>
+      <label class="kcl-search" data-testid="kcl-search">
+        <KliveCloudIcon name="search" :size="15" />
+        <input ref="searchInput" v-model="query" type="search" placeholder="Search every file and folder" aria-label="Search KliveCloud"
+               autocomplete="off" spellcheck="false" data-testid="kcl-search-input" @keydown.esc.prevent="clearSearch" @keydown.down.prevent="focusFirstRow" />
+        <span v-if="!query" class="kcl-kbd" aria-hidden="true">/</span>
+        <button v-else class="kcl-iconbtn kcl-iconbtn--sm" aria-label="Clear search" @click="clearSearch"><KliveCloudIcon name="close" :size="13" /></button>
+        <button class="kcl-btn kcl-btn--xs kcl-btn--ghost kcl-only-wide" title="Go to anything, run anything (Ctrl K)" aria-label="Open the command palette" data-testid="kcl-palette-open" @click="paletteOpen = true">
+          <span class="kcl-kbd">Ctrl</span><span class="kcl-kbd">K</span>
+        </button>
+      </label>
 
-        <span v-if="folderLevel === 'Viewer' && !inSharedView" class="view-only-chip" title="You can open and download here, but not change anything">View only</span>
-        <button v-if="currentFolderItem && canShareItem(currentFolderItem)" class="action-btn share-folder-btn" @click="openShare(currentFolderItem)">
-          Share folder
+      <span class="kcl-bar__spacer"></span>
+
+      <div class="kcl-bar__actions">
+        <div v-if="canAddHere" class="kcl-split kcl-pop">
+          <button class="kcl-btn kcl-btn--primary" title="Upload files (U)" data-testid="kcl-upload" @click="pickFiles"><KliveCloudIcon name="upload" :size="15" /><span class="kcl-only-wide">Upload</span></button>
+          <button class="kcl-btn kcl-btn--primary" aria-label="More ways to add" :aria-expanded="menu?.kind === 'add'" data-testid="kcl-add-menu" @click.stop="openAddMenu($event)"><KliveCloudIcon name="chevron-down" :size="14" /></button>
+        </div>
+        <button class="kcl-iconbtn" :title="`${reloading ? 'Refreshing…' : `Up to date${loadedAt ? ` (${fmtAgo(loadedAt)})` : ''}`} — refresh (R)`" aria-label="Refresh" data-testid="kcl-refresh" @click="refresh">
+          <KliveCloudIcon name="refresh" :size="16" :class="{ 'kcl-spin': reloading }" />
         </button>
-        <button v-if="can('klivecloud.files.upload')" class="action-btn upload-btn" :disabled="!canAddHere" :title="addHereHint" @click="triggerFileUpload">
-         Upload File
-        </button>
-        <button v-if="can('klivecloud.files.upload')" class="action-btn folder-btn" :disabled="!canAddHere" :title="addHereHint" @click="promptCreateFolder">
-          New Folder
-        </button>
-        <input
-          type="file"
-          ref="fileInput"
-          style="display: none"
-          multiple
-          @change="handleFileUpload"
-        />
-        <button class="action-btn refresh-btn" @click="refreshCurrentFolder">
-          Refresh
+        <button class="kcl-iconbtn kcl-only-wide" :aria-pressed="prefs.sheet" title="Details (I)" aria-label="Show details" data-testid="kcl-details-toggle" @click="prefs.sheet = !prefs.sheet">
+          <KliveCloudIcon name="panel-right" :size="16" />
         </button>
       </div>
-    </div>
+      <input ref="fileInput" type="file" multiple hidden @change="onPicked($event, false)" />
+      <input ref="folderInput" type="file" multiple webkitdirectory hidden @change="onPicked($event, true)" />
+    </header>
 
-    <!-- Content Area -->
-    <div 
-      class="cloud-content"
-      ref="cloudContentRef"
-      @mousedown="startSelection"
-      @dragover.prevent="onDragOver"
-      @dragleave.prevent="onDragLeave"
-      @drop.prevent="onDrop"
-      :class="{ 'drag-active': isDragging }"
-    >
-      <!-- Selection Box -->
-      <div 
-        v-if="selectionBox.active" 
-        class="selection-box"
-        :style="{
-          left: selectionBox.x + 'px',
-          top: selectionBox.y + 'px',
-          width: selectionBox.width + 'px',
-          height: selectionBox.height + 'px'
-        }"
-      ></div>
+    <div class="kcl-body" :data-sheet="sheetShown">
+      <CloudRail :index="index" :view="view" :folder-key="folderKey" :can-links="allowed.share" :link-counts="linkCounts" :drive="drive" :drop-key="dropKey"
+                 :now="now" :open="railOpen" @go="(v, key) => { railOpen = false; go(v, key ?? ROOT); }" />
 
-      <!-- Drag Overlay -->
-      <div v-if="isDragging" class="drag-overlay">
-        <div class="drag-message">
-          <div class="drag-icon">📂</div>
-          <h3>Drop files to upload</h3>
-        </div>
-      </div>
-
-      <!-- Loading State -->
-      <div v-if="loading" class="loading-state">
-        <div class="loading-spinner"></div>
-        <p>Loading files...</p>
-      </div>
-
-      <!-- Error State -->
-      <div v-else-if="error" class="error-state">
-        <p>⚠️ {{ error }}</p>
-        <button @click="refreshCurrentFolder">Try Again</button>
-      </div>
-
-      <!-- Empty State -->
-      <div v-else-if="items.length === 0" class="empty-state">
-        <p>{{ inSharedView ? 'Nothing has been shared with you yet.' : 'This folder is empty.' }}</p>
-      </div>
-
-      <!-- File List -->
-      <div v-else class="file-grid">
-        <!-- Back Button (if not root) -->
-        <div
-          v-if="currentPath.length > 0 || inSharedView"
-          class="file-item folder-item back-item"
-          :class="{ 'drag-hover': activeDropTargetID === 'back' }"
-          @click="navigateUp"
-          @dragover.prevent="onFolderDragOver($event, null)"
-          @dragleave="onFolderDragLeave($event, null)"
-          @drop.prevent.stop="onFolderDrop($event, null)"
-        >
-          <div class="item-icon">⤴️</div>
-          <div class="item-name">..</div>
+      <main class="kcl-main" @click.self="clearPick">
+        <div v-if="!allowed.browse" class="kcl-card">
+          <div class="kcl-empty"><span class="kcl-empty__icon"><KliveCloudIcon name="lock" :size="18" /></span><strong>KliveCloud isn't part of your access</strong></div>
         </div>
 
-        <!-- Items -->
-        <div
-          v-for="item in items"
-          :key="item.ItemID"
-          class="file-item"
-          :class="{
-            'folder-item': item.ItemType === 'Folder', 
-            'file-card': item.ItemType !== 'Folder',
-            'selected': selectedItems.has(item.ItemID),
-            'drag-hover': activeDropTargetID === item.ItemID
-          }"
-          :ref="(el) => setItemRef(el, item.ItemID)"
-          :draggable="item.MyLevel === 'Editor' && can('klivecloud.files.organize')"
-          @dragstart="onItemDragStart($event, item)"
-          @dragend="onItemDragEnd($event)"
-          @dragover.prevent="item.ItemType === 'Folder' ? onFolderDragOver($event, item) : null"
-          @dragleave="item.ItemType === 'Folder' ? onFolderDragLeave($event, item) : null"
-          @drop.prevent.stop="item.ItemType === 'Folder' ? onFolderDrop($event, item) : null"
-          @click.stop="handleItemClick(item, $event)"
-          @contextmenu.prevent="showContextMenu($event, item)"
-        >
-          <div class="item-icon">
-            <img 
-                v-if="previewUrls.has(item.ItemID)" 
-                :src="previewUrls.get(item.ItemID)" 
-                class="item-preview-img" 
-                loading="lazy" 
-                alt="Preview"
-            />
-            <span v-else>{{ getItemIcon(item) }}</span>
-          </div>
-          <div class="item-details">
-            <div class="item-name" :title="item.Name">{{ item.Name }}</div>
-            <div class="item-meta">
-              <span v-if="item.ItemType === 'File'">{{ formatSize(item.FileSizeBytes) }}</span>
-              <span v-else>{{ item.ItemType }}</span>
-              <span class="separator">•</span>
-              <span>{{ formatDate(item.ModifiedDate) }}</span>
-            </div>
-            <div
-              class="item-access"
-              :class="{ clickable: canShareItem(item) }"
-              :title="canShareItem(item) ? 'Change who can use this' : accessTitle(item)"
-              @click.stop="canShareItem(item) && openShare(item)"
-            >
-              <span v-if="item.Access?.People?.length" class="access-stack" aria-hidden="true">
-                <span v-for="person in item.Access.People.slice(0, 3)" :key="person.ProfileId" class="access-face" :style="{ '--hue': avatarHue(person.ProfileId) }">{{ initials(person.Name) }}</span>
-              </span>
-              <span class="access-text">{{ item.Access?.Summary ?? item.MinimumPermissionLevel }}</span>
-              <span v-if="item.MyLevel === 'Viewer'" class="access-level">View only</span>
-            </div>
-          </div>
-          <div class="item-actions-hover">
-            <button
-                v-if="canShareItem(item)"
-                @click.stop="openShare(item)"
-                title="Share with people"
-                class="share-btn"
-            >
-                👥
-            </button>
-            <button
-                v-if="canShareItem(item)"
-                @click.stop="shareItem(item)"
-                title="Share Link"
-                class="share-btn"
-            >
-                🔗
-            </button>
-            <button
-                v-if="item.ItemType === 'File' && can('klivecloud.files.download')"
-                @click.stop="downloadFile(item)"
-                title="Download"
-            >
-                ⬇️
-            </button>
-            <button v-if="item.MyLevel === 'Editor' && can('klivecloud.files.delete')" @click.stop="deleteItem(item)" title="Delete" class="delete-btn">
-                🗑️
-            </button>
+        <div v-else-if="state === 'error'" class="kcl-card" role="alert">
+          <div class="kcl-empty">
+            <span class="kcl-empty__icon"><KliveCloudIcon name="alert" :size="18" /></span>
+            <strong>Couldn't open your drive</strong>
+            <span>{{ loadError }}</span>
+            <button class="kcl-btn" @click="refresh"><KliveCloudIcon name="refresh" :size="14" />Try again</button>
           </div>
         </div>
-      </div>
 
-      <!-- Share Links Section -->
-      <div v-if="sharedLinks.length > 0 && !inSharedView" class="shared-links-section">
-          <h3 class="section-title">Active Share Links ({{ sharedLinks.length }})</h3>
-          <div class="shared-links-table-container">
-              <table class="shared-links-table">
-                  <thead>
-                      <tr>
-                          <th>Item</th>
-                          <th>Code</th>
-                          <th>Permission</th>
-                          <th>Expiration</th>
-                          <th class="actions-col">Actions</th>
-                      </tr>
-                  </thead>
-                  <tbody>
-                      <tr v-for="link in sharedLinks" :key="link.ShareCode">
-                          <td class="name-cell" :title="link.ItemPath || link.ItemName">
-                              <div class="name-cell-inner">
-                                  <span class="type-icon">{{ link.ItemType === 'Folder' ? '📁' : '📄' }}</span>
-                                  <span class="item-name-text">{{ link.ItemName || 'Loading...' }}</span>
-                              </div>
-                          </td>
-                          <td class="code-cell">
-                              <code>{{ link.ShareCode.substring(0, 8) }}...</code>
-                          </td>
-                          <td>
-                              <span class="perm-badge" :class="getShareLinkPermissionMode(link).toLowerCase()">
-                                  {{ link.ItemType === 'Folder' ? formatSharePermissionMode(getShareLinkPermissionMode(link)) : 'Read Only' }}
-                              </span>
-                          </td>
-                          <td class="exp-cell">
-                              {{ link.ExpirationDate ? formatDate(link.ExpirationDate) : 'No Expiration' }}
-                          </td>
-                          <td class="actions-col">
-                              <div class="table-actions">
-                                  <button v-if="link.ItemType === 'Folder'" @click="editShareLinkPermission(link)" title="Edit Permissions" class="permission-link-btn">⚙️</button>
-                                  <button @click="copyShareLink(link.ShareCode)" title="Copy Link" class="copy-btn">📋</button>
-                                  <button @click="deleteSharedLink(link.ShareCode)" title="Delete Link" class="delete-link-btn">🗑️</button>
-                              </div>
-                          </td>
-                      </tr>
-                  </tbody>
-              </table>
-          </div>
-      </div>
+        <!-- ── share links ── -->
+        <CloudLinksView v-else-if="view === 'links'" :links="links" :index="index" :now="now" :origin="origin" :can-adopt="allowed.shareAny"
+                        :supports-update="supports.updateLink" @copy="copyLink" @edit="link => (linkDialog = { item: null, link })"
+                        @adopt="askAdopt" @remove="askRemoveLinks" @reveal="revealLink" />
 
-    </div>
+        <!-- ── a folder, or a view across the drive ── -->
+        <section v-else class="kcl-card" :aria-label="heading" data-testid="kcl-main-card" @click.self="clearPick">
+          <header class="kcl-head" @click.self="clearPick">
+            <nav v-if="view === 'folder'" class="kcl-crumbs" aria-label="Folder path" data-testid="kcl-crumbs">
+              <button class="kcl-crumb" :aria-current="!folderKey ? 'page' : undefined" :data-drop="dropKey === ROOT || undefined" data-drop-key="" @click="go('folder', ROOT)">
+                <KliveCloudIcon name="home" :size="13" />My drive
+              </button>
+              <template v-for="(step, i) in crumbs" :key="step.key">
+                <KliveCloudIcon name="chevron-right" :size="12" class="kcl-crumb__sep" />
+                <button class="kcl-crumb kcl-truncate" :aria-current="i === crumbs.length - 1 ? 'page' : undefined" :data-drop="dropKey === step.key || undefined"
+                        :data-drop-key="step.key" :title="step.name" @click="go('folder', step.key)">{{ step.name }}</button>
+              </template>
+            </nav>
 
-    <!-- Upload Progress Panel -->
-    <div v-if="activeUploads.length > 0" class="upload-panel" :class="{ 'minimized': !isUploadPanelOpen }">
-        <div class="upload-header" @click="isUploadPanelOpen = !isUploadPanelOpen">
-            <span>{{ activeUploads.filter(u => ['uploading', 'finalizing'].includes(u.status)).length }} files uploading</span>
-            <div class="upload-controls">
-                 <button v-if="isUploadPanelOpen" @click.stop="clearCompletedUploads" title="Clear Completed" class="clear-btn">🧹</button>
-                 <button class="toggle-btn">{{ isUploadPanelOpen ? '▼' : '▲' }}</button>
-            </div>
-        </div>
-        <div v-if="isUploadPanelOpen" class="upload-list">
-            <div v-for="task in activeUploads" :key="task.id" class="upload-item">
-                <div class="upload-info">
-                    <div class="upload-name" :title="task.fileName">{{ task.fileName }}</div>
-                    <div class="upload-status">
-                        <span v-if="task.status === 'uploading'">{{ task.progress }}%</span>
-                        <span v-else>{{ task.status }}</span>
-                    </div>
+            <div class="kcl-head__row">
+              <div class="kcl-head__title">
+                <CloudGlyph v-if="view === 'folder'" kind="folder" :size="30" />
+                <span v-else class="kcl-glyph" data-kind="other" style="--s: 30px; --kind: var(--kcl-accent)"><KliveCloudIcon :name="VIEW_ICON[view]" :size="16" /></span>
+                <h2 data-testid="kcl-heading">{{ heading }}</h2>
+                <span v-if="folderLinks.length" class="kcl-chip" data-tone="link" :title="`${folderLinks.length} share link${folderLinks.length === 1 ? '' : 's'} to this folder`"><KliveCloudIcon name="link" :size="10" />Shared by link</span>
+                <span v-if="currentFolder && currentFolder.level === 'Viewer'" class="kcl-chip" title="You can open and download here, not change anything">View only</span>
+              </div>
+              <div class="kcl-head__tools">
+                <div class="kcl-seg" role="group" aria-label="Layout">
+                  <button class="kcl-seg__opt" :aria-pressed="prefs.layout === 'list'" title="List" aria-label="List" data-testid="layout-list" @click="prefs.layout = 'list'"><KliveCloudIcon name="list" :size="13" /></button>
+                  <button class="kcl-seg__opt" :aria-pressed="prefs.layout === 'grid'" title="Grid" aria-label="Grid" data-testid="layout-grid" @click="prefs.layout = 'grid'"><KliveCloudIcon name="grid" :size="13" /></button>
                 </div>
-                <div class="upload-progress-bar">
-                    <div class="progress-fill" :style="{ width: task.progress + '%', backgroundColor: getStatusColor(task.status) }"></div>
-                </div>
-                <div class="upload-action" v-if="task.status === 'uploading'">
-                     <button @click="cancelUpload(task)" title="Cancel">❌</button>
-                </div>
+                <select v-if="prefs.layout === 'grid' && sortable" v-model="sortChoice" class="kcl-select" aria-label="Sort" style="height: 28px">
+                  <option value="name:1">Name</option>
+                  <option value="modified:-1">Newest first</option>
+                  <option value="modified:1">Oldest first</option>
+                  <option value="size:-1">Largest first</option>
+                  <option value="kind:1">Kind</option>
+                </select>
+                <button v-if="view === 'folder' && canAddHere" class="kcl-btn kcl-btn--sm" title="New folder (N)" data-testid="kcl-new-folder" @click="askNewFolder"><KliveCloudIcon name="folder-plus" :size="14" /><span class="kcl-only-wide">New folder</span></button>
+                <button v-if="view === 'folder' && currentFolder && allowed.share && currentFolder.level === 'Editor'" class="kcl-btn kcl-btn--sm" @click="shareLink(currentFolder)"><KliveCloudIcon name="link" :size="14" /><span class="kcl-only-wide">Share folder</span></button>
+              </div>
             </div>
-        </div>
+
+            <div v-if="picked.size" class="kcl-bulk" data-testid="kcl-bulk">
+              <button class="kcl-iconbtn kcl-iconbtn--sm" title="Clear selection (Esc)" aria-label="Clear selection" @click="clearPick"><KliveCloudIcon name="close" :size="14" /></button>
+              <span class="kcl-bulk__count">{{ picked.size }} selected</span>
+              <span class="kcl-bulk__meta">{{ pickedSummary }}</span>
+              <button v-if="picked.size < shown.length" class="kcl-btn kcl-btn--xs kcl-btn--ghost" @click="pickAll">Select all {{ shown.length }}</button>
+              <span style="flex: 1"></span>
+              <button v-if="allowed.download" class="kcl-btn kcl-btn--sm" data-testid="bulk-download" @click="downloadPicked"><KliveCloudIcon name="download" :size="14" /><span class="kcl-only-wide">{{ picked.size > 1 && view === 'folder' && folderKey ? 'ZIP' : 'Download' }}</span></button>
+              <button v-if="pickedItems.length === 1 && allowed.share && pickedItems[0].level === 'Editor'" class="kcl-btn kcl-btn--sm" @click="shareLink(pickedItems[0])"><KliveCloudIcon name="link" :size="14" /><span class="kcl-only-wide">Link</span></button>
+              <button v-if="canEditPicked && allowed.organize" class="kcl-btn kcl-btn--sm" data-testid="bulk-move" @click="moveItems = pickedItems"><KliveCloudIcon name="folder-move" :size="14" /><span class="kcl-only-wide">Move</span></button>
+              <button v-if="canEditPicked && allowed.remove" class="kcl-btn kcl-btn--sm kcl-btn--danger" data-testid="bulk-delete" @click="askDelete(pickedItems)"><KliveCloudIcon name="trash" :size="14" /><span class="kcl-only-wide">Delete</span></button>
+            </div>
+            <div v-else class="kcl-head__facts" data-testid="kcl-facts">
+              <template v-if="view === 'folder' && folderStats">
+                <span v-if="folderStats.folders"><b>{{ folderStats.folders.toLocaleString('en-GB') }}</b> folder{{ folderStats.folders === 1 ? '' : 's' }}</span>
+                <span><b>{{ folderStats.files.toLocaleString('en-GB') }}</b> file{{ folderStats.files === 1 ? '' : 's' }}</span>
+                <span><b>{{ formatBytes(folderStats.bytes) }}</b></span>
+                <span v-if="folderStats.newest">changed <b>{{ formatWhen(folderStats.newest, now) }}</b></span>
+                <span v-if="currentFolder">access: <b>{{ currentFolder.access || '—' }}</b></span>
+                <span v-if="hereDirect !== folderStats.files + folderStats.folders" class="kcl-faint">{{ hereDirect }} here, the rest in folders below</span>
+              </template>
+              <template v-else-if="view === 'search'"><span><b>{{ shown.length }}</b> match{{ shown.length === 1 ? '' : 'es' }} across the drive</span><span class="kcl-faint">Esc clears</span></template>
+              <template v-else-if="view === 'recent'"><span>The newest {{ shown.length }} files anywhere on the drive</span></template>
+              <template v-else-if="view === 'large'"><span><b>{{ formatBytes(shown.reduce((s, i) => s + i.bytes, 0)) }}</b> in these {{ shown.length }}</span><span v-if="index">of {{ formatBytes(index.bytes) }} in all</span></template>
+              <template v-else-if="view === 'shared'"><span>Shared with you in folders you can't open</span></template>
+            </div>
+          </header>
+
+          <div style="position: relative">
+            <CloudListing :items="shown" :layout="prefs.layout" :sort="prefs.sort" :sortable="sortable" :picked="picked" :focus-key="focusKey" :now="now"
+                          :link-map="linkMap" :show-path="view !== 'folder'" :drop-key="dropKey" :draggable="allowed.organize" :can-download="allowed.download"
+                          :can-share="allowed.share" :loading="state === 'loading'" :fresh="fresh" :group-by="view === 'recent' ? groupRecent : null"
+                          @open="(item) => openItem(item)" @pick="onPick" @check="onCheck" @check-all="all => (all ? pickAll() : clearPick())" @sort="sortBy"
+                          @act="onAct" @focus="item => (focusKey = item.key)" @dragstart="onItemDragStart" @dragend="onItemDragEnd">
+              <template #empty>
+                <div class="kcl-empty" style="min-height: 260px">
+                  <template v-if="view === 'search'">
+                    <span class="kcl-empty__icon"><KliveCloudIcon name="search" :size="18" /></span>
+                    <strong>Nothing called “{{ query.trim() }}”</strong>
+                    <span>Names are searched across the whole drive. Words like “photos” or “pdf” match kinds too.</span>
+                    <button class="kcl-btn kcl-btn--sm kcl-btn--ghost" @click="clearSearch">Clear search</button>
+                  </template>
+                  <template v-else-if="view === 'folder'">
+                    <span class="kcl-empty__icon"><KliveCloudIcon :name="canAddHere ? 'upload' : 'folder'" :size="18" /></span>
+                    <strong>{{ folderKey ? 'This folder is empty' : 'Your drive is empty' }}</strong>
+                    <template v-if="canAddHere">
+                      <span>Drop files or folders anywhere on this page, paste a screenshot, or</span>
+                      <div style="display: flex; gap: 8px">
+                        <button class="kcl-btn kcl-btn--primary" @click="pickFiles"><KliveCloudIcon name="upload" :size="14" />Upload files</button>
+                        <button class="kcl-btn" @click="askNewFolder"><KliveCloudIcon name="folder-plus" :size="14" />New folder</button>
+                      </div>
+                    </template>
+                  </template>
+                  <template v-else>
+                    <span class="kcl-empty__icon"><KliveCloudIcon name="info" :size="18" /></span>
+                    <strong>Nothing here yet</strong>
+                  </template>
+                </div>
+              </template>
+            </CloudListing>
+
+            <div v-if="fileDrag && canDropFiles" class="kcl-drop" data-testid="kcl-drop">
+              <div class="kcl-drop__msg">
+                <KliveCloudIcon name="upload" :size="28" />
+                Drop to upload to {{ dropTargetName }}
+                <span>Folders keep their structure. Drop onto a folder to put it there.</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <CloudSheet v-if="sheetShown" :item="sheetItem" :selection="pickedItems.length > 1 ? pickedItems : []" :folder="view === 'folder' ? currentFolder : null" :place="place"
+                  :link-map="linkMap" :now="now" :origin="origin" :allowed="allowed"
+                  @close="closeSheet" @open="openItem" @download="item => download([item])" @download-many="items => download(items, zipFolderFor(items))"
+                  @rename="askRename" @move="items => (moveItems = items)" @remove="askDelete" @link="shareLink" @edit-link="link => (linkDialog = { item: null, link })"
+                  @copy-link="copyLink" @people="item => (accessItem = item)" @go="key => go('folder', key)" @reveal="reveal" />
     </div>
 
-    <KliveCloudShareDialog :item="sharingItem" @close="sharingItem = null" @saved="onAccessSaved" />
+    <!-- ── menus ── -->
+    <Teleport to="body">
+      <div v-if="menu" class="kcl-layer">
+        <div class="kcl-menu" role="menu" :style="{ position: 'fixed', top: `${menu.y}px`, left: `${menu.x}px`, right: 'auto' }" data-testid="kcl-menu" @click.stop>
+          <template v-if="menu.kind === 'add'">
+            <button class="kcl-menu__item" role="menuitem" @click="closeMenu(); pickFiles()"><KliveCloudIcon name="upload" :size="14" />Upload files<span class="kcl-kbd">U</span></button>
+            <button class="kcl-menu__item" role="menuitem" @click="closeMenu(); pickFolder()"><KliveCloudIcon name="folder" :size="14" />Upload a folder</button>
+            <button class="kcl-menu__item" role="menuitem" data-testid="menu-new-folder" @click="closeMenu(); askNewFolder()"><KliveCloudIcon name="folder-plus" :size="14" />New folder<span class="kcl-kbd">N</span></button>
+          </template>
+          <template v-else-if="menu.item">
+            <button class="kcl-menu__item" role="menuitem" @click="withMenu(it => openItem(it))"><KliveCloudIcon :name="menu.item.type === 'Folder' ? 'folder' : 'eye'" :size="14" />{{ menu.item.type === 'Folder' ? 'Open' : 'Preview' }}<span class="kcl-kbd">{{ menu.item.type === 'Folder' ? 'Enter' : 'Space' }}</span></button>
+            <button v-if="allowed.download" class="kcl-menu__item" role="menuitem" @click="withMenu(it => download([it]))"><KliveCloudIcon name="download" :size="14" />{{ menu.item.type === 'Folder' ? 'Download as ZIP' : 'Download' }}</button>
+            <button v-if="view !== 'folder'" class="kcl-menu__item" role="menuitem" @click="withMenu(it => reveal(it))"><KliveCloudIcon name="folder" :size="14" />Show in its folder</button>
+            <button v-if="isNarrow" class="kcl-menu__item" role="menuitem" @click="closeMenu(); sheetPinned = true"><KliveCloudIcon name="info" :size="14" />Details</button>
+            <template v-if="menu.item.level === 'Editor'">
+              <div class="kcl-menu__sep"></div>
+              <button v-if="allowed.share" class="kcl-menu__item" role="menuitem" data-testid="menu-link" @click="withMenu(it => shareLink(it))"><KliveCloudIcon name="link" :size="14" />Share link…</button>
+              <button v-if="allowed.share && (linkMap.get(menu.item.key)?.length ?? 0) > 0" class="kcl-menu__item" role="menuitem" @click="withMenu(it => copyLink(linkMap.get(it.key)![0]))"><KliveCloudIcon name="copy" :size="14" />Copy link</button>
+              <button v-if="allowed.share" class="kcl-menu__item" role="menuitem" data-testid="menu-people" @click="withMenu(it => accessItem = it)"><KliveCloudIcon name="users" :size="14" />Who can use it…</button>
+              <div class="kcl-menu__sep"></div>
+              <button v-if="allowed.organize" class="kcl-menu__item" role="menuitem" data-testid="menu-rename" @click="withMenu(it => askRename(it))"><KliveCloudIcon name="pencil" :size="14" />Rename<span class="kcl-kbd">F2</span></button>
+              <button v-if="allowed.organize" class="kcl-menu__item" role="menuitem" data-testid="menu-move" @click="withMenu(it => moveItems = targetsFor(it))"><KliveCloudIcon name="folder-move" :size="14" />Move to…</button>
+              <button v-if="allowed.remove" class="kcl-menu__item" role="menuitem" data-tone="crit" data-testid="menu-delete" @click="withMenu(it => askDelete(targetsFor(it)))"><KliveCloudIcon name="trash" :size="14" />Delete<span class="kcl-kbd">Del</span></button>
+            </template>
+          </template>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- ── dialogs ── -->
+    <CloudDialog :open="nameDialog !== null" :title="nameDialog?.mode === 'rename' ? `Rename “${nameDialog.item?.name}”` : `New folder${currentFolder ? ` in ${currentFolder.name}` : ''}`"
+                 :icon="nameDialog?.mode === 'rename' ? 'pencil' : 'folder-plus'" testid="kcl-name-dialog" @close="nameDialog = null">
+      <form @submit.prevent="submitName">
+        <input v-model="nameValue" class="kcl-input kcl-input--wide" :aria-label="nameDialog?.mode === 'rename' ? 'New name' : 'Folder name'" data-autofocus :data-select="nameSelect"
+               data-testid="kcl-name-input" maxlength="200" />
+        <p v-if="nameProblem" class="kcl-error" style="margin-top: 8px">{{ nameProblem }}</p>
+      </form>
+      <template #actions>
+        <button class="kcl-btn kcl-btn--ghost" @click="nameDialog = null">Cancel</button>
+        <button class="kcl-btn kcl-btn--primary" :disabled="!!nameProblem || !nameValue.trim() || busy" data-testid="kcl-name-save" @click="submitName">{{ nameDialog?.mode === 'rename' ? 'Rename' : 'Create' }}</button>
+      </template>
+    </CloudDialog>
+
+    <CloudDialog :open="deleteItems.length > 0" :title="deleteItems.length === 1 ? `Delete “${deleteItems[0].name}”?` : `Delete ${deleteItems.length} items?`"
+                 :sub="deleteSummary" icon="trash" tone="crit" testid="kcl-delete-dialog" @close="deleteItems = []">
+      <p class="kcl-hint">This can't be undone: the files are removed from the server's disk, and any share link to them stops working.</p>
+      <template #actions>
+        <button class="kcl-btn kcl-btn--ghost" @click="deleteItems = []">Cancel</button>
+        <button class="kcl-btn kcl-btn--solid-danger" :disabled="busy" data-testid="kcl-delete-confirm" @click="confirmDelete"><KliveCloudIcon name="trash" :size="14" />Delete</button>
+      </template>
+    </CloudDialog>
+
+    <CloudDialog :open="linkConfirm !== null" :title="linkConfirm?.kind === 'adopt' ? `Take over ${linkConfirm.links.length} link${linkConfirm.links.length === 1 ? '' : 's'}?` : `Remove ${linkConfirm?.links.length} link${linkConfirm?.links.length === 1 ? '' : 's'}?`"
+                 :icon="linkConfirm?.kind === 'adopt' ? 'user-check' : 'link-off'" :tone="linkConfirm?.kind === 'adopt' ? 'link' : 'crit'" testid="kcl-link-confirm" @close="linkConfirm = null">
+      <p v-if="linkConfirm?.kind === 'adopt'" class="kcl-hint">They open again at the same addresses, and show what you can see. Anyone who still has one of them can use it.</p>
+      <p v-else class="kcl-hint">Anyone who has {{ linkConfirm?.links.length === 1 ? 'it' : 'them' }} gets “This link no longer works” from now on. The files themselves stay.</p>
+      <ul class="kcl-hint" style="display: flex; flex-direction: column; gap: 2px; max-height: 160px; overflow-y: auto">
+        <li v-for="link in linkConfirm?.links ?? []" :key="link.code">· {{ link.name }} <span class="kcl-faint">{{ link.problemText }}</span></li>
+      </ul>
+      <template #actions>
+        <button class="kcl-btn kcl-btn--ghost" @click="linkConfirm = null">Cancel</button>
+        <button v-if="linkConfirm?.kind === 'adopt'" class="kcl-btn kcl-btn--primary" :disabled="busy" data-testid="kcl-adopt-confirm" @click="confirmLinks"><KliveCloudIcon name="user-check" :size="14" />Take over</button>
+        <button v-else class="kcl-btn kcl-btn--solid-danger" :disabled="busy" data-testid="kcl-remove-links-confirm" @click="confirmLinks"><KliveCloudIcon name="trash" :size="14" />Remove</button>
+      </template>
+    </CloudDialog>
+
+    <CloudDialog :open="shortcutsOpen" title="Keyboard" icon="command" testid="kcl-shortcuts" @close="shortcutsOpen = false">
+      <dl class="kcl-facts" style="grid-template-columns: 110px 1fr">
+        <template v-for="row in SHORTCUTS" :key="row[0]"><dt><span class="kcl-kbd">{{ row[0] }}</span></dt><dd>{{ row[1] }}</dd></template>
+      </dl>
+    </CloudDialog>
+
+    <CloudMoveDialog :items="moveItems" :index="index" :busy="busy" @close="moveItems = []" @move="confirmMove" />
+    <CloudLinkDialog :item="linkDialog?.item ?? null" :link="linkDialog?.link ?? null" :origin="origin" :now="now" :busy="busy" :copied="copiedCode === (linkDialog?.link?.code ?? '')"
+                     :supports-update="supports.updateLink" @close="linkDialog = null" @create="createLinkFromDialog" @update="updateLinkFromDialog" @copy="copyLink" />
+    <CloudAccessDialog :item="accessItem" @close="accessItem = null" @saved="onAccessSaved" />
+    <CloudViewer :item="viewerItem" :list="viewerList" :now="now" :can-download="allowed.download" :can-share="allowed.share && viewerItem?.level === 'Editor'"
+                 :prepare="cloud.ensureTickets" :source-for="item => cloud.previewSource(item, key => readyThumb(index?.byKey.get(key)?.id ?? key))"
+                 @close="closeViewer" @go="item => openViewer(item, true)" @download="item => download([item])" @link="item => { closeViewer(); shareLink(item); }" />
+    <CloudPalette :open="paletteOpen" :commands="commands" :find="findCommands" @close="paletteOpen = false" />
+    <CloudUploadTray :jobs="uploads.jobs" :now="now" @cancel="id => uploads.cancel(id)" @retry="id => uploads.retry(id)" @cancel-all="uploads.cancelAll()" @clear="uploads.clearFinished()" />
+
+    <Teleport to="body">
+      <div v-if="toasts.length" class="kcl-layer">
+        <div class="kcl-toasts" role="status" aria-live="polite">
+          <div v-for="toast in toasts" :key="toast.id" class="kcl-toast" :data-tone="toast.tone" data-testid="kcl-toast">
+            <KliveCloudIcon :name="toast.tone === 'crit' ? 'octagon-x' : toast.tone === 'warn' ? 'alert' : toast.tone === 'info' ? 'info' : 'check-circle'" :size="15" />
+            <span class="kcl-toast__text">{{ toast.text }}</span>
+            <button v-if="toast.action" class="kcl-btn kcl-btn--xs" @click="toast.action.run(); cloud.dismiss(toast.id)">{{ toast.action.label }}</button>
+            <button class="kcl-iconbtn kcl-iconbtn--sm" aria-label="Dismiss" @click="cloud.dismiss(toast.id)"><KliveCloudIcon name="close" :size="12" /></button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, reactive, watch, nextTick, computed } from 'vue';
-import Swal from 'sweetalert2';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { useKliveCloud } from '~/composables/useKliveCloud';
 import {
-  AuthorizationHeaderValue,
-  KliveAPIUrl,
-  ReportXhrAccess,
-  RequestGETFromKliveAPI,
-  RequestPOSTFromKliveAPI,
-} from '~/scripts/APIInterface';
-import { useAccess } from '~/composables/useAccess';
-import { pushToast } from '~/scripts/accessState';
-import { avatarHue, initials } from '~/scripts/profileFormat';
+  ROOT, SHARED, childrenIn, dayGroup, folderSummary, formatBytes, keyOf, largestFiles, linkState, pathTo, plural, rangeKeys, recentFiles, searchDrive, shareUrl, sortDrive,
+  type CloudCommand, type DriveItem, type DriveLink, type DriveSort, type DriveView, type KindTotal,
+} from '~/scripts/klivecloud/drive';
+import { copyText, formatWhen, type ShareMode } from '~/scripts/klivecloud/shared';
+import { pastedName, takeDrop, takeInput } from '~/scripts/klivecloud/uploads';
+import { forgetThumbs, readyThumb } from '~/scripts/klivecloud/ownerThumbs';
 
 definePageMeta({ layout: 'navbar' });
+useHead({ title: 'KliveCloud' });
 
-// Types
-type CloudLevel = 'Editor' | 'Viewer' | 'None';
+const route = useRoute();
+const router = useRouter();
+const cloud = useKliveCloud();
+const { allowed, index, links, linkMap, drive, state, loadError, loadedAt, now, reloading, supports, toasts, uploads } = cloud;
 
-interface CloudItem {
-  ItemID: string;
-  Name: string;
-  RelativePath: string;
-  ParentFolderID: string;
-  CreatedDate: string;
-  ModifiedDate: string;
-  CreatedByUserID: string;
-  CreatedByName?: string | null;
-  ItemType: 'Folder' | 'File';
-  /** A one-word summary of who has access ("Everyone", "3 people"). */
-  MinimumPermissionLevel: string;
-  FileSizeBytes: number;
-  /** What the signed-in profile may do with it. */
-  MyLevel?: CloudLevel;
-  /** Who has access — only included when the caller may change it. */
-  Access?: {
-    Everyone: 'Viewer' | 'Editor' | null;
-    Inherit: boolean;
-    People: { ProfileId: string; Name: string; Level: 'Viewer' | 'Editor' }[];
-    Summary: string;
-  } | null;
-}
+const VIEW_ICON: Record<DriveView, string> = { folder: 'folder', recent: 'clock', large: 'weight', links: 'link', shared: 'users', search: 'search' };
+const SHORTCUTS: [string, string][] = [
+  ['/', 'Search the whole drive'], ['Ctrl K', 'Go to anything, run anything'], ['↑ ↓', 'Move through the list (Shift to select)'],
+  ['Enter', 'Open'], ['Space', 'Preview'], ['Backspace', 'Up a folder'], ['X', 'Select or unselect'], ['Ctrl A', 'Select everything here'],
+  ['F2', 'Rename'], ['Del', 'Delete'], ['U', 'Upload files'], ['N', 'New folder'], ['I', 'Details panel'], ['R', 'Refresh'], ['Esc', 'Clear, close'],
+];
 
-interface BrowseResult {
-  Folder: CloudItem | null;
-  Virtual: string | null;
-  Path: { ItemID: string; Name: string; ParentFolderID?: string | null }[];
-  MyLevel: CloudLevel;
-  Items: CloudItem[];
-  SharedWithMeCount: number;
-}
+// ── preferences (this browser only) ──
+const PREFS_KEY = 'kcl:prefs';
+const prefs = reactive<{ layout: 'list' | 'grid'; sheet: boolean; sort: { key: DriveSort; dir: 1 | -1 } }>({ layout: 'list', sheet: true, sort: { key: 'name', dir: 1 } });
+try {
+  const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null');
+  if (saved?.layout === 'grid' || saved?.layout === 'list') prefs.layout = saved.layout;
+  if (typeof saved?.sheet === 'boolean') prefs.sheet = saved.sheet;
+  if (saved?.sort?.key) prefs.sort = { key: saved.sort.key, dir: saved.sort.dir === -1 ? -1 : 1 };
+} catch { /* defaults */ }
+watch(prefs, value => { try { localStorage.setItem(PREFS_KEY, JSON.stringify(value)); } catch { /* private mode */ } }, { deep: true });
 
-const SHARED_WITH_ME = 'shared-with-me';
+// ── where we are ──
+const view = ref<DriveView>('folder');
+const folderKey = ref<string>(ROOT);
+const query = ref('');
+const railOpen = ref(false);
+const origin = import.meta.client ? window.location.origin : '';
 
-interface DriveInfo {
-    DriveName: string;
-    TotalCapacityBytes: number;
-    UsedCapacityBytes: number;
-    FreeCapacityBytes: number;
-    TotalCapacityGB: number;
-    UsedCapacityGB: number;
-    FreeCapacityGB: number;
-    UsagePercentage: number;
-    DriveFormat: string;
-}
+const currentFolder = computed(() => (view.value === 'folder' && folderKey.value ? index.value?.byKey.get(folderKey.value) ?? null : null));
+const crumbs = computed(() => (index.value && folderKey.value ? pathTo(index.value, folderKey.value) : []));
+const folderLevel = computed(() => (folderKey.value ? currentFolder.value?.level ?? 'None' : 'Editor'));
+const canAddHere = computed(() => allowed.value.upload && (view.value !== 'folder' || folderLevel.value === 'Editor'));
+const uploadTarget = computed(() => (view.value === 'folder' ? folderKey.value : ROOT));
+const folderLinks = computed(() => (currentFolder.value ? linkMap.value.get(currentFolder.value.key) ?? [] : []));
 
-interface ShareLink {
-    ShareCode: string;
-    ItemID: string;
-    CreatedByUserID: string;
-    CreatedDate: string;
-    ExpirationDate?: string;
-    SharePermissionMode?: string;
-    PermissionMode?: string | number;
-    CanWrite?: boolean;
-    CanDelete?: boolean;
-    ItemType?: 'Folder' | 'File';
-    // Enriched fields for display
-    ItemName?: string;
-    ItemPath?: string;
-}
-
-// State
-const items = ref<CloudItem[]>([]);
-const currentPath = ref<CloudItem[]>([]); // Breadcrumb trail (folders)
-const loading = ref(false);
-const error = ref('');
-const fileInput = ref<HTMLInputElement | null>(null);
-const isDragging = ref(false);
-const driveInfo = ref<DriveInfo | null>(null);
-const { can } = useAccess();
-
-// Where we are, and what we may do here.
-const folderLevel = ref<CloudLevel>('Editor');
-const currentFolderItem = ref<CloudItem | null>(null);
-const inSharedView = ref(false);
-const sharedRoot = ref(false);
-const sharedWithMeCount = ref(0);
-const sharingItem = ref<CloudItem | null>(null);
-const canAddHere = computed(() => !inSharedView.value && folderLevel.value === 'Editor');
-const addHereHint = computed(() => (inSharedView.value ? 'Open a shared folder to add files to it'
-  : folderLevel.value === 'Editor' ? '' : 'You can only view this folder'));
-const selectionEditable = computed(() => [...selectedItems.value].every(id => items.value.find(i => i.ItemID === id)?.MyLevel === 'Editor'));
-
-const canShareItem = (item: CloudItem) => item.MyLevel === 'Editor' && can('klivecloud.sharing.manage');
-const accessTitle = (item: CloudItem) => (item.MyLevel === 'Viewer' ? 'You can view this' : `Shared with: ${item.MinimumPermissionLevel}`);
-
-const openShare = (item: CloudItem) => { sharingItem.value = item; };
-const onAccessSaved = (updated: CloudItem) => {
-  sharingItem.value = null;
-  const index = items.value.findIndex(i => i.ItemID === updated.ItemID);
-  if (index >= 0) items.value[index] = { ...items.value[index], ...updated };
-  if (currentFolderItem.value?.ItemID === updated.ItemID) currentFolderItem.value = { ...currentFolderItem.value, ...updated };
-  notify('Access updated', `${updated.Name}: ${updated.Access?.Summary ?? updated.MinimumPermissionLevel}`);
-};
-
-/** A small confirmation in the corner (the site's toast host). */
-const notify = (title: string, detail = '', tone: 'info' | 'error' = 'info') =>
-  pushToast({ tone, title, detail, permissions: [], reason: tone }, tone === 'error' ? 7_000 : 3_500);
-
-/** The server's own explanation of a failure (KliveCloud answers JSON with a message). */
-const failureText = async (response: Response) => {
-  try {
-    const body = await response.clone().json();
-    return body?.message || body?.error || `Request failed (${response.status})`;
-  } catch {
-    return (await response.text().catch(() => '')) || `Request failed (${response.status})`;
+const heading = computed(() => {
+  switch (view.value) {
+    case 'search': return `Results for “${query.value.trim()}”`;
+    case 'recent': return 'Recent';
+    case 'large': return 'Largest files';
+    case 'links': return 'Share links';
+    case 'shared': return 'Shared with me';
+    default: return currentFolder.value?.name ?? 'My drive';
   }
-};
+});
 
-// Share Links State
-const sharedLinks = ref<ShareLink[]>([]);
-const loadingSharedLinks = ref(false);
+const sortable = computed(() => view.value === 'folder' || view.value === 'search' || view.value === 'shared');
+const groupRecent = (item: DriveItem) => dayGroup(item.modified, now.value);
 
-// Preview System
-const previewUrls = reactive(new Map<string, string>());
-const failedPreviews = reactive(new Set<string>());
-let observer: IntersectionObserver | null = null;
-const supportedPreviewExtensions = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'mp4', 'webm', 'mov', 'avi', 'mkv']);
-const videoExtensions = new Set(['mp4', 'mov', 'mkv', 'webm', 'm4v', 'avi', 'wmv', 'flv', 'qt', '3gp', '3g2', 'ogv', 'ogg', 'ts', 'mts', 'm2ts', 'vob', 'asf', 'divx', 'mxf']);
-
-// Selection State
-const selectedItems = ref(new Set<string>());
-const selectionBox = ref({ x: 0, y: 0, width: 0, height: 0, active: false });
-const dragStart = { x: 0, y: 0 };
-// Store initial selection state when drag starts to support correct toggling/restoring
-const initialSelection = new Set<string>();
-const itemRefs = new Map<string, HTMLElement>();
-const cloudContentRef = ref<HTMLElement | null>(null);
-
-// Internal Drag and Drop Moving State
-const draggedItem = ref<CloudItem | null>(null);
-const activeDropTargetID = ref<string | null>(null);
-
-// Methods
-
-const startSelection = (event: MouseEvent) => {
-    // Ignore if clicking on an interactive element (button, input, item)
-    if ((event.target as HTMLElement).closest('.file-item') || 
-        (event.target as HTMLElement).closest('button') || 
-        (event.target as HTMLElement).closest('input') ||
-        (event.target as HTMLElement).closest('select') ||
-        (event.target as HTMLElement).closest('.shared-links-section') ||
-        (event.target as HTMLElement).closest('.upload-panel')) {
-        return;
-    }
-    
-    // Only left click
-    if (event.button !== 0) return;
-
-    // Store initial state for correct toggling/restoring
-    initialSelection.clear();
-    selectedItems.value.forEach(id => initialSelection.add(id));
-
-    // Clear previous selection if not holding Ctrl/Shift
-    if (!event.ctrlKey && !event.metaKey && !event.shiftKey) {
-        selectedItems.value.clear();
-        // Since we cleared, initial effective selection for this drag is empty
-        // Wait, standard behavior:
-        // No modifier: Start fresh.
-        // Ctrl: Add/Toggle.
-        // Shift: Add/Range.
-        // So for no modifier, initialSelection (context for this drag) is EMPTY.
-        initialSelection.clear();
-    }
-
-    selectionBox.value.active = true;
-    dragStart.x = event.clientX; // Use clientX/Y for relative calculations
-    dragStart.y = event.clientY;
-    
-    // Set initial box (width/height 0)
-    updateSelectionBoxDisplay(event.clientX, event.clientY);
-
-    document.addEventListener('mousemove', updateSelection);
-    document.addEventListener('mouseup', endSelection);
-};
-
-const updateSelection = (event: MouseEvent) => {
-    if (!selectionBox.value.active) return;
-    updateSelectionBoxDisplay(event.clientX, event.clientY);
-};
-
-const updateSelectionBoxDisplay = (clientX: number, clientY: number) => {
-    if (!cloudContentRef.value) return;
-    
-    const rect = cloudContentRef.value.getBoundingClientRect();
-    
-    // Calculate relative coordinates within the container
-    const relativeStartX = dragStart.x - rect.left;
-    const relativeStartY = dragStart.y - rect.top;
-    const relativeCurrentX = clientX - rect.left;
-    const relativeCurrentY = clientY - rect.top;
-
-    // Determine top-left and width/height
-    const x = Math.min(relativeStartX, relativeCurrentX);
-    const y = Math.min(relativeStartY, relativeCurrentY);
-    const width = Math.abs(relativeCurrentX - relativeStartX);
-    const height = Math.abs(relativeCurrentY - relativeStartY);
-
-    selectionBox.value = {
-        x, y, width, height, active: true
-    };
-    
-    // Check intersection (we can use client coordinates directly for this separately)
-    checkIntersections(clientX, clientY);
-};
-
-const endSelection = (event: MouseEvent) => {
-    selectionBox.value.active = false;
-    document.removeEventListener('mousemove', updateSelection);
-    document.removeEventListener('mouseup', endSelection);
-};
-
-const checkIntersections = (currentClientX: number, currentClientY: number) => {
-    // Current selection rect in Client coordinates (viewport)
-    const boxRect = {
-        left: Math.min(dragStart.x, currentClientX),
-        top: Math.min(dragStart.y, currentClientY),
-        right: Math.max(dragStart.x, currentClientX),
-        bottom: Math.max(dragStart.y, currentClientY)
-    };
-
-    items.value.forEach(item => {
-        const el = itemRefs.get(item.ItemID);
-        if (el) {
-            const itemRect = el.getBoundingClientRect();
-            // Use Client coordinates (viewport) consistently
-            const intersects = !(
-                boxRect.right < itemRect.left ||
-                boxRect.left > itemRect.right ||
-                boxRect.bottom < itemRect.top ||
-                boxRect.top > itemRect.bottom
-            );
-
-            if (intersects) {
-                selectedItems.value.add(item.ItemID);
-            } else {
-                // If not intersecting, revert to initial state
-                if (initialSelection.has(item.ItemID)) {
-                    selectedItems.value.add(item.ItemID);
-                } else {
-                    selectedItems.value.delete(item.ItemID);
-                }
-            }
-        }
-    });
-};
-
-const setItemRef = (el: Element | ComponentPublicInstance | null, id: string) => {
-    if (el) {
-        const hEl = el as HTMLElement;
-        itemRefs.set(id, hEl);
-        hEl.dataset.itemId = id; 
-        if (observer) observer.observe(hEl);
-    } else {
-        itemRefs.delete(id);
-    }
-};
-
-const getCurrentFolderID = () => {
-  if (inSharedView.value) return SHARED_WITH_ME;
-  return currentPath.value.length > 0
-    ? currentPath.value[currentPath.value.length - 1].ItemID
-    : '';
-};
-
-// --- API Calls ---
-
-const fetchDriveInfo = async () => {
-    try {
-        const response = await RequestGETFromKliveAPI('/KliveCloud/GetDriveInfo');
-        if (response.ok) {
-            driveInfo.value = await response.json();
-        } else {
-             console.error('Failed to fetch drive info:', await response.text());
-        }
-    } catch (e) { console.error(e); }
-};
-
-const fetchItems = async (folderID: string = '') => {
-  loading.value = true;
-  error.value = '';
-  try {
-    const url = folderID ? `/KliveCloud/Browse?folderID=${encodeURIComponent(folderID)}` : '/KliveCloud/Browse';
-    const response = await RequestGETFromKliveAPI(url, false, false);
-
-    if (response.ok) {
-      const data = await response.json() as BrowseResult;
-      items.value = data.Items;
-      inSharedView.value = data.Virtual === SHARED_WITH_ME;
-      currentPath.value = data.Path as unknown as CloudItem[];
-      // The first visible folder sits inside something hidden: it was reached through "Shared with me".
-      sharedRoot.value = !!data.Path[0]?.ParentFolderID;
-      currentFolderItem.value = data.Folder;
-      folderLevel.value = data.MyLevel;
-      if (!folderID) sharedWithMeCount.value = data.SharedWithMeCount;
-    } else {
-      error.value = await failureText(response);
-    }
-  } catch (e: any) {
-    error.value = `Error: ${e.message}`;
-    console.error(e);
-  } finally {
-    loading.value = false;
+const shown = computed<DriveItem[]>(() => {
+  const all = index.value;
+  if (!all) return [];
+  switch (view.value) {
+    case 'search': return prefs.sort.key === 'name' && prefs.sort.dir === 1 ? searchDrive(all, query.value) : sortDrive(searchDrive(all, query.value), prefs.sort.key, prefs.sort.dir);
+    case 'recent': return recentFiles(all, 80);
+    case 'large': return largestFiles(all, 60);
+    case 'shared': return sortDrive(childrenIn(all, SHARED), prefs.sort.key, prefs.sort.dir);
+    case 'links': return [];
+    default: return sortDrive(childrenIn(all, folderKey.value), prefs.sort.key, prefs.sort.dir);
   }
-};
+});
 
-const createFolder = async (name: string) => {
-  const parentID = getCurrentFolderID();
-  const params = new URLSearchParams({ name });
-  if (parentID) {
-    params.append('parentFolderID', parentID);
-  }
-
-  const query = `/KliveCloud/CreateFolder?${params.toString()}`;
-  
-  try {
-    const response = await RequestPOSTFromKliveAPI(query);
-    if (response.ok) {
-      notify('Folder created', name);
-      refreshCurrentFolder();
-    } else if (response.status !== 403 || !response.headers.get('RequestDeniedCode')) {
-      notify("Couldn't create the folder", await failureText(response), 'error');
+const folderStats = computed(() => {
+  if (view.value !== 'folder') return null;
+  if (currentFolder.value) return currentFolder.value;
+  const all = index.value;
+  if (!all) return null;
+  return { files: all.files, folders: all.folders, bytes: all.bytes, newest: all.newest };
+});
+/** The folder you are in (or the whole drive), in brief, for the details panel with nothing picked. */
+const place = computed(() => {
+  const all = index.value;
+  if (!all || view.value !== 'folder') return null;
+  const folder = currentFolder.value;
+  const inside = (item: DriveItem) => {
+    if (!folder) return item.parentKey !== SHARED;
+    let cursor = all.byKey.get(item.parentKey);
+    const seen = new Set<string>();
+    while (cursor && !seen.has(cursor.key)) {
+      if (cursor.key === folder.key) return true;
+      seen.add(cursor.key);
+      cursor = all.byKey.get(cursor.parentKey);
     }
-  } catch (e: any) {
-    Swal.fire('Error', e.message, 'error');
+    return false;
+  };
+  const files: DriveItem[] = [];
+  for (const item of all.byKey.values()) if (item.type === 'File' && inside(item)) files.push(item);
+  const kinds = new Map<string, KindTotal>();
+  for (const file of files) {
+    const total = kinds.get(file.kind) ?? { kind: file.kind, files: 0, bytes: 0 };
+    total.files++;
+    total.bytes += file.bytes;
+    kinds.set(file.kind, total);
   }
-};
+  const bytes = folder ? folder.bytes : all.bytes;
+  return {
+    title: folder?.name ?? 'My drive',
+    sub: folder ? folderSummary(folder) : `${plural(all.folders, 'folder')} · ${plural(all.files, 'file')} · ${formatBytes(all.bytes)}`,
+    bytes,
+    recent: [...files].sort((a, b) => (b.modified || 0) - (a.modified || 0)).slice(0, 5),
+    biggest: [...files].sort((a, b) => b.bytes - a.bytes).slice(0, 4),
+    kinds: [...kinds.values()].sort((a, b) => b.bytes - a.bytes),
+  };
+});
 
-const deleteItemAPI = async (itemID: string) => {
-    try {
-        const response = await RequestPOSTFromKliveAPI(`/KliveCloud/DeleteItem?itemID=${itemID}`);
-        if(response.ok) {
-            notify('Deleted');
-            refreshCurrentFolder();
-        } else if (response.status !== 403 || !response.headers.get('RequestDeniedCode')) {
-            notify("Couldn't delete", await failureText(response), 'error');
-        }
-    } catch (e: any) {
-        Swal.fire('Error', e.message, 'error');
-    }
+const hereDirect = computed(() => (index.value && view.value === 'folder' ? childrenIn(index.value, folderKey.value).length : 0));
+
+const linkCounts = computed(() => ({ total: links.value.length, broken: links.value.filter(link => linkState(link, now.value) === 'broken').length }));
+
+const subline = computed(() => {
+  const all = index.value;
+  if (!all) return state.value === 'loading' ? 'Opening your drive…' : '';
+  const parts = [`${plural(all.files, 'file')} · ${formatBytes(all.bytes)}`];
+  if (drive.value) parts.push(`${formatBytes(drive.value.free)} free on ${drive.value.name}`);
+  if (linkCounts.value.total) parts.push(`${linkCounts.value.total} link${linkCounts.value.total === 1 ? '' : 's'}${linkCounts.value.broken ? `, ${linkCounts.value.broken} can't open` : ''}`);
+  return parts.join(' · ');
+});
+
+function fmtAgo(ms: number) {
+  const s = Math.round((now.value - ms) / 1000);
+  if (s < 45) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  return `${Math.round(s / 3600)} h ago`;
 }
 
-// Upload State
-interface UploadTask {
-    id: string;
-    fileName: string;
-    progress: number;
-    status: 'pending' | 'uploading' | 'finalizing' | 'completed' | 'error' | 'canceled';
-    xhr?: XMLHttpRequest;
-}
-const activeUploads = ref<UploadTask[]>([]);
-const activeDownloads = ref<Set<string>>(new Set());
-const isUploadPanelOpen = ref(false);
+// ── selection ──
+const picked = ref<Set<string>>(new Set());
+const anchor = ref<string | null>(null);
+const focusKey = ref<string | null>(null);
+const pickedItems = computed(() => shown.value.filter(item => picked.value.has(item.key)));
+const canEditPicked = computed(() => pickedItems.value.length > 0 && pickedItems.value.every(item => item.level === 'Editor'));
+const pickedSummary = computed(() => {
+  const files = pickedItems.value.filter(i => i.type === 'File').length;
+  const folders = pickedItems.value.length - files;
+  const bytes = pickedItems.value.reduce((sum, i) => sum + i.bytes, 0);
+  return [folders ? plural(folders, 'folder') : '', files ? plural(files, 'file') : '', formatBytes(bytes)].filter(Boolean).join(' · ');
+});
 
-const uploadFileAPI = async (file: File) => {
-    // Check if file with same name is already uploading
-    if(activeUploads.value.some(u => (u.status === 'uploading' || u.status === 'finalizing') && u.fileName === file.name)) {
-        Swal.fire({
-            icon: 'warning',
-            title: 'Already uploading',
-            text: `File "${file.name}" is already being uploaded.`
-        });
-        return;
-    }
-
-    const parentID = getCurrentFolderID();
-    const params = new URLSearchParams({ fileName: file.name });
-    if (parentID) {
-        params.append('parentFolderID', parentID);
-    }
-
-    const uploadId = Math.random().toString(36).substring(7);
-    const task = reactive<UploadTask>({
-        id: uploadId,
-        fileName: file.name,
-        progress: 0,
-        status: 'uploading'
-    });
-    
-    activeUploads.value.push(task);
-    isUploadPanelOpen.value = true;
-
-    // Use XMLHttpRequest for progress events
-    return new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        task.xhr = xhr;
-
-        const authorization = AuthorizationHeaderValue();
-        const query = `${KliveAPIUrl}/KliveCloud/UploadFile?${params.toString()}`;
-
-        xhr.open('POST', query, true);
-        if (authorization) xhr.setRequestHeader('Authorization', authorization);
-        // Do NOT set Content-Type so browser sets boundary? Wait, for raw binary, we don't need boundary.
-        // But if we just send the file, browser might set type.
-        // API expects raw bytes. So we don't need multipart.
-
-        xhr.upload.onprogress = (e: ProgressEvent) => {
-            if (e.lengthComputable) {
-                const percent = Math.round((e.loaded / e.total) * 100);
-                task.progress = percent;
-                if (percent === 100) {
-                    task.status = 'finalizing';
-                }
-            }
-        };
-
-        xhr.onload = () => {
-            if (xhr.status === 200) {
-                task.status = 'completed';
-                task.progress = 100;
-                
-                // Refresh folder content if this upload finished successfully
-                // We debounce this slightly or just call it.
-                refreshCurrentFolder(); 
-                resolve();
-            } else {
-                task.status = 'error';
-                ReportXhrAccess(xhr, '/KliveCloud/UploadFile');
-                let errorText = xhr.responseText || 'Upload failed';
-                try { const body = JSON.parse(xhr.responseText); errorText = body?.message || body?.error || errorText; } catch { /* plain text */ }
-                if (xhr.status !== 401 && !(xhr.status === 403 && xhr.getResponseHeader('RequestDeniedCode'))) notify(`Couldn't upload ${file.name}`, errorText, 'error');
-                reject(new Error(errorText));
-            }
-        };
-
-        xhr.onerror = () => {
-            task.status = 'error';
-            reject(new Error('Network error'));
-        };
-
-        xhr.onabort = () => {
-            task.status = 'canceled';
-            resolve();
-        };
-
-        // Send raw file
-        xhr.send(file);
-    });
-};
-
-const cancelUpload = (task: UploadTask) => {
-    if (task.status === 'uploading' && task.xhr) {
-        task.xhr.abort();
-    }
-    task.status = 'canceled';
-};
-
-const clearCompletedUploads = () => {
-    activeUploads.value = activeUploads.value.filter(t => ['uploading', 'pending', 'finalizing'].includes(t.status));
-    if (activeUploads.value.length === 0) isUploadPanelOpen.value = false;
-};
-
-const downloadFileAPI = async (item: CloudItem) => {
-    try {
-        activeDownloads.value.add(item.ItemID);
-         // Using RequestGETFromKliveAPI
-        const response = await RequestGETFromKliveAPI(`/KliveCloud/DownloadFile?itemID=${item.ItemID}`, false, true);
-        
-        if (!response.ok) {
-             if (response.status !== 403 || !response.headers.get('RequestDeniedCode')) notify("Couldn't download", await failureText(response), 'error');
-             activeDownloads.value.delete(item.ItemID);
-             return;
-        }
-
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = item.Name;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-        activeDownloads.value.delete(item.ItemID);
-
-    } catch (e: any) {
-        activeDownloads.value.delete(item.ItemID);
-        Swal.fire('Error', e.message, 'error');
-    }
+const sheetItem = computed<DriveItem | null>(() => (pickedItems.value.length === 1 ? pickedItems.value[0] : null));
+const isNarrow = ref(false);
+/** On narrow screens the sheet is an overlay: it opens on request (I, or Details in a row's menu). */
+const sheetPinned = ref(false);
+const sheetShown = computed(() => view.value !== 'links' && allowed.value.browse && state.value !== 'error'
+  && (isNarrow.value ? sheetPinned.value && (!!sheetItem.value || pickedItems.value.length > 1) : prefs.sheet));
+function closeSheet() {
+  if (isNarrow.value) sheetPinned.value = false;
+  else prefs.sheet = false;
 }
 
-
-// --- Navigation Actions ---
-
-const refreshCurrentFolder = () => {
-  fetchItems(getCurrentFolderID());
-};
-
-const navigateToRoot = () => {
-  fetchItems();
-};
-
-const openSharedWithMe = () => {
-  selectedItems.value.clear();
-  fetchItems(SHARED_WITH_ME);
-};
-
-const navigateToFolder = (folder: CloudItem, index: number) => {
-  fetchItems(folder.ItemID);
-};
-
-const navigateUp = () => {
-    if (inSharedView.value) return navigateToRoot();
-    const parent = currentPath.value.length > 1 ? currentPath.value[currentPath.value.length - 2].ItemID : '';
-    // Top of a folder shared into something hidden: up is "Shared with me".
-    if (!parent && sharedRoot.value) return openSharedWithMe();
-    fetchItems(parent);
+function setPick(keys: Iterable<string>) {
+  picked.value = new Set(keys);
+}
+function clearPick() {
+  if (picked.value.size) setPick([]);
+}
+function pickAll() {
+  setPick(shown.value.map(item => item.key));
 }
 
-const handleItemClick = (item: CloudItem, event?: MouseEvent) => {
-  // Check for selection modifiers if event is present
-  if (event && (event.ctrlKey || event.metaKey || event.shiftKey)) {
-      if (event.ctrlKey || event.metaKey) {
-          // Toggle selection
-          if (selectedItems.value.has(item.ItemID)) {
-              selectedItems.value.delete(item.ItemID);
-          } else {
-              selectedItems.value.add(item.ItemID);
-          }
-      } else if (event.shiftKey) {
-          // Range selection (simplified: select all between last selected and this one)
-          // Find index of current item
-          const currentIndex = items.value.findIndex(i => i.ItemID === item.ItemID);
-          // Find index of last selected (approximation: first found)
-          let lastIndex = -1;
-          // Ideally we track last clicked item
-          // For now, let's just find the first selected item in the list
-          const firstSelected = items.value.findIndex(i => selectedItems.value.has(i.ItemID));
-          
-          if (firstSelected !== -1 && currentIndex !== -1) {
-              const start = Math.min(firstSelected, currentIndex);
-              const end = Math.max(firstSelected, currentIndex);
-              for (let i = start; i <= end; i++) {
-                  selectedItems.value.add(items.value[i].ItemID);
-              }
-          } else {
-              selectedItems.value.add(item.ItemID);
-          }
-      }
-      return; // Stop further action (don't open folder/preview)
+const coarse = ref(false);
+
+function onPick(item: DriveItem, event: MouseEvent) {
+  closeMenu();
+  focusKey.value = item.key;
+  if (coarse.value && !event.ctrlKey && !event.shiftKey && !picked.value.size) { openItem(item); return; }
+  if (event.shiftKey && anchor.value) {
+    const order = shown.value.map(i => i.key);
+    const range = rangeKeys(order, anchor.value, item.key);
+    setPick(event.ctrlKey || event.metaKey ? [...picked.value, ...range] : range);
+    return;
   }
-
-  // Normal click
-  // If we have a selection active, maybe clear it?
-  // Standard explorer behavior: clicking an item selects it and clears others
-  if (selectedItems.value.size > 0 && !selectedItems.value.has(item.ItemID)) {
-      selectedItems.value.clear();
-      selectedItems.value.add(item.ItemID);
-      // Wait, if it's a folder, we might want to open it on double click?
-      // Single click usually just selects.
-      // But the current implementation is "Click to open".
-      // Let's keep "Click to open" behavior for folders, but maybe add a "selection mode" toggle?
-      // Or: Click selects. Double Click opens.
-      // Modifying interaction model is risky without user consent.
-      // Current behavior: Click -> Navigate/Action.
-      // Proposed: Click -> Select. Double Click -> Navigate.
-      // Or: Checkbox / Box select -> Selection Mode.
-      
-      // Let's implement: Click = Navigate (original behavior). 
-      // Selection is done via Drag or Ctrl/Shift+Click.
-      // If user clicks normally without modifier, we do the original action AND clear selection?
-      selectedItems.value.clear();
-  } else if (selectedItems.value.has(item.ItemID) && selectedItems.value.size > 1) {
-       // Clicking one of many selected items -> Select just this one
-       selectedItems.value.clear();
-       selectedItems.value.add(item.ItemID);
-       // And process action...
-  }
-
-  if (item.ItemType === 'Folder') {
-    // Navigate into folder (the server returns the breadcrumbs)
-    fetchItems(item.ItemID);
-    selectedItems.value.clear(); // Clear selection on navigation
+  if (event.ctrlKey || event.metaKey) {
+    const next = new Set(picked.value);
+    if (next.has(item.key)) next.delete(item.key); else next.add(item.key);
+    picked.value = next;
   } else {
-    // Maybe preview or details? For now ask if download
-    const ext = item.Name.split('.').pop()?.toLowerCase();
-    
-    if (ext && supportedPreviewExtensions.has(ext)) {
-        showPreviewPopup(item);
+    setPick([item.key]);
+  }
+  anchor.value = item.key;
+}
+
+function onCheck(item: DriveItem, event: MouseEvent) {
+  focusKey.value = item.key;
+  if (event.shiftKey && anchor.value) {
+    setPick([...picked.value, ...rangeKeys(shown.value.map(i => i.key), anchor.value, item.key)]);
+    return;
+  }
+  const next = new Set(picked.value);
+  if (next.has(item.key)) next.delete(item.key); else next.add(item.key);
+  picked.value = next;
+  anchor.value = item.key;
+}
+
+/** What a menu on one row acts on: the whole selection when the row is part of it. */
+function targetsFor(item: DriveItem) {
+  return picked.value.has(item.key) && picked.value.size > 1 ? pickedItems.value : [item];
+}
+
+// ── navigation ──
+let syncing = false;
+
+function go(next: DriveView, key = ROOT, options: { keepSearch?: boolean } = {}) {
+  if (next === 'folder' && key && index.value && !index.value.byKey.has(key)) key = ROOT;
+  view.value = next;
+  folderKey.value = next === 'folder' ? key : folderKey.value;
+  if (!options.keepSearch && next !== 'search') query.value = '';
+  setPick([]);
+  anchor.value = null;
+  focusKey.value = null;
+  pushUrl();
+}
+
+function openItem(item: DriveItem) {
+  closeMenu();
+  if (item.type === 'Folder') { go('folder', item.key); return; }
+  openViewer(item);
+}
+
+function reveal(item: DriveItem) {
+  if (item.parentKey === SHARED) go('shared');
+  else go('folder', item.parentKey);
+  void nextTick(() => {
+    setPick([item.key]);
+    anchor.value = item.key;
+    focusKey.value = item.key;
+    void nextTick(() => document.querySelector(`[data-key="${CSS.escape(item.key)}"]`)?.scrollIntoView({ block: 'center' }));
+  });
+}
+
+function revealLink(link: DriveLink) {
+  const item = index.value?.byKey.get(link.itemKey);
+  if (item) reveal(item);
+}
+
+function goUp() {
+  if (view.value !== 'folder') { go('folder', ROOT); return; }
+  const folder = currentFolder.value;
+  if (!folder) return;
+  const childKey = folder.key;
+  if (folder.parentKey === SHARED) go('shared');
+  else go('folder', folder.parentKey);
+  void nextTick(() => { focusKey.value = childKey; setPick([childKey]); anchor.value = childKey; });
+}
+
+function clearSearch() {
+  query.value = '';
+  searchInput.value?.blur();
+}
+
+let searchFrom: { view: DriveView; key: string } | null = null;
+watch(query, (text, old) => {
+  if (syncing) return;
+  if (text.trim() && !old.trim()) searchFrom = { view: view.value === 'search' ? 'folder' : view.value, key: folderKey.value };
+  if (text.trim()) {
+    if (view.value !== 'search') { view.value = 'search'; setPick([]); }
+    focusKey.value = null;
+  } else if (view.value === 'search') {
+    view.value = searchFrom?.view ?? 'folder';
+    folderKey.value = searchFrom?.key ?? folderKey.value;
+    searchFrom = null;
+  }
+  replaceUrl();
+});
+
+// ?f= a folder, ?v= a view, ?q= a search, ?open= a file in the viewer: shareable, and Back works.
+function urlQuery() {
+  const q: Record<string, string> = {};
+  if (view.value === 'folder' && folderKey.value) q.f = index.value?.byKey.get(folderKey.value)?.id ?? folderKey.value;
+  if (view.value !== 'folder' && view.value !== 'search') q.v = view.value;
+  if (view.value === 'search' && query.value.trim()) q.q = query.value.trim();
+  if (viewerItem.value) q.open = viewerItem.value.id;
+  return q;
+}
+function sameQuery(a: Record<string, any>, b: Record<string, any>) {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) if (String(a[key] ?? '') !== String(b[key] ?? '')) return false;
+  return true;
+}
+function pushUrl() {
+  if (syncing) return;
+  const q = urlQuery();
+  if (!sameQuery(q, route.query)) void router.push({ query: q });
+}
+function replaceUrl() {
+  if (syncing) return;
+  const q = urlQuery();
+  if (!sameQuery(q, route.query)) void router.replace({ query: q });
+}
+
+function applyUrl() {
+  syncing = true;
+  const before = `${view.value}|${folderKey.value}|${query.value}`;
+  try {
+    const q = route.query;
+    const v = String(q.v ?? '');
+    const text = String(q.q ?? '');
+    if (text) { query.value = text; view.value = 'search'; }
+    else {
+      query.value = '';
+      if (['recent', 'large', 'links', 'shared'].includes(v)) view.value = v as DriveView;
+      else { view.value = 'folder'; folderKey.value = keyOf(q.f); }
+    }
+    const open = keyOf(q.open);
+    if (!open) viewerPushed = false;
+    viewerKey.value = open || null;
+    // Back and Forward land somewhere new: what was picked there doesn't come along.
+    if (`${view.value}|${folderKey.value}|${query.value}` !== before) { picked.value = new Set(); anchor.value = null; }
+  } finally {
+    void nextTick(() => { syncing = false; });
+  }
+}
+watch(() => route.query, () => applyUrl());
+
+// A folder that went away (deleted elsewhere) sends you to the top.
+watch(index, all => {
+  if (!all) return;
+  if (view.value === 'folder' && folderKey.value && !all.byKey.has(folderKey.value)) go('folder', ROOT);
+  if (picked.value.size) {
+    const keep = [...picked.value].filter(key => all.byKey.has(key));
+    if (keep.length !== picked.value.size) setPick(keep);
+  }
+});
+
+// ── sorting ──
+const DEFAULT_DIR: Record<DriveSort, 1 | -1> = { name: 1, kind: 1, size: -1, modified: -1, access: 1 };
+function sortBy(key: DriveSort) {
+  prefs.sort = prefs.sort.key === key ? { key, dir: prefs.sort.dir === 1 ? -1 : 1 } : { key, dir: DEFAULT_DIR[key] };
+}
+const sortChoice = computed({
+  get: () => `${prefs.sort.key}:${prefs.sort.dir}`,
+  set: (value: string) => {
+    const [key, dir] = value.split(':');
+    prefs.sort = { key: key as DriveSort, dir: dir === '-1' ? -1 : 1 };
+  },
+});
+
+// ── viewer ──
+const viewerKey = ref<string | null>(null);
+const viewerItem = computed(() => (viewerKey.value ? index.value?.byKey.get(viewerKey.value) ?? null : null));
+const viewerList = computed(() => {
+  const list = shown.value.filter(item => item.type === 'File');
+  return viewerItem.value && !list.some(item => item.key === viewerItem.value!.key) ? [viewerItem.value] : list;
+});
+let viewerPushed = false;
+function openViewer(item: DriveItem, replace = false) {
+  const wasOpen = !!viewerKey.value;
+  viewerKey.value = item.key;
+  focusKey.value = item.key;
+  if (replace || wasOpen) replaceUrl();
+  else { viewerPushed = true; pushUrl(); }
+}
+function closeViewer() {
+  if (!viewerKey.value) return;
+  const key = viewerKey.value;
+  viewerKey.value = null;
+  if (viewerPushed && route.query.open) router.back(); else replaceUrl();
+  viewerPushed = false;
+  void nextTick(() => {
+    focusKey.value = key;
+    (document.querySelector(`[data-focus-key="${CSS.escape(key)}"]`) as HTMLElement | null)?.focus();
+  });
+}
+
+// ── menus ──
+const menu = ref<{ kind: 'item' | 'add'; item?: DriveItem; x: number; y: number } | null>(null);
+function placeMenu(event: Event, width = 220, height = 320) {
+  const mouse = event as MouseEvent;
+  const target = (event.currentTarget ?? event.target) as HTMLElement | null;
+  const rect = target?.getBoundingClientRect?.();
+  let x = mouse.clientX || (rect ? rect.right - width : 0);
+  let y = mouse.clientY || (rect ? rect.bottom + 4 : 0);
+  if (mouse.type === 'click' && rect) { x = rect.right - width; y = rect.bottom + 4; }
+  x = Math.max(8, Math.min(x, window.innerWidth - width - 8));
+  y = Math.max(8, Math.min(y, window.innerHeight - height - 8));
+  return { x, y };
+}
+function openAddMenu(event: Event) {
+  menu.value = menu.value?.kind === 'add' ? null : { kind: 'add', ...placeMenu(event, 210, 120) };
+}
+function closeMenu() {
+  menu.value = null;
+}
+/** Runs a menu entry on the item the menu was opened for (the menu closes first). */
+function withMenu(run: (item: DriveItem) => void) {
+  const item = menu.value?.item;
+  closeMenu();
+  if (item) run(item);
+}
+
+function onAct(kind: 'download' | 'link' | 'menu' | 'reveal', item: DriveItem, event: Event) {
+  if (kind === 'menu') {
+    if (!picked.value.has(item.key)) { setPick([item.key]); anchor.value = item.key; }
+    focusKey.value = item.key;
+    menu.value = { kind: 'item', item, ...placeMenu(event) };
+  } else if (kind === 'download') download(targetsFor(item), zipFolderFor(targetsFor(item)));
+  else if (kind === 'link') shareLink(item);
+  else if (kind === 'reveal') reveal(item);
+}
+
+// ── downloads ──
+/** Several things in one folder go out as one ZIP of that folder's selection. */
+function zipFolderFor(items: DriveItem[]): DriveItem | null {
+  if (items.length < 2) return null;
+  const parent = items[0].parentKey;
+  if (!parent || parent === SHARED || !items.every(item => item.parentKey === parent)) return null;
+  return index.value?.byKey.get(parent) ?? null;
+}
+function download(items: DriveItem[], zipFolder: DriveItem | null = null) {
+  void cloud.download(items, zipFolder);
+}
+function downloadPicked() {
+  download(pickedItems.value, zipFolderFor(pickedItems.value));
+}
+
+// ── new folder / rename ──
+const nameDialog = ref<{ mode: 'new' | 'rename'; item?: DriveItem } | null>(null);
+const nameValue = ref('');
+const busy = ref(false);
+const nameSelect = computed(() => {
+  const item = nameDialog.value?.item;
+  if (!item || item.type === 'Folder') return '';
+  const dot = nameValue.value.lastIndexOf('.');
+  return dot > 0 ? String(dot) : '';
+});
+const BAD_NAME = /[\\/:*?"<>|]/;
+const nameProblem = computed(() => {
+  const value = nameValue.value.trim();
+  if (!value) return '';
+  if (BAD_NAME.test(value)) return 'Names can’t contain \\ / : * ? " < > |';
+  if (value === '.' || value.includes('..')) return 'Names can’t contain “..”';
+  const parent = nameDialog.value?.mode === 'rename' ? nameDialog.value.item!.parentKey : uploadTarget.value;
+  const siblings = index.value ? childrenIn(index.value, parent || ROOT) : [];
+  const clash = siblings.find(s => s.name.toLowerCase() === value.toLowerCase() && s.key !== nameDialog.value?.item?.key);
+  return clash ? `Something called “${clash.name}” is already here.` : '';
+});
+
+function askNewFolder() {
+  if (!canAddHere.value) return;
+  if (view.value !== 'folder') go('folder', ROOT);
+  nameValue.value = 'New folder';
+  nameDialog.value = { mode: 'new' };
+}
+function askRename(item: DriveItem) {
+  if (item.level !== 'Editor' || !allowed.value.organize) return;
+  nameValue.value = item.name;
+  nameDialog.value = { mode: 'rename', item };
+}
+async function submitName() {
+  const dialog = nameDialog.value;
+  if (!dialog || nameProblem.value || !nameValue.value.trim() || busy.value) return;
+  busy.value = true;
+  try {
+    if (dialog.mode === 'rename' && dialog.item) {
+      if (await cloud.rename(dialog.item, nameValue.value)) nameDialog.value = null;
     } else {
-        // Standard details popup
-        Swal.fire({
-            title: item.Name,
-            html: `
-                <p style="margin: 0; padding: 4px;">Size: <b>${formatSize(item.FileSizeBytes)}</b></p>
-                <p style="margin: 0; padding: 4px;">Created: <b>${formatDate(item.CreatedDate)}</b></p>
-                <p style="margin: 0; padding: 4px;">Type: <b>${item.ItemType}</b></p>
-            `,
-            showCancelButton: true,
-            confirmButtonText: 'Download',
-            cancelButtonText: 'Close'
-        }).then((result) => {
-            if(result.isConfirmed) {
-                downloadFileAPI(item);
-            }
-        });
+      const made = await cloud.createFolder(nameValue.value, uploadTarget.value);
+      if (made) {
+        nameDialog.value = null;
+        markFresh(made.key);
+        setPick([made.key]);
+        focusKey.value = made.key;
+      }
+    }
+  } finally {
+    busy.value = false;
+  }
+}
+
+// ── delete / move ──
+const deleteItems = ref<DriveItem[]>([]);
+const deleteSummary = computed(() => {
+  const items = deleteItems.value;
+  if (!items.length) return '';
+  const files = items.reduce((sum, i) => sum + (i.type === 'File' ? 1 : i.files), 0);
+  const bytes = items.reduce((sum, i) => sum + i.bytes, 0);
+  const withLinks = items.filter(i => linkMap.value.has(i.key)).length;
+  return `${plural(files, 'file')} · ${formatBytes(bytes)}${withLinks ? ` · ${plural(withLinks, 'item')} shared by link` : ''}`;
+});
+function askDelete(items: DriveItem[]) {
+  const editable = items.filter(item => item.level === 'Editor');
+  if (!editable.length || !allowed.value.remove) return;
+  deleteItems.value = editable;
+}
+async function confirmDelete() {
+  busy.value = true;
+  try {
+    await cloud.remove(deleteItems.value);
+    deleteItems.value = [];
+    setPick([]);
+  } finally {
+    busy.value = false;
+  }
+}
+
+const moveItems = ref<DriveItem[]>([]);
+async function confirmMove(targetKey: string) {
+  busy.value = true;
+  try {
+    const moving = moveItems.value;
+    const count = await cloud.move(moving, targetKey);
+    moveItems.value = [];
+    if (count) setPick([]);
+  } finally {
+    busy.value = false;
+  }
+}
+
+// ── links ──
+const linkDialog = ref<{ item: DriveItem | null; link: DriveLink | null } | null>(null);
+const linkConfirm = ref<{ kind: 'adopt' | 'remove'; links: DriveLink[] } | null>(null);
+const copiedCode = ref('');
+let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+
+function shareLink(item: DriveItem) {
+  if (!allowed.value.share || item.level !== 'Editor') return;
+  const existing = (linkMap.value.get(item.key) ?? []).filter(link => linkState(link, now.value) !== 'broken');
+  linkDialog.value = existing.length ? { item: null, link: existing[0] } : { item, link: null };
+}
+
+async function copyLink(link: DriveLink) {
+  const ok = await copyText(shareUrl(origin, link.code));
+  copiedCode.value = ok ? link.code : '';
+  clearTimeout(copiedTimer);
+  copiedTimer = setTimeout(() => { copiedCode.value = ''; }, 1800);
+  cloud.toast(ok ? 'ok' : 'warn', ok ? `Link to “${link.name}” copied` : "Couldn't copy: select the link and copy it yourself");
+}
+
+async function createLinkFromDialog(choice: { mode: ShareMode; hours: number }) {
+  const item = linkDialog.value?.item;
+  if (!item) return;
+  busy.value = true;
+  try {
+    const made = await cloud.createLink(item, choice.mode, choice.hours);
+    if (made) {
+      linkDialog.value = { item: null, link: made };
+      await copyLink(made);
+    }
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function updateLinkFromDialog(link: DriveLink, change: { mode?: ShareMode; hours?: number }) {
+  busy.value = true;
+  try {
+    if (await cloud.updateLink(link, change)) {
+      const fresh = links.value.find(l => l.code === link.code);
+      linkDialog.value = fresh ? { item: null, link: fresh } : null;
+      cloud.toast('ok', 'Link updated: same address');
+    }
+  } finally {
+    busy.value = false;
+  }
+}
+
+function askAdopt(list: DriveLink[]) {
+  if (list.length) linkConfirm.value = { kind: 'adopt', links: list };
+}
+function askRemoveLinks(list: DriveLink[]) {
+  if (list.length) linkConfirm.value = { kind: 'remove', links: list };
+}
+async function confirmLinks() {
+  const pending = linkConfirm.value;
+  if (!pending) return;
+  busy.value = true;
+  try {
+    if (pending.kind === 'remove') await cloud.deleteLinks(pending.links);
+    else {
+      let done = 0;
+      for (const link of pending.links) if (await cloud.updateLink(link, { adopt: true })) done++;
+      if (done) cloud.toast('ok', done === 1 ? 'Link taken over: it opens again' : `${done} links taken over: they open again`);
+    }
+    linkConfirm.value = null;
+  } finally {
+    busy.value = false;
+  }
+}
+
+// ── access ──
+const accessItem = ref<DriveItem | null>(null);
+function onAccessSaved(updated: any) {
+  accessItem.value = null;
+  cloud.accessSaved(updated);
+}
+
+// ── uploads ──
+const fileInput = ref<HTMLInputElement | null>(null);
+const folderInput = ref<HTMLInputElement | null>(null);
+const searchInput = ref<HTMLInputElement | null>(null);
+const fresh = ref<Set<string>>(new Set());
+
+function markFresh(key: string) {
+  fresh.value = new Set([...fresh.value, key]);
+  setTimeout(() => { const next = new Set(fresh.value); next.delete(key); fresh.value = next; }, 2_000);
+}
+
+function pickFiles() {
+  if (canAddHere.value) fileInput.value?.click();
+}
+function pickFolder() {
+  if (canAddHere.value) folderInput.value?.click();
+}
+function onPicked(event: Event, folder: boolean) {
+  const input = event.target as HTMLInputElement;
+  const picks = takeInput(input.files);
+  input.value = '';
+  if (!picks.files.length) return;
+  void cloud.upload(picks, uploadTarget.value);
+  if (folder && picks.dirs.length) cloud.toast('info', `Uploading ${plural(picks.files.length, 'file')} in ${plural(picks.dirs.length, 'folder')}`);
+}
+
+// New uploads light up as they land.
+const seenUploads = new Set<number>();
+watch(() => uploads.jobs.map(job => `${job.id}:${job.status}:${job.itemId}`).join(','), () => {
+  for (const job of uploads.jobs) if (job.status === 'done' && job.itemId && !seenUploads.has(job.id)) { seenUploads.add(job.id); markFresh(keyOf(job.itemId)); }
+});
+
+function onPaste(event: ClipboardEvent) {
+  if (isTyping(event.target) || !canAddHere.value || anyLayerOpen()) return;
+  const files = [...(event.clipboardData?.files ?? [])];
+  if (!files.length) return;
+  event.preventDefault();
+  const renamed = files.map(file => new File([file], pastedName(file), { type: file.type, lastModified: file.lastModified }));
+  void cloud.upload({ files: renamed.map(file => ({ file, dir: '' })), dirs: [] }, uploadTarget.value);
+}
+
+// ── dragging: files from the desktop upload, items dragged here move ──
+const fileDrag = ref(false);
+const dropKey = ref<string | null>(null);
+let dragDepth = 0;
+let dragging: DriveItem[] = [];
+const canDropFiles = computed(() => canAddHere.value && view.value !== 'links');
+const dropTargetName = computed(() => {
+  const key = dropKey.value ?? uploadTarget.value;
+  return key ? `“${index.value?.byKey.get(key)?.name ?? 'this folder'}”` : 'My drive';
+});
+
+const hasFiles = (event: DragEvent) => [...(event.dataTransfer?.types ?? [])].includes('Files');
+
+function dropKeyAt(event: DragEvent): string | null {
+  const el = (event.target as HTMLElement | null)?.closest?.('[data-drop-key]') as HTMLElement | null;
+  if (!el) return null;
+  const key = el.getAttribute('data-drop-key') ?? '';
+  if (key && index.value?.byKey.get(key)?.level !== 'Editor') return null;
+  return key;
+}
+
+function canMoveInto(key: string | null) {
+  if (key === null || !dragging.length || !index.value) return false;
+  if (dragging.some(item => item.key === key)) return false;
+  if (dragging.every(item => item.parentKey === key)) return false;
+  // A folder can't go inside itself.
+  return !dragging.some(item => item.type === 'Folder' && key && pathTo(index.value!, key).some(step => step.key === item.key));
+}
+
+function onItemDragStart(item: DriveItem, event: DragEvent) {
+  dragging = picked.value.has(item.key) ? pickedItems.value.filter(i => i.level === 'Editor') : [item];
+  if (!dragging.length || !event.dataTransfer) return;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('application/x-klivecloud', dragging.map(i => i.id).join(','));
+  event.dataTransfer.setData('text/plain', dragging.map(i => i.name).join('\n'));
+}
+function onItemDragEnd() {
+  dragging = [];
+  dropKey.value = null;
+}
+
+function onDragEnter(event: DragEvent) {
+  if (hasFiles(event) && canDropFiles.value) { dragDepth++; fileDrag.value = true; }
+}
+function onDragOver(event: DragEvent) {
+  if (hasFiles(event)) {
+    if (!canDropFiles.value) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    const key = dropKeyAt(event);
+    dropKey.value = key !== null && key !== uploadTarget.value ? key : null;
+    return;
+  }
+  if (!dragging.length) return;
+  const key = dropKeyAt(event);
+  if (canMoveInto(key)) {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    dropKey.value = key;
+  } else {
+    dropKey.value = null;
+  }
+}
+function onDragLeave(event: DragEvent) {
+  if (!hasFiles(event)) return;
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) { fileDrag.value = false; dropKey.value = null; }
+}
+function onDrop(event: DragEvent) {
+  const key = dropKey.value;
+  dragDepth = 0;
+  fileDrag.value = false;
+  dropKey.value = null;
+  if (event.dataTransfer && hasFiles(event)) {
+    if (!canDropFiles.value) return;
+    event.preventDefault();
+    const read = takeDrop(event.dataTransfer);
+    void read().then(picks => cloud.upload(picks, key ?? uploadTarget.value));
+    return;
+  }
+  if (dragging.length && key !== null && canMoveInto(key)) {
+    event.preventDefault();
+    const moving = dragging;
+    dragging = [];
+    void cloud.move(moving, key).then(count => { if (count) setPick([]); });
+  }
+}
+
+// ── palette ──
+const paletteOpen = ref(false);
+const shortcutsOpen = ref(false);
+
+const commands = computed<CloudCommand[]>(() => {
+  const list: CloudCommand[] = [];
+  if (canAddHere.value) {
+    list.push({ id: 'upload', group: 'Actions', title: 'Upload files', icon: 'upload', keys: 'U', run: pickFiles });
+    list.push({ id: 'upload-folder', group: 'Actions', title: 'Upload a folder', icon: 'folder', run: pickFolder });
+    list.push({ id: 'new-folder', group: 'Actions', title: 'New folder', icon: 'folder-plus', keys: 'N', run: askNewFolder });
+  }
+  list.push({ id: 'go-drive', group: 'Go to', title: 'My drive', icon: 'home', run: () => go('folder', ROOT) });
+  list.push({ id: 'go-recent', group: 'Go to', title: 'Recent files', icon: 'clock', run: () => go('recent') });
+  list.push({ id: 'go-large', group: 'Go to', title: 'Largest files', icon: 'weight', keywords: 'big space size', run: () => go('large') });
+  if (allowed.value.share) list.push({ id: 'go-links', group: 'Go to', title: `Share links${linkCounts.value.broken ? ` (${linkCounts.value.broken} can't open)` : ''}`, icon: 'link', keywords: 'public broken expiry', run: () => go('links') });
+  if (index.value?.sharedCount) list.push({ id: 'go-shared', group: 'Go to', title: 'Shared with me', icon: 'users', run: () => go('shared') });
+  list.push({ id: 'layout', group: 'View', title: prefs.layout === 'list' ? 'Show as a grid' : 'Show as a list', icon: prefs.layout === 'list' ? 'grid' : 'list', run: () => { prefs.layout = prefs.layout === 'list' ? 'grid' : 'list'; } });
+  list.push({ id: 'details', group: 'View', title: prefs.sheet ? 'Hide details' : 'Show details', icon: 'panel-right', keys: 'I', run: () => { prefs.sheet = !prefs.sheet; } });
+  list.push({ id: 'refresh', group: 'View', title: 'Refresh', icon: 'refresh', keys: 'R', run: refresh });
+  list.push({ id: 'keys', group: 'View', title: 'Keyboard shortcuts', icon: 'command', keys: '?', run: () => { shortcutsOpen.value = true; } });
+  return list;
+});
+
+function findCommands(text: string): CloudCommand[] {
+  const all = index.value;
+  if (!all || !text.trim()) return [];
+  return searchDrive(all, text, 40).map(item => ({
+    id: `item-${item.key}`,
+    group: item.type === 'Folder' ? 'Folders' : 'Files',
+    title: item.name,
+    kind: item.kind,
+    hint: item.path || 'My drive',
+    run: () => (item.type === 'Folder' ? go('folder', item.key) : reveal(item)),
+  })).sort((a, b) => (a.group === b.group ? 0 : a.group === 'Folders' ? -1 : 1));
+}
+
+// ── keyboard ──
+function isTyping(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el?.tagName) return false;
+  return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
+}
+function anyLayerOpen() {
+  return !!(paletteOpen.value || nameDialog.value || deleteItems.value.length || moveItems.value.length || linkDialog.value || linkConfirm.value
+    || accessItem.value || viewerItem.value || shortcutsOpen.value);
+}
+
+function focusRow(key: string | null) {
+  if (!key) return;
+  focusKey.value = key;
+  void nextTick(() => {
+    const el = document.querySelector(`[data-focus-key="${CSS.escape(key)}"]`) as HTMLElement | null;
+    el?.focus({ preventScroll: true });
+    el?.closest('tr, .kcl-tile')?.scrollIntoView({ block: 'nearest' });
+  });
+}
+function focusFirstRow() {
+  const first = shown.value[0];
+  if (first) { focusRow(first.key); setPick([first.key]); anchor.value = first.key; }
+}
+
+function columns() {
+  if (prefs.layout !== 'grid') return 1;
+  const tiles = document.querySelectorAll('.kcl-tile');
+  if (tiles.length < 2) return 1;
+  const top = (tiles[0] as HTMLElement).offsetTop;
+  let n = 0;
+  for (const tile of tiles) { if ((tile as HTMLElement).offsetTop !== top) break; n++; }
+  return Math.max(1, n);
+}
+
+function moveFocus(delta: number, extend: boolean, keep: boolean) {
+  const list = shown.value;
+  if (!list.length) return;
+  const at = list.findIndex(item => item.key === focusKey.value);
+  const nextIndex = at < 0 ? (delta > 0 ? 0 : list.length - 1) : Math.max(0, Math.min(list.length - 1, at + delta));
+  const next = list[nextIndex];
+  focusRow(next.key);
+  if (keep) return;
+  if (extend && anchor.value) setPick(rangeKeys(list.map(i => i.key), anchor.value, next.key));
+  else { setPick([next.key]); anchor.value = next.key; }
+}
+
+function onKeydown(event: KeyboardEvent) {
+  const mod = event.ctrlKey || event.metaKey;
+  const key = event.key;
+  if (mod && key.toLowerCase() === 'k') {
+    event.preventDefault();
+    paletteOpen.value = !paletteOpen.value;
+    return;
+  }
+  if (anyLayerOpen()) return;
+  if (key === 'Escape') {
+    if (menu.value) { closeMenu(); return; }
+    if (railOpen.value) { railOpen.value = false; return; }
+    if (picked.value.size) { clearPick(); return; }
+    if (query.value) { clearSearch(); return; }
+    return;
+  }
+  if (isTyping(event.target)) return;
+  if (mod && key.toLowerCase() === 'a' && shown.value.length) { event.preventDefault(); pickAll(); return; }
+  if (mod || event.altKey && key !== 'ArrowUp') return;
+
+  const focused = shown.value.find(item => item.key === focusKey.value) ?? null;
+  const cols = columns();
+  switch (key) {
+    case '/': event.preventDefault(); searchInput.value?.focus(); searchInput.value?.select(); break;
+    case '?': shortcutsOpen.value = true; break;
+    case 'ArrowDown': event.preventDefault(); moveFocus(cols, event.shiftKey, false); break;
+    case 'ArrowUp':
+      event.preventDefault();
+      if (event.altKey) goUp(); else moveFocus(-cols, event.shiftKey, false);
+      break;
+    case 'ArrowRight': if (prefs.layout === 'grid') { event.preventDefault(); moveFocus(1, event.shiftKey, false); } break;
+    case 'ArrowLeft': if (prefs.layout === 'grid') { event.preventDefault(); moveFocus(-1, event.shiftKey, false); } break;
+    case 'Home': event.preventDefault(); moveFocus(-shown.value.length, event.shiftKey, false); break;
+    case 'End': event.preventDefault(); moveFocus(shown.value.length, event.shiftKey, false); break;
+    case 'Enter': if (focused) { event.preventDefault(); openItem(focused); } break;
+    case ' ':
+      if (focused) { event.preventDefault(); if (focused.type === 'File') openViewer(focused); else openItem(focused); }
+      break;
+    case 'Backspace': event.preventDefault(); goUp(); break;
+    case 'Delete': {
+      const targets = picked.value.size ? pickedItems.value : focused ? [focused] : [];
+      if (targets.length) { event.preventDefault(); askDelete(targets); }
+      break;
+    }
+    case 'F2': {
+      const target = pickedItems.value.length === 1 ? pickedItems.value[0] : focused;
+      if (target) { event.preventDefault(); askRename(target); }
+      break;
+    }
+    default: {
+      const lower = key.toLowerCase();
+      if (lower === 'x' && focused) {
+        const next = new Set(picked.value);
+        if (next.has(focused.key)) next.delete(focused.key); else next.add(focused.key);
+        picked.value = next;
+        anchor.value = focused.key;
+      } else if (lower === 'u') pickFiles();
+      else if (lower === 'n') askNewFolder();
+      else if (lower === 'i') { if (isNarrow.value) sheetPinned.value = !sheetPinned.value; else prefs.sheet = !prefs.sheet; }
+      else if (lower === 'r') refresh();
     }
   }
-};
+}
 
-const getStatusColor = (status: string) => {
-    switch (status) {
-        case 'uploading': return '#4CAF50';
-        case 'finalizing': return '#2196F3'; // Blue for finalizing
-        case 'completed': return '#81c784';
-        case 'error': return '#e57373';
-        case 'canceled': return '#90a4ae';
-        default: return '#4CAF50';
-    }
-};
+function refresh() {
+  void cloud.load();
+}
 
-const showPreviewPopup = async (item: CloudItem) => {
-    // Show loading
-    Swal.fire({
-        title: 'Loading Preview...',
-        allowOutsideClick: false,
-        didOpen: () => {
-            Swal.showLoading();
-        }
-    });
-
-    try {
-        // Fetch large preview (e.g. 800px)
-        const response = await RequestGETFromKliveAPI(`/KliveCloud/GetPreview?itemID=${item.ItemID}&maxWidth=800&maxHeight=800`, false, false);
-        
-        let imageUrl = '';
-        if (response.ok) {
-            const blob = await response.blob();
-            imageUrl = URL.createObjectURL(blob);
-        } else {
-            // Fallback to error or maybe just show details without image
-            throw new Error('Preview fetch failed');
-        }
-
-        // Show actual popup
-        Swal.fire({
-            title: item.Name,
-            imageUrl: imageUrl,
-            imageAlt: 'File Preview',
-            // imageWidth: '100%', // Let swal handle it or set max
-            imageHeight: 'auto',
-            html: `
-                <div style="margin-top: 10px; text-align: left; font-size: 0.9em;">
-                    <p style="margin: 4px 0;">Size: <b>${formatSize(item.FileSizeBytes)}</b></p>
-                    <p style="margin: 4px 0;">Modified: <b>${formatDate(item.ModifiedDate)}</b></p>
-                </div>
-            `,
-            showCancelButton: true,
-            confirmButtonText: 'Download',
-            cancelButtonText: 'Close',
-            width: '600px', // Wider popup for image
-            willClose: () => {
-                // Revoke URL to prevent memory leak
-                if (imageUrl) URL.revokeObjectURL(imageUrl);
-            }
-        }).then((result) => {
-            if(result.isConfirmed) {
-                downloadFileAPI(item);
-            }
-        });
-
-    } catch (e) {
-        // Fallback if preview fails
-        Swal.fire({
-            title: item.Name,
-            text: 'Preview unavailable.',
-            html: `
-                <p>Size: ${formatSize(item.FileSizeBytes)}</p>
-                <p>Created: ${formatDate(item.CreatedDate)}</p>
-                <p>Type: ${item.ItemType}</p>
-            `,
-            showCancelButton: true,
-            confirmButtonText: 'Download',
-            cancelButtonText: 'Close'
-        }).then((result) => {
-            if(result.isConfirmed) {
-                downloadFileAPI(item);
-            }
-        });
-    }
-};
-
-const downloadFile = (item: CloudItem) => {
-    downloadFileAPI(item);
-};
-
-const describeSharePermissionMode = (mode: string) => {
-    if (mode === 'WriteDelete') {
-        return 'open the shared folder, upload files, create folders, and delete items';
-    }
-    if (mode === 'Write') {
-        return 'open the shared folder, upload files, and create folders';
-    }
-    return 'open the shared folder and download files';
-};
-
-const normalizeSharePermissionMode = (mode: unknown): 'ReadOnly' | 'Write' | 'WriteDelete' => {
-    const value = String(mode ?? '').trim().replace(/[-_\s]/g, '').toLowerCase();
-    if (value === '2' || value === 'writedelete' || value === 'delete') return 'WriteDelete';
-    if (value === '1' || value === 'write') return 'Write';
-    return 'ReadOnly';
-};
-
-const getShareLinkPermissionMode = (link: ShareLink) => normalizeSharePermissionMode(link.SharePermissionMode ?? link.PermissionMode);
-
-const formatSharePermissionMode = (mode: string) => {
-    if (mode === 'WriteDelete') return 'Write and delete';
-    if (mode === 'Write') return 'Write';
-    return 'Read only';
-};
-
-const shareItem = async (item: CloudItem) => {
-    let permissionMode = 'ReadOnly';
-    if (item.ItemType === 'Folder') {
-        const permissionResult = await Swal.fire({
-            title: 'Share folder access',
-            text: 'Choose what people with this link can do inside the shared folder.',
-            input: 'select',
-            inputOptions: {
-                ReadOnly: 'Read only',
-                Write: 'Write',
-                WriteDelete: 'Write and delete'
-            },
-            inputValue: 'ReadOnly',
-            showCancelButton: true,
-            confirmButtonText: 'Create link',
-            confirmButtonColor: '#4d9e39',
-            background: '#161516',
-            color: '#ffffff'
-        });
-
-        if (!permissionResult.isConfirmed) {
-            return;
-        }
-
-        permissionMode = permissionResult.value || 'ReadOnly';
-    }
-
-    // Generate Share Link
-    const itemExtension = item.Name.split('.').pop()?.toLowerCase() || '';
-    const isVideoShare = item.ItemType === 'File' && videoExtensions.has(itemExtension);
-
-    Swal.fire({
-        title: isVideoShare ? 'Preparing Video Share Link...' : 'Creating Share Link...',
-        text: isVideoShare ? 'Preparing the Discord preview. Larger videos can take a moment.' : 'Please wait',
-        allowOutsideClick: false,
-        didOpen: () => {
-            Swal.showLoading();
-        }
-    });
-
-    try {
-        const query = `/KliveCloud/CreateShareLink?itemID=${encodeURIComponent(item.ItemID)}&permissionMode=${encodeURIComponent(permissionMode)}`;
-        const response = await RequestPOSTFromKliveAPI(query);
-        
-        if (response.ok) {
-            const data = await response.json();
-            const shareUrl = `${window.location.origin}/shared/${data.ShareCode}`;
-            const sharedItemType = data.ItemType || item.ItemType;
-            
-            // Refresh the shared links list so the new link appears immediately
-            fetchSharedLinks();
-            
-            Swal.fire({
-                title: 'Share Link Ready!',
-                html: `
-                    <p>Anyone with this link can ${sharedItemType === 'Folder' ? describeSharePermissionMode(data.SharePermissionMode || permissionMode) : 'download the file'}:</p>
-                    <input type="text" value="${shareUrl}" class="swal2-input" readonly id="share-link-input">
-                `,
-                icon: 'success',
-                showCancelButton: true,
-                confirmButtonText: 'Copy Link',
-                cancelButtonText: 'Close'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    const input = document.getElementById('share-link-input') as HTMLInputElement;
-                    if (input) {
-                        input.select();
-                        navigator.clipboard.writeText(input.value);
-                        Swal.fire({
-                            title: 'Copied!',
-                            toast: true,
-                            position: 'top-end',
-                            showConfirmButton: false,
-                            timer: 2000,
-                            icon: 'success'
-                        });
-                    }
-                }
-            });
-        } else {
-            const text = await response.text();
-            Swal.fire('Error', `Failed to create share link: ${text}`, 'error');
-        }
-    } catch (e: any) {
-        Swal.fire('Error', e.message, 'error');
-    }
-};
-
-const deleteItem = (item: CloudItem) => {
-    Swal.fire({
-        title: 'Are you sure?',
-        text: `Do you really want to delete "${item.Name}"? This cannot be undone.`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
-        confirmButtonText: 'Yes, delete it!'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            deleteItemAPI(item.ItemID);
-        }
-    })
-};
-
-const deleteSelectedItems = async () => {
-    const list = Array.from(selectedItems.value);
-    if (list.length === 0) return;
-
-    Swal.fire({
-        title: 'Delete Selected?',
-        text: `Are you sure you want to delete ${list.length} item(s)? This cannot be undone.`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
-        confirmButtonText: 'Yes, delete all!'
-    }).then(async (result) => {
-        if (result.isConfirmed) {
-            let successCount = 0;
-            // Maybe show progress?
-            for (const id of list) {
-                try {
-                    const response = await RequestPOSTFromKliveAPI(`/KliveCloud/DeleteItem?itemID=${id}`);
-                    if (response.ok) successCount++;
-                } catch (e) { console.error(e); }
-            }
-            Swal.fire('Deleted!', `${successCount} items deleted.`, 'success');
-            selectedItems.value.clear();
-            refreshCurrentFolder();
-        }
-    });
-};
-
-const downloadSelectedItems = async () => {
-    const list = Array.from(selectedItems.value);
-    if (list.length === 0) return;
-
-    // Filter only files (cannot download folder as blob directly unless API supports zip)
-    const filesToDownload = items.value.filter(i => list.includes(i.ItemID) && i.ItemType === 'File');
-    
-    if (filesToDownload.length === 0) {
-        Swal.fire('Info', 'Selected items contain no downloadable files.', 'info');
-        return;
-    }
-
-    if (filesToDownload.length > 5) {
-        const confirm = await Swal.fire({
-            title: 'Download Limit',
-            text: `You are about to download ${filesToDownload.length} files. Browser might block multiple popups. Continue?`,
-            showCancelButton: true
-        });
-        if (!confirm.isConfirmed) return;
-    }
-
-    // Trigger downloads with slight delay
-    filesToDownload.forEach((item, index) => {
-        setTimeout(() => {
-            downloadFileAPI(item);
-        }, index * 500);
-    });
-};
-
-// --- UI Helpers ---
-
-const getItemIcon = (item: CloudItem) => {
-  if (item.ItemType === 'Folder') return '📁';
-  const ext = item.Name.split('.').pop()?.toLowerCase();
-  switch (ext) {
-    case 'pdf': return '📕';
-    case 'jpg':
-    case 'jpeg':
-    case 'png': return '🖼️';
-    case 'txt':
-    case 'md': return '📝';
-    case 'zip':
-    case 'rar': return '📦';
-    case 'mp3': return '🎵';
-    case 'mp4': return '🎬';
-    case 'exe': return '⚙️';
-    default: return '📄';
+// ── life ──
+/** The page's own width decides its layout (the site's nav takes part of the window). */
+const root = ref<HTMLElement | null>(null);
+const size = ref<'xl' | 'lg' | 'md' | 'sm'>('xl');
+let resize: ResizeObserver | null = null;
+function measure(width: number) {
+  size.value = width >= 1380 ? 'xl' : width >= 1120 ? 'lg' : width >= 860 ? 'md' : 'sm';
+  isNarrow.value = size.value === 'md' || size.value === 'sm';
+  const left = root.value?.getBoundingClientRect().left ?? 0;
+  root.value?.style.setProperty('--kcl-left', `${Math.max(0, Math.round(left))}px`);
+}
+let mediaCoarse: MediaQueryList | null = null;
+const onCoarse = () => { coarse.value = !!mediaCoarse?.matches; };
+const onWindowClick = () => closeMenu();
+function onBeforeUnload(event: BeforeUnloadEvent) {
+  if (cloud.uploading.value > 0) {
+    event.preventDefault();
+    event.returnValue = 'Uploads are still running.';
   }
-};
+}
 
-const formatSize = (bytes: number) => {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-};
-
-const formatDate = (dateStr: string) => {
-  return new Date(dateStr).toLocaleDateString() + ' ' + new Date(dateStr).toLocaleTimeString();
-};
-
-// --- Share Management ---
-
-const fetchSharedLinks = async () => {
-    loadingSharedLinks.value = true;
-    try {
-        const response = await RequestGETFromKliveAPI('/KliveCloud/ListShareLinks');
-        if (response.ok) {
-            const links: ShareLink[] = await response.json();
-            
-            // Enrich links with item metadata if necessary
-            // We fetch item info for each link to get Name
-            const enrichedLinks: ShareLink[] = [];
-            
-            // Limit concurrency? 
-            // For now, simple loop is fine unless user has hundreds of links
-            for (const link of links) {
-                if (link.ItemName) {
-                    enrichedLinks.push(link);
-                    continue;
-                }
-                try {
-                    const itemRes = await RequestGETFromKliveAPI(`/KliveCloud/GetItemInfo?itemID=${link.ItemID}`, false, false);
-                    if (itemRes.ok) {
-                        const item: CloudItem = await itemRes.json();
-                        link.ItemName = item.Name;
-                        link.ItemPath = item.RelativePath || item.Name; // Use RelativePath if available for full context
-                        link.ItemType = item.ItemType;
-                    } else {
-                        link.ItemName = 'Unknown / Deleted';
-                    }
-                } catch {
-                     link.ItemName = 'Error retrieving info';
-                }
-                enrichedLinks.push(link);
-            }
-            
-            sharedLinks.value = enrichedLinks;
-        }
-    } catch (e) { console.error(e); }
-    finally { loadingSharedLinks.value = false; }
-};
-
-const deleteSharedLink = async (code: string) => {
-    const result = await Swal.fire({
-        title: 'Delete Share Link?',
-        text: "This link will stop working immediately.",
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
-        confirmButtonText: 'Yes, delete it!'
-    });
-
-    if (result.isConfirmed) {
-        try {
-            const response = await RequestPOSTFromKliveAPI(`/KliveCloud/DeleteShareLink?code=${code}`);
-            if(response.ok) {
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Link Deleted',
-                    toast: true,
-                    position: 'top-end',
-                    showConfirmButton: false,
-                    timer: 2000
-                });
-                fetchSharedLinks();
-            } else {
-                Swal.fire('Error', 'Failed to delete link', 'error');
-            }
-        } catch (e: any) {
-            Swal.fire('Error', e.message, 'error');
-        }
-    }
-};
-
-const editShareLinkPermission = async (link: ShareLink) => {
-    if (link.ItemType !== 'Folder') return;
-
-    const result = await Swal.fire({
-        title: 'Share folder access',
-        text: 'Change what people with this existing link can do.',
-        input: 'select',
-        inputOptions: {
-            ReadOnly: 'Read only',
-            Write: 'Write',
-            WriteDelete: 'Write and delete'
-        },
-        inputValue: getShareLinkPermissionMode(link),
-        showCancelButton: true,
-        confirmButtonText: 'Update link',
-        confirmButtonColor: '#4d9e39',
-        background: '#161516',
-        color: '#ffffff'
-    });
-
-    if (!result.isConfirmed) return;
-
-    try {
-        const permissionMode = normalizeSharePermissionMode(result.value);
-        const response = await RequestPOSTFromKliveAPI(`/KliveCloud/UpdateShareLinkPermission?code=${encodeURIComponent(link.ShareCode)}&permissionMode=${encodeURIComponent(permissionMode)}`);
-        if (!response.ok) {
-            Swal.fire('Error', `Failed to update link permissions: ${await response.text()}`, 'error');
-            return;
-        }
-
-        const updated = await response.json();
-        link.SharePermissionMode = updated.SharePermissionMode || permissionMode;
-        link.PermissionMode = updated.SharePermissionMode || permissionMode;
-        link.CanWrite = updated.CanWrite;
-        link.CanDelete = updated.CanDelete;
-        Swal.fire({
-            icon: 'success',
-            title: 'Link Updated',
-            toast: true,
-            position: 'top-end',
-            showConfirmButton: false,
-            timer: 1800
-        });
-    } catch (e: any) {
-        Swal.fire('Error', e.message, 'error');
-    }
-};
-
-const copyShareLink = (code: string) => {
-    const url = `${window.location.origin}/shared/${code}`;
-    navigator.clipboard.writeText(url);
-    Swal.fire({
-        icon: 'success',
-        title: 'Copied!',
-        toast: true,
-        position: 'top-end',
-        showConfirmButton: false,
-        timer: 1500
-    });
-};
-
-const triggerFileUpload = () => {
-    fileInput.value?.click();
-};
-
-const handleFileUpload = (event: Event) => {
-    const input = event.target as HTMLInputElement;
-    if (input.files && input.files.length > 0) {
-        // Handle multiple files if multiple attribute is set, or just one
-        // The input currently doesn't have 'multiple', but we should support it in general logic
-        Array.from(input.files).forEach(file => uploadFileAPI(file));
-    }
-    // reset input
-    if(input) input.value = '';
-};
-
-// Drag and Drop
-const onDragOver = (e: DragEvent) => {
-    if (draggedItem.value) return;
-    isDragging.value = true;
-};
-
-const onDragLeave = (e: DragEvent) => {
-    if (draggedItem.value) return;
-    // Only set to false if we're leaving the main container
-    // This can be tricky with child elements, but a simple toggle often works for simple UIs
-    // or checking relatedTarget
-    if (e.relatedTarget && (e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) {
-        return;
-    }
-    isDragging.value = false;
-};
-
-const onDrop = async (e: DragEvent) => {
-    if (draggedItem.value) return;
-    isDragging.value = false;
-    const files = e.dataTransfer?.files;
-    if (files && files.length > 0) {
-        // Upload all files
-        for (let i = 0; i < files.length; i++) {
-            await uploadFileAPI(files[i]);
-        }
-    }
-};
-
-const onItemDragStart = (e: DragEvent, item: CloudItem) => {
-    draggedItem.value = item;
-    if (e.dataTransfer) {
-        e.dataTransfer.setData('text/plain', item.ItemID);
-        e.dataTransfer.effectAllowed = 'move';
-    }
-};
-
-const onItemDragEnd = (e: DragEvent) => {
-    draggedItem.value = null;
-    activeDropTargetID.value = null;
-};
-
-const onFolderDragOver = (e: DragEvent, targetFolder: CloudItem | null) => {
-    if (!draggedItem.value) return;
-
-    const targetID = targetFolder ? targetFolder.ItemID : 'back';
-    
-    // Cannot move a folder into itself
-    if (draggedItem.value.ItemID === targetID) return;
-
-    if (e.dataTransfer) {
-        e.dataTransfer.dropEffect = 'move';
-    }
-    
-    activeDropTargetID.value = targetID;
-};
-
-const onFolderDragLeave = (e: DragEvent, targetFolder: CloudItem | null) => {
-    const targetID = targetFolder ? targetFolder.ItemID : 'back';
-    if (activeDropTargetID.value === targetID) {
-        activeDropTargetID.value = null;
-    }
-};
-
-const onFolderDrop = async (e: DragEvent, targetFolder: CloudItem | null) => {
-    e.preventDefault();
-    activeDropTargetID.value = null;
-
-    if (!draggedItem.value) return;
-
-    const sourceItem = draggedItem.value;
-    const destParentFolderID = targetFolder ? targetFolder.ItemID : (currentPath.value.length > 1 ? currentPath.value[currentPath.value.length - 2].ItemID : '');
-
-    // Determine the list of items to move
-    let itemsToMove: string[] = [];
-    if (selectedItems.value.has(sourceItem.ItemID)) {
-        itemsToMove = Array.from(selectedItems.value);
-    } else {
-        itemsToMove = [sourceItem.ItemID];
-    }
-
-    itemsToMove = itemsToMove.filter(id => id !== destParentFolderID);
-
-    if (itemsToMove.length === 0) return;
-
-    await moveItems(itemsToMove, destParentFolderID);
-};
-
-const moveItems = async (itemIDs: string[], newParentFolderID: string) => {
-    let successCount = 0;
-    let failedCount = 0;
-    let lastError = '';
-
-    for (const id of itemIDs) {
-        try {
-            if (id === newParentFolderID) {
-                failedCount++;
-                continue;
-            }
-            const response = await RequestPOSTFromKliveAPI(`/KliveCloud/MoveItem?itemID=${encodeURIComponent(id)}&newParentFolderID=${encodeURIComponent(newParentFolderID)}`);
-            if (response.ok) {
-                successCount++;
-            } else {
-                failedCount++;
-                lastError = await failureText(response);
-            }
-        } catch (e: any) {
-            failedCount++;
-            lastError = e.message;
-        }
-    }
-
-    if (successCount > 0) {
-        notify(`Moved ${successCount} item${successCount === 1 ? '' : 's'}`, failedCount > 0 ? `${failedCount} couldn't be moved: ${lastError}` : '');
-        selectedItems.value.clear();
-        refreshCurrentFolder();
-    } else if (failedCount > 0) {
-        notify("Couldn't move", lastError, 'error');
-    }
-};
-
-const promptCreateFolder = async () => {
-    const { value: folderName } = await Swal.fire({
-        title: 'New Folder',
-        input: 'text',
-        inputLabel: 'Folder Name',
-        showCancelButton: true,
-        inputValidator: (value) => {
-            if (!value) {
-                return 'You need to write something!'
-            }
-        }
-    });
-
-    if (folderName) {
-        createFolder(folderName);
-    }
-};
-
-const showContextMenu = (event: MouseEvent, item: CloudItem) => {
-    // Implement custom context menu if desired, for now just log
-    console.log('Context menu for', item.Name);
-};
-
-// Lifecycle
 onMounted(() => {
-    fetchItems();
-    if (can('klivecloud.drive.view')) fetchDriveInfo();
-    if (can('klivecloud.sharing.manage')) fetchSharedLinks();
-
-    // Prevent tab closure if active uploads or downloads
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    // Setup Intersection Observer for lazy loading previews
-    observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                const target = entry.target as HTMLElement;
-                const id = target.dataset.itemId;
-                if (id) {
-                    loadPreview(id);
-                    // Once visible, we keep observing? 
-                    // If we unobserve, user scrolls away and back, we don't need to do anything as it's cached.
-                    // But if fetch failed, maybe retry? 
-                    // Let's unobserve to save perf.
-                    observer?.unobserve(target);
-                }
-            }
-        });
-    }, {
-        root: null, // viewport
-        rootMargin: '200px' // Preload 200px before appearing
-    });
+  applyUrl();
+  if (root.value) {
+    measure(root.value.clientWidth);
+    resize = new ResizeObserver(entries => { const box = entries[0]?.contentRect; if (box) measure(box.width); });
+    resize.observe(root.value);
+  }
+  mediaCoarse = window.matchMedia('(pointer: coarse)');
+  onCoarse();
+  mediaCoarse.addEventListener('change', onCoarse);
+  window.addEventListener('keydown', onKeydown);
+  window.addEventListener('paste', onPaste);
+  window.addEventListener('click', onWindowClick);
+  window.addEventListener('beforeunload', onBeforeUnload);
+  cloud.start();
 });
 
-onUnmounted(() => {
-    window.removeEventListener('beforeunload', handleBeforeUnload);
-    if (observer) observer.disconnect();
-    // Revoke all object URLs to free memory
-    previewUrls.forEach(url => URL.revokeObjectURL(url));
-    previewUrls.clear();
+onBeforeUnmount(() => {
+  cloud.stop();
+  forgetThumbs();
+  resize?.disconnect();
+  mediaCoarse?.removeEventListener('change', onCoarse);
+  window.removeEventListener('keydown', onKeydown);
+  window.removeEventListener('paste', onPaste);
+  window.removeEventListener('click', onWindowClick);
+  window.removeEventListener('beforeunload', onBeforeUnload);
+  clearTimeout(copiedTimer);
 });
-
-const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-    const hasActiveUploads = activeUploads.value.some(t => ['uploading', 'finalizing'].includes(t.status));
-    const hasActiveDownloads = activeDownloads.value.size > 0;
-    
-    if (hasActiveUploads || hasActiveDownloads) {
-        const message = "You have active transfers. If you leave, they will be canceled.";
-        event.preventDefault();
-        event.returnValue = message; // Standard required behavior for showing the prompt
-        return message;
-    }
-};
-
-const pendingPreviews = new Set<string>();
-
-const loadPreview = async (id: string) => {
-    // Check cache
-    if (previewUrls.has(id) || failedPreviews.has(id) || pendingPreviews.has(id)) return;
-    
-    pendingPreviews.add(id);
-
-    const item = items.value.find(i => i.ItemID === id);
-    if (!item || item.ItemType !== 'File') {
-        pendingPreviews.delete(id);
-        return;
-    }
-
-    // Check extension
-    const ext = item.Name.split('.').pop()?.toLowerCase();
-    if (!ext || !supportedPreviewExtensions.has(ext)) {
-        pendingPreviews.delete(id);
-        return;
-    }
-
-    try {
-        const response = await RequestGETFromKliveAPI(`/KliveCloud/GetPreview?itemID=${id}`, false, false);
-        if (response.ok) {
-            const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
-            previewUrls.set(id, url);
-        } else {
-            failedPreviews.add(id);
-        }
-    } catch (e) {
-        failedPreviews.add(id);
-    } finally {
-        pendingPreviews.delete(id);
-    }
-};
 </script>
 
-<style scoped lang="scss">
-.klive-cloud-page {
-  padding: 20px;
-  color: #fff;
-  min-height: 80vh;
-}
-
-.page-header {
-  margin-bottom: 20px;
-  border-bottom: 1px solid #444;
-  padding-bottom: 15px;
-
-  .header-content {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      flex-wrap: wrap;
-      gap: 20px;
-  }
-
-  .drive-capacity {
-    flex: 1;
-    max-width: 400px;
-    background: #2a2a2a;
-    padding: 10px;
-    border-radius: 6px;
-    
-    .capacity-labels {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.8rem;
-      color: #aaa;
-      margin-bottom: 5px;
-    }
-    
-    .progress-bar-container {
-      background: #444;
-      height: 8px;
-      border-radius: 4px;
-      overflow: hidden;
-      
-      .progress-bar-fill {
-        background: #4CAF50;
-        height: 100%;
-        transition: width 0.5s ease;
-        
-        &.high-usage {
-            background: #ebcb8b;
-        }
-
-        &.critical-usage {
-            background: #bf616a;
-        }
-      }
-    }
-  }
-
-  .page-title {
-    font-size: 2rem;
-    margin: 0;
-    color: #4CAF50;
-  }
-  
-  .page-subtitle {
-    color: #aaa;
-    margin: 5px 0 0;
-  }
-}
-
-.cloud-controls {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #2a2a2a;
-  padding: 10px 15px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.breadcrumbs {
-  flex: 1;
-  font-size: 1.1rem;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-
-  .breadcrumb-item {
-    cursor: pointer;
-    color: #88c0d0;
-    &:hover {
-      text-decoration: underline;
-    }
-    &.active {
-      color: #eceff4;
-      font-weight: bold;
-      cursor: default;
-      &:hover { text-decoration: none; }
-    }
-  }
-
-  .breadcrumb-separator {
-    margin: 0 8px;
-    color: #666;
-  }
-}
-
-.actions {
-  display: flex;
-  gap: 10px;
-
-  .action-btn {
-    padding: 8px 16px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: bold;
-    transition: background 0.2s;
-    color: white;
-
-    &.upload-btn {
-      background-color: #5e81ac;
-      &:hover { background-color: #81a1c1; }
-    }
-
-    &.folder-btn {
-      background-color: #ebcb8b;
-      color: #2e3440;
-      &:hover { background-color: #f0dcaf; }
-    }
-    
-    &.refresh-btn {
-        background-color: #434c5e;
-        &:hover { background-color: #4c566a; }
-    }
-  }
-}
-
-.actions .action-btn {
-    &.share-folder-btn {
-        background-color: #3b4f3a;
-        &:hover { background-color: #4d6a4b; }
-    }
-    &:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-    }
-}
-
-.view-only-chip {
-    align-self: center;
-    padding: 4px 10px;
-    border-radius: 999px;
-    border: 1px solid rgba(136, 192, 208, 0.5);
-    color: #88c0d0;
-    font-size: 0.75rem;
-    font-weight: bold;
-    letter-spacing: 0.04em;
-}
-
-.breadcrumbs .shared-pill {
-    margin-left: 12px;
-    padding: 3px 12px;
-    border-radius: 999px;
-    border: 1px solid #4c566a;
-    background: #2e3440;
-    color: #88c0d0;
-    font-size: 0.8rem;
-    letter-spacing: normal;
-    text-transform: none;
-    cursor: pointer;
-    &:hover { border-color: #88c0d0; box-shadow: none; }
-}
-
-.cloud-content {
-  background: #111; /* Very dark background for high contrast */
-  border: 1px solid #333;
-  border-left: 4px solid #4CAF50; /* Distinctive left border */
-  border-radius: 8px;
-  padding: 20px;
-  min-height: 400px; /* Ensure height for dropping */
-  position: relative; 
-  box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
-  
-  /* Prevent text selection during drag operations */
-  user-select: none;
-}
-
-.loading-capacity {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-style: italic;
-    color: #666;
-    height: 38px; /* Match height of loaded widget approx */
-}
-
-/* Drag and Drop Styles */
-.cloud-content.drag-active {
-  background: #252525;
-  outline: 2px dashed #4CAF50;
-  outline-offset: -10px;
-}
-
-.drag-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 100;
-  border-radius: 8px;
-  pointer-events: none; /* Let events fall through to container drop handler */
-}
-
-.drag-message {
-  text-align: center;
-  color: #4CAF50;
-}
-
-.drag-icon {
-  font-size: 4rem;
-  margin-bottom: 20px;
-  min-height: 400px;
-}
-
-.file-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-  gap: 10px;
-}
-
-.file-item {
-  background: #2e2e2e;
-  border: 1px solid #3e3e3e;
-  border-radius: 6px;
-  padding: 10px;
-  cursor: pointer;
-  transition: transform 0.1s, background 0.2s;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  position: relative;
-  min-height: 124px;
-  justify-content: space-between;
-
-  &:hover {
-    background: #3a3a3a;
-    transform: translateY(-2px);
-    border-color: #4c566a;
-    
-    .item-actions-hover {
-        opacity: 1;
-    }
-  }
-
-  &.back-item {
-    background: #252525;
-    border-style: dashed;
-    justify-content: center;
-  }
-
-  .item-icon {
-    font-size: 2.2rem;
-    margin-bottom: 6px;
-    height: 48px;
-    width: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    /* Ensure emoji is centered too */
-    line-height: 1;
-
-    .item-preview-img {
-        max-width: 100%;
-        max-height: 100%;
-        object-fit: contain;
-        border-radius: 4px;
-    }
-  }
-
-  .item-details {
-    width: 100%;
-    
-    .item-name {
-      font-size: 0.85rem;
-      font-weight: bold;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-bottom: 3px;
-    }
-    
-    .item-meta {
-      font-size: 0.72rem;
-      color: #888;
-    }
-
-    .item-access {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        max-width: 100%;
-        margin-top: 3px;
-        padding: 1px 6px 1px 2px;
-        border-radius: 999px;
-        background: #1c1c1c;
-        border: 1px solid #2a2a2a;
-        font-size: 0.62rem;
-        color: #aaa;
-
-        &.clickable { cursor: pointer; }
-        &.clickable:hover { border-color: #4CAF50; color: #ddd; }
-
-        .access-stack { display: inline-flex; }
-        .access-face {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 15px;
-            height: 15px;
-            border-radius: 50%;
-            margin-left: -4px;
-            font-size: 0.5rem;
-            font-weight: bold;
-            color: hsl(var(--hue, 120) 70% 85%);
-            background: hsl(var(--hue, 120) 38% 26%);
-            border: 1px solid #111;
-            &:first-child { margin-left: 0; }
-        }
-        .access-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .access-level { color: #88c0d0; white-space: nowrap; }
-    }
-
-    .separator {
-      margin: 0 4px;
-    }
-  }
-  
-  .item-actions-hover {
-      position: absolute;
-      top: 5px;
-      right: 5px;
-      opacity: 0;
-      transition: opacity 0.2s;
-      
-      button {
-          background: #444;
-          border: none;
-          color: white;
-          padding: 5px;
-          border-radius: 3px;
-          cursor: pointer;
-          margin-left: 2px;
-          
-          &:hover {
-              background: #666;
-          }
-
-          &.delete-btn:hover {
-              background: #bf616a;
-          }
-
-          &.share-btn:hover {
-              background: #ebcb8b;
-          }
-      }
-  }
-}
-
-.loading-state, .error-state, .empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 300px;
-  
-  p { font-size: 1.2rem; color: #888; }
-}
-
-.loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid #3b4252;
-  border-top: 4px solid #88c0d0;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 15px;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.selection-box {
-  position: absolute;
-  background: rgba(76, 175, 80, 0.2);
-  border: 1px solid #4CAF50;
-  pointer-events: none;
-  z-index: 9999; /* Higher than file items */
-}
-
-.file-item.selected {
-  border-color: #4CAF50;
-  background-color: #3b4252;
-  box-shadow: 0 0 8px rgba(76, 175, 80, 0.4);
-}
-
-.file-item.drag-hover {
-  border-color: #88c0d0 !important;
-  background-color: #3b4252 !important;
-  box-shadow: 0 0 10px rgba(136, 192, 208, 0.6) !important;
-  transform: scale(1.03) translateY(-2px);
-}
-
-.shared-links-section {
-    margin-top: 30px;
-    border-top: 1px solid #333;
-    padding-top: 20px;
-
-    .section-title {
-        color: #ebcb8b;
-        margin-bottom: 12px;
-        font-size: 0.95rem;
-    }
-
-    .shared-links-table-container {
-        background: #1e1e1e;
-        border: 1px solid #2d2d2d;
-        border-radius: 6px;
-        overflow-x: auto;
-    }
-
-    .shared-links-table {
-        width: 100%;
-        border-collapse: collapse;
-        text-align: left;
-        font-size: 0.8rem;
-        color: #d8dee9;
-
-        th, td {
-            padding: 8px 12px;
-            border-bottom: 1px solid #2d2d2d;
-            white-space: nowrap;
-        }
-
-        th {
-            background: #252525;
-            color: #88c0d0;
-            font-weight: 600;
-            text-transform: uppercase;
-            font-size: 0.7rem;
-            letter-spacing: 0.5px;
-        }
-
-        tr:last-child td {
-            border-bottom: none;
-        }
-
-        tr:hover td {
-            background: #252525;
-        }
-
-        .name-cell {
-            max-width: 250px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .name-cell-inner {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-
-            .type-icon {
-                font-size: 0.85rem;
-            }
-
-            .item-name-text {
-                font-weight: 500;
-                color: #e5e9f0;
-            }
-        }
-
-        .code-cell code {
-            font-family: monospace;
-            background: #111;
-            padding: 2px 4px;
-            border-radius: 3px;
-            color: #a3be8c;
-        }
-
-        .perm-badge {
-            font-size: 0.7rem;
-            padding: 2px 6px;
-            border-radius: 4px;
-            background: #3b4252;
-            color: #eceff4;
-
-            &.write {
-                background: #ebcb8b;
-                color: #2e3440;
-            }
-
-            &.writedelete {
-                background: #bf616a;
-                color: #eceff4;
-            }
-        }
-
-        .exp-cell {
-            color: #999;
-        }
-
-        .actions-col {
-            text-align: right;
-            width: 100px;
-        }
-
-        .table-actions {
-            display: inline-flex;
-            gap: 6px;
-
-            button {
-                background: #2e2e2e;
-                border: 1px solid #3e3e3e;
-                color: white;
-                padding: 4px 6px;
-                border-radius: 4px;
-                cursor: pointer;
-                transition: all 0.15s ease;
-                font-size: 0.75rem;
-                line-height: 1;
-
-                &:hover {
-                    background: #3e3e3e;
-                    border-color: #4c566a;
-                }
-
-                &.delete-link-btn:hover {
-                    background: #bf616a;
-                    border-color: #bf616a;
-                }
-
-                &.copy-btn:hover {
-                    background: #5e81ac;
-                    border-color: #5e81ac;
-                }
-
-                &.permission-link-btn:hover {
-                    background: #ebcb8b;
-                    border-color: #ebcb8b;
-                    color: #2e3440;
-                }
-            }
-        }
-    }
-}
-
-/* Upload Panel */
-.upload-panel {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    width: 350px;
-    background: #252525;
-    border: 1px solid #3a3a3a;
-    border-radius: 8px;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-    z-index: 10000;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    max-height: 400px;
-    transition: all 0.3s ease;
-
-    &.minimized {
-        height: 40px; /* Header height only */
-    }
-
-    .upload-header {
-        background: #333;
-        padding: 10px 15px;
-        color: #fff;
-        font-weight: bold;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        cursor: pointer;
-        height: 40px;
-
-        &:hover {
-            background: #444;
-        }
-
-        .upload-controls {
-            display: flex;
-            gap: 5px;
-
-            button {
-                background: none;
-                border: none;
-                color: #aaa;
-                cursor: pointer;
-                padding: 2px 5px;
-                
-                &:hover { color: #fff; }
-            }
-        }
-    }
-
-    .upload-list {
-        overflow-y: auto;
-        flex: 1;
-        padding: 10px;
-    }
-
-    .upload-item {
-        background: #1e1e1e;
-        border-bottom: 1px solid #333;
-        padding: 8px;
-        margin-bottom: 5px;
-        border-radius: 4px;
-        position: relative;
-        
-        &:last-child { margin-bottom: 0; }
-
-        .upload-info {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.9em;
-            margin-bottom: 4px;
-            
-            .upload-name {
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                max-width: 70%;
-            }
-            
-            .upload-status {
-                color: #888;
-                font-size: 0.8em;
-            }
-        }
-
-        .upload-progress-bar {
-            height: 4px;
-            background: #333;
-            border-radius: 2px;
-            overflow: hidden;
-            
-            .progress-fill {
-                height: 100%;
-                transition: width 0.2s;
-            }
-        }
-
-        .upload-action {
-             position: absolute;
-             right: 5px;
-             top: 5px;
-             
-             button {
-                 background: none;
-                 border: none;
-                 cursor: pointer;
-                 font-size: 10px;
-                 opacity: 0.6;
-                 
-                 &:hover { opacity: 1; }
-             }
-        }
-    }
-}
-</style>
+<style lang="scss" src="~/assets/scss/klivecloud.scss"></style>

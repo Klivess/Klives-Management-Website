@@ -369,6 +369,19 @@ function api(route: string, params: Record<string, string | undefined>) {
     return `${KliveAPIUrl}/KliveCloud/${route}?${query.toString()}`;
 }
 
+/**
+ * Where a previewed file's bytes come from: a share's public routes, or the owner's short-lived
+ * ticket links. `download` is what an element loads (an <img>, <audio>, a fetch); `save`, when
+ * given, is the link that saves the file instead of opening it.
+ */
+export interface PreviewSource {
+    download: (item?: ShareItem) => string;
+    stream: (item?: ShareItem) => string;
+    playable: (item?: ShareItem) => string;
+    preview: (item: ShareItem | undefined, width?: number, height?: number) => string;
+    save?: (item?: ShareItem) => string;
+}
+
 /** Links into one share. A file shared on its own is addressed by the code alone. */
 export function shareApi(code: string, single: boolean) {
     const target = (item?: ShareItem) => (single || !item ? undefined : item.id);

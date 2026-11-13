@@ -17,6 +17,7 @@ export default defineNuxtConfig({
     '/account': {ssr: false}, // Your sessions and permissions: client-driven, never cached HTML
     '/omnidefence': {ssr: false}, // Live security console is client-driven
     '/kliveagent': {ssr: false}, // Live agent console: long-polled runs, talk mode, per-browser layout
+    '/klivecloud': {ssr: false}, // The drive: authenticated thumbnails, tickets, drag and drop, per-browser layout
     '/klivetech': {ssr: false}, // Telemetry needs WebSocket, object URLs and ResizeObserver
     '/schemery/omnitumblr': {ssr: false}, // Authenticated blob previews, popups and local-time rendering
     '/schemery/omnitumblr/**': {ssr: false},

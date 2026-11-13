@@ -282,6 +282,12 @@ export async function installProfilesApiMock(page: Page, options: { me?: Fixture
       // KliveCloud sharing
       case '/KliveCloud/GetDriveInfo':
         return json(route, { DriveName: 'D:\\', DriveFormat: 'NTFS', TotalCapacityGB: 1863, UsedCapacityGB: 1022.4, FreeCapacityGB: 840.6, UsagePercentage: 54.9 });
+      case '/KliveCloud/GetFolderTree':
+        return json(route, [
+          { ItemID: 'f-designs', Name: 'Designs', RelativePath: 'Designs', ParentFolderID: '', CreatedDate: iso(20 * DAY), ModifiedDate: iso(DAY), CreatedByUserID: 'klives', CreatedByName: 'Klives', ItemType: 'Folder', FileSizeBytes: 0, MyLevel: 'Editor', MinimumPermissionLevel: '2 people', Access: null },
+          { ItemID: 'f-public', Name: 'Shared drive', RelativePath: 'Shared drive', ParentFolderID: '', CreatedDate: iso(80 * DAY), ModifiedDate: iso(3 * DAY), CreatedByUserID: 'klives', CreatedByName: 'Klives', ItemType: 'Folder', FileSizeBytes: 0, MyLevel: 'Editor', MinimumPermissionLevel: 'Everyone', Access: null },
+          { ItemID: 'file-report', Name: 'Quarterly report.pdf', RelativePath: 'Quarterly report.pdf', ParentFolderID: '', CreatedDate: iso(4 * DAY), ModifiedDate: iso(4 * DAY), CreatedByUserID: 'sam', CreatedByName: 'Sam Carter', ItemType: 'File', FileSizeBytes: 2_431_000, MyLevel: 'Viewer', MinimumPermissionLevel: '1 person', Access: null },
+        ]);
       case '/KliveCloud/Browse':
         return json(route, {
           Folder: null, Virtual: null, Path: [], MyLevel: 'Editor', SharedWithMeCount: 2,

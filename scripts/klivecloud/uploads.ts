@@ -21,6 +21,8 @@ export interface UploadJob {
     itemId: string;
     /** False when trying again can't help (an empty file). */
     canRetry: boolean;
+    /** When the current attempt began (ms), for the speed shown beside it. */
+    startedAt?: number;
 }
 
 export interface UploadRequest {
@@ -34,6 +36,10 @@ export function createUploadQueue(options: {
     url: (folderId: string, fileName: string) => string;
     concurrency?: number;
     onUploaded?: (job: UploadJob) => void;
+    /** Request headers for each upload (the owner's page signs them; a share link needs none). */
+    headers?: () => Record<string, string>;
+    /** A failed upload, for the caller to react to (a sign-in that ran out, say). */
+    onFailed?: (job: UploadJob, xhr: XMLHttpRequest) => void;
 }) {
     const jobs = reactive<UploadJob[]>([]);
     const files = new Map<number, File>();
@@ -65,6 +71,9 @@ export function createUploadQueue(options: {
         const xhr = new XMLHttpRequest();
         requests.set(job.id, xhr);
         xhr.open('POST', options.url(job.folderId, job.fileName), true);
+        const headers = options.headers?.() ?? {};
+        for (const name of Object.keys(headers)) xhr.setRequestHeader(name, headers[name]);
+        job.startedAt = Date.now();
         xhr.upload.onprogress = event => {
             if (event.lengthComputable) job.loaded = Math.min(event.loaded, job.size);
         };
@@ -79,6 +88,7 @@ export function createUploadQueue(options: {
             } else {
                 job.status = 'failed';
                 job.error = describeApiError(xhr.status, xhr.responseText);
+                options.onFailed?.(job, xhr);
             }
             pump();
         };

@@ -733,8 +733,8 @@ export const PERMISSIONS: FixturePermission[] = [
     "area": "Files",
     "tier": "Act",
     "tierValue": 3,
-    "title": "Move files",
-    "description": "Move items between folders where you are an editor.",
+    "title": "Move and rename files",
+    "description": "Move items between folders, and rename them, where you are an editor.",
     "legacyRank": 1,
     "implies": [
       "klivecloud.files.browse"

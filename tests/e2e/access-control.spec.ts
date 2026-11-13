@@ -57,7 +57,7 @@ test('a page it cannot open says why, in place, with the nav kept', async ({ pag
 
 test('a refused request is explained once, without leaving the page', async ({ page, context }) => {
   const api = await installProfilesApiMock(page, { me: GUEST });
-  api.overrides['/KliveCloud/Browse'] = denial('klivecloud.files.browse', '/KliveCloud/Browse');
+  api.overrides['/KliveCloud/GetFolderTree'] = denial('klivecloud.files.browse', '/KliveCloud/GetFolderTree');
   await signIn(context);
   await page.goto('/klivecloud');
 

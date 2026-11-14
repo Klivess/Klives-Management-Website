@@ -172,7 +172,7 @@ test('settings: typed values, changed filter, and read-only without the manage p
 
     const readOnly = await page.context().newPage();
     await mockV3(readOnly, { permissions: ['omniscience.overview.view'] });
-    await readOnly.goto(`${BASE}/settings`);
+    await loadPage(readOnly, `${BASE}/settings`);
     await expect(readOnly.getByRole('note')).toContainText('Read only', BOOT);
     await expect(readOnly.locator('[data-setting="ingest.legacy.enabled"]').getByRole('checkbox')).toBeDisabled();
 });

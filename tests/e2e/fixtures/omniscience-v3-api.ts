@@ -119,19 +119,26 @@ const DATASETS: DatasetCatalogDto = {
 
 /**
  * A full page load, for the first visit of a test. With several dev servers running, Windows can run out of socket
- * buffers while the page's modules load (net::ERR_NO_BUFFER_SPACE): the app then never mounts and the test would wait on
- * a blank page. That is the machine, not the page, so the page is loaded again after a pause, up to three times.
+ * buffers while the page's few hundred modules load. It shows in two ways: a module request fails
+ * (net::ERR_NO_BUFFER_SPACE), or one is never answered at all, so the page never finishes loading. Either way the app
+ * does not mount and the test would wait on a blank page. That is the machine, not the page, so the page is loaded
+ * again after a pause, up to three times, and every wait is short enough for all three to fit in one test.
  * Anything else that keeps the app from mounting still fails the test at its first assertion.
  */
 export async function loadPage(page: Page, path: string) {
+    const isMounted = () => !!(document.querySelector('#__nuxt') as any)?.__vue_app__;
     for (let attempt = 0; attempt < 3; attempt++) {
-        let starved = false;
-        const onFailed = (request: { failure(): { errorText: string } | null }) => { if (request.failure()?.errorText.includes('ERR_NO_BUFFER_SPACE')) starved = true; };
+        let giveUp = () => {};
+        const starved = new Promise<'starved'>(resolve => { giveUp = () => resolve('starved'); });
+        const onFailed = (request: { failure(): { errorText: string } | null }) => { if (request.failure()?.errorText.includes('ERR_NO_BUFFER_SPACE')) giveUp(); };
         page.on('requestfailed', onFailed);
-        await page.goto(path).catch(() => { starved = true; });
-        const mounted = await page.waitForFunction(() => !!(document.querySelector('#__nuxt') as any)?.__vue_app__, null, { timeout: 60_000 }).then(() => true, () => false);
+        // "commit", not "load": a request that is never answered would hold the load event back for the whole test.
+        const mounted = page.goto(path, { waitUntil: 'commit', timeout: 20_000 })
+            .then(() => page.waitForFunction(isMounted, null, { timeout: 35_000 }))
+            .then(() => 'mounted' as const, () => 'not mounted' as const);
+        const outcome = await Promise.race([mounted, starved]);
         page.off('requestfailed', onFailed);
-        if (mounted && !starved) return;
+        if (outcome === 'mounted') return;
         await page.waitForTimeout(4000);
     }
 }

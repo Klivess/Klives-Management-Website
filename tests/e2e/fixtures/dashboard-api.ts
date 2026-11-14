@@ -23,11 +23,36 @@ const now = new Date('2026-08-11T10:00:00.000Z');
 const today = now.toISOString().slice(0, 10);
 
 const services = [
-  { Name: 'KliveAPI', IsActive: true, UptimeHumanized: '2d 4h' },
-  { Name: 'KliveAgent', IsActive: true, UptimeHumanized: '2d 4h' },
-  { Name: 'OmniTrader', IsActive: false, UptimeHumanized: 'offline' },
-  { Name: 'Projects', IsActive: true, UptimeHumanized: '2d 4h' },
+  // Stops by design once its job is done (RunsOnce): Home must never call it down.
+  { Name: 'Omnipotent Startup Manager', IsActive: false, RunsOnce: true, Anteriority: 'Critical', UptimeHumanized: 'Inactive' },
+  { Name: 'KliveAPI', IsActive: true, UptimeHumanized: '2d 4h', ErrorsLastHour: 0 },
+  { Name: 'KliveAgent', IsActive: true, UptimeHumanized: '2d 4h', ErrorsLastHour: 3 },
+  { Name: 'OmniTrader', IsActive: false, UptimeHumanized: 'offline', ErrorsLastHour: 1 },
+  { Name: 'Projects', IsActive: true, UptimeHumanized: '2d 4h', ErrorsLastHour: 0 },
 ];
+
+/** An hour of vitals in the server's columnar shape (running totals for the counters), ending now. */
+function vitalsHistory() {
+  const end = Math.floor(Date.now() / 1000);
+  const count = 60;
+  const T = Array.from({ length: count }, (_, i) => end - (count - 1 - i) * 60);
+  return {
+    StepSeconds: 60,
+    Count: count,
+    T,
+    Cpu: T.map((_, i) => 20 + 15 * Math.sin(i / 6)),
+    RamPct: T.map((_, i) => 60 + (i % 7)),
+    ProcessMB: T.map(() => 734),
+    HeapMB: T.map(() => 380),
+    Threads: T.map(() => 58),
+    Gen2: T.map((_, i) => 100 + i),
+    NetSent: T.map((_, i) => i * 1000),
+    NetReceived: T.map((_, i) => i * 2000),
+    Errors: T.map((_, i) => 200 + Math.floor(i / 10)),
+    Requests: T.map((_, i) => 40_000 + i * 42),
+    ServerErrors: T.map(() => 80),
+  };
+}
 
 const projects = [
   {
@@ -185,24 +210,40 @@ function responseForPath(pathWithQuery: string, role: DashboardRole, overrides: 
       };
     case '/GeneralBotStatistics/GetFrontpageStats':
       return {
+        TimeStatisticsGenerated: new Date().toISOString(),
+        MachineName: 'KLIVESHOMESERVE',
+        BotUptime: '2.04:00:00',
         BotUptimeHumanized: '2d 4h',
+        Build: { CommitShort: '5a77498', ProcessStartedUtc: new Date(Date.now() - 52 * 3600_000).toISOString() },
         CpuUsagePercentage: 37,
         RamUsagePercentage: 62,
         RamUsedGB: 19.8,
         RamTotalGB: 32,
         ProcessMemoryMB: 734,
+        GCTotalMemoryMB: 380,
+        ProcessThreadCount: 58,
+        GCGen2Collections: 160,
+        ErrorsLastHour: 4,
+        ErrorsLoggedTotal: 206,
+        ApiRequestsTotal: 40_000 + 60 * 42,
+        ApiServerErrorsTotal: 80,
         TotalServicesActive: 3,
-        TotalServicesRegistered: 4,
+        TotalServicesRegistered: 5,
         TotalLogs: 42_500,
         TotalErrorLogs: 1,
         TotalScheduledTasks: 8,
         NextTaskScheduledSummary: 'RAG refresh in 6 minutes',
         lastOmnipotentUpdateHumanized: '4 minutes ago',
         DiskStatistics: [
-          { Name: 'C:', DriveName: 'C:', TotalSizeGB: 1000, UsedSpaceGB: 712, UsagePercentage: 71.2 },
+          // 93% of a small system disk: real, slow-moving, said once on the quiet line.
+          { Name: 'C:', DriveName: 'C:\\', TotalSizeGB: 232, UsedSpaceGB: 216.3, FreeSpaceGB: 15.7, UsagePercentage: 93.2 },
+          { Name: 'D:', DriveName: 'D:\\', TotalSizeGB: 1863, UsedSpaceGB: 633, FreeSpaceGB: 1230, UsagePercentage: 34 },
         ],
+        NetworkInterfaces: [],
         Services: services,
       };
+    case '/GeneralBotStatistics/History':
+      return vitalsHistory();
     case '/GeneralBotStatistics/GetHardwareStats':
       return {
         CpuUsagePercentage: 37,
@@ -327,6 +368,40 @@ function responseForPath(pathWithQuery: string, role: DashboardRole, overrides: 
         TotalListingsScanned: 42_018,
         HighestPredictedGainFoundSoFar: 1.237,
       };
+    case '/cs2arbitragebot/status':
+      return {
+        startupState: 'running',
+        settings: { ScanningEnabled: true, PurchasingEnabled: false },
+        balances: { csfloatGbp: 23.28, steamGbp: null },
+        engine: { State: 'running', LastFeedPollUtc: new Date(Date.now() - 20_000).toISOString(), ListingsSeen: 13_276, Opportunities: 150, Purchases: 0 },
+        trades: { lastPollUtc: new Date().toISOString(), lastError: null },
+        steamSession: {
+          problem: 'Steam rejected the saved login; it needs approving in the Steam app',
+          problemSinceUtc: new Date(Date.now() - 13.6 * 3600_000).toISOString(),
+          lastWorkedUtc: null,
+        },
+      };
+    case '/klivelink/v2/agents':
+      return [{ agentId: 'link-1', machineName: 'DESKTOP', online: true }];
+    case '/klivemail/messages':
+      return [
+        { Id: 'mail-code', FromName: 'Steam', FromAddress: 'noreply@steampowered.com', Subject: 'Your Steam login code', ReceivedUtc: new Date(Date.now() - 2 * 60_000).toISOString(), IsRead: false, Code: '48K2Q' },
+        { Id: 'mail-old', FromName: 'Status', FromAddress: 'status@example.com', Subject: 'Weekly status', ReceivedUtc: new Date(Date.now() - 3 * 3600_000).toISOString(), IsRead: true, Code: null },
+      ];
+    case '/omniblox/overview':
+      return {
+        Enabled: false,
+        Status: 'off (switch OmniBlox on to start the studio)',
+        StageCounts: { Research: 0, Build: 2, Test: 0, Launch: 1, Live: 0, Sunset: 0, Abandoned: 6 },
+        Attention: [{ Level: 'info', Title: 'The studio is switched off' }],
+        OwnerTasks: [
+          { TaskId: 't1', Title: 'Play and sign off "Camp Game" (r54)', Status: 'Open', CreatedUtc: new Date(Date.now() - 11 * 86_400_000).toISOString(), ResolvedUtc: null },
+          { TaskId: 't2', Title: "The Roblox key belongs to another account", Status: 'Open', CreatedUtc: new Date(Date.now() - 3 * 86_400_000).toISOString(), ResolvedUtc: null },
+        ],
+        Money: { Revenue7dRobux: 0 },
+      };
+    case '/KMProfiles/activity':
+      return { items: [], next: null };
     case '/memescraper/summary':
       return {
         TotalInstagramSources: 8,
@@ -338,11 +413,21 @@ function responseForPath(pathWithQuery: string, role: DashboardRole, overrides: 
         DownloadedPrev7d: 88,
         LastDownloadUtc: new Date().toISOString(),
         MemesDownloadedPerDay: { [today]: 17 },
+        // The schedule: on time unless a test says otherwise.
+        NextScrapeDueUtc: new Date(Date.now() + 4.5 * 3600_000).toISOString(),
+        ScrapeIntervalHours: 24,
+        Paused: false,
+        SchedulerState: 'idle',
+        LastSchedulerTickUtc: new Date(Date.now() - 60_000).toISOString(),
       };
     case '/omnigram/dashboard-stats':
       return { TotalAccounts: 3, ActiveAccounts: 2, ConnectedAccounts: 2, PausedAccounts: 0, ErrorAccounts: 0, AutopilotAccounts: 2, PendingCount: 5, FailedCount: 0, SuccessRate: 96, TotalFollowers: 18_400, FollowerGain7d: 220, PostsThisWeek: 3, PostsToday: 1, AvgViews30d: 5400, Reach7d: 21_000, NextPostUtc: null, NextPostAccount: null, AttentionCount: 0 };
     case '/omnitumblr/dashboard-stats':
-      return { TotalAccounts: 2, ActiveAccounts: 2, AutopilotBlogs: 2, PendingCount: 3, FailedCount: 0, SuccessRate: 93, TotalFollowers: 1200, FollowerGain7d: 14, PostsThisWeek: 4, PostsToday: 1, AvgNotes30d: 18.5, NextPostUtc: null, NextPostBlog: null, AttentionCount: 0 };
+      return {
+        TotalAccounts: 2, ActiveAccounts: 2, AutopilotBlogs: 2, PendingCount: 3, FailedCount: 0, SuccessRate: 93, TotalFollowers: 1200, FollowerGain7d: 14,
+        PostsThisWeek: 4, PostsToday: 1, AvgNotes30d: 18.5, NextPostUtc: new Date(Date.now() + 40 * 60_000).toISOString(), NextPostBlog: 'house',
+        AwaitingApproval: 0, AttentionCount: 1, Attention: [{ Level: 'error', Title: "Tumblr is refusing this server's requests" }],
+      };
     case '/KliveCloud/GetDriveInfo':
       return {
         TotalSpaceGB: 1000,
@@ -472,7 +557,12 @@ export async function installDashboardApiMock(page: Page, role: DashboardRole, o
     }
 
     if (url.pathname === '/projects/halt-all') {
-      await fulfilJson(route, { success: true, halted: 3 });
+      await fulfilJson(route, { success: true, ok: true, halted: 3 });
+      return;
+    }
+
+    if (url.pathname === '/projects/unhalt-all') {
+      await fulfilJson(route, { ok: true, pending: false, restored: 3, projectIDs: [] });
       return;
     }
 
@@ -490,17 +580,22 @@ export async function installDashboardApiMock(page: Page, role: DashboardRole, o
 export async function openDashboard(
   page: Page,
   role: DashboardRole,
-  options: { collapsed?: boolean } = {},
+  options: { collapsed?: boolean; overrides?: ApiOverrides; visits?: Array<{ path: string; score: number; at?: number; count?: number }> } = {},
 ): Promise<DashboardApiMock> {
-  const api = await installDashboardApiMock(page, role);
+  const api = await installDashboardApiMock(page, role, options.overrides ?? {});
   await page.context().addCookies([
     { name: 'password', value: `e2e-${role.toLowerCase()}`, url: dashboardTestOrigin },
   ]);
-  await page.addInitScript((collapsed) => {
+  await page.addInitScript(({ collapsed, visits }) => {
     window.localStorage.setItem('vnavCollapsed', collapsed ? '1' : '0');
-  }, Boolean(options.collapsed));
+    // Home's "Jump back in" history, as plugins/home-visits.client.ts writes it.
+    if (visits && !window.sessionStorage.getItem('e2e-visits-seeded')) {
+      window.sessionStorage.setItem('e2e-visits-seeded', '1');
+      window.localStorage.setItem('km:home:visits:v1', JSON.stringify(visits.map(v => ({ at: Date.now(), count: 1, ...v }))));
+    }
+  }, { collapsed: Boolean(options.collapsed), visits: options.visits ?? null });
   await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
-  const shell = page.getByTestId('dashboard-shell');
+  const shell = page.getByTestId('home-root');
   try {
     await shell.waitFor({ state: 'visible', timeout: 15_000 });
   } catch {

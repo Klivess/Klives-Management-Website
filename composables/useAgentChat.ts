@@ -47,6 +47,7 @@ export function useAgentChat(options: { agentReady: Ref<boolean>; threadEl: Ref<
   const { agentReady, threadEl, inputEl } = options;
   const hooks = options.hooks ?? {};
   const route = useRoute();
+  const router = useRouter();
 
   const messages = ref<any[]>([]);
   const inputMessage = ref('');
@@ -649,11 +650,40 @@ export function useAgentChat(options: { agentReady: Ref<boolean>; threadEl: Ref<
     return [] as any[];
   });
 
+  /**
+   * Home's ask box opens /kliveagent?ask=…: that becomes a new conversation, sent as soon as the agent
+   * is ready. The text leaves the address at once, so a reload or the back button never sends it twice.
+   */
+  function takeAskFromUrl(): string | null {
+    const ask = typeof route.query.ask === 'string' ? route.query.ask.trim() : '';
+    return ask ? ask.slice(0, 8_000) : null;
+  }
+
+  async function startFromAsk(ask: string) {
+    // This runs while the router may still be finishing the move here: until it has, a path-less
+    // replace() lands on the page we came from (Home), so wait for it and name the path.
+    for (let i = 0; i < 50 && router.currentRoute.value.path !== route.path; i++) await wait(100);
+    if (!active) return;
+    const query = { ...router.currentRoute.value.query };
+    delete query.ask;
+    await router.replace({ path: route.path, query, hash: route.hash });
+    newChat();
+    inputMessage.value = ask;
+    const deadline = Date.now() + 60_000;
+    while (active && !agentReady.value && Date.now() < deadline) await wait(400);
+    if (active && agentReady.value && inputMessage.value.trim()) await sendMessage();
+  }
+
   function start() {
     active = true;
     window.addEventListener('keydown', onTalkKeyDown);
     window.addEventListener('keyup', onTalkKeyUp);
-    void restoreDurableSession();
+    const ask = takeAskFromUrl();
+    if (ask) {
+      void startFromAsk(ask);
+    } else {
+      void restoreDurableSession();
+    }
   }
   function stop() {
     active = false;

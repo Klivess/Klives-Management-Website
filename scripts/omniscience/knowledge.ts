@@ -29,13 +29,23 @@ export function factStatusHelp(status: string): string {
     }
 }
 
-/** "since Mar 2025", "until about Jan 2026", "Mar 2025 – Jan 2026", or "" when no validity is known. */
+/**
+ * When a fact held: "since 2025-03", "until about 2026-01", "2025-03 – 2026-01", or "" when no period is known.
+ * Each end is known only as a range. The month shown is the cautious end of it (the latest it could have started,
+ * the earliest it could have ended), with "about" when the range spans more than that one month.
+ */
 export function factValidity(f: KnowledgeFactDto, month: (ms: number) => string): string {
-    const from = f.validFromLatestMs ?? f.validFromEarliestMs ?? null;
-    const to = f.validToEarliestMs ?? f.validToLatestMs ?? null;
-    if (from !== null && to !== null) return `${month(from)} – ${month(to)}`;
-    if (from !== null) return `since ${month(from)}`;
-    if (to !== null) return `until about ${month(to)}`;
+    const end = (shown: number | null | undefined, other: number | null | undefined): string | null => {
+        const ms = shown ?? other;
+        if (ms === null || ms === undefined) return null;
+        const loose = shown !== null && shown !== undefined && other !== null && other !== undefined && month(shown) !== month(other);
+        return `${loose ? 'about ' : ''}${month(ms)}`;
+    };
+    const from = end(f.validFromLatestMs, f.validFromEarliestMs);
+    const to = end(f.validToEarliestMs, f.validToLatestMs);
+    if (from !== null && to !== null) return `${from} – ${to}`;
+    if (from !== null) return `since ${from}`;
+    if (to !== null) return `until ${to}`;
     return '';
 }
 

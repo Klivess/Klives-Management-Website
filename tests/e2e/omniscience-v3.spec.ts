@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { BOOT, NOW, V3, mockV3 } from './fixtures/omniscience-v3-api';
+import { BOOT, NOW, V3, loadPage, mockV3 } from './fixtures/omniscience-v3-api';
 import { omniAge, omniCsv, omniDuration, omniInstant, omniMsToZonedInput, omniZonedToMs } from '../../scripts/omniscience/format';
 
 /** Omniscience v3 engine pages against a contract-typed mock; screenshots land in test-results/omniscience-v3/. */
@@ -27,7 +27,7 @@ async function shot(page: Page, name: string) {
  */
 async function go(page: Page, path: string) {
     const mounted = await page.evaluate(() => !!(document.querySelector('#__nuxt') as any)?.__vue_app__).catch(() => false);
-    if (!mounted) { await page.goto(path); return; }
+    if (!mounted) { await loadPage(page, path); return; }
     await page.evaluate(to => (document.querySelector('#__nuxt') as any).__vue_app__.config.globalProperties.$router.push(to), path);
 }
 
@@ -65,7 +65,7 @@ test.describe('time helpers', () => {
 test('overview shows the engine, and the time lens changes every time on the page', async ({ page }) => {
     const state = await mockV3(page);
     await page.setViewportSize({ width: 1600, height: 1000 });
-    await page.goto(BASE);
+    await loadPage(page, BASE);
 
     await expect(page.getByRole('heading', { name: 'Engine overview' })).toBeVisible(BOOT);
     await expect(page.getByTestId('omni-phase')).toContainText('Ready');
@@ -104,7 +104,7 @@ for (const [phase, title, detail] of [
 ] as const) {
     test(`an engine that is ${phase.toLowerCase()} says so on every page instead of showing blanks`, async ({ page }) => {
         const state = await mockV3(page, { phase });
-        await page.goto(`${BASE}/jobs`);
+        await loadPage(page, `${BASE}/jobs`);
         await expect(page.getByTestId('omni-engine-banner')).toContainText(title, BOOT);
         await expect(page.getByTestId('omni-engine-banner')).toContainText(detail);
         await expect(page.getByTestId('omni-phase')).toContainText(phase);
@@ -117,7 +117,7 @@ for (const [phase, title, detail] of [
 
 test('modules: filter, inspect, disable, and edit a setting with server validation', async ({ page }) => {
     const state = await mockV3(page);
-    await page.goto(`${BASE}/modules`);
+    await loadPage(page, `${BASE}/modules`);
     const table = card(page, 'Modules').locator('tbody');
     await expect(table.locator('tr')).toHaveCount(3, BOOT);
 
@@ -152,7 +152,7 @@ test('modules: filter, inspect, disable, and edit a setting with server validati
 
 test('settings: typed values, changed filter, and read-only without the manage permission', async ({ page }) => {
     const state = await mockV3(page);
-    await page.goto(`${BASE}/settings`);
+    await loadPage(page, `${BASE}/settings`);
     await expect(card(page, 'Engine')).toContainText('kernel.klivesTimeZone', BOOT);
 
     // A boolean is sent as a boolean, an integer as a number: never as the text that was typed.
@@ -179,7 +179,7 @@ test('settings: typed values, changed filter, and read-only without the manage p
 
 test('jobs: filters live in the URL and reach the server, pages use the cursor, a dead job can be retried', async ({ page }) => {
     const state = await mockV3(page);
-    await page.goto(`${BASE}/jobs`);
+    await loadPage(page, `${BASE}/jobs`);
     const rows = card(page, 'Jobs').locator('tbody tr');
     await expect(rows).toHaveCount(4, BOOT);
 
@@ -212,7 +212,7 @@ test('jobs: filters live in the URL and reach the server, pages use the cursor, 
 
 test('llm: breakdown groups drill into the call list', async ({ page }) => {
     const state = await mockV3(page);
-    await page.goto(`${BASE}/llm`);
+    await loadPage(page, `${BASE}/llm`);
     await expect(card(page, 'Breakdown').locator('tbody tr')).toHaveCount(2, BOOT);
     await expect(card(page, 'Calls').locator('tbody tr')).toHaveCount(3);
     await expect(page.locator('.ot-kpi').filter({ hasText: 'Served from cache' })).toContainText('80%');
@@ -231,7 +231,7 @@ test('llm: breakdown groups drill into the call list', async ({ page }) => {
 test('tactics: a schema-generated form, an estimate, a streamed run, and its output fed to another tactic', async ({ page }) => {
     const state = await mockV3(page);
     await page.setViewportSize({ width: 1600, height: 1000 });
-    await page.goto(`${BASE}/tactics`);
+    await loadPage(page, `${BASE}/tactics`);
     const catalogue = card(page, 'Catalogue').locator('tbody tr');
     await expect(catalogue).toHaveCount(3, BOOT);
 
@@ -283,7 +283,7 @@ test('tactics: a schema-generated form, an estimate, a streamed run, and its out
 test('tactics: a policy refusal is shown as such, and outbound tactics cannot be started without confirmation', async ({ page }) => {
     const state = await mockV3(page);
     state.refuseRuns = { status: 422, code: 'refused', message: 'This person is covered by the minor-safety guard; replicas are not built for them.' };
-    await page.goto(`${BASE}/tactics?tactic=x26.cohort`);
+    await loadPage(page, `${BASE}/tactics?tactic=x26.cohort`);
     const drawer = page.locator('.ot-drawer');
     await expect(drawer).toContainText('Save as cohort', BOOT);
     await drawer.getByRole('button', { name: 'Add a selection' }).click();
@@ -307,7 +307,7 @@ test('tactics: a policy refusal is shown as such, and outbound tactics cannot be
 
 test('playbooks: the server validates the draft, and the saved trigger carries only what its kind uses', async ({ page }) => {
     const state = await mockV3(page);
-    await page.goto(`${BASE}/playbooks`);
+    await loadPage(page, `${BASE}/playbooks`);
     await expect(card(page, 'Playbooks')).toContainText('Sun at 10:00 (Europe/London)', BOOT);
 
     await page.getByRole('button', { name: 'New playbook' }).click();
@@ -341,7 +341,7 @@ test('playbooks: the server validates the draft, and the saved trigger carries o
 test('explore: the view is the URL, every row opens its records, and a result can feed a tactic', async ({ page }) => {
     const state = await mockV3(page);
     await page.setViewportSize({ width: 1600, height: 1000 });
-    await page.goto(`${BASE}/explore`);
+    await loadPage(page, `${BASE}/explore`);
     const result = card(page, 'Messages');
     // The first dataset and its first measure are chosen without being asked.
     await expect(result.locator('tbody tr')).toHaveCount(1, BOOT);
@@ -398,14 +398,14 @@ test('explore: the view is the URL, every row opens its records, and a result ca
 
 test('explore: a build without the engine says so', async ({ page }) => {
     const state = await mockV3(page, { exploreInstalled: false });
-    await page.goto(`${BASE}/explore`);
+    await loadPage(page, `${BASE}/explore`);
     await expect(card(page, 'Messages').locator('.ot-state')).toContainText('The Explore engine is not installed in this build yet.', BOOT);
     expect(state.unknown).toEqual([]);
 });
 
 test('live: events arrive over the socket, resume from the last id, and a gap is announced', async ({ page }) => {
     const state = await mockV3(page);
-    await page.goto(`${BASE}/live`);
+    await loadPage(page, `${BASE}/live`);
     await expect(page.getByTestId('omni-live-state')).toContainText('connected', BOOT);
     await expect.poll(() => state.sockets.length).toBe(1);
     expect(state.sockets[0]!.url.searchParams.get('authorization')).toBe('kms_e2e');
@@ -441,7 +441,7 @@ test('live: events arrive over the socket, resume from the last id, and a gap is
 
 test('cohorts: members are listed and the cohort becomes a tactic input', async ({ page }) => {
     const state = await mockV3(page);
-    await page.goto(`${BASE}/cohorts`);
+    await loadPage(page, `${BASE}/cohorts`);
     await card(page, 'Cohorts').locator('tbody tr').first().click(BOOT);
     await expect(page.locator('.ot-drawer')).toContainText('Synthetic Bo');
     await page.getByRole('button', { name: 'Run a tactic on this cohort' }).click();
@@ -451,7 +451,7 @@ test('cohorts: members are listed and the cohort becomes a tactic input', async 
 
 test('a profile without the engine permission sees no controls it cannot use', async ({ page }) => {
     const state = await mockV3(page, { permissions: ['omniscience.overview.view'] });
-    await page.goto(`${BASE}/modules?module=knowledge.deduction`);
+    await loadPage(page, `${BASE}/modules?module=knowledge.deduction`);
     const drawer = page.locator('.ot-drawer');
     await expect(drawer).toContainText('Extracts, verifies and consolidates', BOOT);
     await expect(drawer.getByRole('button', { name: 'Disable' })).toHaveCount(0);

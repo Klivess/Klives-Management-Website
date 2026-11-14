@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { BOOT, NOW, V3, mockV3 } from './fixtures/omniscience-v3-api';
+import { BOOT, NOW, V3, loadPage, mockV3 } from './fixtures/omniscience-v3-api';
 
 /**
  * The Omniscience v3 pages built on the WS-C contract (people, signals, digests, communities,
@@ -26,7 +26,7 @@ async function shot(page: Page, name: string) {
 /** Later visits in one test go through the app's router (see the engine spec for why). */
 async function go(page: Page, path: string) {
     const mounted = await page.evaluate(() => !!(document.querySelector('#__nuxt') as any)?.__vue_app__).catch(() => false);
-    if (!mounted) { await page.goto(path); return; }
+    if (!mounted) { await loadPage(page, path); return; }
     await page.evaluate(to => (document.querySelector('#__nuxt') as any).__vue_app__.config.globalProperties.$router.push(to), path);
 }
 
@@ -36,7 +36,7 @@ const posts = (state: Awaited<ReturnType<typeof mockV3>>, sub: string) => state.
 test('people: the directory filters, a person page shows the dossier, and a brief can be requested', async ({ page }) => {
     const state = await mockV3(page);
     await page.setViewportSize({ width: 1600, height: 1000 });
-    await page.goto(`${BASE}/people`);
+    await loadPage(page, `${BASE}/people`);
     const rows = card(page, 'People').locator('tbody tr');
     await expect(rows).toHaveCount(6, BOOT);
     await expect(rows.filter({ hasText: 'Synthetic Dee' })).toContainText('minor');
@@ -72,7 +72,7 @@ test('people: the directory filters, a person page shows the dossier, and a brie
 
 test('people: someone under 18 shows no routine, facts or look-alikes, and analysis-off is said plainly', async ({ page }) => {
     const state = await mockV3(page);
-    await page.goto(`${BASE}/people/person-d`);
+    await loadPage(page, `${BASE}/people/person-d`);
     await expect(page.getByTestId('person-chips')).toContainText('under 18 or may be', BOOT);
     await expect(page.getByText('Hours and weekdays are not shown for this person.')).toBeVisible();
     await expect(card(page, 'Similar people')).toContainText('Withheld by policy');
@@ -89,7 +89,7 @@ test('people: someone under 18 shows no routine, facts or look-alikes, and analy
 test('signals: verdicts and bulk state on alerts, a snoozed reply, notices in words, a new watch rule, a check-in', async ({ page }) => {
     const state = await mockV3(page);
     await page.setViewportSize({ width: 1600, height: 1000 });
-    await page.goto(`${BASE}/signals`);
+    await loadPage(page, `${BASE}/signals`);
     const alerts = page.getByTestId('alerts-table').locator('tbody tr');
     await expect(alerts).toHaveCount(2, BOOT);
     await expect(page.getByTestId('signals-tab-alerts')).toContainText('2');
@@ -143,7 +143,7 @@ test('signals: verdicts and bulk state on alerts, a snoozed reply, notices in wo
 test('digests: read one, write one now and see it finish, and subscribe weekly', async ({ page }) => {
     const state = await mockV3(page);
     await page.setViewportSize({ width: 1600, height: 1000 });
-    await page.goto(`${BASE}/digests`);
+    await loadPage(page, `${BASE}/digests`);
     const list = page.getByTestId('digest-list').locator('li');
     await expect(list).toHaveCount(2, BOOT);
     await list.first().getByRole('button').click();
@@ -182,7 +182,7 @@ test('digests: read one, write one now and see it finish, and subscribe weekly',
 test('communities: a place page, a place without one yet, circles and the people map', async ({ page }) => {
     const state = await mockV3(page);
     await page.setViewportSize({ width: 1600, height: 1000 });
-    await page.goto(`${BASE}/communities`);
+    await loadPage(page, `${BASE}/communities`);
     const places = page.getByTestId('spaces-list').locator('li');
     await expect(places).toHaveCount(2, BOOT);
     await places.first().getByRole('button').click();
@@ -208,7 +208,7 @@ test('communities: a place page, a place without one yet, circles and the people
 
 test('links: search by words, private links are marked, and a link can be followed', async ({ page }) => {
     const state = await mockV3(page);
-    await page.goto(`${BASE}/links`);
+    await loadPage(page, `${BASE}/links`);
     const rows = page.getByTestId('links-table').locator('tbody tr');
     await expect(rows).toHaveCount(4, BOOT);
     await expect(page.getByTestId('links-table')).toContainText('private link (never looked up)');
@@ -228,7 +228,7 @@ test('links: search by words, private links are marked, and a link can be follow
 test('data controls: analysis off with a typed confirmation, erase asks for ERASE, analysis back on, backups', async ({ page }) => {
     const state = await mockV3(page);
     await page.setViewportSize({ width: 1600, height: 1100 });
-    await page.goto(`${BASE}/data?person=person-a`);
+    await loadPage(page, `${BASE}/data?person=person-a`);
     const form = page.getByTestId('forget-form');
     await expect(form.getByLabel('Person id')).toHaveValue('person-a', BOOT);
     await form.getByRole('button', { name: 'Preview' }).click();
@@ -272,7 +272,7 @@ test('data controls: analysis off with a typed confirmation, erase asks for ERAS
 test('health: problems in plain words, monitors with a topic status, findings and translation', async ({ page }) => {
     const state = await mockV3(page);
     await page.setViewportSize({ width: 1600, height: 1000 });
-    await page.goto(`${BASE}/health`);
+    await loadPage(page, `${BASE}/health`);
     const open = page.getByTestId('health-open');
     await expect(open).toContainText('Synthetic WhatsApp has been silent for 14.2 hours', BOOT);
     await expect(open).toContainText('2 knowledge.deduction jobs failed for good in the last day: provider answered 503 three times.');
@@ -294,7 +294,7 @@ test('health: problems in plain words, monitors with a topic status, findings an
 
 test('a profile that may only read sees no controls on these pages, and data controls refuse it in place', async ({ page }) => {
     const state = await mockV3(page, { permissions: ['omniscience.overview.view', 'omniscience.persons.read', 'omniscience.messages.read'] });
-    await page.goto(`${BASE}/signals`);
+    await loadPage(page, `${BASE}/signals`);
     await expect(page.getByTestId('alerts-table')).toBeVisible(BOOT);
     await expect(page.getByTestId('alerts-all-seen')).toHaveCount(0);
     await expect(page.getByTitle('This was right')).toHaveCount(0);

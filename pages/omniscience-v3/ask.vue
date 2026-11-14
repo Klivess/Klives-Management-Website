@@ -64,7 +64,7 @@
                                 <button v-if="canReview && !answerFeedback" class="ot-btn ghost sm" type="button" :disabled="busy !== null" @click="feedback(answer.inquiryId, 'incorrect')">It was wrong</button>
                                 <span v-if="answerFeedback" class="ot-chip sm ok">you said: {{ answerFeedback }}</span>
                             </template>
-                            <OmniscienceV3InquiryReport :report="answer" @pick="askAbout" />
+                            <OmniscienceV3InquiryReport :report="answer" @pick="(id, label) => askAbout(answer, id, label)" />
                         </OmniTraderCard>
                         <OmniTraderCard :title="answer ? 'How it ran' : 'Working on it'">
                             <OmniscienceV3TacticRunView :run-id="view.run" @changed="onRunChanged()" @open="id => (view.run = id)" @use="useSelection" />
@@ -113,7 +113,7 @@
                         <button class="ot-btn sm" type="button" :disabled="busy !== null" data-testid="inquiry-wrong" @click="feedback(opened.data.value.inquiryId, 'incorrect')">It was wrong</button>
                         <span class="omni-muted">Your marks are what the confidence numbers are corrected against.</span>
                     </div>
-                    <OmniscienceV3InquiryReport :report="opened.data.value" @pick="askAbout" />
+                    <OmniscienceV3InquiryReport :report="opened.data.value" @pick="(id, label) => askAbout(opened.data.value, id, label)" />
                 </template>
             </OmniTraderDrawer>
         </template>
@@ -243,12 +243,12 @@ async function onRunChanged() {
 }
 watch(() => view.run, () => { answer.value = null; answerFeedback.value = null; if (view.run) void onRunChanged(); }, { immediate: true });
 
-/** "Which person did you mean?": ask the same question again about the one picked. */
-function askAbout(personId: string, label: string) {
+/** "Which person did you mean?": the question of that answer, ready to be asked again about the one picked. */
+function askAbout(of: InquiryReportDto | null, personId: string, label: string) {
+    if (of) draft.question = of.question;
+    draft.people = [{ id: personId, label }];
     view.tab = 'ask';
     view.inquiry = '';
-    if (!draft.question && opened.data.value) draft.question = opened.data.value.question;
-    draft.people = [{ id: personId, label }];
 }
 
 function useSelection(selection: Selection) {

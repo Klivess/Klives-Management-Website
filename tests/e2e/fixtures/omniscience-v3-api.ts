@@ -117,6 +117,25 @@ const DATASETS: DatasetCatalogDto = {
     ],
 };
 
+/**
+ * A full page load, for the first visit of a test. With several dev servers running, Windows can run out of socket
+ * buffers while the page's modules load (net::ERR_NO_BUFFER_SPACE): the app then never mounts and the test would wait on
+ * a blank page. That is the machine, not the page, so the page is loaded again after a pause, up to three times.
+ * Anything else that keeps the app from mounting still fails the test at its first assertion.
+ */
+export async function loadPage(page: Page, path: string) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+        let starved = false;
+        const onFailed = (request: { failure(): { errorText: string } | null }) => { if (request.failure()?.errorText.includes('ERR_NO_BUFFER_SPACE')) starved = true; };
+        page.on('requestfailed', onFailed);
+        await page.goto(path).catch(() => { starved = true; });
+        const mounted = await page.waitForFunction(() => !!(document.querySelector('#__nuxt') as any)?.__vue_app__, null, { timeout: 60_000 }).then(() => true, () => false);
+        page.off('requestfailed', onFailed);
+        if (mounted && !starved) return;
+        await page.waitForTimeout(4000);
+    }
+}
+
 export interface V3MockOptions {
     phase?: V3Phase;
     /** Permissions of a non-owner profile; omitted = the owner (everything). */

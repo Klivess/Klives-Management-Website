@@ -7,7 +7,7 @@
             </span>
         </div>
         <div v-if="modelValue.length < max" class="search">
-            <input :id="inputId" v-model="text" class="ot-input" type="search" autocomplete="off" :placeholder="placeholder" :aria-label="placeholder"
+            <input :id="inputId" v-model="text" class="ot-input" type="search" autocomplete="off" :placeholder="placeholder" :aria-label="inputId ? undefined : placeholder"
                    @keydown.down.prevent="move(1)" @keydown.up.prevent="move(-1)" @keydown.enter.prevent="choose(matches[index])" @keydown.esc="text = ''" />
             <ul v-if="text.trim() && (matches.length || searched)" class="results" role="listbox">
                 <li v-for="(m, i) in matches" :key="m.personId" role="option" :aria-selected="i === index" :class="{ active: i === index }"

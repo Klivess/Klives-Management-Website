@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { BOOT, V3, mockV3 } from './fixtures/omniscience-v3-api';
+import { BOOT, V3, loadPage, mockV3 } from './fixtures/omniscience-v3-api';
 
 /**
  * The Omniscience v3 pages built on the merged contract: what is known about a person, the review
@@ -25,7 +25,7 @@ async function shot(page: Page, name: string) {
 /** Later visits in one test go through the app's router (see the engine spec for why). */
 async function go(page: Page, path: string) {
     const mounted = await page.evaluate(() => !!(document.querySelector('#__nuxt') as any)?.__vue_app__).catch(() => false);
-    if (!mounted) { await page.goto(path); return; }
+    if (!mounted) { await loadPage(page, path); return; }
     await page.evaluate(to => (document.querySelector('#__nuxt') as any).__vue_app__.config.globalProperties.$router.push(to), path);
 }
 
@@ -37,14 +37,16 @@ const answerDialogs = (page: Page, text = 'settled by hand') => page.on('dialog'
 test('a person: what is known, with evidence, and a decision about a fact takes effect', async ({ page }) => {
     const state = await mockV3(page);
     await page.setViewportSize({ width: 1600, height: 1100 });
-    await page.goto(`${BASE}/people/person-a?tab=knowledge`);
+    await loadPage(page, `${BASE}/people/person-a?tab=knowledge`);
     const known = card(page, 'What is known');
     await expect(known).toContainText('Leeds', BOOT);
     await expect(known).toContainText('the library');
     await expect(known.locator('tr', { hasText: 'the library' })).toContainText('confirmed');
     await expect(known.locator('tr', { hasText: 'rock climbing' })).toContainText('proposed');
     await expect(known.locator('tr', { hasText: 'Bristol' })).toHaveClass(/past/);
-    await expect(known.locator('tr', { hasText: 'Leeds' })).toContainText('since 2026-04');
+    // A period is only as exact as its evidence: it started some time in April or May, so it says "about".
+    await expect(known.locator('tr', { hasText: 'Leeds' })).toContainText('since about 2026-05');
+    await expect(known.locator('tr', { hasText: 'Bristol' })).toContainText('until about 2026-04');
     await expect(known.locator('tr', { hasText: 'Synthetic Eli' })).toContainText('someone else said it');
     // What was only inferred is labelled as such, apart from the facts.
     await expect(card(page, 'Worked out, not stated')).toContainText('a dog');
@@ -104,7 +106,7 @@ test('a person: what is known, with evidence, and a decision about a fact takes 
 
 test('a person under 18: no inferences, and the age band says what follows from it', async ({ page }) => {
     const state = await mockV3(page);
-    await page.goto(`${BASE}/people/person-d?tab=knowledge`);
+    await loadPage(page, `${BASE}/people/person-d?tab=knowledge`);
     await expect(page.getByTestId('person-knowledge')).toContainText('under 18 or may be: restricted facts are not kept', BOOT);
     await expect(card(page, 'Worked out, not stated')).toContainText('Nothing is inferred about someone who is, or may be, under 18.');
     await expect(page.getByTestId('age-band')).toContainText('Minor');
@@ -117,7 +119,7 @@ test('review: the queue is settled item by item, and two accounts become one per
     const state = await mockV3(page);
     await page.setViewportSize({ width: 1600, height: 1000 });
     answerDialogs(page, 'Leeds: she moved in April');
-    await page.goto(`${BASE}/review`);
+    await loadPage(page, `${BASE}/review`);
     const items = page.getByTestId('review-list').locator('> li');
     await expect(items).toHaveCount(3, BOOT);
     await expect(items.first()).toContainText('Age statements disagree'); // most important first
@@ -154,7 +156,7 @@ test('review: the queue is settled item by item, and two accounts become one per
 test('ask: a plan, an answer with its evidence, a verdict on the answer, and a question kept under watch', async ({ page }) => {
     const state = await mockV3(page);
     await page.setViewportSize({ width: 1600, height: 1100 });
-    await page.goto(`${BASE}/ask`);
+    await loadPage(page, `${BASE}/ask`);
     await expect(page.getByTestId('ask-form')).toBeVisible(BOOT);
     await expect(page.getByTestId('ask-submit')).toBeDisabled();
     await page.getByLabel('Question').fill('Does Ada still live in Leeds?');
@@ -210,7 +212,7 @@ test('ask: a plan, an answer with its evidence, a verdict on the answer, and a q
 test('agenda and quality lab: what is coming, what slipped, and whether the facts can be trusted', async ({ page }) => {
     const state = await mockV3(page);
     await page.setViewportSize({ width: 1600, height: 1000 });
-    await page.goto(`${BASE}/agenda`);
+    await loadPage(page, `${BASE}/agenda`);
     await expect(page.getByTestId('agenda-overdue')).toContainText('Return the board game', BOOT);
     await expect(page.getByTestId('agenda-promises')).toContainText('Send the hiking photos');
     await expect(page.getByTestId('agenda-promises')).toContainText('your promise');
@@ -240,7 +242,7 @@ test('replicas: the list, a build, a chat that streams its reply, test replies a
     const state = await mockV3(page);
     await page.setViewportSize({ width: 1600, height: 1100 });
     answerDialogs(page);
-    await page.goto(`${BASE}/replicas`);
+    await loadPage(page, `${BASE}/replicas`);
     await expect(page.getByTestId('replica-kpis')).toContainText('Replicas', BOOT);
     const people = page.getByTestId('replica-people').locator('tbody tr');
     await expect(people).toHaveCount(3, BOOT);
@@ -306,7 +308,7 @@ test('replicas: the list, a build, a chat that streams its reply, test replies a
 test('replicas: a simulated group talks in turns, and never includes someone under 18', async ({ page }) => {
     const state = await mockV3(page);
     await page.setViewportSize({ width: 1600, height: 1000 });
-    await page.goto(`${BASE}/replicas?tab=groups`);
+    await loadPage(page, `${BASE}/replicas?tab=groups`);
     const form = page.getByTestId('group-form');
     await expect(form).toBeVisible(BOOT);
     const pick = async (text: string, name: RegExp) => {
@@ -338,7 +340,7 @@ test('sources: the Discord connection, and an export looked inside before it is 
     const state = await mockV3(page);
     await page.setViewportSize({ width: 1600, height: 1100 });
     answerDialogs(page);
-    await page.goto(`${BASE}/sources`);
+    await loadPage(page, `${BASE}/sources`);
     await expect(page.getByTestId('discord-chips')).toContainText('listening', BOOT);
     await expect(card(page, 'Discord (through KliveBot)')).toContainText('48,210');
     const backfill = page.getByTestId('backfill-form');
@@ -380,7 +382,7 @@ test('sources: the Discord connection, and an export looked inside before it is 
 test('images: found by description, narrowed by who posted them, and opened with what is known about one', async ({ page }) => {
     const state = await mockV3(page);
     await page.setViewportSize({ width: 1600, height: 1000 });
-    await page.goto(`${BASE}/images`);
+    await loadPage(page, `${BASE}/images`);
     await expect(page.getByText('Describe what you are looking for')).toBeVisible(BOOT);
     await page.getByTestId('image-query').fill('a price chart');
     await page.getByRole('button', { name: 'Search' }).click();
@@ -406,7 +408,7 @@ test('images: found by description, narrowed by who posted them, and opened with
 
 test('a profile that may only read sees the knowledge but none of the controls', async ({ page }) => {
     const state = await mockV3(page, { permissions: ['omniscience.overview.view', 'omniscience.persons.read', 'omniscience.messages.read', 'omniscience.replica.read', 'omniscience.sources.view'] });
-    await page.goto(`${BASE}/people/person-a?tab=knowledge`);
+    await loadPage(page, `${BASE}/people/person-a?tab=knowledge`);
     await expect(card(page, 'What is known')).toContainText('Leeds', BOOT);
     await expect(page.getByTestId('deduce-now')).toHaveCount(0);
     await expect(page.getByTestId('aliases-table').getByTitle('Yes, that is them')).toHaveCount(0);

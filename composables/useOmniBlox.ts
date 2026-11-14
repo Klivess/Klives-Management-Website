@@ -168,9 +168,20 @@ export interface BloxTask {
 
 export interface BloxEvent { Utc: string; Level: BloxLevel; Kind: string; Message: string; GameId: string | null }
 
-export interface BloxAttention { Level: 'error' | 'warning' | 'info'; Title: string; Detail: string; Action: 'studio' | 'harvester' | null }
+export interface BloxAttention { Level: 'error' | 'warning' | 'info'; Title: string; Detail: string; Action: 'studio' | 'harvester' | 'roblox' | null }
 
-export interface BloxLibraryStats { ByStatus: Record<string, number>; Total: number; Placeable: number; TopCategories: { Category: string; Count: number }[] }
+export interface BloxLibraryStats {
+    ByStatus: Record<string, number>;
+    Total: number;
+    Placeable: number;
+    TopCategories: { Category: string; Count: number }[];
+    /** Found or previewed models the harvester will actually download (servers from 13 Nov 2026). */
+    Downloadable?: number;
+    /** When the newest model was found, analysed or labelled. */
+    NewestUtc?: string | null;
+    /** The library was busy when the counts were first asked for; they are on their way. */
+    Counting?: boolean;
+}
 
 export interface BloxOverview {
     NowUtc: string;
@@ -198,6 +209,12 @@ export interface BloxOverview {
         Relabeled?: number;
         LastRunUtc: string | null;
         LastError: string | null;
+        /** The last step that added, downloaded or labelled anything (servers from 13 Nov 2026). */
+        LastProgressUtc?: string | null;
+        /** Why the last step did nothing; null when it made progress. */
+        Idle?: string | null;
+        /** Models queued for download (the backlog that holds discovery back). */
+        Downloadable?: number;
         PriorityQueries: string[];
         Last: string | null;
         LastHarvestUtc: string | null;

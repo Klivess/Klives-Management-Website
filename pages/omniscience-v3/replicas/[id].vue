@@ -220,16 +220,32 @@
             <div class="ot-grid two">
                 <OmniTraderCard title="Can you tell them apart?">
                     <template v-if="blind">
-                        <p class="omni-muted" data-testid="blind-progress">{{ blind.answered }} of {{ blind.items.length }} answered · {{ blind.correct }} right</p>
-                        <div v-if="blindItem" class="blind" data-testid="blind-item">
+                        <p class="omni-muted" data-testid="blind-progress">{{ blind.answered }} of {{ blind.items.length }} answered · {{ blind.correct }} right · started <OmniscienceV3Time :ms="blind.createdAtMs" mode="absolute" /></p>
+                        <div v-if="blindItem && canChat" class="blind" data-testid="blind-item">
                             <p class="stimulus"><span class="omni-muted">They were told:</span> {{ blindItem.stimulus }}</p>
                             <p class="omni-muted">One of these is what they really said. Which?</p>
                             <button class="ot-btn option" type="button" :disabled="busy !== null" data-testid="blind-a" @click="answer('A')"><b>A</b> {{ blindItem.optionA }}</button>
                             <button class="ot-btn option" type="button" :disabled="busy !== null" data-testid="blind-b" @click="answer('B')"><b>B</b> {{ blindItem.optionB }}</button>
                         </div>
-                        <p v-else data-testid="blind-done"><strong>Done.</strong> You picked the real one {{ blind.correct }} times out of {{ blind.answered }}{{ blind.accuracy != null ? ` (${omniPercent(blind.accuracy)})` : '' }}.
+                        <p v-else-if="blindItem" class="omni-muted">{{ blind.items.length - blind.answered }} not answered yet.</p>
+                        <p v-else data-testid="blind-done"><strong>Done.</strong> You picked the real one {{ blind.correct }} time{{ blind.correct === 1 ? '' : 's' }} out of {{ blind.answered }}{{ blind.accuracy != null ? ` (${omniPercent(blind.accuracy)})` : '' }}.
                             Half would mean you cannot tell.</p>
                         <p v-if="lastAnswer" class="omni-muted" data-testid="blind-last">Last one: you chose {{ lastAnswer.choice }}, the real one was {{ lastAnswer.real }}. {{ lastAnswer.correct ? 'Right.' : 'The replica fooled you.' }}</p>
+                        <!-- Which was which is only ever shown for a pair that has been answered. -->
+                        <ol v-if="blindAnswered.length && (!blindItem || !canChat)" class="review" data-testid="blind-review">
+                            <li v-for="i in blindAnswered" :key="i.index">
+                                <p class="stimulus"><span class="omni-muted">They were told:</span> {{ i.stimulus }}</p>
+                                <p v-for="o in OPTIONS" :key="o" class="reply">
+                                    <b>{{ o }}</b> <span class="text">{{ o === 'A' ? i.optionA : i.optionB }}</span>
+                                    <span class="ot-chip sm" :class="realOf(i) === o ? 'ok' : ''">{{ realOf(i) === o ? 'really them' : 'the replica' }}</span>
+                                    <span v-if="i.answered === o" class="ot-chip sm" :class="i.correct ? 'ok' : 'warn'">your pick</span>
+                                </p>
+                            </li>
+                        </ol>
+                        <div class="omni-row">
+                            <button class="ot-btn sm" type="button" data-testid="blind-leave" @click="leaveBlind()">{{ blindItem ? (canChat ? 'Leave it for now' : 'Back') : (canChat ? 'Take another' : 'Back') }}</button>
+                            <span v-if="blindItem && canChat" class="omni-muted">Your answers so far are kept; it can be carried on from your results.</span>
+                        </div>
                     </template>
                     <template v-else>
                         <p>You are shown what they were told and two replies: the one they really wrote and one the replica wrote. Pick the real one.</p>
@@ -243,7 +259,13 @@
                                     :empty="!!results.data.value && !results.data.value.sessions" empty-title="No tests taken yet" @retry="results.refresh()">
                     <template v-if="results.data.value">
                         <p><strong>{{ omniPercent(results.data.value.accuracy) }}</strong> right over {{ omniCount(results.data.value.answered) }} answers in {{ results.data.value.sessions }} test{{ results.data.value.sessions === 1 ? '' : 's' }}.</p>
-                        <ul class="plain"><li v-for="r in results.data.value.recent" :key="r.sessionId"><OmniscienceV3Time :ms="r.createdAtMs" mode="absolute" /> · {{ r.correct }} of {{ r.answered }} right</li></ul>
+                        <ul class="plain tests" data-testid="blind-results">
+                            <li v-for="r in results.data.value.recent" :key="r.sessionId" :class="{ selected: view.blind === r.sessionId }">
+                                <span><OmniscienceV3Time :ms="r.createdAtMs" mode="absolute" /> · {{ r.correct }} of {{ r.answered }} right</span>
+                                <span v-if="r.answered < r.items.length" class="ot-chip sm info">{{ r.items.length - r.answered }} left</span>
+                                <button class="ot-btn ghost sm" type="button" :disabled="view.blind === r.sessionId" @click="view.blind = r.sessionId">{{ r.answered < r.items.length && canChat ? 'Carry on' : 'Look at it' }}</button>
+                            </li>
+                        </ul>
                     </template>
                 </OmniscienceV3Panel>
             </div>
@@ -254,9 +276,9 @@
 <script setup lang="ts">
 import { computed, reactive, ref, shallowRef, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { OMNI_BASE, omniGet, omniPost } from '~/scripts/omniscience/api';
+import { OMNI_BASE, omniGet, omniPost, toOmniError } from '~/scripts/omniscience/api';
 import type {
-    ReplicaActionResultDto, ReplicaBlindAnswerDto, ReplicaBlindResultsDto, ReplicaBlindSessionDto, ReplicaChatDto, ReplicaChatPageDto, ReplicaEvalItemDto, ReplicaEvalPageDto,
+    ReplicaActionResultDto, ReplicaBlindAnswerDto, ReplicaBlindItemDto, ReplicaBlindResultsDto, ReplicaBlindSessionDto, ReplicaChatDto, ReplicaChatPageDto, ReplicaEvalItemDto, ReplicaEvalPageDto,
     ReplicaJobStartedDto, ReplicaPersonDto, ReplicaTrainResultDto, ReplicaVersionDto, ReplicaVersionListDto,
 } from '~/scripts/omniscience/contracts';
 import { omniCount, omniPercent, omniStateTone, omniZonedToMs } from '~/scripts/omniscience/format';
@@ -282,7 +304,7 @@ const zoneLabel = computed(() => (lens.value === 'Utc' ? 'UTC' : zone.value));
 const { want, name } = useOmniNames();
 const personId = computed(() => String(route.params.id ?? ''));
 watch(personId, id => want([id]), { immediate: true });
-const { state: view } = useUrlState({ tab: 'chat' as Tab, chat: '', version: '', split: '' });
+const { state: view } = useUrlState({ tab: 'chat' as Tab, chat: '', version: '', split: '', blind: '' });
 
 // A card that has not been computed yet is an empty state with the way to compute it, not a failure.
 const card = useOmniResource(signal => omniGet<ReplicaPersonDto>('replica/person', { id: personId.value }, signal), { pollMs: 15_000 });
@@ -362,17 +384,46 @@ const evals = useOmniPaged<ReplicaEvalItemDto, string>(async (cursor, signal) =>
 useOmniDebounced(() => `${view.version}|${view.split}`, () => { void evals.reload(); }, 50);
 
 // ── blind test ─────────────────────────────────────────────────────────────
-const blind = shallowRef<ReplicaBlindSessionDto | null>(null);
+const OPTIONS = ['A', 'B'] as const;
+const results = useOmniResource(signal => omniGet<ReplicaBlindResultsDto>('replica/blind/results', { personId: personId.value }, signal));
+/**
+ * The test on screen is named in the link (`view.blind`), so a reload or a link carries on where it was.
+ * `blindRead` is that test as last read or answered here; until it arrives, the copy in the results list stands in.
+ */
+const blindRead = shallowRef<ReplicaBlindSessionDto | null>(null);
+const blind = computed(() => (!view.blind ? null
+    : blindRead.value?.sessionId === view.blind ? blindRead.value
+    : results.data.value?.recent.find(s => s.sessionId === view.blind) ?? null));
 const blindCount = ref(10);
 const lastAnswer = shallowRef<ReplicaBlindAnswerDto | null>(null);
 const blindItem = computed(() => blind.value?.items.find(i => !i.answered) ?? null);
-const results = useOmniResource(signal => omniGet<ReplicaBlindResultsDto>('replica/blind/results', { personId: personId.value }, signal));
+const blindAnswered = computed(() => blind.value?.items.filter(i => !!i.answered) ?? []);
+/** Which reply was really theirs, known once a pair is answered: the pick when it was right, the other one when not. */
+function realOf(item: ReplicaBlindItemDto): 'A' | 'B' { return (item.answered === 'A') === (item.correct === true) ? 'A' : 'B'; }
+
+// A test named in the link is read by id: it may be older than the few the results list carries. Reading one needs
+// the chat permission; without it the results list's own copy is what is shown.
+watch(() => [view.blind, canChat.value] as const, async ([id, allowed]) => {
+    if (!id) { lastAnswer.value = null; return; }
+    if (!allowed || blindRead.value?.sessionId === id) return;
+    lastAnswer.value = null;
+    try {
+        const session = await omniGet<ReplicaBlindSessionDto>('replica/blind/session', { id });
+        // Not when the reader moved on meanwhile, or answered a pair before this arrived.
+        if (view.blind === id && blindRead.value?.sessionId !== id) blindRead.value = session;
+    } catch (caught) {
+        // A test that no longer exists: back to the start, where another can be taken.
+        if (view.blind === id && toOmniError(caught).kind === 'not_found') view.blind = '';
+    }
+}, { immediate: true });
 
 async function startBlind() {
     const session = await run('blind-start', () => omniPost<ReplicaBlindSessionDto>('replica/blind/start', { personId: personId.value, count: Math.min(40, Math.max(1, Math.round(blindCount.value || 10))) }));
     if (!session) return;
-    blind.value = session;
+    blindRead.value = session;
     lastAnswer.value = null;
+    view.blind = session.sessionId;
+    void results.refresh();
 }
 async function answer(choice: 'A' | 'B') {
     const session = blind.value, item = blindItem.value;
@@ -380,11 +431,17 @@ async function answer(choice: 'A' | 'B') {
     const result = await run('blind-answer', () => omniPost<ReplicaBlindAnswerDto>('replica/blind/answer', { sessionId: session.sessionId, index: item.index, choice }));
     if (!result) return;
     lastAnswer.value = result;
-    blind.value = {
+    blindRead.value = {
         ...session, answered: result.answered, correct: result.correctTotal, accuracy: result.answered ? result.correctTotal / result.answered : null,
         items: session.items.map(i => (i.index === item.index ? { ...i, answered: choice, correct: result.correct } : i)),
     };
     if (!blindItem.value) void results.refresh();
+}
+/** Back to the start. An unfinished test keeps its answers and is listed under the results, where it can be carried on. */
+function leaveBlind() {
+    view.blind = '';
+    blindRead.value = null;
+    void results.refresh();
 }
 
 function refresh() { void card.refresh(); void chats.reload(); void versions.refresh(); void results.refresh(); if (view.version) { void version.refresh(); void evals.reload(); } }
@@ -408,7 +465,12 @@ function refresh() { void card.refresh(); void chats.reload(); void versions.ref
 .omni-form { display: flex; flex-direction: column; gap: 12px; }
 .blind { display: flex; flex-direction: column; gap: 8px; }
 .blind .option { text-align: left; white-space: pre-wrap; height: auto; padding: 10px 12px; justify-content: flex-start; gap: 8px; }
-.stimulus { font-size: 14px; }
+.stimulus { font-size: 14px; white-space: pre-wrap; }
+.review { margin: 8px 0; padding-left: 20px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; }
+.review .reply { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin: 0 0 4px; }
+.review .reply .text { white-space: pre-wrap; }
+.tests li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.tests li.selected { font-weight: 600; }
 .count { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
 .count input { width: 70px; }
 .pad { padding: 8px 12px; }

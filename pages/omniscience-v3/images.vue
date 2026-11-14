@@ -68,7 +68,7 @@ import { computed, ref, watch } from 'vue';
 import { OMNI_BASE, omniGet } from '~/scripts/omniscience/api';
 import type { MediaSearchDto } from '~/scripts/omniscience/contracts';
 import { omniCount, omniZonedToMs } from '~/scripts/omniscience/format';
-import { useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
+import { useOmniDebounced, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
 import { useUrlState } from '~/composables/useOmniTrader';
 import type { PickedPerson } from '~/components/OmniscienceV3/PersonPick.vue';
 
@@ -95,8 +95,8 @@ const searching = computed(() => results.refreshing.value);
 const opened = computed(() => r.value?.hits.find(h => h.attachmentId === filters.open) ?? null);
 
 function search() { if (filters.q.trim()) void results.refresh(); }
-// A link with a query in it searches on arrival; filters search again as they change.
-watch(() => [filters.person, filters.conversation, filters.from, filters.to], () => search());
+// A link with a query in it searches on arrival. The filters search again once they stop changing: the conversation id is typed, and a search per keystroke would each embed the query again.
+useOmniDebounced(() => [filters.person, filters.conversation, filters.from, filters.to].join('\u0001'), () => search());
 if (filters.q.trim()) search();
 
 function clear() {

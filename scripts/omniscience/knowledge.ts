@@ -11,7 +11,7 @@ export function factTone(status: string): string {
     switch (status) {
         case 'confirmed': return 'ok';
         case 'accepted': return 'info';
-        case 'proposed': case 'contested': return 'warn';
+        case 'proposed': case 'contested': case 'inferred': return 'warn';
         case 'rejected': return 'bad';
         default: return '';
     }
@@ -25,6 +25,7 @@ export function factStatusHelp(status: string): string {
         case 'proposed': return 'There is evidence, but not enough yet to call it a fact.';
         case 'contested': return 'The evidence disagrees with itself; it is in the review queue.';
         case 'rejected': return 'You rejected this.';
+        case 'inferred': return 'Worked out from other facts, not stated by anyone. Never treated as a fact.';
         default: return status;
     }
 }

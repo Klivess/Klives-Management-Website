@@ -1,6 +1,6 @@
 import type {
     AgeBandDto, AgendaDto, AliasDto, AskPlanDto, AssertionDetailDto, ClaimDto, DiscordBotStatusDto, EntityDto, ExtractionRunDto, HypothesisDto, IdentityLinkDecisionDto, IdentityLinkDto,
-    ImportListDto, ImportPreview, ImportResult, ImportUploadedDto, InquiryReportDto, InquiryRowDto, JobRecord, KnowledgeFactDto, KnowledgeProfileDto, KnowledgeReviewItemDto,
+    ImportListDto, ImportPreview, ImportResult, ImportUploadedDto, InquiryReportDto, InquiryRowDto, JobRecord, KnowledgeFactDto, KnowledgeFactsPageDto, KnowledgeProfileDto, KnowledgeReviewItemDto,
     LifeTimelineDto, MediaSearchDto, MediaSearchHitDto, MergeRowDto, PersonNamesDto, PlanItemDto, QualityLabDto, ReplicaBlindSessionDto, ReplicaChatDto, ReplicaChatMessageDto,
     ReplicaEvalItemDto, ReplicaModuleStatusDto, ReplicaPersonDto, ReplicaReadinessDto, ReplicaStreamEventDto, ReplicaVersionDto, ReplicaVersionSummaryDto, StandingQuestionDto, TacticRunDto,
 } from '../../../scripts/omniscience/contracts';
@@ -30,16 +30,19 @@ const fact = (assertionId: string, attribute: string, attributeTitle: string, ca
 });
 
 const FACTS: KnowledgeFactDto[] = [
-    fact('as-city', 'city', 'City', 'location', 'Leeds', { validFromEarliestMs: NOW - 70 * DAY, validFromLatestMs: NOW - 40 * DAY }),
+    fact('as-city', 'city', 'City', 'location', 'Leeds', { validFromEarliestMs: NOW - 70 * DAY, validFromLatestMs: NOW - 40 * DAY, firstEvidenceMs: NOW - 45 * DAY }),
     fact('as-city-old', 'city', 'City', 'location', 'Bristol', { validToEarliestMs: NOW - 90 * DAY, validToLatestMs: NOW - 60 * DAY }),
     fact('as-job', 'employer', 'Employer', 'work', 'the library', { status: 'confirmed', probability: 1 }),
     fact('as-hobby', 'hobby', 'Hobby', 'interests', 'rock climbing', { status: 'proposed', probability: 0.55 }),
-    fact('as-sibling', 'sibling', 'Sibling', 'family', 'Synthetic Eli', { objectPersonId: 'person-e', sourceKind: 'third_party', probability: 0.72 }),
+    // Long true, but only said a few weeks ago: known today about the spring, not knowable from the spring's messages.
+    fact('as-sibling', 'sibling', 'Sibling', 'family', 'Synthetic Eli', { objectPersonId: 'person-e', sourceKind: 'third_party', probability: 0.72, firstEvidenceMs: NOW - 20 * DAY }),
 ];
-const INFERENCE = fact('as-inf', 'pet', 'Pet', 'home', 'a dog', { probability: 0.61, producer: 'detective', sourceKind: 'inferred' });
+const INFERENCE = fact('as-inf', 'pet', 'Pet', 'home', 'a dog', { status: 'inferred', probability: 0.61, producer: 'detective', sourceKind: 'inferred' });
+/** The statuses the server shows as knowledge when none is asked for (AssertionStatus.IsShownAsKnowledge). */
+const SHOWN_AS_KNOWLEDGE = ['accepted', 'confirmed', 'contested', 'inferred'];
 
 function profile(personId: string, statuses: Record<string, string>): KnowledgeProfileDto {
-    const live = FACTS.map(f => ({ ...f, status: statuses[f.assertionId] ?? f.status })).filter(f => f.status !== 'rejected');
+    const live = FACTS.map(f => ({ ...f, status: statuses[f.assertionId] ?? f.status })).filter(f => SHOWN_AS_KNOWLEDGE.includes(f.status));
     const categories = [...new Set(live.map(f => f.category))].map(category => ({ category, facts: live.filter(f => f.category === category) }));
     return { personId, asOfMs: NOW - HOUR, minorRestricted: false, coveredMessages: 3120, lastExtractMs: NOW - 2 * HOUR, backlogPending: false, promptVersion: 'extract-7', categories, inferences: [INFERENCE] };
 }
@@ -185,7 +188,8 @@ export function knowledgeState() {
         lines: { 'ch-1': [chatLine('ch-1', 1, 'user', 'are you still coming on friday?'), chatLine('ch-1', 2, 'replica', 'yeah!! wouldnt miss it')] } as Record<string, ReplicaChatMessageDto[]>,
         ratings: [] as { chatId: string; seq: number; rating: number }[],
         trained: [] as string[],
-        blind: null as ReplicaBlindSessionDto | null,
+        /** Blind tests, oldest first. */
+        blinds: [] as ReplicaBlindSessionDto[],
     };
 }
 
@@ -255,6 +259,21 @@ export async function handleKnowledge(key: string, p: URLSearchParams, body: any
             if (person === MINOR) { await json(envelope({ ...profile(person, {}), minorRestricted: true, categories: [], inferences: [] })); return true; }
             if (person !== 'person-a') { await fail(404, 'not_built', 'This view has not been built yet; it is computed in the background.'); return true; }
             await json(envelope(profile(person, k.factStatuses))); return true;
+        }
+        case 'GET knowledge/facts': {
+            const person = p.get('person') ?? '';
+            const mode = p.get('mode') ?? 'current';
+            if (!['current', 'asof', 'known'].includes(mode)) { await fail(400, 'bad_request', "'mode' must be current, asof or known."); return true; }
+            const at = Number(p.get('at') ?? NOW);
+            const wanted = (p.get('status') ?? '').split(',').filter(Boolean);
+            const all = person === 'person-a' ? [...FACTS, INFERENCE].map(f => ({ ...f, status: k.factStatuses[f.assertionId] ?? f.status })) : [];
+            const items = all
+                .filter(f => (wanted.length ? wanted : SHOWN_AS_KNOWLEDGE).includes(f.status))
+                // "known": what was on record by then. Otherwise what could have held at the instant, as known now.
+                .filter(f => (mode === 'known' ? f.recordedAtMs <= at : (f.validToLatestMs ?? Infinity) > at && (f.validFromEarliestMs ?? -Infinity) <= at))
+                .filter(f => p.get('knownByThen') !== 'true' || (f.firstEvidenceMs ?? Infinity) <= at);
+            const dto: KnowledgeFactsPageDto = { personId: person, mode: mode === 'asof' ? 'AsOfWorld' : mode === 'known' ? 'AsKnownAt' : 'Current', atMs: at, minorRestricted: person === MINOR, items, nextCursor: null };
+            await json(dto); return true;
         }
         case 'GET knowledge/facts/get': {
             const f = [...FACTS, INFERENCE].find(x => x.assertionId === p.get('id'));
@@ -657,24 +676,37 @@ export async function handleKnowledge(key: string, p: URLSearchParams, body: any
         }
         case 'POST replica/blind/start': {
             if (!await need('omniscience.replica.chat', 'replica.chat')) return true;
-            k.blind = { sessionId: 'bl-1', personId: body.personId, versionId: `rv-${body.personId}-2`, createdAtMs: NOW, answered: 0, correct: 0, accuracy: null, finishedAtMs: null, items: [
-                { index: 0, stimulus: 'synthetic: how was the climb?', optionA: 'synthetic: brutal but worth it', optionB: 'synthetic: honestly so hard, loved it tho', answered: null, correct: null },
-                { index: 1, stimulus: 'synthetic: free on friday?', optionA: 'synthetic: i think so, will check', optionB: 'synthetic: yeah should be!!', answered: null, correct: null }] };
-            await json(k.blind, 201); return true;
+            const session: ReplicaBlindSessionDto = { sessionId: `bl-${k.blinds.length + 1}`, personId: body.personId, versionId: `rv-${body.personId}-2`, createdAtMs: NOW + k.blinds.length * 60_000,
+                answered: 0, correct: 0, accuracy: null, finishedAtMs: null, items: [
+                    { index: 0, stimulus: 'synthetic: how was the climb?', optionA: 'synthetic: brutal but worth it', optionB: 'synthetic: honestly so hard, loved it tho', answered: null, correct: null },
+                    { index: 1, stimulus: 'synthetic: free on friday?', optionA: 'synthetic: i think so, will check', optionB: 'synthetic: yeah should be!!', answered: null, correct: null }] };
+            k.blinds.push(session);
+            await json(session, 201); return true;
         }
         case 'POST replica/blind/answer': {
-            const session = k.blind;
-            if (!session || session.sessionId !== body.sessionId) { await fail(400, 'bad_request', 'No such blind test.'); return true; }
+            if (!await need('omniscience.replica.chat', 'replica.chat')) return true;
+            const session = k.blinds.find(s => s.sessionId === body.sessionId);
+            if (!session) { await fail(404, 'not_found', 'Not found.'); return true; }
             const item = session.items[body.index]!;
+            // The first pair's real reply is A, the second's is B. The truth is only ever sent back for an answered pair.
             const real = body.index === 0 ? 'A' : 'B';
             item.answered = body.choice; item.correct = body.choice === real;
             session.answered++; if (item.correct) session.correct++;
             session.accuracy = session.correct / session.answered;
+            if (session.answered >= session.items.length) session.finishedAtMs = NOW;
             await json({ index: body.index, choice: body.choice, real, correct: item.correct, answered: session.answered, correctTotal: session.correct }); return true;
         }
+        case 'GET replica/blind/session': {
+            if (!await need('omniscience.replica.chat', 'replica.chat')) return true;
+            const session = k.blinds.find(s => s.sessionId === p.get('id'));
+            if (!session) { await fail(404, 'not_found', 'No such blind test.'); return true; }
+            await json(session); return true;
+        }
         case 'GET replica/blind/results': {
-            const s = k.blind && k.blind.answered ? [k.blind] : [];
-            await json({ personId: p.get('personId'), sessions: s.length, answered: s[0]?.answered ?? 0, correct: s[0]?.correct ?? 0, accuracy: s[0]?.accuracy ?? null, recent: s }); return true;
+            // Like the server: every test of this person counts, started or finished, newest first; the five newest are sent.
+            const mine = k.blinds.filter(s => s.personId === p.get('personId')).reverse();
+            const answered = mine.reduce((n, s) => n + s.answered, 0), correct = mine.reduce((n, s) => n + s.correct, 0);
+            await json({ personId: p.get('personId'), sessions: mine.length, answered, correct, accuracy: answered ? correct / answered : null, recent: mine.slice(0, 5) }); return true;
         }
     }
     return false;

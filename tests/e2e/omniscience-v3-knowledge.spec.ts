@@ -42,7 +42,6 @@ test('a person: what is known, with evidence, and a decision about a fact takes 
     await expect(known).toContainText('Leeds', BOOT);
     await expect(known).toContainText('the library');
     await expect(known.locator('tr', { hasText: 'the library' })).toContainText('confirmed');
-    await expect(known.locator('tr', { hasText: 'rock climbing' })).toContainText('proposed');
     await expect(known.locator('tr', { hasText: 'Bristol' })).toHaveClass(/past/);
     // A period is only as exact as its evidence: it started some time in April or May, so it says "about".
     await expect(known.locator('tr', { hasText: 'Leeds' })).toContainText('since about 2026-05');
@@ -56,6 +55,41 @@ test('a person: what is known, with evidence, and a decision about a fact takes 
     await expect(page.getByTestId('age-band')).toContainText('Adult');
     await expect(page.getByTestId('person-knowledge')).toContainText('3,120 messages read');
 
+    // Looking back. A fact still being checked is not shown as knowledge, but it can be asked for.
+    await expect(known.locator('tr', { hasText: 'rock climbing' })).toHaveCount(0);
+    const back = page.getByTestId('person-lookback');
+    const backRows = back.getByTestId('lookback-table').locator('tbody tr');
+    await expect(back).toContainText('Pick a date or a status');
+    await back.getByTestId('lookback-status').selectOption('proposed');
+    await expect(backRows).toHaveCount(1);
+    await expect(backRows.first()).toContainText('rock climbing');
+    await back.getByTestId('lookback-status').selectOption('');
+    // On a day in April she had not moved yet: Bristol still held, and Leeds had not started.
+    await back.getByTestId('lookback-mode').selectOption('asof');
+    await expect(back).toContainText('Pick the date');
+    await expect(back).toContainText('Days are counted in Europe/London.');
+    await back.getByTestId('lookback-date').fill('2026-04-12');
+    await expect(back.getByTestId('lookback-table')).toContainText('Bristol');
+    await expect(back.getByTestId('lookback-table')).not.toContainText('Leeds');
+    await expect(back.getByTestId('lookback-table')).toContainText('Synthetic Eli');
+    // "On the 12th" is the end of that day in the time lens's zone (22:59:59.999 UTC in British summer time).
+    const endOfDay = Date.UTC(2026, 3, 12, 22, 59, 59, 999);
+    expect(state.requests.some(r => r.startsWith(`GET ${V3}/knowledge/facts?`) && r.includes('mode=asof') && r.includes(`at=${endOfDay}`))).toBe(true);
+    // Going only by what had been said by then, the sibling is not known yet: that was first said in June.
+    await back.getByTestId('lookback-mode').selectOption('said');
+    await expect(back.getByTestId('lookback-table')).not.toContainText('Synthetic Eli');
+    await expect(back.getByTestId('lookback-table')).toContainText('Bristol');
+    expect(state.requests.some(r => r.startsWith(`GET ${V3}/knowledge/facts?`) && r.includes('knownByThen=true'))).toBe(true);
+    await shot(page, 'person-knowledge-lookback');
+    // What was on record that day: nothing, their messages were first read three days ago. The view is part of the link.
+    await back.getByTestId('lookback-mode').selectOption('known');
+    await expect(back).toContainText('Nothing was on record that day.');
+    await expect(page).toHaveURL(/look=known/);
+    await expect(page).toHaveURL(/lookOn=2026-04-12/);
+    await back.getByRole('button', { name: 'Clear' }).click();
+    await expect(back).toContainText('Pick a date or a status');
+    await expect(page).not.toHaveURL(/look=/);
+
     // A fact opens with the messages it rests on and its earlier versions.
     await page.getByTestId('fact-as-city').click();
     const drawer = page.getByTestId('fact-drawer');
@@ -68,6 +102,15 @@ test('a person: what is known, with evidence, and a decision about a fact takes 
     await expect.poll(() => posts(state, 'knowledge/facts/review').at(-1)?.body).toMatchObject({ assertionId: 'as-city', verdict: 'reject' });
     await expect(drawer).toHaveCount(0);
     await expect(known.locator('tr', { hasText: 'Leeds' })).toHaveCount(0);
+    // It is kept, and found again under what was rejected, where it opens the same way and the decision can be changed.
+    await back.getByTestId('lookback-status').selectOption('rejected');
+    await expect(backRows).toHaveCount(1);
+    await expect(backRows.first()).toContainText('Leeds');
+    await backRows.first().click();
+    await expect(drawer).toContainText('synthetic: Leeds');
+    await page.keyboard.press('Escape');
+    await expect(drawer).toHaveCount(0);
+    await back.getByRole('button', { name: 'Clear' }).click();
 
     // A name is confirmed; an age statement can be thrown out; their messages can be read again on request.
     await page.getByTestId('aliases-table').getByTitle('Yes, that is them').click();
@@ -111,6 +154,11 @@ test('a person under 18: no inferences, and the age band says what follows from 
     await expect(card(page, 'Worked out, not stated')).toContainText('Nothing is inferred about someone who is, or may be, under 18.');
     await expect(page.getByTestId('age-band')).toContainText('Minor');
     await expect(page.getByTestId('age-band')).toContainText('no replica, no face labels, no alert about them');
+    // Looking back does not get round it: whatever date or status is asked for, the same things are left out, and it says so.
+    const back = page.getByTestId('person-lookback');
+    await back.getByTestId('lookback-status').selectOption('inferred');
+    await expect(back).toContainText('Nothing for that');
+    await expect(back).toContainText('restricted facts and anything worked out about them are left out');
     expect(state.unknown).toEqual([]);
     expect(state.errors).toEqual([]);
 });
@@ -288,7 +336,38 @@ test('replicas: the list, a build, a chat that streams its reply, test replies a
     await expect(page.getByTestId('blind-last')).toContainText('Right.');
     await page.getByTestId('blind-a').click();
     await expect(page.getByTestId('blind-last')).toContainText('The replica fooled you.');
-    await expect(page.getByTestId('blind-done')).toContainText('1 times out of 2');
+    await expect(page.getByTestId('blind-done')).toContainText('1 time out of 2');
+    // Once it is over, each pair says which reply was really theirs and which one was picked.
+    const pairs = page.getByTestId('blind-review').locator('> li');
+    await expect(pairs).toHaveCount(2);
+    await expect(pairs.nth(0).locator('.reply', { hasText: 'brutal but worth it' })).toContainText('really them');
+    await expect(pairs.nth(0).locator('.reply', { hasText: 'brutal but worth it' })).toContainText('your pick');
+    await expect(pairs.nth(1).locator('.reply', { hasText: 'yeah should be!!' })).toContainText('really them');
+    await expect(pairs.nth(1).locator('.reply', { hasText: 'i think so, will check' })).toContainText('your pick');
+    await expect(page).toHaveURL(/blind=bl-1/);
+    await shot(page, 'replica-blind');
+
+    // Another one, left half way. Its answers are kept, and it is carried on from the results, read again by its id.
+    await page.getByTestId('blind-leave').click();
+    await expect(page).not.toHaveURL(/blind=/);
+    await page.getByTestId('blind-start').click();
+    await expect(page).toHaveURL(/blind=bl-2/);
+    await page.getByTestId('blind-b').click();
+    await expect(page.getByTestId('blind-progress')).toContainText('1 of 2 answered');
+    await expect(page.getByTestId('blind-review')).toHaveCount(0); // nothing is given away while pairs are still open
+    await page.getByTestId('blind-leave').click();
+    const tests = page.getByTestId('blind-results').locator('> li');
+    await expect(tests).toHaveCount(2);
+    await expect(tests.first()).toContainText('1 left');
+    await tests.first().getByRole('button', { name: 'Carry on' }).click();
+    await expect(page.getByTestId('blind-item')).toContainText('free on friday?');
+    await expect.poll(() => state.requests.some(r => r.startsWith(`GET ${V3}/replica/blind/session?`) && r.includes('id=bl-2'))).toBe(true);
+    // The finished one can be looked at again; a link to a test that no longer exists falls back to the start.
+    await tests.nth(1).getByRole('button', { name: 'Look at it' }).click();
+    await expect(page.getByTestId('blind-done')).toContainText('1 time out of 2');
+    await go(page, `${BASE}/replicas/person-a?tab=blind&blind=bl-404`);
+    await expect(page.getByTestId('blind-start')).toBeVisible();
+    await expect(page).not.toHaveURL(/blind=/);
 
     // A new version is built beside the one in use.
     await page.getByTestId('replica-train').click();

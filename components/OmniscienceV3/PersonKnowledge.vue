@@ -32,6 +32,8 @@
             </template>
         </OmniscienceV3Panel>
 
+        <OmniscienceV3PersonLookBack ref="lookBack" :person-id="personId" @open="openFact = $event" />
+
         <div class="ot-grid two">
             <OmniscienceV3Panel title="Worked out, not stated" flush :loading="profile.loading.value" :error="profile.error.value" :has-data="!!p" :empty="!!p && !p.inferences.length"
                                 empty-title="No inferences" :empty-text="p?.minorRestricted ? 'Nothing is inferred about someone who is, or may be, under 18.' : 'An inference is a conclusion drawn from stated facts. It is always labelled as one.'">
@@ -140,6 +142,7 @@ const props = defineProps<{ personId: string; canReview: boolean; canAnalyse: bo
 const { busy, run } = useOmniAction();
 const { at, now } = useOmniTime();
 const openFact = ref<string | null>(null);
+const lookBack = ref<{ refresh(): void } | null>(null);
 
 const profile = useOmniResource(async signal => {
     const rm = await omniGet<ReadModelDto>('knowledge/profile', { person: props.personId }, signal);
@@ -153,6 +156,7 @@ const age = useOmniResource(signal => omniGet<AgeBandDto>('knowledge/age', { per
 
 function refresh() {
     void profile.refresh(); void hypotheses.refresh(); void aliases.refresh(); void entities.refresh(); void age.refresh();
+    lookBack.value?.refresh();
 }
 defineExpose({ refresh });
 

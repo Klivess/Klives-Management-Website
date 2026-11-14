@@ -1,169 +1,161 @@
 <template>
-    <ProfilesShell :hide-error="true">
-        <template #crumb>
-            <NuxtLink to="/administration/profiles" class="pn-back"><AccessIcon name="back" :size="14" /> All profiles</NuxtLink>
-        </template>
+  <div class="pfx" data-testid="pfx-new">
+    <header class="pfx-bar">
+      <NuxtLink to="/administration/profiles" class="pfx-bar__crumb"><PeopleIcon name="arrow-left" />Profiles</NuxtLink>
+      <div class="pfx-bar__id">
+        <span class="pfx-bar__mark"><PeopleIcon name="user-plus" /></span>
+        <h1 class="pfx-bar__title">New profile</h1>
+        <span class="pfx-bar__sub">who it's for, how they sign in, exactly what they may do</span>
+      </div>
+    </header>
 
-        <!-- ── created ── -->
-        <section v-if="created" class="pn-done">
-            <div class="pn-done-card">
-                <div class="pn-done-badge"><AccessIcon name="check" :size="28" /></div>
-                <h1>{{ created.profile.name }} is ready</h1>
-                <p class="pn-lede">
-                    {{ created.profile.rank }} · {{ created.profile.grantCount }} permission{{ created.profile.grantCount === 1 ? '' : 's' }}.
-                    <template v-if="created.password">Give them this password now — it won't be shown again.</template>
-                    <template v-else>They sign in with the password you chose.</template>
-                </p>
-                <div v-if="created.password" class="pn-secret">
-                    <code>{{ created.password }}</code>
-                    <button type="button" class="ot-btn sm" @click="copy(created.password!)"><AccessIcon :name="copied ? 'check' : 'copy'" :size="14" /> {{ copied ? 'Copied' : 'Copy' }}</button>
-                </div>
-                <div class="pn-actions">
-                    <NuxtLink class="ot-btn primary" :to="`/administration/profiles/${created.profile.userId}`">Open {{ created.profile.name }}</NuxtLink>
-                    <button type="button" class="ot-btn ghost" @click="startOver">Create another</button>
-                </div>
+    <div class="pfx-main" style="max-width: 1180px">
+      <!-- ── created ── -->
+      <section v-if="created" class="pfx-card" style="max-width: 560px; margin: 24px auto; width: 100%">
+        <div class="pfx-card__body" style="padding-top: 22px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start">
+          <span class="pfx-dialog__glyph" data-tone="ok"><PeopleIcon name="check" /></span>
+          <h2 class="pfx-hero__name">{{ created.profile.name }} is ready</h2>
+          <p class="pfx-dim">
+            {{ created.profile.rank }} · {{ created.profile.grantCount }} permission{{ created.profile.grantCount === 1 ? '' : 's' }}.
+            <template v-if="created.password">Give them this password now — it won't be shown again.</template>
+            <template v-else>They sign in with the password you chose.</template>
+          </p>
+          <div v-if="created.password" class="pfx-secret" style="width: 100%">
+            <code>{{ created.password }}</code>
+            <button type="button" class="pfx-btn pfx-btn--sm" @click="copy(created.password!)"><PeopleIcon :name="copied ? 'check' : 'copy'" />{{ copied ? 'Copied' : 'Copy' }}</button>
+          </div>
+          <div class="pfx-toolbar">
+            <NuxtLink class="pfx-btn pfx-btn--primary" :to="`/administration/profiles/${created.profile.userId}`">Open {{ created.profile.name }}</NuxtLink>
+            <button type="button" class="pfx-btn pfx-btn--ghost" @click="startOver">Create another</button>
+          </div>
+        </div>
+      </section>
+
+      <template v-else>
+        <nav class="pfx-steps" aria-label="Steps">
+          <button v-for="(st, i) in STEPS" :key="st.key" type="button" class="pfx-step" :aria-current="step === i ? 'step' : undefined" :data-done="i < step || undefined" :disabled="i > furthest" @click="step = i">
+            <span class="pfx-step__n">{{ i < step ? '✓' : i + 1 }}</span>{{ st.label }}
+          </button>
+        </nav>
+
+        <!-- 1 · identity -->
+        <section v-if="step === 0" class="pfx-card" aria-label="Who is it for?">
+          <header class="pfx-card__head"><h2 class="pfx-card__title"><PeopleIcon name="user" />Who is it for?</h2></header>
+          <div class="pfx-card__body pfx-form">
+            <div>
+              <label class="pfx-label" for="pn-name">Name</label>
+              <input id="pn-name" v-model.trim="form.name" class="pfx-input" style="width: 100%; max-width: 360px" maxlength="48" autocomplete="off" placeholder="e.g. Sam" autofocus />
+              <p v-if="nameError" class="pfx-error">{{ nameError }}</p>
             </div>
+            <div>
+              <div class="pfx-label">Rank</div>
+              <p class="pfx-help" style="margin: 0 0 8px">Rank only says who is above whom — people can manage profiles ranked below them. It grants nothing by itself.</p>
+              <div class="pfx-choices" role="radiogroup" aria-label="Rank">
+                <button v-for="r in rankOptions" :key="r.name" type="button" class="pfx-choice pn-rank" role="radio" :aria-checked="form.rank === r.name" @click="form.rank = r.name">
+                  <strong><span class="pfx-rank" :data-rank="r.value">{{ r.name }}</span></strong>
+                  <span>{{ r.blurb }}</span>
+                </button>
+              </div>
+              <p v-if="!rankOptions.length" class="pfx-error">You can't create profiles: there's no rank below yours.</p>
+            </div>
+            <div>
+              <label class="pfx-label" for="pn-discord">Discord user ID <span class="pfx-dim" style="font-weight: 400">(optional)</span></label>
+              <input id="pn-discord" v-model.trim="form.discordId" class="pfx-input pfx-input--mono" style="width: 100%; max-width: 360px" inputmode="numeric" placeholder="For sign-in notifications" />
+            </div>
+          </div>
         </section>
 
-        <template v-else>
-            <div class="ot-pagehead">
-                <div>
-                    <h1>New profile</h1>
-                    <p class="subtitle">Who it's for, how they sign in, and exactly what they may do. Nothing is granted unless you pick it.</p>
-                </div>
+        <!-- 2 · sign-in -->
+        <section v-else-if="step === 1" class="pfx-card" aria-label="How will they sign in?">
+          <header class="pfx-card__head"><h2 class="pfx-card__title"><PeopleIcon name="key" />How will they sign in?</h2></header>
+          <div class="pfx-card__body pfx-form">
+            <div class="pfx-choices" role="radiogroup" aria-label="Password">
+              <button type="button" class="pfx-choice" role="radio" :aria-checked="form.passwordMode === 'generate'" @click="form.passwordMode = 'generate'">
+                <strong>Generate a password</strong><span>20 random characters, shown to you once after creating. Recommended.</span>
+              </button>
+              <button type="button" class="pfx-choice" role="radio" :aria-checked="form.passwordMode === 'custom'" @click="form.passwordMode = 'custom'">
+                <strong>Choose one</strong><span>At least 8 characters, different from every other profile's.</span>
+              </button>
             </div>
-
-            <ol class="pn-steps" aria-label="Steps">
-                <li v-for="(s, i) in STEPS" :key="s.key" :class="{ active: step === i, done: i < step }">
-                    <button type="button" :disabled="i > furthest" @click="step = i">
-                        <span class="pn-step-n">{{ i < step ? '✓' : i + 1 }}</span>{{ s.label }}
-                    </button>
-                </li>
-            </ol>
-
-            <!-- 1 · identity -->
-            <OmniTraderCard v-if="step === 0" title="Who is it for?">
-                <div class="pn-form">
-                    <div class="ot-field" :class="{ invalid: nameError }">
-                        <label for="pn-name">Name</label>
-                        <input id="pn-name" v-model.trim="form.name" class="ot-input" maxlength="48" autocomplete="off" placeholder="e.g. Sam" autofocus />
-                        <span v-if="nameError" class="help">{{ nameError }}</span>
-                    </div>
-                    <fieldset class="pn-ranks">
-                        <legend>Rank</legend>
-                        <p class="pn-help">Rank only says who is above whom — people can manage profiles ranked below them. It grants nothing by itself.</p>
-                        <div class="pn-rank-grid">
-                            <label v-for="r in rankOptions" :key="r.name" class="pn-rank" :class="{ selected: form.rank === r.name }">
-                                <input v-model="form.rank" type="radio" name="rank" :value="r.name" />
-                                <span class="km-rank" :class="`r${r.value}`">{{ r.name }}</span>
-                                <span class="pn-rank-blurb">{{ r.blurb }}</span>
-                            </label>
-                        </div>
-                        <p v-if="!rankOptions.length" class="pn-error">You can't create profiles: there's no rank below yours.</p>
-                    </fieldset>
-                    <div class="ot-field">
-                        <label for="pn-discord">Discord user ID <span class="pn-optional">(optional)</span></label>
-                        <input id="pn-discord" v-model.trim="form.discordId" class="ot-input mono" inputmode="numeric" placeholder="For sign-in notifications" />
-                    </div>
-                </div>
-            </OmniTraderCard>
-
-            <!-- 2 · sign-in -->
-            <OmniTraderCard v-else-if="step === 1" title="How will they sign in?">
-                <div class="pn-form">
-                    <div class="pn-choice-grid">
-                        <label class="pn-choice" :class="{ selected: form.passwordMode === 'generate' }">
-                            <input v-model="form.passwordMode" type="radio" value="generate" />
-                            <strong>Generate a password</strong>
-                            <span>20 random characters, shown to you once after creating. Recommended.</span>
-                        </label>
-                        <label class="pn-choice" :class="{ selected: form.passwordMode === 'custom' }">
-                            <input v-model="form.passwordMode" type="radio" value="custom" />
-                            <strong>Choose one</strong>
-                            <span>At least 8 characters, different from every other profile's.</span>
-                        </label>
-                    </div>
-                    <div v-if="form.passwordMode === 'custom'" class="ot-field" :class="{ invalid: passwordError }">
-                        <label for="pn-password">Password</label>
-                        <input id="pn-password" v-model="form.password" class="ot-input mono" type="text" autocomplete="new-password" spellcheck="false" />
-                        <span class="help">{{ passwordError || strength }}</span>
-                    </div>
-                    <div class="pn-toggle">
-                        <div>
-                            <strong>Let the password work as an API key</strong>
-                            <p>Only for scripts or devices that can't sign in. Off is safer; sessions are revocable, a password isn't.</p>
-                        </div>
-                        <button type="button" class="km-switch" role="switch" :aria-checked="form.allowPasswordApiAccess" @click="form.allowPasswordApiAccess = !form.allowPasswordApiAccess"></button>
-                    </div>
-                </div>
-            </OmniTraderCard>
-
-            <!-- 3 · access -->
-            <section v-else-if="step === 2" class="ot-stack">
-                <div v-if="!canGrant" class="ot-banner info" role="note">
-                    <span class="glyph" aria-hidden="true">ℹ</span>
-                    <div><strong>No permissions yet</strong> You can create profiles but not give them permissions ("Grant and revoke permissions"). They can sign in, and Klives can add permissions afterwards.</div>
-                </div>
-                <template v-else>
-                    <div class="pn-access-head">
-                        <p class="pn-help">Pick what they may do. Start from another profile with “Copy from”, or set a whole service to a tier.</p>
-                        <label class="pn-expiry">
-                            Permissions last
-                            <select v-model="expiry" class="ot-select auto">
-                                <option value="never">Permanently</option>
-                                <option value="1d">1 day</option>
-                                <option value="7d">1 week</option>
-                                <option value="30d">30 days</option>
-                            </select>
-                        </label>
-                    </div>
-                    <div v-if="!catalog.catalog.value" class="ot-skel" style="height: 420px"></div>
-                    <ProfilesPermissionEditor v-else v-model:grants="grants" :baseline="[]" :catalog="catalog.catalog.value" editable
-                                              :show-diff-bar="false" :default-expiry="expiry" :actor-is-owner="isOwner" :actor-holds="actorHolds"
-                                              :copy-sources="copySources" />
-                </template>
-            </section>
-
-            <!-- 4 · review -->
-            <OmniTraderCard v-else title="Check and create">
-                <dl class="ot-kv pn-review">
-                    <dt>Name</dt><dd>{{ form.name }}</dd>
-                    <dt>Rank</dt><dd><span class="km-rank" :class="`r${rankMeta(form.rank).value}`">{{ form.rank }}</span></dd>
-                    <dt>Discord</dt><dd>{{ form.discordId || '—' }}</dd>
-                    <dt>Password</dt><dd>{{ form.passwordMode === 'generate' ? 'Generated, shown once after creating' : 'Chosen by you' }}</dd>
-                    <dt>API key use</dt><dd>{{ form.allowPasswordApiAccess ? 'Password works as an API key' : 'Off' }}</dd>
-                    <dt>Permissions</dt><dd>{{ grants.length || 'None' }}{{ expiry !== 'never' && grants.length ? ` · for ${expiryLabel}` : '' }}</dd>
-                </dl>
-                <div v-if="reviewByService.length" class="pn-review-perms">
-                    <div v-for="s in reviewByService" :key="s.name" class="pn-review-svc">
-                        <strong>{{ s.name }}</strong>
-                        <span v-for="p in s.permissions" :key="p.key" class="pn-review-perm" :class="{ critical: p.tierValue >= 5 }">
-                            <span class="km-tier" :class="tierMeta(p.tier).tone">{{ tierMeta(p.tier).short }}</span> {{ p.title }}
-                        </span>
-                    </div>
-                </div>
-                <div v-if="criticalCount" class="ot-banner pn-critical" role="note">
-                    <span class="glyph" aria-hidden="true">⚠</span>
-                    <div><strong>{{ criticalCount }} critical permission{{ criticalCount === 1 ? '' : 's' }}</strong> These reach live money, the host, secrets or other profiles. Make sure that's intended.</div>
-                </div>
-                <p v-if="createError" class="pn-error" role="alert">{{ createError }}</p>
-            </OmniTraderCard>
-
-            <div class="pn-nav">
-                <button v-if="step > 0" type="button" class="ot-btn ghost" @click="step--"><AccessIcon name="back" :size="14" /> Back</button>
-                <span class="grow"></span>
-                <button v-if="step < STEPS.length - 1" type="button" class="ot-btn primary" :disabled="!stepValid" @click="next">Continue</button>
-                <button v-else type="button" class="ot-btn primary" :disabled="creating || !allValid" @click="create">{{ creating ? 'Creating…' : `Create ${form.name || 'profile'}` }}</button>
+            <div v-if="form.passwordMode === 'custom'">
+              <label class="pfx-label" for="pn-password">Password</label>
+              <input id="pn-password" v-model="form.password" class="pfx-input pfx-input--mono" style="width: 100%; max-width: 360px" type="text" autocomplete="new-password" spellcheck="false" />
+              <p class="pfx-help" :style="passwordError ? 'color: #ffb3bf' : ''">{{ passwordError || strength }}</p>
             </div>
-        </template>
-    </ProfilesShell>
+            <div class="pfx-form__row">
+              <div><strong>Let the password work as an API key</strong><p>Only for scripts or devices that can't sign in. Off is safer: a session can be signed out, a password can't.</p></div>
+              <button type="button" class="pfx-switch" role="switch" aria-label="Let the password work as an API key" :aria-checked="form.allowPasswordApiAccess" @click="form.allowPasswordApiAccess = !form.allowPasswordApiAccess"></button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3 · access -->
+        <section v-else-if="step === 2" class="pfx-stack" aria-label="Access">
+          <div v-if="!canGrant" class="pfx-banner" role="note">
+            <PeopleIcon name="info" />
+            <div><strong>No permissions yet</strong>You can create profiles but not give them permissions (“Grant and revoke permissions”). They can sign in, and Klives can add permissions afterwards.</div>
+          </div>
+          <template v-else>
+            <div class="pfx-toolbar">
+              <p class="pfx-dim" style="flex: 1">Pick what they may do. Start from another profile with “Copy from”, or set a whole service to a tier.</p>
+              <label class="pfx-dim" style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px">
+                Permissions last
+                <select v-model="expiry" class="pfx-select pfx-select--sm" aria-label="How long the permissions last">
+                  <option value="never">Permanently</option>
+                  <option value="1d">1 day</option>
+                  <option value="7d">1 week</option>
+                  <option value="30d">30 days</option>
+                </select>
+              </label>
+            </div>
+            <div v-if="!catalog.catalog.value" class="pfx-skel" style="height: 420px"></div>
+            <PeopleAccessEditor v-else v-model:grants="grants" :baseline="[]" :catalog="catalog.catalog.value" editable
+                                :show-diff-bar="false" :default-expiry="expiry" :actor-is-owner="isOwner" :actor-holds="actorHolds" :copy-sources="copySources" />
+          </template>
+        </section>
+
+        <!-- 4 · review -->
+        <section v-else class="pfx-card" aria-label="Check and create">
+          <header class="pfx-card__head"><h2 class="pfx-card__title"><PeopleIcon name="check-circle" />Check and create</h2></header>
+          <div class="pfx-card__body pfx-form">
+            <dl class="pfx-review">
+              <dt>Name</dt><dd>{{ form.name }}</dd>
+              <dt>Rank</dt><dd><span class="pfx-rank" :data-rank="rankMeta(form.rank).value">{{ form.rank }}</span></dd>
+              <dt>Discord</dt><dd>{{ form.discordId || '—' }}</dd>
+              <dt>Password</dt><dd>{{ form.passwordMode === 'generate' ? 'Generated, shown once after creating' : 'Chosen by you' }}</dd>
+              <dt>API key use</dt><dd>{{ form.allowPasswordApiAccess ? 'Password works as an API key' : 'Off' }}</dd>
+              <dt>Permissions</dt><dd>{{ grants.length || 'None' }}{{ expiry !== 'never' && grants.length ? ` · for ${expiryLabel}` : '' }}</dd>
+            </dl>
+            <div v-for="sv in reviewByService" :key="sv.name" class="pfx-svc" style="grid-template-columns: 140px minmax(0, 1fr)">
+              <strong class="pfx-svc__name">{{ sv.name }}</strong>
+              <span style="display: flex; flex-wrap: wrap; gap: 4px">
+                <span v-for="pm in sv.permissions" :key="pm.key" class="pfx-chip" :data-tone="pm.tierValue >= 5 ? 'crit' : undefined"><span class="pfx-tier" :data-tier="pm.tierValue" style="height: 14px; padding: 0 4px">{{ pm.tier }}</span>{{ pm.title }}</span>
+              </span>
+            </div>
+            <div v-if="criticalCount" class="pfx-banner" data-tone="crit" role="note">
+              <PeopleIcon name="alert" />
+              <div><strong>{{ criticalCount }} critical permission{{ criticalCount === 1 ? '' : 's' }}</strong>These reach live money, the host, secrets or other profiles. Make sure that's intended.</div>
+            </div>
+            <p v-if="createError" class="pfx-error" role="alert">{{ createError }}</p>
+          </div>
+        </section>
+
+        <div class="pfx-toolbar">
+          <button v-if="step > 0" type="button" class="pfx-btn pfx-btn--ghost" @click="step--"><PeopleIcon name="arrow-left" />Back</button>
+          <span class="pfx-toolbar__grow"></span>
+          <button v-if="step < STEPS.length - 1" type="button" class="pfx-btn pfx-btn--primary" :disabled="!stepValid" @click="next">Continue</button>
+          <button v-else type="button" class="pfx-btn pfx-btn--primary" :disabled="creating || !allValid" @click="create">{{ creating ? 'Creating…' : `Create ${form.name || 'profile'}` }}</button>
+        </div>
+      </template>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useAccess, usePermissionCatalog } from '~/composables/useAccess';
 import { profilesApi, type GrantDraft, type ProfileListPayload, type ProfileRow } from '~/scripts/profilesApi';
-import { RANKS, rankMeta, tierMeta } from '~/scripts/profileFormat';
+import { RANKS, rankMeta } from '~/scripts/profileFormat';
 
 definePageMeta({ layout: 'navbar' });
 
@@ -290,96 +282,4 @@ onMounted(async () => {
 });
 </script>
 
-<style scoped>
-.pn-back { display: inline-flex; align-items: center; gap: 6px; }
-.pn-steps { list-style: none; margin: 0 0 var(--ot-space-4); padding: 0; display: flex; gap: 6px; flex-wrap: wrap; }
-.pn-steps button {
-    display: inline-flex !important;
-    align-items: center;
-    gap: 8px;
-    height: 34px;
-    padding: 0 14px 0 6px !important;
-    border-radius: 999px;
-    border: 1px solid var(--ot-line) !important;
-    background: var(--ot-surface) !important;
-    color: var(--ot-muted);
-    font-size: 13px;
-    cursor: pointer;
-}
-.pn-steps button:disabled { cursor: not-allowed; opacity: 0.6; }
-.pn-steps li.active button { border-color: var(--ot-accent) !important; color: var(--ot-text); background: var(--ot-accent-soft) !important; }
-.pn-steps li.done button { color: var(--ot-text-2); }
-.pn-step-n {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    font-size: 11px;
-    font-weight: 700;
-    background: rgba(255, 255, 255, 0.06);
-}
-.pn-steps li.active .pn-step-n { background: var(--ot-accent); color: var(--ot-on-accent); }
-.pn-steps li.done .pn-step-n { background: var(--ot-positive-soft); color: var(--ot-positive); }
-
-.pn-form { display: flex; flex-direction: column; gap: 16px; max-width: 760px; }
-.pn-form .ot-field label, .pn-ranks legend { font-size: 12px; font-weight: 600; color: var(--ot-text-2); }
-.pn-optional { font-weight: 400; color: var(--ot-muted); }
-.pn-help { font-size: 12.5px; color: var(--ot-muted); }
-.pn-ranks { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
-.pn-rank-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
-.pn-rank, .pn-choice {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 12px;
-    border-radius: var(--ot-radius);
-    border: 1px solid var(--ot-line);
-    background: rgba(255, 255, 255, 0.02);
-    cursor: pointer;
-    position: relative;
-}
-.pn-rank input, .pn-choice input { position: absolute; opacity: 0; pointer-events: none; }
-.pn-rank.selected, .pn-choice.selected { border-color: var(--ot-accent); background: var(--ot-accent-soft); }
-.pn-rank:focus-within, .pn-choice:focus-within { outline: 2px solid var(--ot-accent); outline-offset: 2px; }
-.pn-rank .km-rank { width: fit-content; }
-.pn-rank-blurb, .pn-choice span { font-size: 12px; color: var(--ot-text-2); }
-.pn-choice strong { color: var(--ot-text); font-size: 13.5px; }
-.pn-choice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; }
-.pn-toggle { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 0 0; border-top: 1px solid var(--ot-line); }
-.pn-toggle strong { color: var(--ot-text); font-size: 13.5px; }
-.pn-toggle p { color: var(--ot-muted); font-size: 12px; margin-top: 2px; }
-
-.pn-access-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-.pn-expiry { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ot-muted); }
-
-.pn-review { max-width: 640px; }
-.pn-review dd { font-family: inherit; }
-.pn-review-perms { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
-.pn-review-svc { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.pn-review-svc strong { width: 100%; font-size: 12px; color: var(--ot-text-2); text-transform: uppercase; letter-spacing: 1px; }
-.pn-review-perm { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 4px; border-radius: 999px; border: 1px solid var(--ot-line); font-size: 12.5px; color: var(--ot-text-2); }
-.pn-review-perm.critical { border-color: rgba(255, 123, 123, 0.45); color: #ffd0d0; }
-.pn-critical { margin-top: 16px; }
-.pn-error { margin-top: 10px; color: var(--ot-negative); font-size: 12.5px; }
-
-.pn-nav { display: flex; align-items: center; gap: 8px; margin-top: var(--ot-space-4); }
-.pn-nav .grow { flex: 1 1 auto; }
-
-.pn-done { display: flex; justify-content: center; padding: 40px 0; }
-.pn-done-card {
-    width: min(560px, 100%);
-    padding: 32px 28px;
-    border-radius: var(--ot-radius-lg);
-    border: 1px solid var(--ot-line-strong);
-    background: radial-gradient(120% 80% at 50% -20%, rgba(109, 220, 79, 0.12), transparent 60%), var(--ot-surface);
-    text-align: center;
-}
-.pn-done-badge { display: inline-flex; align-items: center; justify-content: center; width: 60px; height: 60px; border-radius: 50%; color: var(--ot-positive); background: var(--ot-positive-soft); margin-bottom: 12px; }
-.pn-done h1 { font-size: 22px; font-weight: 650; color: var(--ot-text); }
-.pn-lede { margin-top: 8px; color: var(--ot-text-2); }
-.pn-secret { margin-top: 18px; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: var(--ot-radius); border: 1px solid var(--ot-line-strong); background: rgba(5, 7, 4, 0.5); text-align: left; }
-.pn-secret code { flex: 1 1 auto; font-family: var(--ot-mono); font-size: 16px; color: var(--ot-accent); letter-spacing: 0.5px; overflow-wrap: anywhere; user-select: all; }
-.pn-actions { margin-top: 20px; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
-</style>
+<style lang="scss" src="~/assets/scss/profiles-console.scss"></style>

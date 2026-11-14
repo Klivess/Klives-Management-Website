@@ -19,14 +19,14 @@
                 <div class="os-health-metrics">
                     <div><span>People</span><strong>{{ formatCompact(data.metrics.persons) }}</strong><small>canonical records</small></div>
                     <div><span>Messages</span><strong>{{ formatCompact(data.metrics.messages) }}</strong><small>captured corpus</small></div>
-                    <div><span>Embedding coverage</span><strong>{{ data.metrics.tracked_embedding_coverage_pct }}%</strong><small>{{ formatCompact(data.metrics.tracked_embedded) }} / {{ formatCompact(data.metrics.tracked_messages) }} tracked</small></div>
+                    <div><span>Embedding coverage</span><strong>{{ coverageText }}</strong><small>{{ data.metrics.tracked_embedding_counting ? 'counting…' : `${formatCompact(data.metrics.tracked_embedded)} / ${formatCompact(data.metrics.tracked_messages)} tracked` }}</small></div>
                     <div><span>Reply pairs</span><strong>{{ formatCompact(data.metrics.stimulus_reply_pairs) }}</strong><small>reaction evidence</small></div>
                     <div><span>Replica eras</span><strong>{{ formatCompact(data.metrics.replica_eras) }}</strong><small>{{ data.metrics.replicas_ready }} ready replicas</small></div>
                     <div><span>Failed jobs · 7d</span><strong :class="{ danger: data.metrics.failed_replica_jobs_7d }">{{ data.metrics.failed_replica_jobs_7d }}</strong><small>Replica training</small></div>
                 </div>
                 <div class="os-health-coverage">
-                    <div><span>Searchable tracked corpus</span><strong>{{ data.metrics.tracked_embedding_coverage_pct }}%</strong></div>
-                    <div class="os-meter"><div class="os-meter-fill" :style="{ width: Math.min(100, data.metrics.tracked_embedding_coverage_pct) + '%' }" /></div>
+                    <div><span>Searchable tracked corpus</span><strong>{{ coverageText }}</strong></div>
+                    <div class="os-meter"><div class="os-meter-fill" :style="{ width: Math.min(100, data.metrics.tracked_embedding_coverage_pct ?? 0) + '%' }" /></div>
                     <small>Latest captured message: {{ formatDate(data.metrics.latest_message_at, true) }}</small>
                 </div>
                 <div class="os-chart-heading"><span>Harvest sources</span><small>{{ data.sources.length }} configured</small></div>
@@ -47,13 +47,28 @@ const api = useOmniscienceApi();
 const data = ref<any>(null);
 const loading = ref(false);
 const error = ref('');
+// The tracked embedding counts are worked out in the background the first time; until then the
+// coverage is null and the page asks again a few times.
+const coverageText = computed(() => {
+    const pct = data.value?.metrics?.tracked_embedding_coverage_pct;
+    return pct === null || pct === undefined ? '—' : `${pct}%`;
+});
+let recheck: ReturnType<typeof setTimeout> | null = null;
+let rechecks = 0;
 async function load() {
     loading.value = true; error.value = '';
-    try { data.value = await api.get('/omniscience/workspace/health'); }
+    try {
+        data.value = await api.get('/omniscience/workspace/health');
+        if (data.value?.metrics?.tracked_embedding_counting && rechecks < 12) {
+            rechecks++;
+            recheck = setTimeout(() => { recheck = null; void load(); }, 10_000);
+        }
+    }
     catch (cause) { error.value = omniscienceError(cause, 'Health checks failed.'); }
     finally { loading.value = false; }
 }
 onMounted(load);
+onBeforeUnmount(() => { if (recheck) clearTimeout(recheck); });
 </script>
 
 <style scoped>

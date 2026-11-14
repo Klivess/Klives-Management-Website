@@ -3,6 +3,39 @@ import { dashboardTestOrigin, installDashboardApiMock } from './fixtures/dashboa
 
 test.use({ timezoneId: 'Europe/London' });
 
+test('a report still being built shows a building state, then the stale report, then the fresh one', async ({ page }) => {
+  // Live to 13 Nov 2026 the fleet report took 77–732 s on the request and 16 of 17 visits gave up.
+  // The server now answers 202 {pending} for a report never built, or the last one with rebuilding: true.
+  await page.clock.install({ time: Date.now() });
+  await installDashboardApiMock(page, 'Klives');
+  await page.context().addCookies([{ name: 'password', value: 'e2e-klives', url: dashboardTestOrigin }]);
+  const report = (wakes: number, extra: Record<string, unknown>) => ({
+    scope: 'all', generatedAt: new Date().toISOString(), range: { key: '24h', bucket: 'hour', label: 'Last 24 hours' },
+    summary: { wakes, successfulWakes: wakes, failedWakes: 0, deferredWakes: 0, cancelledWakes: 0, events: wakes * 4, productiveActions: wakes },
+    outcomes: [], series: [], ...extra,
+  });
+  const answers = [
+    { status: 202, body: { pending: true, retryAfterSeconds: 4 } },
+    { status: 200, body: report(40, { stale: true, rebuilding: true }) },
+    { status: 200, body: report(41, { stale: false, rebuilding: false }) },
+  ];
+  let served = 0;
+  await page.route('https://klive.dev/projects/analytics/all?**', async route => {
+    const answer = answers[Math.min(served++, answers.length - 1)];
+    await route.fulfill({ status: answer.status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(answer.body) });
+  });
+
+  await page.goto('/projects/analytics');
+  await expect(page.getByTestId('analytics-building')).toContainText('reading every project');
+  await page.clock.runFor(4_500);
+  await expect(page.getByTestId('analytics-stale')).toBeVisible();
+  await expect(page.getByTestId('analytics-verdict')).toContainText('40 wakes');
+  await page.clock.runFor(5_500);
+  await expect(page.getByTestId('analytics-verdict')).toContainText('41 wakes');
+  await expect(page.getByTestId('analytics-stale')).toHaveCount(0);
+  expect(served).toBe(3);
+});
+
 test('wake analytics supports time ranges, honest outcomes and responsive charts', async ({ page }, testInfo) => {
   await installDashboardApiMock(page, 'Klives');
   await page.context().addCookies([{ name: 'password', value: 'e2e-klives', url: dashboardTestOrigin }]);

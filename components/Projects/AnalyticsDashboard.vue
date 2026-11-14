@@ -59,11 +59,12 @@
     </form>
     <p v-if="rangeError" class="inline-error" role="alert">{{ rangeError }}</p>
 
-    <div v-if="loading && !analytics" class="state-card loading-state" role="status">
+    <div v-if="(loading || building) && !analytics" class="state-card loading-state" role="status" data-testid="analytics-building">
       <span class="loading-spinner" aria-hidden="true"></span>
       <div>
         <strong>Building the analytics view</strong>
-        <p>Aggregating spend, token usage, wakes, agents, and project activity.</p>
+        <p v-if="building">The server is reading every project's history for this range; the first report after a restart takes a minute or two. This page checks back on its own.</p>
+        <p v-else>Aggregating spend, token usage, wakes, agents, and project activity.</p>
       </div>
     </div>
 
@@ -80,6 +81,7 @@
         {{ error }} The last successful result is still shown.
       </div>
       <div v-if="loading" class="refresh-progress" role="status">Refreshing analytics...</div>
+      <div v-else-if="building" class="refresh-progress" role="status" data-testid="analytics-stale">Showing the last report while a fresh one is built…</div>
 
       <ExecutionTrends :execution="analytics.execution" :series="analytics.series" />
 
@@ -1048,8 +1050,20 @@ const analytics = ref<AnalyticsPayload | null>(null);
 const loading = ref(false);
 const error = ref('');
 const lastLoadMs = ref(0);
+/** The server is building this report (202) or replacing the stale one it answered with. */
+const building = ref(false);
 let requestGeneration = 0;
 let requestController: AbortController | null = null;
+let retryTimer: number | undefined;
+
+/** Asks again shortly while the server builds; a hidden tab waits until it is looked at. */
+function scheduleRetry(ms: number) {
+  window.clearTimeout(retryTimer);
+  retryTimer = window.setTimeout(() => {
+    if (document.visibilityState === 'visible') void loadAnalytics();
+    else scheduleRetry(ms);
+  }, ms);
+}
 
 const spendCanvas = ref<HTMLCanvasElement | null>(null);
 const tokenMixCanvas = ref<HTMLCanvasElement | null>(null);
@@ -1726,6 +1740,7 @@ async function loadAnalytics(forceRefresh = false) {
     query.set('to', to.toISOString());
   }
   if (forceRefresh) query.set('fresh', '1');
+  window.clearTimeout(retryTimer);
   const generation = ++requestGeneration;
   requestController?.abort();
   const controller = new AbortController();
@@ -1746,12 +1761,23 @@ async function loadAnalytics(forceRefresh = false) {
       controller.signal,
     );
     if (generation !== requestGeneration) return;
+    if (response.status === 202) {
+      // Nothing built for this range yet: the server is on it. Another range's report must not stand in for it.
+      building.value = true;
+      if (analytics.value) { analytics.value = null; destroyCharts(); }
+      scheduleRetry(4_000);
+      return;
+    }
     if (!response.ok) {
       const detail = (await response.text().catch(() => '')).trim();
       throw new Error(detail || `Request failed with HTTP ${response.status}.`);
     }
-    const payload = normalizePayload(await response.json());
+    const raw = await response.json();
+    const payload = normalizePayload(raw);
     if (generation !== requestGeneration) return;
+    // A stale report comes with a rebuild under way: show it now, fetch the fresh one when it is ready.
+    building.value = raw?.rebuilding === true;
+    if (building.value) scheduleRetry(5_000);
     analytics.value = payload;
     emit('loaded', payload);
     lastLoadMs.value = Math.max(1, Math.round(performance.now() - startedAt));
@@ -2503,6 +2529,7 @@ watch(
 
 onMounted(loadAnalytics);
 onBeforeUnmount(() => {
+  window.clearTimeout(retryTimer);
   requestGeneration += 1;
   requestController?.abort();
   requestController = null;

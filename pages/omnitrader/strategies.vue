@@ -1,555 +1,392 @@
 <template>
-    <OmniTraderShell>
-        <div class="ot-pagehead">
-            <h1><span class="code">DEPLOY</span>Deployments</h1>
-            <div class="ot-actions">
-                <button class="ot-btn ghost" :disabled="loading" @click="loadAll">Refresh</button>
-            </div>
+  <OmniTraderShell>
+    <div class="dpl" data-testid="dpl-root">
+      <!-- ── bar ── -->
+      <header class="dpl-bar">
+        <div class="dpl-bar__id">
+          <span class="dpl-bar__mark" :data-tone="verdict.tone"><DeployIcon name="rocket" /></span>
+          <h1 class="dpl-bar__title">Deploy</h1>
+          <span class="dpl-bar__sub">{{ subline }}</span>
         </div>
+        <button class="dpl-search" aria-label="Search strategies, deployments and actions" aria-keyshortcuts="Control+K" data-testid="dpl-search" @click="paletteOpen = true">
+          <DeployIcon name="search" />
+          <span class="dpl-search__text">Find a strategy to deploy, a deployment, an action…</span>
+          <span class="dpl-kbd">Ctrl</span><span class="dpl-kbd">K</span>
+        </button>
+        <span class="dpl-bar__spacer"></span>
+        <span class="dpl-live" :data-tone="dc.linkError.value ? 'warn' : dc.hidden.value ? 'neutral' : 'ok'" :title="liveTitle">
+          <span class="dpl-live__dot"></span>{{ dc.linkError.value ? 'Retrying' : dc.hidden.value ? 'Paused' : 'Live' }}
+        </span>
+        <button class="dpl-btn dpl-btn--ghost" title="Refresh now (R)" aria-label="Refresh now" data-testid="dpl-refresh" @click="refreshAll">
+          <DeployIcon name="refresh" :class="{ 'dpl-spin': dc.catalogBusy.value }" />
+        </button>
+      </header>
 
-        <div class="ot-kpis">
-            <OmniTraderKpi label="Registered" :value="String(strategies.length)" :loading="loading && !strategies.length"
-                           foot="discovered at startup" />
-            <OmniTraderKpi label="Running" tone="good" :value="String(runningCount)"
-                           :loading="loading && !deployments.length"
-                           :foot="`of ${deployments.length} deployment(s)`" />
-            <OmniTraderKpi label="Armed live" :tone="armedCount ? 'bad' : ''" :value="String(armedCount)"
-                           :loading="loading && !deployments.length" />
-            <OmniTraderKpi label="Versions" tone="info" :value="String(versions.length)"
-                           :loading="loading && !versions.length" foot="immutable configurations" />
-            <OmniTraderKpi label="Live authority" :tone="liveAuthorityCount ? 'warn' : ''"
-                           :value="String(liveAuthorityCount)" :loading="loading && !versions.length" />
-        </div>
+      <div class="dpl-main">
+        <div v-if="!allowed.read" class="dpl-card"><div class="dpl-empty"><DeployIcon name="lock" />Deployments are not part of your access.</div></div>
 
-        <div class="ot-grid sidebar">
-            <div class="ot-stack">
-                <OmniTraderCard title="Deployments" flush
-                                :loading="loading" :empty="!deployments.length"
-                                empty-title="No deployments">
-                    <OmniTraderDataTable :rows="deployments" :columns="deploymentColumns" label="deployments"
-                                         selectable :row-key="d => d.Id" :selected-key="selected?.Id ?? null"
-                                         default-sort="CreatedUtc" search-placeholder="Filter deployments…"
-                                         :row-class="d => d.Status === 'Errored' ? 'attention' : ''"
-                                         @select="openDeployment($event)">
-                        <template #cell-StrategyClass="{ row }">
-                            <span class="cellstack">
-                                <span>{{ prettyName(row.StrategyClass) }}</span>
-                                <span class="sub">{{ row.Symbol }} · {{ row.Interval }}</span>
-                            </span>
-                        </template>
-                        <template #cell-Mode="{ row }">
-                            <span class="cellstack">
-                                <span class="ot-chip" :class="row.Mode === 'Live' ? 'live' : 'paper'">{{ row.Mode }}</span>
-                                <span v-if="row.Mode === 'Live'" class="sub">
-                                    <span class="ot-chip" :class="row.Armed ? 'bad' : ''">
-                                        {{ row.Armed ? 'ARMED' : 'disarmed' }}
-                                    </span>
-                                </span>
-                            </span>
-                        </template>
-                        <template #cell-Status="{ row }">
-                            <span class="cellstack">
-                                <span class="ot-chip" :class="statusTone(row.Status)">{{ row.Status }}</span>
-                                <span v-if="row.Error" class="sub" style="color:var(--ot-negative)">{{ row.Error }}</span>
-                            </span>
-                        </template>
-                        <template #cell-EquityCurrent="{ row }">{{ fmtNum(row.EquityCurrent, 2) }}</template>
-                        <template #cell-PnLPercent="{ row }">
-                            <span :class="row.PnLPercent >= 0 ? 'pos' : 'neg'">{{ fmtSignedPct(row.PnLPercent) }}</span>
-                        </template>
-                        <template #cell-CreatedUtc="{ row }">
-                            <span :title="fmtTime(row.CreatedUtc)">{{ fmtAgo(row.CreatedUtc) }}</span>
-                        </template>
-                        <template #cell-actions="{ row }">
-                            <button v-if="row.Mode === 'Live' && !row.Armed" class="ot-btn sm danger"
-                                    :disabled="busy" @click.stop="armLive(row)">Arm</button>
-                            <button v-if="row.Status === 'Running'" class="ot-btn sm ghost"
-                                    :disabled="busy" @click.stop="lifecycle(row, 'pause')">Pause</button>
-                            <button v-else-if="row.Mode === 'Paper'" class="ot-btn sm ghost"
-                                    :disabled="busy" @click.stop="lifecycle(row, 'resume')">Resume</button>
-                            <button class="ot-btn sm danger" :disabled="busy" @click.stop="lifecycle(row, 'kill')">Stop</button>
-                        </template>
-                    </OmniTraderDataTable>
-                </OmniTraderCard>
-
-                <OmniTraderCard title="Versions & authority" flush
-                                :loading="loading" :empty="!versions.length"
-                                empty-title="No versions registered">
-                    <OmniTraderDataTable :rows="versions" :columns="versionColumns" label="versions"
-                                         :row-key="v => v.Id" default-sort="CreatedUtc"
-                                         search-placeholder="Filter versions…">
-                        <template #cell-StrategyClass="{ row }">
-                            <span class="cellstack">
-                                <span>{{ prettyName(row.StrategyClass) }}</span>
-                                <span class="sub">{{ row.Notes || 'no notes' }}</span>
-                            </span>
-                        </template>
-                        <template #cell-Version="{ row }">v{{ row.Version }}</template>
-                        <template #cell-Status="{ row }">
-                            <span class="ot-chip" :class="row.Status === 'promoted' ? 'ok' : ''">{{ row.Status }}</span>
-                        </template>
-                        <template #cell-Authority="{ row }">
-                            <span class="ot-chip" :class="authorityTone(row.Authority)">{{ row.Authority }}</span>
-                        </template>
-                        <template #cell-ApprovedBy="{ row }">
-                            <span class="cellstack">
-                                <span>{{ row.ApprovedBy ?? '—' }}</span>
-                                <span v-if="row.ApprovedUtc" class="sub">{{ fmtAgo(row.ApprovedUtc) }}</span>
-                            </span>
-                        </template>
-                        <template #cell-actions="{ row }">
-                            <button class="ot-btn sm ghost" :disabled="busy" @click="openPromotion(row)">Promote…</button>
-                        </template>
-                    </OmniTraderDataTable>
-                </OmniTraderCard>
-            </div>
-
-            <div class="ot-stack">
-                <OmniTraderCard title="Deploy">
-                    <div class="ot-field" style="margin-bottom:12px">
-                        <label for="dp-strategy">Strategy</label>
-                        <select id="dp-strategy" class="ot-select" v-model="deployForm.strategyClass">
-                            <option value="">Choose…</option>
-                            <option v-for="s in strategies" :key="s.ClassName" :value="s.ClassName">{{ s.Name }}</option>
-                        </select>
-                        <span v-if="selectedStrategy" class="help">{{ selectedStrategy.Description }}</span>
-                    </div>
-
-                    <div class="ot-formgrid" style="margin-bottom:12px">
-                        <div class="ot-field">
-                            <label for="dp-mode">Mode</label>
-                            <select id="dp-mode" class="ot-select" v-model="deployForm.mode">
-                                <option value="Paper">Paper</option>
-                                <option value="Live">Live</option>
-                            </select>
-                        </div>
-                        <div class="ot-field">
-                            <label for="dp-symbol">Symbol</label>
-                            <input id="dp-symbol" class="ot-input mono" v-model="deployForm.symbol" />
-                        </div>
-                        <div class="ot-field">
-                            <label for="dp-interval">Interval</label>
-                            <select id="dp-interval" class="ot-select" v-model="deployForm.interval">
-                                <option v-for="i in INTERVALS" :key="i.value" :value="i.value">{{ i.label }}</option>
-                            </select>
-                        </div>
-                        <div class="ot-field">
-                            <label for="dp-capital">Capital</label>
-                            <input id="dp-capital" class="ot-input mono" type="number" v-model.number="deployForm.initialQuote" />
-                        </div>
-                        <div class="ot-field">
-                            <label for="dp-leverage">Leverage</label>
-                            <input id="dp-leverage" class="ot-input mono" type="number" min="1" max="10"
-                                   v-model.number="deployForm.leverage" />
-                        </div>
-                    </div>
-
-                    <div v-if="deployForm.mode === 'Live'" class="ot-banner warn" style="margin-bottom:12px">
-                        <span class="glyph" aria-hidden="true">⚠</span>
-                        <div>
-                            Live deployments start <b>disarmed</b> and route through <b>Kraken spot only</b> — no IG / T212 strategy router; use the Execution ticket.
-                        </div>
-                    </div>
-
-                    <details v-if="paramGroups.length" style="margin-bottom:12px">
-                        <summary class="summary">Strategy parameters ({{ paramCount }})</summary>
-                        <div v-for="group in paramGroups" :key="group.name" style="margin-top:12px">
-                            <h4 class="ot-sectionhead">{{ group.name }}</h4>
-                            <div class="ot-formgrid">
-                                <div v-for="p in group.params" :key="p.Name" class="ot-field">
-                                    <label :for="`param-${p.Name}`" :title="p.Help ?? ''">{{ p.Label }}</label>
-                                    <select v-if="p.Options?.length" :id="`param-${p.Name}`" class="ot-select"
-                                            v-model="deployParams[p.Name]">
-                                        <option v-for="o in p.Options" :key="o" :value="o">{{ o }}</option>
-                                    </select>
-                                    <label v-else-if="p.Type === 'bool'" class="ot-check">
-                                        <input :id="`param-${p.Name}`" type="checkbox" v-model="deployParams[p.Name]" />
-                                        enabled
-                                    </label>
-                                    <input v-else :id="`param-${p.Name}`" class="ot-input mono"
-                                           :type="p.Type === 'string' ? 'text' : 'number'"
-                                           :step="p.Step ?? 'any'" :min="p.Min ?? undefined" :max="p.Max ?? undefined"
-                                           v-model="deployParams[p.Name]" />
-                                    <span v-if="p.Help" class="help">{{ p.Help }}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </details>
-
-                    <button class="ot-btn primary block" :disabled="busy || !deployForm.strategyClass" @click="deploy">
-                        {{ busy ? 'Deploying…' : `Deploy to ${deployForm.mode}` }}
-                    </button>
-                </OmniTraderCard>
-
-                <OmniTraderCard title="Register a version">
-                    <div class="ot-field" style="margin-bottom:12px">
-                        <label for="vf-strategy">Strategy</label>
-                        <select id="vf-strategy" class="ot-select" v-model="versionForm.strategyClass">
-                            <option value="">Choose…</option>
-                            <option v-for="s in strategies" :key="s.ClassName" :value="s.ClassName">{{ s.Name }}</option>
-                        </select>
-                    </div>
-                    <div class="ot-field" style="margin-bottom:12px">
-                        <label for="vf-notes">Notes</label>
-                        <input id="vf-notes" class="ot-input" v-model="versionForm.notes" placeholder="what changed" />
-                    </div>
-                    <button class="ot-btn block" :disabled="busy || !versionForm.strategyClass" @click="createVersion">
-                        Register version
-                    </button>
-                </OmniTraderCard>
-            </div>
-        </div>
-
-        <!-- Deployment detail -->
-        <OmniTraderDrawer :open="!!selected" @close="selected = null"
-                          :title="selected ? prettyName(selected.StrategyClass) : ''"
-                          :subtitle="selected ? `${selected.Symbol} · ${selected.Interval} · ${selected.Mode}` : ''">
-            <template v-if="selected">
-                <div v-if="selected.Mode === 'Live' && selected.Armed" class="ot-banner">
-                    <span class="glyph" aria-hidden="true">⛔</span>
-                    <div>
-                        <strong>Armed for live trading</strong>
-                        This deployment can place real orders on Kraken right now.
-                    </div>
+        <template v-else>
+          <!-- ── verdict + figures ── -->
+          <div class="dpl-top">
+            <section class="dpl-verdict" :data-tone="verdict.tone" data-testid="dpl-verdict">
+              <span class="dpl-verdict__glyph"><DeployIcon :name="verdict.tone === 'crit' ? 'octagon-x' : verdict.tone === 'warn' ? 'alert' : verdict.tone === 'ok' ? 'check-circle' : 'rocket'" /></span>
+              <div class="dpl-verdict__text">
+                <h2>{{ verdict.title }}</h2>
+                <p v-if="verdict.detail">{{ verdict.detail }}</p>
+                <div class="dpl-verdict__actions">
+                  <button v-if="verdict.focusId" class="dpl-btn dpl-btn--sm" data-testid="dpl-verdict-open" @click="openSheet(verdict.focusId!)">Open it</button>
+                  <button v-if="allowed.manage" class="dpl-btn dpl-btn--sm" :class="{ 'dpl-btn--primary': !activeCount }" @click="startNew">
+                    <DeployIcon name="plus" />New deployment
+                  </button>
                 </div>
+              </div>
+            </section>
 
-                <OmniTraderLineChart v-if="equitySeries[0]?.points.length > 1" :series="equitySeries" :height="200"
-                                     :format="v => fmtNum(v, 2)" />
-
-                <h4 class="ot-sectionhead" style="margin-top:16px">Deployment</h4>
-                <dl class="ot-kv">
-                    <dt>Status</dt><dd>{{ selected.Status }}</dd>
-                    <dt>Equity</dt><dd>{{ fmtNum(selected.EquityCurrent, 2) }}</dd>
-                    <dt>P&L</dt>
-                    <dd :class="selected.PnLPercent >= 0 ? 'pos' : 'neg'">{{ fmtSignedPct(selected.PnLPercent) }}</dd>
-                    <dt>Created</dt><dd>{{ fmtTime(selected.CreatedUtc) }}</dd>
-                    <dt>Id</dt><dd>{{ selected.Id }}</dd>
-                    <dt v-if="selected.Error">Error</dt>
-                    <dd v-if="selected.Error" class="neg">{{ selected.Error }}</dd>
-                </dl>
-
-                <div v-if="detail?.Orders?.length" style="margin-top:20px">
-                    <h4 class="ot-sectionhead">Recent orders</h4>
-                    <div class="ot-tablewrap">
-                        <table class="ot-table">
-                            <thead><tr><th>Side</th><th class="num">Qty</th><th class="num">Price</th><th class="num">When</th></tr></thead>
-                            <tbody>
-                                <tr v-for="(o, index) in detail.Orders.slice(0, 20)" :key="index">
-                                    <td><strong :class="o.Side === 'Buy' ? 'pos' : 'neg'">{{ o.Side }}</strong></td>
-                                    <td class="num">{{ fmtNum(o.Quantity) }}</td>
-                                    <td class="num">{{ fmtNum(o.Price, 6) }}</td>
-                                    <td class="num">{{ fmtAgo(o.Timestamp ?? o.CreatedUtc) }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </template>
-
-            <template #footer>
-                <button class="ot-btn ghost" @click="selected = null">Close</button>
-                <button v-if="selected?.Status === 'Running'" class="ot-btn ghost" :disabled="busy"
-                        @click="lifecycle(selected, 'pause')">Pause</button>
-                <button v-if="selected" class="ot-btn danger" :disabled="busy" @click="lifecycle(selected, 'kill')">
-                    Stop deployment
-                </button>
-            </template>
-        </OmniTraderDrawer>
-
-        <!-- promotion gate -->
-        <div v-if="promotion" class="ot-modal-backdrop" @click.self="promotion = null">
-            <div class="ot-modal" role="dialog" aria-modal="true" aria-label="Promote strategy version">
-                <header>
-                    <h3>Promote {{ prettyName(promotion.version.StrategyClass) }} v{{ promotion.version.Version }}</h3>
-                    <button class="ot-btn ghost sm" @click="promotion = null">Close ✕</button>
-                </header>
-                <div class="body">
-                    <div class="ot-field" style="margin-bottom:16px;max-width:340px">
-                        <label for="promo-authority">Requested authority</label>
-                        <select id="promo-authority" class="ot-select" v-model="promotion.requested" @change="assessPromotion">
-                            <option value="Paper">Paper</option>
-                            <option value="Demo">Demo (broker simulation)</option>
-                            <option value="ApprovalRequired">Live — approval required</option>
-                            <option value="Automated">Live — fully automated</option>
-                        </select>
-                        <span class="help">Currently {{ promotion.version.Authority }}.</span>
-                    </div>
-
-                    <template v-if="promotion.assessment">
-                        <div class="ot-banner" :class="promotion.assessment.Eligible ? 'ok' : 'warn'">
-                            <span class="glyph" aria-hidden="true">{{ promotion.assessment.Eligible ? '✓' : '⚠' }}</span>
-                            <div>
-                                <strong>{{ promotion.assessment.Eligible ? 'Requirements met' : 'Not eligible yet' }}</strong>
-                                {{ promotion.assessment.Summary }}
-                            </div>
-                        </div>
-                        <div class="ot-rules">
-                            <div v-for="(r, index) in promotion.assessment.Requirements" :key="index"
-                                 class="ot-rule" :class="r.Met ? 'pass' : 'hard'">
-                                <span class="icon" aria-hidden="true">{{ r.Met ? '✓' : '✕' }}</span>
-                                <span class="name">{{ r.Name }}</span>
-                                <span class="detail">{{ r.Detail }}</span>
-                                <span class="measure"></span>
-                            </div>
-                        </div>
-                    </template>
-                </div>
-                <footer>
-                    <button class="ot-btn ghost" @click="promotion = null">Cancel</button>
-                    <button class="ot-btn primary" :disabled="busy || !promotion.assessment?.Eligible" @click="doPromote">
-                        Promote to {{ promotion.requested }}
-                    </button>
-                </footer>
+            <div class="dpl-kpis">
+              <div class="dpl-kpi" data-testid="kpi-running">
+                <span class="dpl-kpi__label"><DeployIcon name="activity" />Running</span>
+                <b class="dpl-kpi__value">{{ activeCount }}</b>
+                <span class="dpl-kpi__sub">{{ paperCount }} paper · {{ liveCount }} live<template v-if="stoppedCount"> · {{ stoppedCount }} stopped</template></span>
+              </div>
+              <div class="dpl-kpi" data-testid="kpi-paper">
+                <span class="dpl-kpi__label"><DeployIcon name="wallet" />Paper equity</span>
+                <b class="dpl-kpi__value">{{ paperCount ? compactMoney(paperEquity) : '—' }}</b>
+                <span class="dpl-kpi__sub" :data-tone="signTone(paperPnl)">{{ paperCount ? `${signedPctText(paperPnl, 2)} on ${compactMoney(paperStart)}` : 'nothing on paper' }}</span>
+              </div>
+              <div class="dpl-kpi" :data-tone="armedCount ? 'crit' : undefined" data-testid="kpi-live">
+                <span class="dpl-kpi__label"><DeployIcon name="bolt" />Live</span>
+                <b class="dpl-kpi__value">{{ armedCount }}<small> armed</small></b>
+                <span class="dpl-kpi__sub">{{ liveCount ? `${liveCount - armedCount} disarmed` : dc.status.value?.KrakenConfigured === false ? 'Kraken not configured' : 'Kraken spot ready' }}</span>
+              </div>
+              <button class="dpl-kpi dpl-kpi--btn" :data-tone="issueCount ? 'warn' : undefined" :disabled="!issueCount" data-testid="kpi-health" @click="verdict.focusId && openSheet(verdict.focusId)">
+                <span class="dpl-kpi__label"><DeployIcon name="shield" />Need a look</span>
+                <b class="dpl-kpi__value">{{ issueCount }}</b>
+                <span class="dpl-kpi__sub">{{ issueCount ? 'stalled, quiet or erroring' : 'every deployment healthy' }}</span>
+              </button>
+              <button class="dpl-kpi dpl-kpi--btn" data-testid="kpi-ready" :disabled="!allowed.manage" @click="startNew">
+                <span class="dpl-kpi__label"><DeployIcon name="flask" />Ready in the lab</span>
+                <b class="dpl-kpi__value">{{ dc.catalog.value ? dc.catalog.value.Counts.Recommended : '—' }}</b>
+                <span class="dpl-kpi__sub">{{ dc.catalog.value ? `rated Promising or better · ${dc.catalog.value.Counts.Deployed} deployed` : 'reading the Alpha Lab…' }}</span>
+              </button>
             </div>
+          </div>
+
+          <!-- ── deployments + new ── -->
+          <div class="dpl-mid">
+            <DeployFleet
+              :deployments="dc.deployments.value"
+              :loaded="dc.loaded.value"
+              :now="dc.now.value"
+              :selected="dc.sheetId.value"
+              :focus="verdict.focusId"
+              :busy="dc.busy.value"
+              :can-control="allowed.control"
+              :can-manage="allowed.manage"
+              :can-go-live="allowed.goLive"
+              @open="openSheet"
+              @act="(d, a) => askAct(d, a)"
+              @arm="askArm"
+            />
+
+            <section v-if="allowed.manage" id="dpl-new" class="dpl-card dpl-new" aria-label="New deployment" data-testid="dpl-new">
+              <header v-if="!dc.choice.value" class="dpl-card__head">
+                <h2 class="dpl-card__title"><DeployIcon name="plus" />New deployment</h2>
+                <span class="dpl-card__meta">{{ dc.catalog.value ? `${dc.catalog.value.Counts.Total} strategies` : '' }}</span>
+                <div class="dpl-card__tools">
+                  <span class="dpl-dim dpl-small">pick one; everything else is filled in</span>
+                </div>
+              </header>
+              <DeployPicker v-if="!dc.choice.value" ref="picker" :catalog="dc.catalog.value" :error="dc.catalogError.value" @choose="choose" />
+              <DeployPlan
+                v-else
+                :plan="dc.plan.value"
+                :name="dc.choice.value.name"
+                :loading="dc.planBusy.value"
+                :busy="dc.busy.value === 'deploy'"
+                :error="dc.planError.value"
+                :can-deploy="allowed.manage"
+                :can-live="allowed.goLive"
+                @override="o => dc.override(o)"
+                @deploy="askDeploy"
+                @back="backToList"
+              />
+            </section>
+          </div>
+
+          <DeployVersions
+            v-if="allowed.versions"
+            :versions="dc.versions.value"
+            :name-of="nameOf"
+            :can-promote="allowed.experiments"
+            :assess="dc.assess"
+            :promote="dc.promote"
+            @changed="dc.loadVersions()"
+            @notify="(t, tone) => dc.toast(t, tone)"
+          />
+        </template>
+      </div>
+
+      <!-- ── layers ── -->
+      <DeploySheet
+        :open="!!dc.sheetId.value"
+        :row="sheetRow"
+        :detail="dc.sheet.value"
+        :equity="dc.sheetEquity.value"
+        :error="dc.sheetError.value"
+        :now="dc.now.value"
+        :busy="dc.busy.value"
+        :can-control="allowed.control"
+        :can-manage="allowed.manage"
+        :can-go-live="allowed.goLive"
+        @close="closeSheet"
+        @act="a => sheetRow && askAct(sheetRow, a)"
+        @arm="() => sheetRow && askArm(sheetRow)"
+      />
+
+      <DeployPalette :open="paletteOpen" :commands="commands" @close="paletteOpen = false" />
+
+      <DeployDialog :open="!!confirmDeploy" title="Start this deployment?" :sub="confirmDeploy?.Mode === 'Live' ? 'Live, disarmed: nothing reaches Kraken until you arm it.' : 'Paper: simulated money against live prices.'" :icon="confirmDeploy?.Mode === 'Live' ? 'bolt' : 'rocket'" :tone="confirmDeploy?.Mode === 'Live' ? 'crit' : 'ok'" testid="dpl-confirm-deploy" @close="confirmDeploy = null">
+        <dl v-if="confirmDeploy && dc.plan.value" class="dpl-kv">
+          <dt>Strategy</dt><dd>{{ dc.plan.value.StrategyName }} <span class="dpl-dim dpl-mono">{{ confirmDeploy.StrategyClass }}</span></dd>
+          <dt>Market</dt><dd>{{ dc.plan.value.Shape === 'basket' ? dc.plan.value.Basket.join(' · ') : confirmDeploy.Symbol }} · {{ intervalLabel(confirmDeploy.Interval) }} bars</dd>
+          <dt>Capital</dt><dd>{{ moneyText(confirmDeploy.InitialQuoteBalance) }} {{ confirmDeploy.Mode === 'Live' ? '(real money)' : '(paper)' }}</dd>
+          <dt>Costs</dt><dd>{{ numText(confirmDeploy.FeeFraction * 100, 2) }} % fee · {{ numText(confirmDeploy.SlippageFraction * 100, 2) }} % slippage</dd>
+          <template v-if="confirmDeploy.Mode === 'Live'"><dt>Caps</dt><dd>{{ confirmDeploy.MaxPositionQuoteUsd }} per order · {{ confirmDeploy.MaxDailyLossUsd }} daily loss · {{ confirmDeploy.MaxOrdersPerHour }} orders an hour</dd></template>
+        </dl>
+        <div v-if="warnings.length" class="dpl-checks" style="margin-top: 10px">
+          <div v-for="w in warnings" :key="w.Id" class="dpl-check" data-level="warn"><DeployIcon name="alert" /><span class="dpl-check__text"><b>{{ w.Title }}</b></span></div>
         </div>
-    </OmniTraderShell>
+        <template #actions>
+          <button class="dpl-btn dpl-btn--ghost" @click="confirmDeploy = null">Cancel</button>
+          <button class="dpl-btn" :class="confirmDeploy?.Mode === 'Live' ? 'dpl-btn--solid-danger' : 'dpl-btn--primary'" :disabled="dc.busy.value === 'deploy'" data-autofocus data-testid="dpl-confirm-deploy-go" @click="doDeploy">
+            {{ warnings.length ? `Deploy anyway (${warnings.length} warning${warnings.length === 1 ? '' : 's'})` : 'Deploy' }}
+          </button>
+        </template>
+      </DeployDialog>
+
+      <DeployDialog :open="!!armTarget" title="Arm live trading?" :sub="armTarget ? `${armTarget.StrategyName ?? armTarget.StrategyClass} will be able to place real orders on Kraken.` : ''" icon="bolt" tone="crit" testid="dpl-confirm-arm" @close="armTarget = null">
+        <p class="dpl-small" style="margin-bottom: 10px">Caps still apply to every order. Pausing disarms it and closes its positions. Type <b class="dpl-mono">{{ armTarget?.Symbol }}</b> to confirm.</p>
+        <input v-model="armText" class="dpl-input dpl-mono" :placeholder="armTarget?.Symbol" aria-label="Type the symbol to confirm" data-autofocus data-testid="dpl-arm-text" @keydown.enter="armText.trim().toUpperCase() === armTarget?.Symbol.toUpperCase() && doArm()" />
+        <template #actions>
+          <button class="dpl-btn dpl-btn--ghost" @click="armTarget = null">Cancel</button>
+          <button class="dpl-btn dpl-btn--solid-danger" :disabled="armText.trim().toUpperCase() !== armTarget?.Symbol.toUpperCase() || !!dc.busy.value" data-testid="dpl-arm-go" @click="doArm">Arm live</button>
+        </template>
+      </DeployDialog>
+
+      <DeployDialog :open="!!actTarget" :title="actTitle" :sub="actSub" :icon="actTarget?.action === 'delete' ? 'trash' : actTarget?.action === 'kill' ? 'stop' : 'pause'" :tone="actTarget?.action === 'pause' || actTarget?.action === 'resume' ? 'warn' : 'crit'" testid="dpl-confirm-act" @close="actTarget = null">
+        <template #actions>
+          <button class="dpl-btn dpl-btn--ghost" @click="actTarget = null">Cancel</button>
+          <button class="dpl-btn" :class="actTarget?.action === 'kill' || actTarget?.action === 'delete' ? 'dpl-btn--solid-danger' : 'dpl-btn--primary'" data-autofocus data-testid="dpl-confirm-act-go" @click="doAct">{{ actButton }}</button>
+        </template>
+      </DeployDialog>
+
+      <Teleport to="body">
+        <div class="dpl-layer dpl-toasts" aria-live="polite">
+          <div v-for="t in dc.toasts.value" :key="t.id" class="dpl-toast" :data-tone="t.tone" data-testid="dpl-toast">{{ t.text }}</div>
+        </div>
+      </Teleport>
+    </div>
+  </OmniTraderShell>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
-import Swal from 'sweetalert2';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useDeployConsole } from '~/composables/useDeployConsole';
 import {
-    useOmniTrader, fmtNum, fmtSignedPct, fmtAgo, fmtTime, seriesColour, SWAL_THEME,
-} from '~/composables/useOmniTrader';
-import type { TableColumn } from '~/components/OmniTrader/DataTable.vue';
+  compactMoney, computeVerdict, healthOf, intervalLabel, isActive, moneyText, numText, signTone, signedPctText,
+  type CatalogRow, type DeployCommand, type Deployment, type PlanRequestBody,
+} from '~/scripts/deployConsole';
 
 definePageMeta({ layout: 'navbar' });
 
-const { get, post, engineGet, enginePost, refreshOverview } = useOmniTrader();
+const route = useRoute();
+const router = useRouter();
+const dc = useDeployConsole();
+const allowed = dc.allowed;
 
-const INTERVALS = [
-    { value: 'FiveMinute', label: '5m' }, { value: 'FifteenMinute', label: '15m' },
-    { value: 'OneHour', label: '1h' }, { value: 'FourHour', label: '4h' }, { value: 'OneDay', label: '1d' },
-];
+const paletteOpen = ref(false);
+const picker = ref<{ focus: () => void } | null>(null);
+const confirmDeploy = ref<PlanRequestBody | null>(null);
+const armTarget = ref<Deployment | null>(null);
+const armText = ref('');
+const actTarget = ref<{ d: Deployment; action: 'pause' | 'resume' | 'kill' | 'delete' } | null>(null);
 
-const strategies = ref<any[]>([]);
-const deployments = ref<any[]>([]);
-const versions = ref<any[]>([]);
-const loading = ref(false);
-const busy = ref(false);
-const promotion = ref<any>(null);
-const selected = ref<any>(null);
-const detail = ref<any>(null);
-const equity = ref<any[]>([]);
+// ── figures ──
+const all = computed(() => dc.deployments.value);
+const active = computed(() => all.value.filter(isActive));
+const activeCount = computed(() => active.value.length);
+const stoppedCount = computed(() => all.value.length - active.value.length);
+const paper = computed(() => active.value.filter(d => d.Mode !== 'Live'));
+const paperCount = computed(() => paper.value.length);
+const liveCount = computed(() => active.value.filter(d => d.Mode === 'Live').length);
+const armedCount = computed(() => active.value.filter(d => d.Mode === 'Live' && d.Armed).length);
+const paperEquity = computed(() => paper.value.reduce((s, d) => s + (d.EquityCurrent ?? 0), 0));
+const paperStart = computed(() => paper.value.reduce((s, d) => s + (d.EquityInitial ?? 0), 0));
+const paperPnl = computed(() => (paperStart.value ? ((paperEquity.value - paperStart.value) / paperStart.value) * 100 : null));
+const issueCount = computed(() => active.value.filter(d => ['crit', 'warn'].includes(healthOf(d).Tone)).length);
+const verdict = computed(() => computeVerdict(all.value, dc.catalog.value));
+const sheetRow = computed(() => all.value.find(d => d.Id === dc.sheetId.value) ?? null);
+const warnings = computed(() => (dc.plan.value?.Checks ?? []).filter(c => c.Level === 'warn'));
 
-const deployForm = reactive({
-    strategyClass: '', mode: 'Paper', symbol: 'BTCUSDT', interval: 'OneHour',
-    initialQuote: 10000, leverage: 1,
+const subline = computed(() => {
+  if (!dc.loaded.value) return 'Reading deployments…';
+  const parts = [`${activeCount.value} running`];
+  if (armedCount.value) parts.push(`${armedCount.value} armed`);
+  if (dc.lastSync.value) parts.push(`updated ${Math.max(0, Math.round((dc.now.value - dc.lastSync.value) / 60_000)) || 'under a'} min ago`);
+  return parts.join(' · ');
 });
-const deployParams = reactive<Record<string, any>>({});
-const versionForm = reactive({ strategyClass: '', notes: '' });
+const liveTitle = computed(() => dc.linkError.value || (dc.hidden.value ? 'Paused while this tab is hidden' : 'Deployments refresh every 15 s'));
 
-const deploymentColumns: TableColumn[] = [
-    { key: 'StrategyClass', label: 'Strategy', width: '210px' },
-    { key: 'Mode', label: 'Mode', width: '120px' },
-    { key: 'Status', label: 'Status', width: '130px' },
-    { key: 'EquityCurrent', label: 'Equity', num: true },
-    { key: 'PnLPercent', label: 'P&L', num: true },
-    { key: 'CreatedUtc', label: 'Age', num: true, width: '100px' },
-    { key: 'actions', label: '', sortable: false, num: true, width: '190px' },
-];
+function nameOf(cls: string) {
+  const base = cls.split('@')[0];
+  return dc.catalog.value?.Rows.find(r => r.StrategyClass.split('@')[0] === base)?.Name ?? all.value.find(d => d.StrategyClass === cls)?.StrategyName ?? cls;
+}
 
-const versionColumns: TableColumn[] = [
-    { key: 'StrategyClass', label: 'Strategy', width: '220px' },
-    { key: 'Version', label: 'Version', num: true, width: '90px', sortValue: v => v.Version },
-    { key: 'Status', label: 'Status', width: '110px' },
-    { key: 'Authority', label: 'Authority', width: '150px' },
-    { key: 'ApprovedBy', label: 'Approved', width: '140px' },
-    { key: 'actions', label: '', sortable: false, num: true, width: '110px' },
-];
+// ── composer ──
+function choose(row: CatalogRow) {
+  dc.choose(row);
+  void router.replace({ query: { ...route.query, candidate: row.CandidateId ?? undefined, strategy: row.CandidateId ? undefined : row.StrategyClass } });
+}
 
-const selectedStrategy = computed(() => strategies.value.find(s => s.ClassName === deployForm.strategyClass));
-const runningCount = computed(() => deployments.value.filter(d => d.Status === 'Running').length);
-const armedCount = computed(() => deployments.value.filter(d => d.Mode === 'Live' && d.Armed).length);
-const liveAuthorityCount = computed(() =>
-    versions.value.filter(v => v.Authority === 'ApprovalRequired' || v.Authority === 'Automated').length);
+function backToList() {
+  dc.clearChoice();
+  const { candidate, strategy, ...rest } = route.query;
+  void router.replace({ query: rest });
+  void nextTick(() => picker.value?.focus());
+}
 
-const paramGroups = computed(() => {
-    const params = selectedStrategy.value?.Parameters ?? [];
-    const groups: Record<string, any[]> = {};
-    for (const p of params) (groups[p.Group] ||= []).push(p);
-    return Object.entries(groups).map(([name, list]) => ({ name, params: list }));
+async function startNew() {
+  if (dc.choice.value) backToList();
+  await nextTick();
+  document.getElementById('dpl-new')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  picker.value?.focus();
+}
+
+function askDeploy(body: PlanRequestBody) { confirmDeploy.value = body; }
+
+async function doDeploy() {
+  const body = confirmDeploy.value;
+  if (!body) return;
+  const id = await dc.deploy(body);
+  confirmDeploy.value = null;
+  if (id) {
+    const { candidate, strategy, ...rest } = route.query;
+    await router.replace({ query: rest });
+    void openSheet(id);
+  }
+}
+
+// ── lifecycle ──
+function askAct(d: Deployment, action: 'pause' | 'resume' | 'kill' | 'delete') {
+  if (action === 'resume') { void dc.act(d.Id, 'resume', d.Status === 'Paused' ? 'Resumed.' : 'Started again.'); return; }
+  actTarget.value = { d, action };
+}
+const actTitle = computed(() => {
+  const a = actTarget.value;
+  if (!a) return '';
+  const name = a.d.StrategyName ?? a.d.StrategyClass;
+  return a.action === 'pause' ? `Pause ${name}?` : a.action === 'kill' ? `Stop ${name}?` : `Remove ${name}?`;
 });
-const paramCount = computed(() => selectedStrategy.value?.Parameters?.length ?? 0);
-
-const equitySeries = computed(() => [{
-    name: 'Deployment equity',
-    colour: seriesColour(0),
-    fill: 'rgba(57, 135, 229, 0.12)',
-    points: equity.value.map((e: any) => ({
-        x: new Date(e.Ts ?? e.Timestamp).getTime(),
-        y: e.Equity ?? e.Value ?? 0,
-    })),
-}]);
-
-watch(selectedStrategy, meta => {
-    for (const key of Object.keys(deployParams)) delete deployParams[key];
-    for (const p of (meta?.Parameters ?? [])) deployParams[p.Name] = p.Default;
+const actSub = computed(() => {
+  const a = actTarget.value;
+  if (!a) return '';
+  if (a.action === 'pause') return a.d.Mode === 'Live' ? 'It is disarmed and its positions on Kraken are closed.' : 'It stops acting on new bars. Its paper positions are kept and carry on when you resume.';
+  if (a.action === 'kill') return a.d.Mode === 'Live' ? 'Its positions on Kraken are closed and it is disarmed for good.' : 'It stops for good. Its record stays; you can start it again from where it stopped.';
+  return 'Its orders, fills and equity history are deleted with it. This cannot be undone.';
 });
+const actButton = computed(() => ({ pause: 'Pause', kill: 'Stop', delete: 'Remove for good', resume: 'Resume' } as Record<string, string>)[actTarget.value?.action ?? 'pause']);
 
-function prettyName(className: string) {
-    return strategies.value.find(s => s.ClassName === className)?.Name ?? className;
-}
-function statusTone(status: string) {
-    return ({ Running: 'ok', Paused: 'warn', Errored: 'bad', Stopped: '' } as Record<string, string>)[status] ?? '';
-}
-function authorityTone(authority: string) {
-    return ({ Automated: 'bad', ApprovalRequired: 'warn', Demo: 'info', Paper: '', Observe: '' } as Record<string, string>)[authority] ?? '';
+async function doAct() {
+  const a = actTarget.value;
+  if (!a) return;
+  actTarget.value = null;
+  await dc.act(a.d.Id, a.action, a.action === 'pause' ? 'Paused.' : a.action === 'kill' ? 'Stopped.' : 'Removed.');
 }
 
-async function loadAll() {
-    loading.value = true;
-    try {
-        const [s, d, v] = await Promise.all([
-            engineGet<any[]>('/strategies'),
-            engineGet<any[]>('/deployments'),
-            get<any[]>('/strategy-versions'),
-        ]);
-        strategies.value = s;
-        deployments.value = d;
-        versions.value = v;
-    } catch (e: any) {
-        Swal.fire({ title: 'Load failed', text: e?.message, icon: 'error', ...SWAL_THEME });
-    } finally { loading.value = false; }
+function askArm(d: Deployment) { armText.value = ''; armTarget.value = d; }
+async function doArm() {
+  const d = armTarget.value;
+  if (!d || armText.value.trim().toUpperCase() !== d.Symbol.toUpperCase()) return;
+  armTarget.value = null;
+  await dc.arm(d.Id);
 }
 
-async function openDeployment(row: any) {
-    selected.value = row;
-    detail.value = null;
-    equity.value = [];
-    try {
-        const [d, e] = await Promise.all([
-            engineGet<any>('/deployment', { id: row.Id }),
-            engineGet<any[]>('/deployment/equity', { id: row.Id }),
-        ]);
-        detail.value = d;
-        equity.value = e ?? [];
-    } catch { /* the drawer still shows what the table already knew */ }
+// ── sheet ──
+async function openSheet(id: string) {
+  void router.replace({ query: { ...route.query, d: id } });
+  await dc.openSheet(id);
+}
+function closeSheet() {
+  dc.closeSheet();
+  const { d, ...rest } = route.query;
+  void router.replace({ query: rest });
 }
 
-async function deploy() {
-    if (deployForm.mode === 'Live') {
-        const confirmed = await Swal.fire({
-            title: 'Deploy to LIVE?',
-            text: 'It starts disarmed — no orders reach Kraken until you arm it.',
-            icon: 'warning', showCancelButton: true, ...SWAL_THEME, confirmButtonColor: '#ff6b6b',
-        });
-        if (!confirmed.isConfirmed) return;
-    }
-
-    busy.value = true;
-    try {
-        await enginePost('/deployment/create', undefined, {
-            StrategyClass: deployForm.strategyClass,
-            Symbol: deployForm.symbol,
-            Interval: deployForm.interval,
-            Mode: deployForm.mode,
-            InitialQuoteBalance: deployForm.initialQuote,
-            Leverage: deployForm.leverage,
-            Parameters: { ...deployParams },
-        });
-        await loadAll();
-        await refreshOverview();
-    } catch (e: any) {
-        Swal.fire({ title: 'Deploy failed', text: e?.message, icon: 'error', ...SWAL_THEME });
-    } finally { busy.value = false; }
+function refreshAll() {
+  void dc.refreshFast();
+  void dc.loadCatalog(true);
+  if (dc.sheetId.value) void dc.loadSheet();
+  if (dc.choice.value) void dc.loadPlan();
 }
 
-async function armLive(d: any) {
-    const outcome = await Swal.fire({
-        title: 'Arm live trading?',
-        html: `This lets <b>${prettyName(d.StrategyClass)}</b> place real orders on Kraken.<br>
-               Type the deployment id to confirm.`,
-        input: 'text', inputPlaceholder: d.Id,
-        icon: 'warning', showCancelButton: true, ...SWAL_THEME, confirmButtonColor: '#ff6b6b',
+// ── commands ──
+const commands = computed<DeployCommand[]>(() => {
+  const list: DeployCommand[] = [];
+  if (allowed.value.manage) list.push({ id: 'new', group: 'Actions', title: 'New deployment', hint: 'N', keywords: 'deploy start add', icon: 'plus', run: startNew });
+  list.push({ id: 'refresh', group: 'Actions', title: 'Refresh everything', hint: 'R', keywords: 'reload', icon: 'refresh', run: refreshAll });
+  list.push({ id: 'lab', group: 'Actions', title: 'Open the Alpha Lab', keywords: 'research candidates papers', icon: 'flask', run: () => { void router.push('/omnitrader/research?tab=candidates'); } });
+  for (const d of all.value) {
+    list.push({
+      id: `d-${d.Id}`, group: 'Deployments', title: d.StrategyName ?? d.StrategyClass, icon: d.Mode === 'Live' ? 'bolt' : 'activity',
+      hint: `${d.Symbol} · ${intervalLabel(d.Interval)} · ${healthOf(d).Title}`, keywords: `${d.Symbol} ${d.Id} ${d.Status} ${d.Mode}`,
+      run: () => openSheet(d.Id),
     });
-    if (!outcome.isConfirmed) return;
-
-    busy.value = true;
-    try {
-        await enginePost('/deployment/arm-live', { id: d.Id, confirm: outcome.value ?? '' });
-        await loadAll();
-    } catch (e: any) {
-        Swal.fire({ title: 'Arm failed', text: e?.message, icon: 'error', ...SWAL_THEME });
-    } finally { busy.value = false; }
-}
-
-async function lifecycle(d: any, action: 'pause' | 'resume' | 'kill') {
-    if (action === 'kill') {
-        const confirmed = await Swal.fire({
-            title: 'Stop deployment?', text: 'Live deployments are flattened and disarmed.',
-            icon: 'warning', showCancelButton: true, ...SWAL_THEME,
-        });
-        if (!confirmed.isConfirmed) return;
+  }
+  if (allowed.value.manage) {
+    for (const r of dc.catalog.value?.Rows ?? []) {
+      list.push({
+        id: `s-${r.Key}`, group: 'Strategies', title: `Deploy ${r.Name}`, icon: 'rocket',
+        hint: `${r.Status ?? r.Source}${r.Score != null ? ` ${Math.round(r.Score)}` : ''} · ${r.Shape === 'basket' ? `${r.BasketSize} symbols` : r.Symbol} · ${intervalLabel(r.Interval)}`,
+        keywords: `${r.Symbol} ${r.Symbols.join(' ')} ${r.CandidateId ?? ''} ${r.Paper ?? ''}`,
+        run: () => { choose(r); void nextTick(() => document.getElementById('dpl-new')?.scrollIntoView({ block: 'nearest' })); },
+      });
     }
-    busy.value = true;
-    try {
-        await enginePost(`/deployment/${action}`, { id: d.Id });
-        if (action === 'kill') selected.value = null;
-        await loadAll();
-        await refreshOverview();
-    } catch (e: any) {
-        Swal.fire({ title: 'Action failed', text: e?.message, icon: 'error', ...SWAL_THEME });
-    } finally { busy.value = false; }
+  }
+  return list;
+});
+
+// ── keyboard ──
+function typing(target: EventTarget | null) {
+  const el = target as HTMLElement | null;
+  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+}
+function onGlobalKey(event: KeyboardEvent) {
+  // Ctrl+K is this page's palette; the shell's command line keeps "/". Registered in the capture phase so
+  // the shell's own Ctrl+K listener (also on window) never opens its menu underneath.
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); event.stopImmediatePropagation(); paletteOpen.value = true; return; }
+  if (paletteOpen.value || confirmDeploy.value || armTarget.value || actTarget.value) return;
+  // Esc closes the sheet wherever focus went (a confirm dialog that just closed leaves it on <body>).
+  if (dc.sheetId.value) { if (event.key === 'Escape') { event.preventDefault(); closeSheet(); } return; }
+  if (typing(event.target)) return;
+  if (event.key === 'r' || event.key === 'R') { event.preventDefault(); refreshAll(); }
+  else if ((event.key === 'n' || event.key === 'N') && allowed.value.manage) { event.preventDefault(); void startNew(); }
+  else if (event.key === 'Escape' && dc.choice.value) { event.preventDefault(); backToList(); }
 }
 
-async function createVersion() {
-    busy.value = true;
-    try {
-        await post('/strategy-version/create', undefined, {
-            StrategyClass: versionForm.strategyClass,
-            Notes: versionForm.notes,
-            Parameters: { ...deployParams },
-        });
-        versionForm.notes = '';
-        await loadAll();
-    } catch (e: any) {
-        Swal.fire({ title: 'Failed', text: e?.message, icon: 'error', ...SWAL_THEME });
-    } finally { busy.value = false; }
-}
+onMounted(() => {
+  window.addEventListener('keydown', onGlobalKey, true);
+  // Deep links: ?candidate= (from the Alpha Lab), ?strategy=, ?d= (a deployment's sheet).
+  const q = route.query;
+  if (typeof q.candidate === 'string' && q.candidate) dc.choose({ candidate: q.candidate, name: undefined });
+  else if (typeof q.strategy === 'string' && q.strategy) dc.choose({ strategy: q.strategy, name: undefined });
+  if (typeof q.d === 'string' && q.d) void dc.openSheet(q.d);
+});
+onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey, true));
 
-function openPromotion(version: any) {
-    promotion.value = { version, requested: nextAuthority(version.Authority), assessment: null };
-    void assessPromotion();
-}
-
-function nextAuthority(current: string) {
-    const ladder = ['Observe', 'Paper', 'Demo', 'ApprovalRequired', 'Automated'];
-    const index = ladder.indexOf(current);
-    return ladder[Math.min(ladder.length - 1, index + 1)];
-}
-
-async function assessPromotion() {
-    if (!promotion.value) return;
-    promotion.value.assessment = await get('/promotion/assess', {
-        strategy: promotion.value.version.StrategyClass,
-        version: promotion.value.version.Version,
-        authority: promotion.value.requested,
-    });
-}
-
-async function doPromote() {
-    busy.value = true;
-    try {
-        const outcome = await post<any>('/promotion/promote', {
-            strategy: promotion.value.version.StrategyClass,
-            version: promotion.value.version.Version,
-            authority: promotion.value.requested,
-        });
-        if (!outcome.Promoted) {
-            promotion.value.assessment = outcome;
-            Swal.fire({ title: 'Promotion refused', text: outcome.Summary, icon: 'warning', ...SWAL_THEME });
-            return;
-        }
-        promotion.value = null;
-        await loadAll();
-    } finally { busy.value = false; }
-}
-
-onMounted(loadAll);
+watch(() => route.query.candidate, c => {
+  if (typeof c === 'string' && c && dc.choice.value?.candidate !== c) dc.choose({ candidate: c });
+});
 </script>
 
-<style scoped>
-.note { margin: 0 0 var(--ot-space-3); font-size: 12.5px; color: var(--ot-text-2); line-height: 1.5; }
-.summary { cursor: pointer; font-size: 12.5px; color: var(--ot-text-2); }
-</style>
+<style lang="scss" src="~/assets/scss/deploy-console.scss"></style>

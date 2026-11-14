@@ -5,8 +5,10 @@ import { installProfilesApiMock, signIn } from './fixtures/profiles-api';
 const SCREENS = process.env.E2E_SCREENS_DIR ?? 'test-results/screens';
 
 /*
- * The profile console: the directory, a profile's live overview, the permission editor, the
- * new-profile wizard, sessions, and KliveCloud's people-based sharing. Klives is signed in.
+ * The profile console (its own .pfx design): the directory with its review, quick-look sheet,
+ * row menu, palette, keyboard and access matrix; a profile's page (overview, access editor,
+ * activity, devices); the new-profile wizard; the permission catalog; KliveCloud's people-based
+ * sharing and /account, which share the fixture. Klives is signed in.
  */
 
 async function ready(page: Page, label = 'Owner') {
@@ -22,54 +24,144 @@ async function ready(page: Page, label = 'Owner') {
   }
 }
 
-test('the directory shows who is online, where, and what they hold', async ({ page, context }) => {
+const rows = (page: Page) => page.locator('.pfx-trow--body');
+
+test('the directory reviews access and shows who is where, how busy, and what they use', async ({ page, context }) => {
   await installProfilesApiMock(page);
   await signIn(context);
   await page.goto('/administration/profiles');
   await ready(page);
 
   await expect(page.getByRole('heading', { name: 'Profiles', level: 1 })).toBeVisible();
-  const rows = page.locator('.pc-row');
-  await expect(rows).toHaveCount(5);
-  await expect(rows.filter({ hasText: 'Sam Carter' })).toContainText('On KM: Klivecloud');
-  await expect(rows.filter({ hasText: 'Jo Lindqvist' })).toContainText('Suspended');
-  await expect(rows.filter({ hasText: 'Max Byrne' })).toContainText('Sign-in off');
-  await expect(page.locator('.ot-kpi').filter({ hasText: 'Online now' })).toContainText('2');
+  await expect(rows(page)).toHaveCount(6);
+  await expect(page.getByTestId('row-sam')).toContainText('On KM: Klivecloud');
+  await expect(page.getByTestId('row-jo')).toContainText('Suspended');
+  await expect(page.getByTestId('row-max')).toContainText('Sign-in off');
+  await expect(page.getByTestId('row-riv')).toContainText('Dormant');
+  await expect(page.getByTestId('row-alex')).toContainText('2 idle');
+  await expect(page.getByTestId('kpi-online')).toContainText('2');
 
-  await page.getByRole('button', { name: 'Online' }).click();
-  await expect(rows).toHaveCount(3);
+  // The review: idle devices, the dormant profile, passwords-as-keys (safe: only Alex, who may), unused grants.
+  const review = page.getByTestId('pfx-review');
+  await expect(review).toContainText('signed-in devices unused for 7+ days');
+  await expect(review).toContainText("can sign in but hasn't in 30+ days");
+  await expect(review).toContainText('safe to switch off');
+
+  await page.getByTestId('filter-online').click();
+  await expect(rows(page)).toHaveCount(3);
+  await page.getByTestId('filter-all').click();
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${SCREENS}/profiles-directory.png`, fullPage: true });
 });
 
-test('a profile can be suspended straight from the directory', async ({ page, context }) => {
+test('a profile can be suspended from the quick-look sheet', async ({ page, context }) => {
   const api = await installProfilesApiMock(page);
   await signIn(context);
   await page.goto('/administration/profiles');
   await ready(page);
 
-  await page.getByRole('button', { name: 'Actions for Sam Carter' }).click();
-  await page.getByRole('menuitem', { name: 'Suspend…' }).click();
+  await page.getByTestId('row-sam').click();
+  const sheet = page.getByTestId('pfx-sheet');
+  await expect(sheet.getByTestId('pfx-sheet-name')).toHaveText('Sam Carter');
+  await expect(sheet).toContainText('Recent activity');
+  await page.screenshot({ path: `${SCREENS}/profiles-sheet.png` });
+
+  await sheet.getByTestId('sheet-suspend').click();
   const dialog = page.getByRole('dialog', { name: 'Suspend Sam Carter' });
   await dialog.getByRole('button', { name: '1 day' }).click();
   await dialog.getByLabel(/Reason/).fill('Taking a break');
-  await dialog.getByRole('button', { name: 'Suspend' }).click();
+  await dialog.getByTestId('pfx-suspend-confirm').click();
 
   await expect.poll(() => api.mutations.find(m => m.path === '/KMProfiles/access/suspend')?.body)
     .toEqual({ id: 'sam', minutes: 1440, reason: 'Taking a break' });
-  await expect(page.locator('.pc-row').filter({ hasText: 'Sam Carter' })).toContainText('Suspended');
+  await expect(page.getByTestId('row-sam')).toContainText('Suspended');
+  await expect(page.getByTestId('pfx-toast').first()).toContainText('Sam Carter is suspended');
 });
 
-test('a profile page shows them live, with what they did recently', async ({ page, context }) => {
+test('idle devices are signed out from the row menu and from the review', async ({ page, context }) => {
+  const api = await installProfilesApiMock(page);
+  await signIn(context);
+  await page.goto('/administration/profiles');
+  await ready(page);
+
+  await page.getByRole('button', { name: 'Actions for Alex Moreno' }).click();
+  await page.getByRole('menuitem', { name: /Sign out idle devices \(2\)/ }).click();
+  await expect.poll(() => api.mutations.find(m => m.path === '/KMProfiles/sessions/revoke')?.body).toEqual({ id: 'alex', idleDays: 7 });
+  await expect(page.getByTestId('pfx-toast').first()).toContainText('Signed out 2 idle devices of Alex Moreno');
+});
+
+test('the review opens the idle-device sign-out for everyone at once', async ({ page, context }) => {
+  const api = await installProfilesApiMock(page);
+  await signIn(context);
+  await page.goto('/administration/profiles');
+  await ready(page);
+
+  await page.getByTestId('issue-idle').click();
+  const dialog = page.getByTestId('pfx-idle');
+  await expect(dialog).toContainText('Alex Moreno');
+  await dialog.getByTestId('pfx-idle-go').click();
+  await expect.poll(() => api.mutations.filter(m => m.path === '/KMProfiles/sessions/revoke').map(m => m.body)).toEqual([{ id: 'alex', idleDays: 7 }]);
+});
+
+test('the keyboard moves through the list, opens the sheet and the page', async ({ page, context }) => {
+  await installProfilesApiMock(page);
+  await signIn(context);
+  await page.goto('/administration/profiles');
+  await ready(page);
+  await expect(rows(page)).toHaveCount(6);
+
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('pfx-sheet-name')).toHaveText('Sam Carter');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByTestId('pfx-sheet-name')).toHaveText('Alex Moreno');
+  await page.keyboard.press('o');
+  await expect(page).toHaveURL(/\/administration\/profiles\/alex$/);
+  await expect(page.getByTestId('pfx-name')).toHaveText('Alex Moreno');
+});
+
+test('the palette finds people and actions', async ({ page, context }) => {
+  await installProfilesApiMock(page);
+  await signIn(context);
+  await page.goto('/administration/profiles');
+  await ready(page);
+
+  await page.keyboard.press('Control+k');
+  const input = page.getByTestId('pfx-palette-input');
+  await input.fill('suspend alex');
+  await expect(page.getByTestId('cmd-suspend-alex')).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog', { name: 'Suspend Alex Moreno' })).toBeVisible();
+});
+
+test('the matrix shows who holds what and opens the service in the editor', async ({ page, context }) => {
+  await installProfilesApiMock(page);
+  await signIn(context);
+  await page.goto('/administration/profiles');
+  await ready(page);
+
+  await page.getByTestId('view-matrix').click();
+  const cell = page.getByTestId('cell-klivecloud-sam');
+  await expect(cell).toBeVisible();
+  await expect(page.getByTestId('cell-klivecloud-klives')).toHaveText('all');
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${SCREENS}/profiles-matrix.png`, fullPage: true });
+  await cell.click();
+  await expect(page).toHaveURL(/\/administration\/profiles\/sam\?tab=access&service=klivecloud/);
+  await expect(page.getByRole('heading', { name: 'KliveCloud', level: 3 })).toBeVisible();
+});
+
+test('a profile page shows them live, with figures and what they did recently', async ({ page, context }) => {
   await installProfilesApiMock(page);
   await signIn(context);
   await page.goto('/administration/profiles/sam');
   await ready(page);
 
-  await expect(page.getByRole('heading', { name: /Sam Carter/ })).toBeVisible();
-  await expect(page.locator('.pd-presence')).toContainText('On KM: Klivecloud');
-  await expect(page.getByText('Requests by service').first()).toBeVisible();
-  await expect(page.locator('.tl-item').filter({ hasText: '/KliveCloud/Browse' }).first()).toBeVisible();
+  await expect(page.getByTestId('pfx-name')).toHaveText('Sam Carter');
+  await expect(page.getByTestId('pfx-presence')).toContainText('On KM: Klivecloud');
+  await expect(page.getByRole('heading', { name: 'Requests by service' })).toBeVisible();
+  await expect(page.getByTestId('pfx-recent')).toContainText('/KliveCloud/Browse');
   await page.waitForTimeout(600);
   await page.screenshot({ path: `${SCREENS}/profile-overview.png`, fullPage: true });
 });
@@ -113,6 +205,24 @@ test('a whole service can be set to a tier in one go', async ({ page, context })
   await expect(page.getByRole('region', { name: 'Unsaved permission changes' })).toContainText('+3');
 });
 
+test('unused permissions are listed and removed as a draft', async ({ page, context }) => {
+  const api = await installProfilesApiMock(page);
+  await signIn(context);
+  await page.goto('/administration/profiles/sam?tab=access');
+  await ready(page);
+
+  const unused = page.getByTestId('show-unused');
+  await expect(unused).toBeVisible();
+  const count = Number((await unused.locator('.pfx-seg__count').textContent()) ?? '0');
+  expect(count).toBeGreaterThan(0);
+  await unused.click();
+  await expect(page.getByRole('heading', { name: 'Unused for 30 days' })).toBeVisible();
+  await page.getByTestId('pfx-remove-unused').click();
+  const bar = page.getByRole('region', { name: 'Unsaved permission changes' });
+  await expect(bar).toContainText(`−${count}`);
+  expect(api.mutations.find(m => m.path === '/KMProfiles/permissions/set')).toBeUndefined(); // nothing saved yet
+});
+
 test('the activity tab charts requests and lists what happened', async ({ page, context }) => {
   await installProfilesApiMock(page);
   await signIn(context);
@@ -120,22 +230,47 @@ test('the activity tab charts requests and lists what happened', async ({ page, 
   await ready(page);
 
   await expect(page.getByRole('heading', { name: 'Requests by service' })).toBeVisible();
-  await expect(page.locator('.tl-item.denied')).toContainText('refused · missing permission');
-  await expect(page.getByText('Klives', { exact: false }).first()).toBeVisible();
+  await expect(page.getByTestId('pfx-timeline')).toContainText('refused · missing permission');
+  await expect(page.getByRole('heading', { name: 'Busiest routes' }).locator('xpath=../..')).toContainText('GET /KliveCloud/Browse');
   await page.waitForTimeout(600);
   await page.screenshot({ path: `${SCREENS}/profile-activity.png`, fullPage: true });
 });
 
-test('one device can be signed out', async ({ page, context }) => {
+test('devices: one is signed out, then the idle ones together', async ({ page, context }) => {
   const api = await installProfilesApiMock(page);
   await signIn(context);
-  await page.goto('/administration/profiles/sam?tab=sessions');
+  await page.goto('/administration/profiles/sam?tab=devices');
   await ready(page);
 
-  const iphone = page.locator('.ss-item').filter({ hasText: 'Safari on iPhone' });
-  await iphone.getByRole('button', { name: 'Sign out' }).click();
+  await page.getByRole('button', { name: 'Sign out Safari on iPhone' }).click();
   await expect.poll(() => api.mutations.find(m => m.path === '/KMProfiles/sessions/revoke')?.body)
     .toEqual({ id: 'sam', sessionId: 'session-sam-1' });
+
+  await page.goto('/administration/profiles/alex?tab=devices');
+  await expect(page.getByTestId('pfx-devices')).toContainText('Idle');
+  await page.getByTestId('pfx-signout-idle').click();
+  // The page has the device list, so each idle device goes by its own id (any server version reads that the same way).
+  await expect.poll(() => api.mutations.filter(m => m.path === '/KMProfiles/sessions/revoke').map(m => m.body))
+    .toEqual([{ id: 'sam', sessionId: 'session-sam-1' }, { id: 'alex', sessionId: 'session-alex-1' }, { id: 'alex', sessionId: 'session-alex-2' }]);
+});
+
+test('on a server from before idle sign-out, only the idle devices are signed out', async ({ page, context }) => {
+  // That server reads a revoke without a sessionId as "every device": idleDays must never reach it.
+  const api = await installProfilesApiMock(page);
+  api.overrides['/KMProfiles/insights'] = { status: 404, body: { error: 'NotFound' } };
+  await signIn(context);
+  await page.goto('/administration/profiles/alex?tab=devices');
+  await ready(page);
+
+  await page.getByTestId('pfx-signout-idle').click();
+  await expect.poll(() => api.mutations.filter(m => m.path === '/KMProfiles/sessions/revoke').length).toBe(2);
+  const bodies = api.mutations.filter(m => m.path === '/KMProfiles/sessions/revoke').map(m => m.body);
+  expect(bodies.every(b => typeof b.sessionId === 'string' && b.idleDays === undefined)).toBe(true);
+
+  // The directory has no idle counts without the review, so it offers no idle sign-out at all.
+  await page.goto('/administration/profiles');
+  await page.getByRole('button', { name: 'Actions for Alex Moreno' }).click();
+  await expect(page.getByRole('menuitem', { name: /Sign out idle devices/ })).toBeDisabled();
 });
 
 test('the new-profile wizard creates exactly what was chosen', async ({ page, context }) => {
@@ -145,7 +280,7 @@ test('the new-profile wizard creates exactly what was chosen', async ({ page, co
   await ready(page);
 
   await page.getByLabel('Name').fill('Riley');
-  await page.locator('label.pn-rank').filter({ has: page.locator('.km-rank', { hasText: /^Associate$/ }) }).click();
+  await page.getByRole('radio', { name: /^Associate/ }).click();
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByText('Generate a password')).toBeVisible();
   await page.getByRole('button', { name: 'Continue' }).click();
@@ -166,6 +301,21 @@ test('the new-profile wizard creates exactly what was chosen', async ({ page, co
     'klivecloud.drive.view', 'klivecloud.files.browse', 'klivecloud.files.download',
   ]);
   await page.screenshot({ path: `${SCREENS}/profile-wizard-done.png` });
+});
+
+test('the catalog shows who holds each permission', async ({ page, context }) => {
+  await installProfilesApiMock(page);
+  await signIn(context);
+  await page.goto('/administration/profiles/catalog');
+  await ready(page);
+
+  const row = page.getByTestId('cat-klivecloud.files.browse');
+  await expect(row).toBeVisible();
+  await expect(row.locator('.pfx-avatar')).not.toHaveCount(0);
+  await page.getByPlaceholder('Search keys, titles or routes').fill('orders');
+  await expect(page.getByTestId('cat-omnitrader.orders.place')).toBeVisible();
+  await expect(page.getByTestId('cat-klivecloud.files.browse')).toHaveCount(0);
+  await page.screenshot({ path: `${SCREENS}/profiles-catalog.png`, fullPage: true });
 });
 
 test('KliveCloud items are shared with people, not ranks', async ({ page, context }) => {
@@ -208,8 +358,9 @@ test('your account lists your permissions and your devices', async ({ page, cont
 
   await expect(page.getByRole('heading', { name: /Jo Lindqvist/ })).toBeVisible();
   await expect(page.locator('.ac-service-name').filter({ hasText: 'KliveCloud' })).toBeVisible();
-  await expect(page.locator('.ss-item')).toHaveCount(2);
-  await expect(page.locator('.ss-item').first()).toContainText('This device');
+  const devices = page.getByTestId('ac-devices').locator('.pfx-device');
+  await expect(devices).toHaveCount(2);
+  await expect(devices.first()).toContainText('This device');
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${SCREENS}/account.png`, fullPage: true });
 });
@@ -223,10 +374,11 @@ test('the console fits a phone', async ({ page, context }) => {
     ['/administration/profiles', 'phone-directory'],
     ['/administration/profiles/sam', 'phone-profile'],
     ['/administration/profiles/sam?tab=access', 'phone-access'],
+    ['/administration/profiles/catalog', 'phone-catalog'],
   ] as const) {
     await page.goto(path);
-    await expect(page.locator('.pc-os')).toBeVisible({ timeout: 45_000 });
-    await page.waitForTimeout(500);
+    await expect(page.locator('.pfx').first()).toBeVisible({ timeout: 45_000 });
+    await page.waitForTimeout(600);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow, `${path} scrolls sideways`).toBeLessThanOrEqual(1);
     await page.screenshot({ path: `${SCREENS}/${name}.png`, fullPage: false });

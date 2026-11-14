@@ -29,6 +29,31 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(report.scroll, JSON.stringify(report.offenders)).toBeLessThanOrEqual(report.client + 1);
 }
 
+test('a hidden tab stops polling and catches up once when it is shown again', async ({ page }) => {
+  // Live, 12 Nov 2026: a tab left open overnight sent the page's eight reads every 90 s for 11 hours.
+  await page.clock.install({ time: Date.now() });
+  await installOmniscienceApiMock(page);
+  const reads: string[] = [];
+  page.on('request', request => { if (request.url().includes('/omniscience/workspace/directory')) reads.push(request.url()); });
+  await goto(page, '/omniscience');
+  await expect.poll(() => reads.length).toBe(1);
+  await page.clock.runFor(91_000);
+  await expect.poll(() => reads.length).toBe(2); // still polling while looked at
+
+  const visibility = (hidden: boolean, announce: boolean) => page.evaluate(([isHidden, tell]) => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (isHidden ? 'hidden' : 'visible') });
+    if (tell) document.dispatchEvent(new Event('visibilitychange'));
+  }, [hidden, announce] as const);
+  await visibility(true, false); // hidden, and the page is not told
+  await page.clock.runFor(10 * 60_000);
+  expect(reads.length).toBe(2);
+
+  await visibility(false, true);
+  await expect.poll(() => reads.length).toBe(3);
+  await page.clock.runFor(30_000);
+  expect(reads.length).toBe(3);
+});
+
 test('overview loads the live workspace and unified command palette', async ({ page }) => {
   await installOmniscienceApiMock(page);
   await goto(page, '/omniscience');
@@ -81,6 +106,31 @@ test('timeline, activity and data health render real API states', async ({ page 
   await page.getByRole('button', { name: /Health/ }).click();
   await expect(page.getByText('All systems nominal')).toBeVisible();
   await expect(page.getByText('Embedding coverage')).toBeVisible();
+});
+
+test('data health says when embeddings are still being counted, then shows the coverage', async ({ page }) => {
+  // 14 Nov 2026: the health route did not answer in 60 s; it now answers at once and counts in the background.
+  await page.clock.install({ time: Date.now() });
+  await installOmniscienceApiMock(page);
+  let calls = 0;
+  await page.route('https://klive.dev/omniscience/workspace/health', async route => {
+    const counted = calls++ > 0;
+    await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+      body: JSON.stringify({ status: 'healthy', warnings: [], sources: [], activity_counts: { ready: true, running: false }, checked_at: 1_800_000_000_000,
+        metrics: { persons: 2, messages: 4, tracked_messages: 3, stimulus_reply_pairs: 2, replica_eras: 2, replicas_ready: 1, failed_replica_jobs_7d: 0,
+          latest_message_at: 1_800_000_000_000, tracked_embedded: counted ? 3 : null, tracked_embedding_coverage_pct: counted ? 100 : null,
+          tracked_embedding_counting: !counted } }) });
+  });
+  await goto(page, '/omniscience-explore?tab=Timeline&personId=p1');
+  await page.getByRole('button', { name: /Health/ }).click();
+  const coverage = page.locator('.os-health-metrics > div', { hasText: 'Embedding coverage' });
+  await expect(coverage).toContainText('—');
+  await expect(coverage).toContainText('counting…');
+  await expect(coverage).not.toContainText('null');
+  await page.clock.runFor(10_500);
+  await expect(coverage).toContainText('100%');
+  await expect(coverage).toContainText('3 / 3 tracked');
+  expect(calls).toBe(2);
 });
 
 test('mobile overview and Replica remain within the viewport', async ({ page }) => {

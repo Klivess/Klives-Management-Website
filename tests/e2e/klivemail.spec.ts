@@ -192,6 +192,20 @@ test.describe('KliveMail', () => {
     await expect(page.getByTestId('kml-list-title')).toHaveText('Avery Reed');
   });
 
+  test('a tab that went hidden without telling the page still stops polling', async ({ page }) => {
+    // Live, 13 Nov 2026: the owner's list was read exactly once a minute for 8 hours straight (the
+    // pace Chrome allows a hidden tab's timers), so the page believed itself visible while it wasn't.
+    await page.clock.install({ time: Date.now() });
+    const api = await openMail(page);
+    await expect.poll(() => batches(api)).toBeGreaterThanOrEqual(1);
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); // no event
+    });
+    const hiddenAt = batches(api);
+    await page.clock.runFor(5 * 60_000);
+    expect(batches(api)).toBe(hiddenAt);
+  });
+
   test('polls every 15 seconds while looked at, and not at all from a hidden tab', async ({ page }) => {
     await page.clock.install({ time: Date.now() });
     const api = await openMail(page);

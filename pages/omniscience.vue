@@ -305,11 +305,23 @@ watch([search, tier, sort, pinnedOnly], () => {
     if (searchTimer) clearTimeout(searchTimer);
     searchTimer = setTimeout(() => { offset.value = 0; void loadDirectory(); }, 260);
 });
+// A hidden tab stops polling (12 Nov 2026: a tab left open overnight sent eight reads every 90 s
+// for 11 hours) and catches up once when it is shown again. The state is read on every tick,
+// not cached from visibilitychange, which can be missed.
+const POLL_MS = 90_000;
+function onVisibility() {
+    if (document.visibilityState === 'visible' && !busy.value && Date.now() - (lastUpdated.value || 0) >= POLL_MS) void refreshAll();
+}
 onMounted(() => {
     void refreshAll();
-    pollTimer = setInterval(() => { if (!busy.value) void refreshAll(); }, 90_000);
+    pollTimer = setInterval(() => { if (!busy.value && document.visibilityState !== 'hidden') void refreshAll(); }, POLL_MS);
+    document.addEventListener('visibilitychange', onVisibility);
 });
-onBeforeUnmount(() => { if (pollTimer) clearInterval(pollTimer); if (searchTimer) clearTimeout(searchTimer); });
+onBeforeUnmount(() => {
+    if (pollTimer) clearInterval(pollTimer);
+    if (searchTimer) clearTimeout(searchTimer);
+    document.removeEventListener('visibilitychange', onVisibility);
+});
 </script>
 
 <style scoped>

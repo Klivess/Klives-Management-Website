@@ -1260,6 +1260,22 @@ export const PERMISSIONS: FixturePermission[] = [
     "sensitive": false
   },
   {
+    "key": "klivetech.gadgets.manage",
+    "service": "KliveTech",
+    "serviceKey": "klivetech",
+    "area": "Gadgets",
+    "tier": "Critical",
+    "tierValue": 5,
+    "title": "Enrol and forget gadgets",
+    "description": "Let a nearby gadget enrol, and forget a remembered one.",
+    "legacyRank": 5,
+    "implies": [
+      "klivetech.gadgets.act",
+      "klivetech.gadgets.read"
+    ],
+    "sensitive": false
+  },
+  {
     "key": "klivetech.streamables.read",
     "service": "KliveTech",
     "serviceKey": "klivetech",

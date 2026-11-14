@@ -184,7 +184,15 @@ export function useAgentChat(options: { agentReady: Ref<boolean>; threadEl: Ref<
     msg.statusNote = data.statusNote;
     if (data.status) msg.status = data.status;
     if (data.stopReason !== undefined) msg.stopReason = data.stopReason;
-    if (Array.isArray(data.activity)) msg.activity = data.activity;
+    // A part the server left out (null) is unchanged since this copy's sequence: keep it. Activity with
+    // activityFrom is the new lines only; should this copy be shorter than that, ask for the whole run next poll.
+    if (Array.isArray(data.activity)) {
+      const from = Number.isInteger(data.activityFrom) ? data.activityFrom : null;
+      const held = Array.isArray(msg.activity) ? msg.activity : [];
+      if (from === null) msg.activity = data.activity;
+      else if (held.length >= from) msg.activity = [...held.slice(0, from), ...data.activity];
+      else msg.sequence = 0;
+    }
     // The run's own plan and notes. Absent until the run writes one, so never cleared by a snapshot without it.
     if (data.ledger) msg.ledger = data.ledger;
     if (data.computerContainerId) liveContainerId.value = data.computerContainerId;
@@ -447,7 +455,8 @@ export function useAgentChat(options: { agentReady: Ref<boolean>; threadEl: Ref<
       try {
         const afterSequence = Number(findRunMessage(requestId)?.sequence) || 0;
         const res = await RequestGETFromKliveAPI(
-          `/kliveagent/chat/pending?requestId=${encodeURIComponent(requestId)}&afterSequence=${afterSequence}&waitMs=15000&_t=${Date.now()}`,
+          // activity=append: the server sends only the activity lines after the ones this copy holds (activityFrom).
+          `/kliveagent/chat/pending?requestId=${encodeURIComponent(requestId)}&afterSequence=${afterSequence}&waitMs=15000&activity=append&_t=${Date.now()}`,
           true, true, {}, controller.signal,
         );
         const { data, rawText } = await readAgentApiResponse(res);

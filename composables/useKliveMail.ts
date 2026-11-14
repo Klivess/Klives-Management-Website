@@ -608,7 +608,13 @@ export function useKliveMail() {
 
   function schedule() {
     if (pollTimer != null) window.clearInterval(pollTimer);
-    pollTimer = window.setInterval(() => { if (!hidden.value) void refresh(); }, POLL_MS);
+    pollTimer = window.setInterval(() => {
+      // Read the document's own state, not only the flag the visibilitychange event keeps: live on
+      // 13 Nov 2026 the list was read exactly once a minute for 8 hours (Chrome's pace for a hidden
+      // tab), so the flag said "visible" while the tab was not.
+      hidden.value = document.visibilityState === 'hidden';
+      if (!hidden.value) void refresh();
+    }, POLL_MS);
   }
 
   function onVisibility() {

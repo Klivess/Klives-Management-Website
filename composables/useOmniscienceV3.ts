@@ -1,6 +1,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref, type ShallowRef } from 'vue';
 import { OmniApiError, isOmniAbort, omniGet, omniStreamUrl, toOmniError } from '~/scripts/omniscience/api';
-import type { Selection, StreamEventDto, V3StatusDto } from '~/scripts/omniscience/contracts';
+import type { PersonNamesDto, Selection, StreamEventDto, V3StatusDto } from '~/scripts/omniscience/contracts';
 import { omniAge, omniInstant, omniUtcIso, type OmniLens } from '~/scripts/omniscience/format';
 
 /**
@@ -308,6 +308,57 @@ export function useOmniStream(options: {
     onMounted(connect);
     onBeforeUnmount(disconnect);
     return { connected, cursor, connect, disconnect };
+}
+
+// ── people's names ───────────────────────────────────────────────────────────
+
+const wantedNames = new Set<string>();
+let namesTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Names for person ids, for pages whose rows carry only an id (plans, review items, links, past
+ * answers). Ids are asked for in one batch a moment after they are wanted, and remembered for the
+ * visit. Until a name arrives, and for someone no longer known, the id itself is shown.
+ */
+export function useOmniNames() {
+    const names = useState<Record<string, string>>('omni-v3:names', () => ({}));
+    const asked = useState<Record<string, true>>('omni-v3:names-asked', () => ({}));
+
+    async function flush() {
+        namesTimer = null;
+        const ids = [...wantedNames].slice(0, 200);
+        for (const id of ids) wantedNames.delete(id);
+        if (!ids.length) return;
+        try {
+            const found = await omniGet<PersonNamesDto>('people/names', { ids });
+            names.value = { ...names.value, ...found.names };
+        } catch {
+            // Without names the ids stay on screen; they can be asked for again on the next visit.
+            const next = { ...asked.value };
+            for (const id of ids) delete next[id];
+            asked.value = next;
+        }
+        if (wantedNames.size) namesTimer = setTimeout(() => { void flush(); }, 30);
+    }
+
+    /** Asks for the names of these ids (those not asked for yet). Safe to call on every render. */
+    function want(ids: readonly (string | null | undefined)[]) {
+        let added = false;
+        const next = { ...asked.value };
+        for (const id of ids) {
+            if (!id || next[id]) continue;
+            next[id] = true;
+            wantedNames.add(id);
+            added = true;
+        }
+        if (!added) return;
+        asked.value = next;
+        if (!namesTimer && typeof window !== 'undefined') namesTimer = setTimeout(() => { void flush(); }, 30);
+    }
+
+    const name = (id: string | null | undefined): string => (id ? names.value[id] ?? id : '—');
+
+    return { names, want, name };
 }
 
 // ── handing a set to a tactic ────────────────────────────────────────────────

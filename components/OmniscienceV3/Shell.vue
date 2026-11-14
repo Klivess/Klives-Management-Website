@@ -99,6 +99,13 @@ const NAV = [
         { to: `${OMNI_BASE}/people`, label: 'People' },
         { to: `${OMNI_BASE}/communities`, label: 'Communities' },
         { to: `${OMNI_BASE}/links`, label: 'Links' },
+        { to: `${OMNI_BASE}/images`, label: 'Images' },
+        { to: `${OMNI_BASE}/replicas`, label: 'Replicas' },
+    ] },
+    { label: 'Knowledge', items: [
+        { to: `${OMNI_BASE}/ask`, label: 'Ask' },
+        { to: `${OMNI_BASE}/review`, label: 'Review' },
+        { to: `${OMNI_BASE}/agenda`, label: 'Agenda' },
     ] },
     { label: 'Watch', items: [
         { to: `${OMNI_BASE}/signals`, label: 'Signals' },
@@ -107,9 +114,11 @@ const NAV = [
     ] },
     { label: 'Engine', items: [
         { to: OMNI_BASE, label: 'Overview' },
+        { to: `${OMNI_BASE}/sources`, label: 'Sources' },
         { to: `${OMNI_BASE}/modules`, label: 'Modules' },
         { to: `${OMNI_BASE}/jobs`, label: 'Jobs' },
         { to: `${OMNI_BASE}/llm`, label: 'LLM' },
+        { to: `${OMNI_BASE}/quality`, label: 'Quality Lab' },
         { to: `${OMNI_BASE}/data`, label: 'Data controls' },
         { to: `${OMNI_BASE}/settings`, label: 'Settings' },
     ] },

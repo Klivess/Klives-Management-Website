@@ -1,4 +1,4 @@
-import { BuildKliveHeaders, BuildKliveWsUrl, KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import { BuildKliveHeaders, BuildKliveWsUrl, KliveAPIUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI, RequestPUTFromKliveAPI } from '~/scripts/APIInterface';
 
 /**
  * The one client for the Omniscience v3 API. Every page goes through it, so there is a single
@@ -133,6 +133,26 @@ export async function omniStream(path: string, params: Record<string, QueryValue
         if (signal?.aborted) throw new OmniApiError('aborted', 'Cancelled.', 0, route);
         throw new OmniApiError('network', 'The server could not be reached.', 0, route);
     }
+    await readLines(res, route, onLine, signal);
+}
+
+/**
+ * A command whose answer is an NDJSON stream (a replica writing its reply, a simulated group taking
+ * turns). Aborting the signal closes the connection, which the server takes as "stop writing".
+ */
+export async function omniPostStream(path: string, body: unknown, onLine: (line: any) => void, signal?: AbortSignal): Promise<void> {
+    const route = `${OMNI_API}/${path}`;
+    let res: Response;
+    try {
+        res = await fetch(`${KliveAPIUrl}${route}`, { method: 'POST', mode: 'cors', headers: BuildKliveHeaders(true), body: JSON.stringify(body ?? {}), signal });
+    } catch (error) {
+        if (signal?.aborted) throw new OmniApiError('aborted', 'Cancelled.', 0, route);
+        throw new OmniApiError('network', 'The server could not be reached.', 0, route);
+    }
+    await readLines(res, route, onLine, signal);
+}
+
+async function readLines(res: Response, route: string, onLine: (line: any) => void, signal?: AbortSignal): Promise<void> {
     if (!res.ok) await fail(res, route);
     if (!res.body) throw new OmniApiError('internal', 'The server sent no stream.', res.status, route);
 
@@ -168,6 +188,23 @@ export async function omniStream(path: string, params: Record<string, QueryValue
         if (error instanceof OmniApiError) throw error;
         throw new OmniApiError('network', 'The stream was interrupted.', 0, route);
     }
+}
+
+/** Sends a file as the body of a PUT (an export for the import inbox). The server streams it to disk; nothing is buffered here either. */
+export async function omniUpload<T>(path: string, params: Record<string, QueryValue>, file: Blob): Promise<T> {
+    const route = `${OMNI_API}/${path}${omniQuery(params)}`;
+    let res: Response;
+    try {
+        res = await RequestPUTFromKliveAPI(route, file, false);
+    } catch {
+        throw new OmniApiError('network', 'The upload was interrupted.', 0, route);
+    }
+    return read<T>(res, route);
+}
+
+/** The API path of an attachment's stored file, or of its thumbnail. It needs the Authorization header, so an <img> cannot use it directly (see OmniscienceV3Media). */
+export function omniMediaPath(attachmentId: string, thumbnail: boolean): string {
+    return `${OMNI_API}/media/${thumbnail ? 'thumb' : 'file'}${omniQuery({ attachment: attachmentId })}`;
 }
 
 /** The live-stream socket URL, resuming after `since` and limited to topic prefixes. */

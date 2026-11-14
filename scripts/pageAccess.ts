@@ -72,6 +72,13 @@ const ENTRIES: Entry[] = [
     { prefix: '/omniscience-v3/digests', label: 'Omniscience digests', rule: anyOf('omniscience.messages.read') },
     { prefix: '/omniscience-v3/health', label: 'Omniscience health', rule: anyOf('omniscience.overview.view') },
     { prefix: '/omniscience-v3/data', label: 'Omniscience data controls', rule: anyOf('omniscience.engine.manage') },
+    { prefix: '/omniscience-v3/ask', label: 'Omniscience questions', rule: anyOf('omniscience.persons.read') },
+    { prefix: '/omniscience-v3/review', label: 'Omniscience review', rule: anyOf('omniscience.persons.read') },
+    { prefix: '/omniscience-v3/agenda', label: 'Omniscience agenda', rule: anyOf('omniscience.persons.read') },
+    { prefix: '/omniscience-v3/replicas', label: 'Omniscience replicas', rule: anyOf('omniscience.replica.read') },
+    { prefix: '/omniscience-v3/images', label: 'Omniscience images', rule: anyOf('omniscience.messages.read') },
+    { prefix: '/omniscience-v3/sources', label: 'Omniscience sources', rule: anyOf('omniscience.sources.view') },
+    { prefix: '/omniscience-v3/quality', label: 'Omniscience Quality Lab', rule: anyOf('omniscience.overview.view') },
     { prefix: '/omnidefence', label: 'OmniDefence', rule: anyOf('omnidefence.') },
     { prefix: '/tripwires', label: 'Tripwires', rule: anyOf('tripwires.') },
 

@@ -5,6 +5,7 @@ import type {
 } from '../../../scripts/omniscience/contracts';
 import { catalogPayload, mePayload } from './permissions';
 import { domainState, handleDomain } from './omniscience-v3-domain';
+import { handleKnowledge, knowledgeState } from './omniscience-v3-knowledge';
 
 /**
  * Mocked Omniscience v3 API. Every payload is typed against the contract generated from the C#
@@ -150,6 +151,8 @@ export async function mockV3(page: Page, options: V3MockOptions = {}) {
         refuseRuns: null as { status: number; code: string; message: string } | null,
         /** People, signals, digests, communities, links, data controls and health (the WS-C routes). */
         domain: domainState(),
+        /** Knowledge, review, asking, replicas, sources, imports and image search (the WS-A, WS-B and WS-D routes). */
+        knowledge: knowledgeState(),
         /** Push a live-stream frame to every open socket. */
         push(frame: StreamEventDto) { for (const s of state.sockets) s.ws.send(JSON.stringify(frame)); },
     };
@@ -206,7 +209,7 @@ export async function mockV3(page: Page, options: V3MockOptions = {}) {
         const path = url.pathname;
         const p = url.searchParams;
         const method = request.method();
-        const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'Authorization, Content-Type, X-Klive-Client, X-Klive-Page, Cache-Control', 'access-control-expose-headers': '*' };
+        const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, PUT, OPTIONS', 'access-control-allow-headers': 'Authorization, Content-Type, X-Klive-Client, X-Klive-Page, Cache-Control', 'access-control-expose-headers': '*' };
         if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: cors, body: '' });
         const json = (body: unknown, status = 200) => route.fulfill({ status, headers: cors, contentType: 'application/json', body: JSON.stringify(body) });
         const fail = (status: number, code: string, message: string) => json({ code, message }, status);
@@ -349,6 +352,8 @@ export async function mockV3(page: Page, options: V3MockOptions = {}) {
         }
         const text = (content: string, contentType: string) => route.fulfill({ status: 200, headers: cors, contentType, body: content });
         if (await handleDomain(`${method} ${sub}`, p, body, state.domain, json, fail, can, text)) return;
+        const lines = (events: unknown[]) => route.fulfill({ status: 200, headers: cors, contentType: 'application/x-ndjson; charset=utf-8', body: events.map(e => JSON.stringify(e)).join('\n') + '\n' });
+        if (await handleKnowledge(`${method} ${sub}`, p, body, state.knowledge, json, fail, can, { jobs: state.jobs, runs: state.runs }, text, lines)) return;
         state.unknown.push(`${method} ${path}`);
         return fail(500, 'internal', `e2e: no fixture for ${method} ${path}`);
     });

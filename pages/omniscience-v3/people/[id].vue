@@ -9,6 +9,8 @@
             <div class="ot-actions">
                 <button class="ot-btn ghost" type="button" :disabled="dossier.refreshing.value" @click="refreshAll()">Refresh</button>
                 <button class="ot-btn" type="button" @click="useInTactic()">Run a tactic on this person</button>
+                <NuxtLink v-if="canAsk" class="ot-btn ghost" :to="`${OMNI_BASE}/ask?person=${encodeURIComponent(personId)}`">Ask about them…</NuxtLink>
+                <NuxtLink v-if="canReplica" class="ot-btn ghost" :to="`${OMNI_BASE}/replicas/${encodeURIComponent(personId)}`">Replica…</NuxtLink>
                 <NuxtLink v-if="canManage" class="ot-btn ghost" :to="`${OMNI_BASE}/data?person=${encodeURIComponent(personId)}`">Data controls…</NuxtLink>
             </div>
         </div>
@@ -31,6 +33,16 @@
             <div><strong>The newest evidence is old.</strong><span class="muted">Their last message was <OmniscienceV3Time :ms="d.newestEvidenceMs" mode="age" />.</span></div>
         </div>
 
+        <div class="ot-segment tabs" role="tablist" aria-label="This person">
+            <button v-for="t in TABS" :key="t.value" type="button" role="tab" :aria-selected="view.tab === t.value" :aria-pressed="view.tab === t.value"
+                    :data-testid="`person-tab-${t.value}`" @click="view.tab = t.value">{{ t.label }}</button>
+        </div>
+
+        <OmniscienceV3PersonKnowledge v-if="view.tab === 'knowledge'" ref="knowledgeTab" :key="`k-${personId}`" :person-id="personId" :can-review="canReview" :can-analyse="canAnalyse" />
+        <OmniscienceV3PersonTimeline v-else-if="view.tab === 'timeline'" ref="timelineTab" :key="`t-${personId}`" :person-id="personId" :can-review="canReview" />
+        <OmniscienceV3PersonAudit v-else-if="view.tab === 'audit'" ref="auditTab" :key="`a-${personId}`" :person-id="personId" :can-merge="canMerge" @changed="dossier.refresh()" />
+
+        <template v-else>
         <OmniscienceV3Panel title="Activity" :loading="dossier.loading.value" :error="dossier.error.value" :has-data="!!d" what="This person's page" @retry="dossier.refresh()">
             <template v-if="d">
                 <div class="ot-kpis tight" data-testid="person-kpis">
@@ -77,7 +89,8 @@
         </div>
 
         <OmniscienceV3Panel title="Facts" flush :loading="dossier.loading.value" :error="dossier.error.value" :has-data="!!d" :empty="!!d && !d.facts.length" empty-title="No facts recorded"
-                            empty-text="Facts come from the knowledge workstream's extraction, with their evidence.">
+                            empty-text="Facts come from reading their messages, each with its evidence.">
+            <template #controls><button class="ot-btn ghost sm" type="button" @click="view.tab = 'knowledge'">Everything known, with evidence</button></template>
             <table v-if="d" class="ot-table compact">
                 <thead><tr><th>Attribute</th><th>Value</th><th>Status</th><th class="num">Recorded</th></tr></thead>
                 <tbody>
@@ -152,16 +165,18 @@
                 </table>
             </template>
         </OmniscienceV3Panel>
+        </template>
     </OmniscienceV3Shell>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { OMNI_BASE, omniGet, omniPost } from '~/scripts/omniscience/api';
 import type { DossierDto, PairSummaryDto, PersonBriefDto, PersonLinksDto, PersonRelationshipsDto, ReadModelDto, SimilarPeopleDto } from '~/scripts/omniscience/contracts';
 import { omniCount, omniPercent } from '~/scripts/omniscience/format';
 import { useOmniAction, useOmniCarry, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
+import { useUrlState } from '~/composables/useOmniTrader';
 import { useAccess } from '~/composables/useAccess';
 
 definePageMeta({ layout: 'navbar' });
@@ -174,7 +189,21 @@ const { busy, run } = useOmniAction();
 const { age } = useOmniTime();
 const canManage = computed(() => can('omniscience.engine.manage'));
 const canAnalyse = computed(() => can('omniscience.analysis.run'));
+const canReview = computed(() => can('omniscience.review.act'));
+const canMerge = computed(() => can('omniscience.sources.manage'));
+const canAsk = computed(() => can('omniscience.tactics.run'));
+const canReplica = computed(() => can('omniscience.replica.read'));
 const personId = computed(() => String(route.params.id ?? ''));
+
+type Tab = 'overview' | 'knowledge' | 'timeline' | 'audit';
+const TABS: { value: Tab; label: string }[] = [
+    { value: 'overview', label: 'Overview' }, { value: 'knowledge', label: 'What is known' }, { value: 'timeline', label: 'Timeline and plans' },
+    { value: 'audit', label: 'How it was worked out' },
+];
+const { state: view } = useUrlState({ tab: 'overview' as Tab });
+const knowledgeTab = ref<{ refresh: () => void } | null>(null);
+const timelineTab = ref<{ refresh: () => void } | null>(null);
+const auditTab = ref<{ refresh: () => void } | null>(null);
 
 const dossier = useOmniResource(async signal => {
     const rm = await omniGet<ReadModelDto>('rm', { model: 'person.dossier', key: personId.value }, signal);
@@ -192,6 +221,7 @@ const links = useOmniResource(signal => omniGet<PersonLinksDto>('links/person', 
 
 function refreshAll() {
     void dossier.refresh(); void brief.refresh(); void relationships.refresh(); void similar.refresh(); void links.refresh();
+    knowledgeTab.value?.refresh(); timelineTab.value?.refresh(); auditTab.value?.refresh();
 }
 
 async function requestBrief() {
@@ -217,6 +247,7 @@ function trendTone(trend: string): string { return trend === 'closer' || trend =
 <style scoped>
 .crumbs { margin: 0 0 2px; font-size: 12px; }
 .chips { gap: 6px; flex-wrap: wrap; margin: 0 0 10px; }
+.tabs { margin-bottom: var(--ot-gutter); }
 .series { width: 100%; height: 60px; margin-top: 12px; }
 .series rect { fill: var(--ot-accent, #58a6ff); }
 .hours { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; margin-top: 10px; font-size: 10px; }

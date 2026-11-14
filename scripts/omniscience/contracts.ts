@@ -914,6 +914,15 @@ export interface ForgetRunDto {
   finishedAtMs?: number | null;
 }
 
+export interface GateDecision {
+  subject: string;
+  candidate: string;
+  baseline?: string | null;
+  decision: string;
+  reasons: string[];
+  decidedAtMs: number;
+}
+
 export interface GenerationConfig {
   temperature: number;
   topP: number;
@@ -1562,6 +1571,29 @@ export interface MeasureDescriptor {
   unit: string;
 }
 
+export interface MediaSearchDto {
+  query: string;
+  hits: MediaSearchHitDto[];
+  visualAvailable: boolean;
+  imagesEmbedded: number;
+  note?: string | null;
+}
+
+export interface MediaSearchHitDto {
+  attachmentId: string;
+  messageId: string;
+  conversationId: string;
+  authorPersonId?: string | null;
+  authorName?: string | null;
+  sentAtMs: number;
+  deleted: boolean;
+  caption?: string | null;
+  tags: string[];
+  imageText?: string | null;
+  score: number;
+  why: string[];
+}
+
 export interface MergeRequest {
   personA: string;
   personB: string;
@@ -1928,6 +1960,10 @@ export interface PersonLinksDto {
   recent: LinkShareDto[];
 }
 
+export interface PersonNamesDto {
+  names: Record<string, string>;
+}
+
 export interface PersonRelationshipsDto {
   personId: string;
   name?: string | null;
@@ -2047,6 +2083,25 @@ export type PlaybookTriggerKind = "Manual" | "Daily" | "Weekly" | "Every" | "Eve
 export interface PlaybookValidationDto {
   problems: string[];
   nextDueMs?: number | null;
+}
+
+export interface QualityLabDto {
+  asOfMs: number;
+  promptVersion: string;
+  gold: QualityMetric[];
+  planted: QualityMetric[];
+  gate?: GateDecision | null;
+}
+
+export interface QualityMetric {
+  scope: string;
+  metric: string;
+  value?: number | null;
+  ciLow?: number | null;
+  ciHigh?: number | null;
+  n: number;
+  promptVersion?: string | null;
+  model?: string | null;
 }
 
 export interface QualityRunRequest {

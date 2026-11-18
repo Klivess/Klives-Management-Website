@@ -1,12 +1,12 @@
 <template>
-    <OmniTraderCard :title="title" :subtitle="subtitle" :flush="flush && !blocking" :loading="loading && !blocking"
+    <OmniscienceV3Card :title="title" :subtitle="subtitle" :flush="flush && !blocking" :loading="loading && !blocking"
                     :empty="!blocking && empty" :empty-kind="emptyKind" :empty-title="emptyTitle" :empty-text="emptyText"
                     :stale="stale" :stale-reason="staleReason" :footnote="footnote" :attention="attention">
         <template v-if="$slots.controls" #controls><slot name="controls" /></template>
         <OmniscienceV3ErrorBlock v-if="blocking && error" :error="error" :what="what ?? title" @retry="$emit('retry')" />
         <slot v-else />
         <template v-if="$slots.footer" #footer><slot name="footer" /></template>
-    </OmniTraderCard>
+    </OmniscienceV3Card>
 </template>
 
 <script setup lang="ts">

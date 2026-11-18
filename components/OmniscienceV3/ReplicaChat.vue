@@ -1,6 +1,6 @@
 <template>
     <div class="chat" data-testid="replica-chat">
-        <div class="ot-banner info" role="note">
+        <div class="omni-banner info" role="note">
             <span class="glyph" aria-hidden="true">✎</span>
             <div><strong>A simulation.</strong><span class="muted">Every reply here is written by a model in {{ group ? 'these people’s' : 'this person’s' }} style from their past messages. Nobody said any of it, and nothing is ever sent to anyone.</span></div>
         </div>
@@ -10,7 +10,7 @@
             <p v-if="loading" class="omni-muted">Loading…</p>
             <p v-else-if="!lines.length" class="omni-muted">{{ group ? 'Nothing said yet. Let them talk, or start them off.' : 'Nothing said yet. Write the first message.' }}</p>
             <div v-for="m in lines" :key="m.seq" class="line" :class="[m.role === 'user' ? 'me' : 'them', m.status ?? '']" :data-testid="`chat-line-${m.seq}`">
-                <span class="who">{{ m.role === 'user' ? 'You' : m.speaker ?? name(m.personId) }}<span v-if="m.simulated" class="ot-chip sm">simulated</span></span>
+                <span class="who">{{ m.role === 'user' ? 'You' : m.speaker ?? name(m.personId) }}<span v-if="m.simulated" class="omni-chip sm">simulated</span></span>
                 <span class="text">{{ m.content }}</span>
                 <span class="meta omni-muted">
                     <OmniscienceV3Time :ms="m.atMs" mode="age" />
@@ -27,18 +27,18 @@
         </div>
 
         <form v-if="canChat && !chat.archived" class="composer" @submit.prevent="send()">
-            <textarea v-model="draft" class="ot-input" rows="2" maxlength="4000" :placeholder="group ? 'Say something to the group (optional)…' : 'Write to them…'" :disabled="writing"
+            <textarea v-model="draft" class="omni-input" rows="2" maxlength="4000" :placeholder="group ? 'Say something to the group (optional)…' : 'Write to them…'" :disabled="writing"
                       data-testid="chat-input" @keydown.enter.exact.prevent="send()"></textarea>
             <div class="omni-row">
                 <template v-if="group">
-                    <label class="turns">Turns <input v-model.number="turns" class="ot-input" type="number" min="1" max="40" /></label>
-                    <button class="ot-btn primary" type="submit" :disabled="writing" data-testid="chat-advance">{{ draft.trim() ? 'Say it, then let them talk' : 'Let them talk' }}</button>
+                    <label class="turns">Turns <input v-model.number="turns" class="omni-input" type="number" min="1" max="40" /></label>
+                    <button class="omni-btn primary" type="submit" :disabled="writing" data-testid="chat-advance">{{ draft.trim() ? 'Say it, then let them talk' : 'Let them talk' }}</button>
                 </template>
                 <template v-else>
-                    <button class="ot-btn primary" type="submit" :disabled="writing || !draft.trim()" data-testid="chat-send">Send</button>
-                    <button class="ot-btn ghost" type="button" :disabled="writing || !canRegenerate" title="Write the last reply again" @click="regenerate()">Write it again</button>
+                    <button class="omni-btn primary" type="submit" :disabled="writing || !draft.trim()" data-testid="chat-send">Send</button>
+                    <button class="omni-btn ghost" type="button" :disabled="writing || !canRegenerate" title="Write the last reply again" @click="regenerate()">Write it again</button>
                 </template>
-                <button v-if="writing" class="ot-btn warn" type="button" data-testid="chat-stop" @click="stop()">Stop</button>
+                <button v-if="writing" class="omni-btn warn" type="button" data-testid="chat-stop" @click="stop()">Stop</button>
             </div>
         </form>
         <p v-else-if="chat.archived" class="omni-muted">This chat is archived.</p>
@@ -193,20 +193,20 @@ onBeforeUnmount(() => controller?.abort());
 <style scoped>
 .chat { display: flex; flex-direction: column; gap: 10px; }
 .lines { display: flex; flex-direction: column; gap: 8px; max-height: 56vh; min-height: 160px; overflow-y: auto; padding: 4px 2px; }
-.line { display: flex; flex-direction: column; gap: 2px; max-width: min(720px, 88%); padding: 8px 10px; border-radius: 8px; background: var(--ot-surface-2); font-size: 13.5px; }
-.line.me { align-self: flex-end; background: var(--ot-accent-soft); }
+.line { display: flex; flex-direction: column; gap: 2px; max-width: min(720px, 88%); padding: 8px 10px; border-radius: 8px; background: var(--omni-surface-2); font-size: 13.5px; }
+.line.me { align-self: flex-end; background: var(--omni-accent-soft); }
 .line.them { align-self: flex-start; }
-.line.failed { box-shadow: inset 2px 0 0 var(--ot-negative); }
-.who { display: flex; gap: 6px; align-items: center; font-size: 11.5px; color: var(--ot-muted); }
+.line.failed { box-shadow: inset 2px 0 0 var(--omni-negative); }
+.who { display: flex; gap: 6px; align-items: center; font-size: 11.5px; color: var(--omni-muted); }
 .text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .meta { display: flex; gap: 6px; align-items: center; font-size: 11px; }
 .rate { background: none; border: 0; cursor: pointer; padding: 0 2px; opacity: 0.45; font-size: 12px; }
 .rate.on, .rate:hover { opacity: 1; }
 .stage { font-size: 12.5px; font-style: italic; }
-.notice { margin: 0; font-size: 12.5px; color: var(--ot-warning); }
+.notice { margin: 0; font-size: 12.5px; color: var(--omni-warning); }
 .composer { display: flex; flex-direction: column; gap: 8px; }
 .turns { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
 .turns input { width: 70px; }
-.ot-banner .muted { display: block; color: var(--ot-text-2); }
+.omni-banner .muted { display: block; color: var(--omni-text-2); }
 p { margin: 0; }
 </style>

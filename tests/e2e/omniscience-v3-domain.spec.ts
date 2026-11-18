@@ -30,7 +30,7 @@ async function go(page: Page, path: string) {
     await page.evaluate(to => (document.querySelector('#__nuxt') as any).__vue_app__.config.globalProperties.$router.push(to), path);
 }
 
-const card = (page: Page, title: string) => page.locator('.ot-card').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
+const card = (page: Page, title: string) => page.locator('.omni-card').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
 const posts = (state: Awaited<ReturnType<typeof mockV3>>, sub: string) => state.posts.filter(r => r.path === `${V3}/${sub}`);
 
 test('people: the directory filters, a person page shows the dossier, and a brief can be requested', async ({ page }) => {
@@ -45,7 +45,15 @@ test('people: the directory filters, a person page shows the dossier, and a brie
     await expect(rows).toHaveCount(1);
     expect(state.requests.some(r => r.startsWith(`GET ${V3}/people?`) && r.includes('q=ada'))).toBe(true);
     await expect(page).toHaveURL(/q=ada/);
+    // A row opens a quick look that keeps the list where it was; the full page is one click further.
     await rows.first().click();
+    const peek = page.getByTestId('person-peek');
+    await expect(peek).toContainText('tracked', BOOT);
+    await expect(peek).toContainText('4,210');
+    await expect(page.getByTestId('peek-facts')).toContainText('rock climbing');
+    await expect(page).toHaveURL(/\/people\?q=ada/);
+    await shot(page, 'people-peek');
+    await page.getByTestId('peek-open').click();
 
     await expect(page.getByTestId('person-name')).toHaveText('Synthetic Ada', BOOT);
     await expect(page.getByTestId('person-chips')).toContainText('tracked');
@@ -95,9 +103,9 @@ test('signals: verdicts and bulk state on alerts, a snoozed reply, notices in wo
     await expect(page.getByTestId('signals-tab-alerts')).toContainText('2');
 
     await alerts.first().locator('td').first().click(); // the row's middle is the person link
-    await expect(page.locator('.ot-drawer')).toContainText('has anyone asked you about the trip?');
-    await page.locator('.ot-drawer').getByRole('button', { name: 'Close panel' }).click();
-    await expect(page.locator('.ot-drawer')).toHaveCount(0);
+    await expect(page.locator('.omni-drawer')).toContainText('has anyone asked you about the trip?');
+    await page.locator('.omni-drawer').getByRole('button', { name: 'Close panel' }).click();
+    await expect(page.locator('.omni-drawer')).toHaveCount(0);
     await alerts.first().getByTitle('This was right').click();
     await expect.poll(() => posts(state, 'signals/alerts/feedback').at(-1)?.body).toEqual({ alertId: 'a1', verdict: 'Correct', messageId: 'm-a1' });
     await expect(alerts).toHaveCount(1);
@@ -308,4 +316,88 @@ test('a profile that may only read sees no controls on these pages, and data con
     await expect(page.getByRole('heading', { name: "You can't open Omniscience data controls" })).toBeVisible(BOOT);
     expect(state.requests.filter(r => r.includes(`${V3}/data/`))).toEqual([]);
     expect(state.unknown).toEqual([]);
+});
+
+test('brief: what needs you, who is waiting and what is coming up, each line leading to where it is dealt with', async ({ page }) => {
+    const state = await mockV3(page);
+    await page.setViewportSize({ width: 1600, height: 1100 });
+    await loadPage(page, BASE);
+    const needs = page.getByTestId('brief-needs');
+    // The engine's own trouble first, then what waits on a person's decision.
+    await expect(needs.locator('.omni-need').first()).toContainText('failed every attempt', BOOT);
+    await expect(needs).toContainText('waiting on your reply');
+    await expect(needs).toContainText('3 items to review');
+    await expect(needs).toContainText('1 possible same-person link');
+    await expect(needs).toContainText('1 plan overdue');
+    await expect(page.getByTestId('brief-kpis')).toContainText('Waiting on you');
+    await expect(page.getByTestId('brief-agenda').locator('> li')).toHaveCount(3);
+    await expect(page.getByTestId('brief-tracked')).toContainText('Synthetic Ada');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('for you');
+    await shot(page, 'brief');
+
+    await needs.locator('[data-need="dead-jobs"]').click();
+    await expect(page).toHaveURL(/\/omniscience-v3\/jobs\?state=dead/);
+    expect(state.unknown).toEqual([]);
+    expect(state.errors).toEqual([]);
+});
+
+test('navigation: areas, then the pages of the one you point at; the palette finds a person by name and remembers them', async ({ page }) => {
+    const state = await mockV3(page);
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    await loadPage(page, `${BASE}/people`);
+    const pages = page.getByTestId('omni-nav-pages');
+    await expect(pages.getByRole('link', { name: 'People', exact: true })).toHaveAttribute('aria-current', 'page', BOOT);
+    await expect(page.locator('.omni-area[data-area="people"]')).toHaveClass(/here/);
+
+    // Pointing at another area shows its pages without leaving this one.
+    await page.locator('.omni-area[data-area="engine"]').hover();
+    await expect(pages.getByRole('link', { name: 'Jobs' })).toBeVisible();
+    await expect(page).toHaveURL(/\/omniscience-v3\/people$/);
+    await pages.getByRole('link', { name: 'Jobs' }).click();
+    await expect(page).toHaveURL(/\/omniscience-v3\/jobs/);
+    await expect(page.locator('.omni-area[data-area="engine"]')).toHaveClass(/here/);
+
+    await page.keyboard.press('Control+k');
+    await page.getByLabel('Search pages, people and tactics').fill('ada');
+    await expect(page.locator('.omni-palette li[role="option"]').first()).toContainText('Synthetic Ada');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('person-name')).toHaveText('Synthetic Ada', BOOT);
+    // Someone opened is offered again before anything is typed.
+    await page.keyboard.press('Control+k');
+    await expect(page.locator('.omni-palette')).toContainText('Opened recently');
+    await expect(page.locator('.omni-palette li[role="option"]').first()).toContainText('Synthetic Ada');
+    await shot(page, 'palette');
+    expect(state.unknown).toEqual([]);
+    expect(state.errors).toEqual([]);
+});
+
+test('people: two picked people are compared side by side, and an untracked pair says so', async ({ page }) => {
+    const state = await mockV3(page);
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    await loadPage(page, `${BASE}/people`);
+    const rows = card(page, 'People').locator('tbody tr');
+    await expect(rows).toHaveCount(6, BOOT);
+    await rows.filter({ hasText: 'Synthetic Ada' }).getByRole('button', { name: 'Compare Synthetic Ada' }).click();
+    await expect(page.getByTestId('people-picked')).toContainText('Pick one more person');
+    await expect(page.getByTestId('people-compare')).toBeDisabled();
+    await rows.filter({ hasText: 'Synthetic Bo' }).getByRole('button', { name: 'Compare Synthetic Bo' }).click();
+    await page.getByTestId('people-compare').click();
+    const compare = page.getByTestId('pair-compare');
+    await expect(compare).toContainText('Interactions', BOOT);
+    await expect(compare).toContainText('300');
+    await expect(compare).toContainText('62%');
+    await expect(compare).toContainText('Grew closer');
+    expect(state.requests.some(r => r.startsWith(`GET ${V3}/insights/pair?`) && r.includes('a=person-a') && r.includes('b=person-b'))).toBe(true);
+    await shot(page, 'people-compare');
+    await page.keyboard.press('Escape');
+    await expect(compare).toHaveCount(0);
+
+    // A third pick replaces the first. A pair the engine does not track is a fact, not a failure.
+    await rows.filter({ hasText: 'Synthetic Cy' }).getByRole('button', { name: 'Compare Synthetic Cy' }).click();
+    await expect(page.getByTestId('people-picked')).toContainText('Synthetic Bo and Synthetic Cy');
+    await page.getByTestId('people-compare').click();
+    await expect(page.getByTestId('pair-compare')).toContainText('Not tracked as a pair', BOOT);
+    await expect(page.getByTestId('pair-compare')).toContainText('too few interactions');
+    expect(state.unknown).toEqual([]);
+    expect(state.errors).toEqual([]);
 });

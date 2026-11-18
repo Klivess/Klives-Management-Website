@@ -1,13 +1,13 @@
 <template>
     <OmniscienceV3Shell>
-        <div class="ot-pagehead">
+        <div class="omni-pagehead">
             <div>
                 <h1>Health</h1>
                 <p class="subtitle">Is the data still flowing? Failing or silent sources, stuck backfills, model errors and dead jobs, plus the monitors that watch people and topics and what they found.</p>
             </div>
-            <div class="ot-actions">
+            <div class="omni-actions">
                 <span v-if="health.data.value?.checkedAtMs" class="omni-muted">checked <OmniscienceV3Time :ms="health.data.value.checkedAtMs" mode="age" /></span>
-                <button class="ot-btn ghost" type="button" @click="refreshAll()">Refresh</button>
+                <button class="omni-btn ghost" type="button" @click="refreshAll()">Refresh</button>
             </div>
         </div>
 
@@ -17,7 +17,7 @@
                             :attention="!!health.data.value?.open.some(i => i.severity.toLowerCase() === 'urgent')" @retry="health.refresh()">
             <ul v-if="health.data.value" class="issues" data-testid="health-open">
                 <li v-for="i in health.data.value.open" :key="i.issueId" :class="i.severity.toLowerCase()">
-                    <span class="ot-chip sm" :class="severityTone(i.severity)">{{ omniHumanise(i.kind) }}</span>
+                    <span class="omni-chip sm" :class="severityTone(i.severity)">{{ omniHumanise(i.kind) }}</span>
                     <span class="text">{{ healthText(i.kind, i.detail, i.subject) }}</span>
                     <span class="omni-muted">since <OmniscienceV3Time :ms="i.firstMs" mode="age" /></span>
                     <NuxtLink v-if="i.kind === 'jobs_dead'" class="omni-muted" :to="`${OMNI_BASE}/jobs?state=dead`">jobs →</NuxtLink>
@@ -26,21 +26,21 @@
             </ul>
         </OmniscienceV3Panel>
 
-        <div class="ot-grid two">
+        <div class="omni-grid two">
             <OmniscienceV3Panel title="Monitors" flush :loading="rules.loading.value" :error="rules.error.value" :has-data="!!rules.data.value"
                                 :empty="!!rules.data.value && !rules.data.value.rules.length" empty-title="No monitors"
                                 empty-text="Watch a person's activity (X42) or a topic surge (X43) from the Tactics page." @retry="rules.refresh()">
-                <table v-if="rules.data.value" class="ot-table" data-testid="monitor-rules">
+                <table v-if="rules.data.value" class="omni-table" data-testid="monitor-rules">
                     <thead><tr><th>Monitor</th><th class="num">Found (30 d)</th><th class="num">Last</th><th v-if="canManage"></th></tr></thead>
                     <tbody>
                         <tr v-for="r in rules.data.value.rules" :key="r.watchId" class="clickable" :class="{ selected: filters.rule === r.watchId }" @click="filters.rule = filters.rule === r.watchId ? '' : r.watchId">
-                            <td><span class="cellstack"><span><strong>{{ r.name }}</strong> <span v-if="!r.enabled" class="ot-chip sm">off</span></span>
+                            <td><span class="cellstack"><span><strong>{{ r.name }}</strong> <span v-if="!r.enabled" class="omni-chip sm">off</span></span>
                                 <span class="sub">{{ describe(r) }}</span></span></td>
                             <td class="num">{{ omniCount(r.fired30d) }}</td>
                             <td class="num"><OmniscienceV3Time :ms="r.lastFiredMs" mode="age" /></td>
                             <td v-if="canManage" class="actions" @click.stop>
-                                <button class="ot-btn ghost sm" type="button" :disabled="busy !== null" @click="toggle(r.watchId, !r.enabled)">{{ r.enabled ? 'Turn off' : 'Turn on' }}</button>
-                                <button class="ot-btn ghost sm" type="button" :disabled="busy !== null" @click="remove(r.watchId, r.name)">Delete</button>
+                                <button class="omni-btn ghost sm" type="button" :disabled="busy !== null" @click="toggle(r.watchId, !r.enabled)">{{ r.enabled ? 'Turn off' : 'Turn on' }}</button>
+                                <button class="omni-btn ghost sm" type="button" :disabled="busy !== null" @click="remove(r.watchId, r.name)">Delete</button>
                             </td>
                         </tr>
                     </tbody>
@@ -60,7 +60,7 @@
             <OmniscienceV3Panel title="What the monitors found" flush :loading="events.loading.value" :error="events.error.value" :has-data="!!events.data.value"
                                 :empty="!!events.data.value && !events.data.value.items.length" empty-title="Nothing yet" @retry="events.refresh()">
                 <template #controls>
-                    <select v-model="filters.kind" class="ot-select auto" aria-label="Kind of finding">
+                    <select v-model="filters.kind" class="omni-select auto" aria-label="Kind of finding">
                         <option value="">Everything</option>
                         <option v-for="k in KINDS" :key="k" :value="k">{{ omniHumanise(k) }}</option>
                     </select>
@@ -70,25 +70,25 @@
                         <span class="text">{{ findingText(e.kind, e.data, e.personName) }}</span>
                         <NuxtLink v-if="e.personId" class="omni-muted" :to="`${OMNI_BASE}/people/${encodeURIComponent(e.personId)}`">person</NuxtLink>
                         <span class="omni-muted"><OmniscienceV3Time :ms="e.atMs" mode="age" /></span>
-                        <span v-if="!e.notified" class="ot-chip sm" title="Recorded but not told (quiet hours, or a rule said not to)">quiet</span>
+                        <span v-if="!e.notified" class="omni-chip sm" title="Recorded but not told (quiet hours, or a rule said not to)">quiet</span>
                     </li>
                 </ul>
             </OmniscienceV3Panel>
         </div>
 
-        <div class="ot-grid two">
+        <div class="omni-grid two">
             <OmniscienceV3Panel title="Resolved lately" flush :loading="health.loading.value" :error="health.error.value" :has-data="!!health.data.value"
                                 :empty="!!health.data.value && !health.data.value.resolved.length" empty-title="Nothing resolved recently">
                 <ul v-if="health.data.value" class="issues">
                     <li v-for="i in health.data.value.resolved" :key="i.issueId">
-                        <span class="ot-chip sm">{{ omniHumanise(i.kind) }}</span>
+                        <span class="omni-chip sm">{{ omniHumanise(i.kind) }}</span>
                         <span class="text">{{ healthText(i.kind, i.detail, i.subject) }}</span>
                         <span class="omni-muted">fixed <OmniscienceV3Time :ms="i.resolvedMs" mode="age" /></span>
                     </li>
                 </ul>
             </OmniscienceV3Panel>
             <OmniscienceV3Panel title="Translation" :loading="translate.loading.value" :error="translate.error.value" :has-data="!!translate.data.value" @retry="translate.refresh()">
-                <dl v-if="translate.data.value" class="ot-kv" data-testid="translate-status">
+                <dl v-if="translate.data.value" class="omni-kv" data-testid="translate-status">
                     <dt>Into</dt><dd>{{ translate.data.value.target }}</dd>
                     <dt>Automatic</dt><dd>{{ translate.data.value.auto ? 'yes, as messages arrive' : 'only when asked' }}</dd>
                     <dt>Stored</dt><dd>{{ omniCount(translate.data.value.stored) }} translations</dd>
@@ -107,7 +107,7 @@ import type { HealthListDto, MonitorEventPageDto, MonitorRuleChangedDto, Monitor
 import { omniCount } from '~/scripts/omniscience/format';
 import { findingText, healthText, omniHumanise } from '~/scripts/omniscience/findings';
 import { useOmniAction, useOmniDebounced, useOmniResource } from '~/composables/useOmniscienceV3';
-import { useUrlState } from '~/composables/useOmniTrader';
+import { useOmniUrlState } from '~/composables/useOmniscienceV3';
 import { useAccess } from '~/composables/useAccess';
 
 definePageMeta({ layout: 'navbar' });
@@ -118,7 +118,7 @@ const KINDS = ['person_activity', 'new_person', 'topic_surge', 'klives_tone', 'd
 const { can } = useAccess();
 const canManage = computed(() => can('omniscience.alerts.manage'));
 const { busy, run } = useOmniAction();
-const { state: filters } = useUrlState({ kind: '', rule: '' });
+const { state: filters } = useOmniUrlState({ kind: '', rule: '' });
 
 const health = useOmniResource(signal => omniGet<HealthListDto>('monitors/health', {}, signal), { pollMs: 60_000 });
 const rules = useOmniResource(signal => omniGet<MonitorRuleListDto>('monitors/rules', {}, signal));
@@ -172,14 +172,14 @@ function spark(n: number): number { return n <= 0 ? 0 : Math.max(1, (n / maxSpar
 </script>
 
 <style scoped>
-.ot-grid.two { margin-top: var(--ot-gutter); }
+.omni-grid.two { margin-top: var(--omni-gutter); }
 .issues { list-style: none; margin: 0; padding: 0; }
-.issues li { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--ot-line); font-size: 13px; flex-wrap: wrap; }
+.issues li { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--omni-line); font-size: 13px; flex-wrap: wrap; }
 .issues li .text { flex: 1 1 300px; min-width: 0; }
-.issues li.urgent { box-shadow: inset 2px 0 0 var(--ot-negative); }
-.issues li.attention { box-shadow: inset 2px 0 0 var(--ot-warning); }
+.issues li.urgent { box-shadow: inset 2px 0 0 var(--omni-negative); }
+.issues li.attention { box-shadow: inset 2px 0 0 var(--omni-warning); }
 td.actions { white-space: nowrap; text-align: right; }
 .topic { display: flex; flex-direction: column; gap: 4px; width: 100%; font-size: 13px; }
 .spark { width: 100%; height: 28px; }
-.spark rect { fill: var(--ot-accent, #58a6ff); }
+.spark rect { fill: var(--omni-accent, #58a6ff); }
 </style>

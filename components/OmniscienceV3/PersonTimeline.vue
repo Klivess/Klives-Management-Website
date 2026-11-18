@@ -8,7 +8,7 @@
                     <span class="when">{{ range(e) }}<span class="omni-muted"> · to the {{ e.precision }}</span></span>
                     <span class="what"><strong>{{ e.title }}</strong>
                         <span class="sub">{{ omniHumanise(e.category) }} · confidence {{ omniPercent(e.probability) }} · {{ e.evidenceCount }} message{{ e.evidenceCount === 1 ? '' : 's' }}</span></span>
-                    <button class="ot-btn ghost sm" type="button" @click="openFact = e.assertionId">The fact behind it</button>
+                    <button class="omni-btn ghost sm" type="button" @click="openFact = e.assertionId">The fact behind it</button>
                 </li>
             </ol>
             <template v-if="timeline.data.value && timeline.data.value.totalEvents > timeline.data.value.events.length" #footer>
@@ -20,7 +20,7 @@
                             :empty="!plans.items.value.length" empty-title="No plans recorded" @retry="plans.reload()">
             <OmniscienceV3PlanList :plans="plans.items.value" testid="person-plans" />
             <template v-if="plans.hasMore.value" #footer>
-                <button class="ot-btn sm" type="button" :disabled="plans.loadingMore.value" @click="plans.loadMore()">{{ plans.loadingMore.value ? 'Loading…' : 'Load more' }}</button>
+                <button class="omni-btn sm" type="button" :disabled="plans.loadingMore.value" @click="plans.loadMore()">{{ plans.loadingMore.value ? 'Loading…' : 'Load more' }}</button>
             </template>
         </OmniscienceV3Panel>
 
@@ -64,8 +64,8 @@ function range(e: LifeEventDto): string {
 
 <style scoped>
 .events { list-style: none; margin: 0; padding: 0; }
-.events li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid var(--ot-line); font-size: 13px; }
+.events li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid var(--omni-line); font-size: 13px; }
 .when { flex: 0 0 250px; font-variant-numeric: tabular-nums; }
 .what { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; }
-.sub { font-size: 11.5px; color: var(--ot-muted); }
+.sub { font-size: 11.5px; color: var(--omni-muted); }
 </style>

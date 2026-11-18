@@ -2,12 +2,12 @@
     <div data-testid="person-knowledge">
         <div class="omni-row head">
             <template v-if="p">
-                <span v-if="p.minorRestricted" class="ot-chip warn" title="Routine patterns, inferences and identity facts are not kept for someone who is, or may be, under 18">under 18 or may be: restricted facts are not kept</span>
-                <span v-if="p.backlogPending" class="ot-chip info">more messages waiting to be read</span>
+                <span v-if="p.minorRestricted" class="omni-chip warn" title="Routine patterns, inferences and identity facts are not kept for someone who is, or may be, under 18">under 18 or may be: restricted facts are not kept</span>
+                <span v-if="p.backlogPending" class="omni-chip info">more messages waiting to be read</span>
                 <span class="omni-muted">{{ omniCount(p.coveredMessages) }} messages read · last read <OmniscienceV3Time :ms="p.lastExtractMs" mode="age" /> · prompt {{ p.promptVersion }}</span>
             </template>
             <span class="grow"></span>
-            <button v-if="canAnalyse" class="ot-btn sm" type="button" :disabled="busy !== null" data-testid="deduce-now" @click="deduceNow()">Read their messages again now</button>
+            <button v-if="canAnalyse" class="omni-btn sm" type="button" :disabled="busy !== null" data-testid="deduce-now" @click="deduceNow()">Read their messages again now</button>
         </div>
 
         <OmniscienceV3Panel title="What is known" flush :loading="profile.loading.value" :error="profile.error.value" :has-data="!!p" :empty="!!p && !p.categories.length"
@@ -15,13 +15,13 @@
             <template v-if="p">
                 <section v-for="c in p.categories" :key="c.category" class="category">
                     <h4 class="omni-h4">{{ omniHumanise(c.category) }}</h4>
-                    <table class="ot-table compact">
+                    <table class="omni-table compact">
                         <thead><tr><th>What</th><th>Value</th><th>Status</th><th class="num">Confidence</th><th>When</th><th>How we know</th></tr></thead>
                         <tbody>
                             <tr v-for="f in c.facts" :key="f.assertionId" class="clickable" :class="{ past: isPast(f) }" :data-testid="`fact-${f.assertionId}`" @click="openFact = f.assertionId">
                                 <td>{{ f.attributeTitle }}</td>
                                 <td>{{ f.polarity === 'negated' ? 'not ' : '' }}{{ f.value }}</td>
-                                <td><span class="ot-chip sm" :class="factTone(f.status)" :title="factStatusHelp(f.status)">{{ f.status }}</span></td>
+                                <td><span class="omni-chip sm" :class="factTone(f.status)" :title="factStatusHelp(f.status)">{{ f.status }}</span></td>
                                 <td class="num">{{ omniPercent(f.probability) }}</td>
                                 <td class="omni-muted">{{ factValidity(f, month) || '—' }}</td>
                                 <td class="omni-muted">{{ sourceKindLabel(f.sourceKind) }}</td>
@@ -34,13 +34,13 @@
 
         <OmniscienceV3PersonLookBack ref="lookBack" :person-id="personId" @open="openFact = $event" />
 
-        <div class="ot-grid two">
+        <div class="omni-grid two">
             <OmniscienceV3Panel title="Worked out, not stated" flush :loading="profile.loading.value" :error="profile.error.value" :has-data="!!p" :empty="!!p && !p.inferences.length"
                                 empty-title="No inferences" :empty-text="p?.minorRestricted ? 'Nothing is inferred about someone who is, or may be, under 18.' : 'An inference is a conclusion drawn from stated facts. It is always labelled as one.'">
                 <ul v-if="p" class="plain">
                     <li v-for="f in p.inferences" :key="f.assertionId" class="clickable" @click="openFact = f.assertionId">
                         <span>{{ f.attributeTitle }}: <strong>{{ f.value }}</strong></span>
-                        <span class="ot-chip sm warn">inferred</span>
+                        <span class="omni-chip sm warn">inferred</span>
                         <span class="omni-muted">{{ omniPercent(f.probability) }}</span>
                     </li>
                 </ul>
@@ -51,28 +51,28 @@
                 <ul v-if="hypotheses.data.value" class="plain">
                     <li v-for="h in hypotheses.data.value" :key="h.hypothesisId">
                         <span>{{ h.statement }}</span>
-                        <span class="ot-chip sm" :class="h.status === 'open' ? 'info' : ''">{{ h.status }}</span>
+                        <span class="omni-chip sm" :class="h.status === 'open' ? 'info' : ''">{{ h.status }}</span>
                         <span class="omni-muted">{{ omniPercent(h.probability) }} · until <OmniscienceV3Time :ms="h.expiresAtMs" mode="absolute" /></span>
                     </li>
                 </ul>
             </OmniscienceV3Panel>
         </div>
 
-        <div class="ot-grid two">
+        <div class="omni-grid two">
             <OmniscienceV3Panel title="Names people use for them" flush :loading="aliases.loading.value" :error="aliases.error.value" :has-data="!!aliases.data.value"
                                 :empty="!!aliases.data.value && !aliases.data.value.length" empty-title="No other names found" @retry="aliases.refresh()">
-                <table v-if="aliases.data.value" class="ot-table compact" data-testid="aliases-table">
+                <table v-if="aliases.data.value" class="omni-table compact" data-testid="aliases-table">
                     <thead><tr><th>Name</th><th>Kind</th><th class="num">Used</th><th>Status</th><th v-if="canReview"></th></tr></thead>
                     <tbody>
                         <tr v-for="a in aliases.data.value" :key="a.aliasId">
-                            <td><strong>{{ a.alias }}</strong><span v-if="a.commonWord" class="ot-chip sm warn" title="Also an ordinary word, so it never triggers an alert on its own">common word</span></td>
+                            <td><strong>{{ a.alias }}</strong><span v-if="a.commonWord" class="omni-chip sm warn" title="Also an ordinary word, so it never triggers an alert on its own">common word</span></td>
                             <td class="omni-muted">{{ omniHumanise(a.nameKind) }} · {{ a.scopeKind }}</td>
                             <td class="num">{{ a.usages }} by {{ a.speakers }}</td>
-                            <td><span class="ot-chip sm" :class="factTone(a.status)">{{ a.status }}</span></td>
+                            <td><span class="omni-chip sm" :class="factTone(a.status)">{{ a.status }}</span></td>
                             <td v-if="canReview" class="actions">
                                 <template v-if="a.status !== 'confirmed' && a.status !== 'rejected'">
-                                    <button class="ot-btn ghost sm" type="button" :disabled="busy !== null" title="Yes, that is them" @click="reviewAlias(a, 'confirm')">✓</button>
-                                    <button class="ot-btn ghost sm" type="button" :disabled="busy !== null" title="No, that is not them" @click="reviewAlias(a, 'reject')">✕</button>
+                                    <button class="omni-btn ghost sm" type="button" :disabled="busy !== null" title="Yes, that is them" @click="reviewAlias(a, 'confirm')">✓</button>
+                                    <button class="omni-btn ghost sm" type="button" :disabled="busy !== null" title="No, that is not them" @click="reviewAlias(a, 'reject')">✕</button>
                                 </template>
                             </td>
                         </tr>
@@ -81,7 +81,7 @@
             </OmniscienceV3Panel>
             <OmniscienceV3Panel title="People, places and things they mention" flush :loading="entities.loading.value" :error="entities.error.value" :has-data="!!entities.data.value"
                                 :empty="!!entities.data.value && !entities.data.value.length" empty-title="Nothing recorded" @retry="entities.refresh()">
-                <table v-if="entities.data.value" class="ot-table compact">
+                <table v-if="entities.data.value" class="omni-table compact">
                     <thead><tr><th>Name</th><th>Kind</th><th class="num">Mentions</th><th class="num">Last</th></tr></thead>
                     <tbody>
                         <tr v-for="e in entities.data.value" :key="e.entityId"><td>{{ e.name }}</td><td class="omni-muted">{{ omniHumanise(e.kind) }}</td>
@@ -94,23 +94,23 @@
         <OmniscienceV3Panel title="Age" :loading="age.loading.value" :error="age.error.value" :has-data="!!age.data.value" what="The age band" @retry="age.refresh()">
             <template v-if="age.data.value">
                 <div class="omni-row" data-testid="age-band">
-                    <span class="ot-chip" :class="age.data.value.restricted ? 'warn' : 'ok'">{{ omniHumanise(age.data.value.band) }}</span>
-                    <span v-if="age.data.value.markedMinorByKlives" class="ot-chip warn">you marked them as under 18</span>
+                    <span class="omni-chip" :class="age.data.value.restricted ? 'warn' : 'ok'">{{ omniHumanise(age.data.value.band) }}</span>
+                    <span v-if="age.data.value.markedMinorByKlives" class="omni-chip warn">you marked them as under 18</span>
                     <span class="omni-muted">{{ age.data.value.restricted
                         ? 'Treated as under 18: no replica, no face labels, no alert about them, no routine patterns or identity facts.'
                         : 'Nothing says they are under 18.' }}</span>
                 </div>
-                <table v-if="age.data.value.statements.length" class="ot-table compact statements">
+                <table v-if="age.data.value.statements.length" class="omni-table compact statements">
                     <thead><tr><th>Said</th><th>Kind</th><th>Status</th><th>When</th><th v-if="canReview"></th></tr></thead>
                     <tbody>
                         <tr v-for="s in age.data.value.statements" :key="s.evidenceId">
                             <td><q v-if="s.quote">{{ s.quote }}</q><span v-else class="omni-muted">(message no longer readable)</span></td>
                             <td class="omni-muted">{{ omniHumanise(s.kind) }} · {{ sourceKindLabel(s.sourceKind) }}</td>
-                            <td><span class="ot-chip sm" :class="factTone(s.status)">{{ s.status }}</span></td>
+                            <td><span class="omni-chip sm" :class="factTone(s.status)">{{ s.status }}</span></td>
                             <td><OmniscienceV3Time :ms="s.assertedAtMs" mode="absolute" /></td>
                             <td v-if="canReview" class="actions">
-                                <button class="ot-btn ghost sm" type="button" :disabled="busy !== null" title="This statement is about their age" @click="reviewAge(s.evidenceId, 'confirm')">✓</button>
-                                <button class="ot-btn ghost sm" type="button" :disabled="busy !== null" title="This is not about their age (a joke, a quote, someone else)" @click="reviewAge(s.evidenceId, 'reject')">✕</button>
+                                <button class="omni-btn ghost sm" type="button" :disabled="busy !== null" title="This statement is about their age" @click="reviewAge(s.evidenceId, 'confirm')">✓</button>
+                                <button class="omni-btn ghost sm" type="button" :disabled="busy !== null" title="This is not about their age (a joke, a quote, someone else)" @click="reviewAge(s.evidenceId, 'reject')">✕</button>
                             </td>
                         </tr>
                     </tbody>
@@ -187,13 +187,13 @@ async function reviewAge(evidenceId: string, verdict: 'confirm' | 'reject') {
 .head { margin-bottom: 10px; gap: 8px; }
 .head .grow { flex: 1; }
 .category { padding: 0 0 6px; }
-.omni-h4 { margin: 10px 12px 4px; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--ot-muted); }
+.omni-h4 { margin: 10px 12px 4px; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--omni-muted); }
 tr.past td { opacity: 0.6; }
 .plain { list-style: none; margin: 0; padding: 4px 12px; }
-.plain li { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--ot-line); font-size: 13px; }
+.plain li { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--omni-line); font-size: 13px; }
 .plain li.clickable { cursor: pointer; }
 td.actions { white-space: nowrap; text-align: right; }
 .statements { margin-top: 10px; }
-.ot-grid.two { margin-top: var(--ot-gutter); margin-bottom: var(--ot-gutter); }
+.omni-grid.two { margin-top: var(--omni-gutter); margin-bottom: var(--omni-gutter); }
 q { font-style: italic; }
 </style>

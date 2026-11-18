@@ -1,34 +1,34 @@
 <template>
     <div class="lookback" data-testid="person-lookback">
-        <div class="ot-filterbar">
+        <div class="omni-filterbar">
             <label class="pick">Show
-                <select v-model="look.look" class="ot-input auto" data-testid="lookback-mode">
+                <select v-model="look.look" class="omni-input auto" data-testid="lookback-mode">
                     <option v-for="m in MODES" :key="m.value" :value="m.value">{{ m.label }}</option>
                 </select>
             </label>
-            <label v-if="dated" class="pick">on <input v-model="look.lookOn" class="ot-input" type="date" :max="today || undefined" data-testid="lookback-date" /></label>
+            <label v-if="dated" class="pick">on <input v-model="look.lookOn" class="omni-input" type="date" :max="today || undefined" data-testid="lookback-date" /></label>
             <label class="pick">Status
-                <select v-model="look.lookStatus" class="ot-input auto" data-testid="lookback-status">
+                <select v-model="look.lookStatus" class="omni-input auto" data-testid="lookback-status">
                     <option v-for="s in STATUSES" :key="s.value" :value="s.value">{{ s.label }}</option>
                 </select>
             </label>
             <span class="grow"></span>
             <span v-if="query" class="summary"><b>{{ facts.items.value.length }}</b>{{ facts.hasMore.value ? '+' : '' }} shown</span>
-            <button v-if="activeCount" class="ot-btn ghost sm" type="button" @click="reset()">Clear</button>
+            <button v-if="activeCount" class="omni-btn ghost sm" type="button" @click="reset()">Clear</button>
         </div>
         <OmniscienceV3Panel title="Look back" :subtitle="hint" flush :loading="!!query && facts.loading.value" :error="query ? facts.error.value : null"
                             :has-data="facts.items.value.length > 0" :empty="!facts.items.value.length" :empty-kind="query ? 'filtered' : 'empty'"
                             :empty-title="emptyTitle" :empty-text="emptyText" what="These facts"
                             :footnote="restricted ? 'They are, or may be, under 18: restricted facts and anything worked out about them are left out, at every date.' : undefined"
                             @retry="facts.reload()">
-            <table class="ot-table compact" data-testid="lookback-table">
+            <table class="omni-table compact" data-testid="lookback-table">
                 <thead><tr><th>Kind</th><th>What</th><th>Value</th><th>Status</th><th class="num">Confidence</th><th>When</th><th>How we know</th><th>First said</th><th>On record since</th></tr></thead>
                 <tbody>
                     <tr v-for="f in facts.items.value" :key="f.assertionId" class="clickable" :data-testid="`lookback-${f.assertionId}`" @click="emit('open', f.assertionId)">
                         <td class="omni-muted">{{ omniHumanise(f.category) }}</td>
                         <td>{{ f.attributeTitle }}</td>
                         <td>{{ f.polarity === 'negated' ? 'not ' : '' }}{{ f.value }}</td>
-                        <td><span class="ot-chip sm" :class="factTone(f.status)" :title="factStatusHelp(f.status)">{{ f.status }}</span></td>
+                        <td><span class="omni-chip sm" :class="factTone(f.status)" :title="factStatusHelp(f.status)">{{ f.status }}</span></td>
                         <td class="num">{{ omniPercent(f.probability) }}</td>
                         <td class="omni-muted">{{ factValidity(f, month) || '—' }}</td>
                         <td class="omni-muted">{{ sourceKindLabel(f.sourceKind) }}</td>
@@ -38,7 +38,7 @@
                 </tbody>
             </table>
             <template v-if="facts.hasMore.value" #footer>
-                <button class="ot-btn sm" type="button" :disabled="facts.loadingMore.value" @click="facts.loadMore()">{{ facts.loadingMore.value ? 'Loading…' : 'Load more' }}</button>
+                <button class="omni-btn sm" type="button" :disabled="facts.loadingMore.value" @click="facts.loadMore()">{{ facts.loadingMore.value ? 'Loading…' : 'Load more' }}</button>
             </template>
         </OmniscienceV3Panel>
     </div>
@@ -52,7 +52,7 @@ import { omniPercent, omniZonedToMs } from '~/scripts/omniscience/format';
 import { omniHumanise } from '~/scripts/omniscience/findings';
 import { factStatusHelp, factTone, factValidity, sourceKindLabel } from '~/scripts/omniscience/knowledge';
 import { useOmniDebounced, useOmniPaged, useOmniTime } from '~/composables/useOmniscienceV3';
-import { useUrlState } from '~/composables/useOmniTrader';
+import { useOmniUrlState } from '~/composables/useOmniscienceV3';
 
 /**
  * A person's facts at another date, or the ones the list of what is known leaves out.
@@ -83,7 +83,7 @@ const STATUSES = [
 ];
 
 const { zone, lens, at, now } = useOmniTime();
-const { state: look, reset, activeCount } = useUrlState({ look: '', lookOn: '', lookStatus: '' });
+const { state: look, reset, activeCount } = useOmniUrlState({ look: '', lookOn: '', lookStatus: '' });
 const dated = computed(() => look.look !== '');
 const today = computed(() => (now.value ? at(now.value).slice(0, 10) : ''));
 const restricted = ref(false);
@@ -136,7 +136,7 @@ defineExpose({ refresh });
 </script>
 
 <style scoped>
-.lookback { margin-top: var(--ot-gutter); }
-.pick { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ot-muted); }
+.lookback { margin-top: var(--omni-gutter); }
+.pick { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--omni-muted); }
 .grow { flex: 1; }
 </style>

@@ -1,16 +1,16 @@
 <template>
-    <OmniTraderDrawer :open="!!assertionId" :title="detail.data.value ? `${detail.data.value.fact.attributeTitle}: ${detail.data.value.fact.value}` : 'Fact'"
+    <OmniscienceV3Drawer :open="!!assertionId" :title="detail.data.value ? `${detail.data.value.fact.attributeTitle}: ${detail.data.value.fact.value}` : 'Fact'"
                       :subtitle="detail.data.value ? sourceKindLabel(detail.data.value.fact.sourceKind) : undefined" wide @close="$emit('close')">
         <OmniscienceV3ErrorBlock v-if="detail.error.value && !detail.data.value" :error="detail.error.value" what="This fact" @retry="detail.refresh()" />
-        <div v-else-if="!detail.data.value" class="ot-skelrows" aria-busy="true"><div v-for="n in 5" :key="n" class="ot-skel"></div></div>
+        <div v-else-if="!detail.data.value" class="omni-skelrows" aria-busy="true"><div v-for="n in 5" :key="n" class="omni-skel"></div></div>
         <div v-else data-testid="fact-drawer">
             <div class="omni-row">
-                <span class="ot-chip" :class="factTone(f.status)" :title="factStatusHelp(f.status)">{{ f.status }}</span>
-                <span v-if="f.polarity === 'negated'" class="ot-chip warn">not</span>
-                <span v-if="d.goldVerdict" class="ot-chip ok">you said: {{ d.goldVerdict }}</span>
+                <span class="omni-chip" :class="factTone(f.status)" :title="factStatusHelp(f.status)">{{ f.status }}</span>
+                <span v-if="f.polarity === 'negated'" class="omni-chip warn">not</span>
+                <span v-if="d.goldVerdict" class="omni-chip ok">you said: {{ d.goldVerdict }}</span>
                 <span class="omni-muted">confidence {{ omniPercent(f.probability) }}{{ f.calibrated ? '' : ' (not calibrated yet)' }}</span>
             </div>
-            <dl class="ot-kv omni-section">
+            <dl class="omni-kv omni-section">
                 <dt>Value</dt><dd>{{ f.polarity === 'negated' ? 'not ' : '' }}{{ f.value }}</dd>
                 <dt>Valid</dt><dd>{{ factValidity(f, month) || 'no period known' }}</dd>
                 <dt>First evidence</dt><dd><OmniscienceV3Time :ms="f.firstEvidenceMs" /></dd>
@@ -23,14 +23,14 @@
             <section v-if="canReview" class="omni-section">
                 <h4>Is it right?</h4>
                 <div class="omni-row">
-                    <button class="ot-btn sm" type="button" :disabled="busy !== null" data-testid="fact-confirm" @click="review('confirm')">Yes, confirm</button>
-                    <button class="ot-btn sm warn" type="button" :disabled="busy !== null" data-testid="fact-reject" @click="review('reject')">No, reject</button>
-                    <button class="ot-btn ghost sm" type="button" @click="correcting = !correcting">{{ correcting ? 'Cancel correction' : 'Correct it…' }}</button>
+                    <button class="omni-btn sm" type="button" :disabled="busy !== null" data-testid="fact-confirm" @click="review('confirm')">Yes, confirm</button>
+                    <button class="omni-btn sm warn" type="button" :disabled="busy !== null" data-testid="fact-reject" @click="review('reject')">No, reject</button>
+                    <button class="omni-btn ghost sm" type="button" @click="correcting = !correcting">{{ correcting ? 'Cancel correction' : 'Correct it…' }}</button>
                 </div>
                 <form v-if="correcting" class="correct" @submit.prevent="review('correct')">
-                    <div class="ot-field"><label :for="`${uid}-v`">The right value</label><input :id="`${uid}-v`" v-model="correction" class="ot-input" maxlength="400" required /></div>
-                    <div class="ot-field"><label :for="`${uid}-n`">Note (optional)</label><input :id="`${uid}-n`" v-model="note" class="ot-input" maxlength="400" /></div>
-                    <button class="ot-btn primary sm" type="submit" :disabled="busy !== null || !correction.trim()">Save the correction</button>
+                    <div class="omni-field"><label :for="`${uid}-v`">The right value</label><input :id="`${uid}-v`" v-model="correction" class="omni-input" maxlength="400" required /></div>
+                    <div class="omni-field"><label :for="`${uid}-n`">Note (optional)</label><input :id="`${uid}-n`" v-model="note" class="omni-input" maxlength="400" /></div>
+                    <button class="omni-btn primary sm" type="submit" :disabled="busy !== null || !correction.trim()">Save the correction</button>
                 </form>
                 <p class="omni-muted help">Your decision is kept as a gold label: it outranks the model, and the fact is consolidated again at once.</p>
             </section>
@@ -43,7 +43,7 @@
                         <span class="omni-muted">
                             {{ e.authorName ?? 'someone' }} · <OmniscienceV3Time :ms="e.sentAtMs" mode="absolute" />
                             · {{ e.conversationTitle ?? e.guildName ?? e.conversationKind ?? e.platform ?? '' }}
-                            <span v-if="e.edited" class="ot-chip sm">edited since</span><span v-if="e.deleted" class="ot-chip sm warn">deleted at the source</span>
+                            <span v-if="e.edited" class="omni-chip sm">edited since</span><span v-if="e.deleted" class="omni-chip sm warn">deleted at the source</span>
                         </span>
                         <q v-if="e.quote">{{ e.quote }}</q>
                         <span v-if="e.text && e.text !== e.quote" class="full">{{ e.text }}</span>
@@ -53,13 +53,13 @@
 
             <section v-if="d.history.length > 1" class="omni-section">
                 <h4>History</h4>
-                <table class="ot-table compact">
+                <table class="omni-table compact">
                     <thead><tr><th>Recorded</th><th>Value</th><th>Status</th><th class="num">Confidence</th><th>Read by</th></tr></thead>
                     <tbody>
                         <tr v-for="h in d.history" :key="h.assertionId">
                             <td><OmniscienceV3Time :ms="h.recordedAtMs" mode="absolute" /></td>
                             <td>{{ h.value ?? '—' }}</td>
-                            <td><span class="ot-chip sm" :class="factTone(h.status)">{{ h.retractedAtMs ? 'withdrawn' : h.supersededAtMs ? 'replaced' : h.status }}</span></td>
+                            <td><span class="omni-chip sm" :class="factTone(h.status)">{{ h.retractedAtMs ? 'withdrawn' : h.supersededAtMs ? 'replaced' : h.status }}</span></td>
                             <td class="num">{{ omniPercent(h.probability) }}</td>
                             <td class="omni-muted">{{ h.promptVersion ?? '—' }}</td>
                         </tr>
@@ -67,7 +67,7 @@
                 </table>
             </section>
         </div>
-    </OmniTraderDrawer>
+    </OmniscienceV3Drawer>
 </template>
 
 <script setup lang="ts">
@@ -123,10 +123,10 @@ async function review(verdict: 'confirm' | 'reject' | 'correct') {
 
 <style scoped>
 .evidence { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.evidence li { display: flex; flex-direction: column; gap: 3px; font-size: 13px; padding-left: 10px; border-left: 2px solid var(--ot-line-strong); }
+.evidence li { display: flex; flex-direction: column; gap: 3px; font-size: 13px; padding-left: 10px; border-left: 2px solid var(--omni-line-strong); }
 .evidence li.gone { opacity: 0.65; }
 .evidence q { font-style: italic; }
-.evidence .full { font-size: 12px; color: var(--ot-muted); overflow-wrap: anywhere; }
+.evidence .full { font-size: 12px; color: var(--omni-muted); overflow-wrap: anywhere; }
 .correct { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
 .help { margin: 8px 0 0; font-size: 12px; }
 </style>

@@ -1,39 +1,39 @@
 <template>
     <OmniscienceV3Shell>
-        <div class="ot-pagehead">
+        <div class="omni-pagehead">
             <div>
                 <p class="omni-muted crumbs"><NuxtLink :to="`${OMNI_BASE}/people`">People</NuxtLink> ›</p>
                 <h1 data-testid="person-name">{{ d?.displayName ?? personId }}</h1>
                 <p class="subtitle omni-mono">{{ personId }}</p>
             </div>
-            <div class="ot-actions">
-                <button class="ot-btn ghost" type="button" :disabled="dossier.refreshing.value" @click="refreshAll()">Refresh</button>
-                <button class="ot-btn" type="button" @click="useInTactic()">Run a tactic on this person</button>
-                <NuxtLink v-if="canAsk" class="ot-btn ghost" :to="`${OMNI_BASE}/ask?person=${encodeURIComponent(personId)}`">Ask about them…</NuxtLink>
-                <NuxtLink v-if="canReplica" class="ot-btn ghost" :to="`${OMNI_BASE}/replicas/${encodeURIComponent(personId)}`">Replica…</NuxtLink>
-                <NuxtLink v-if="canManage" class="ot-btn ghost" :to="`${OMNI_BASE}/data?person=${encodeURIComponent(personId)}`">Data controls…</NuxtLink>
+            <div class="omni-actions">
+                <button class="omni-btn ghost" type="button" :disabled="dossier.refreshing.value" @click="refreshAll()">Refresh</button>
+                <button class="omni-btn" type="button" @click="useInTactic()">Run a tactic on this person</button>
+                <NuxtLink v-if="canAsk" class="omni-btn ghost" :to="`${OMNI_BASE}/ask?person=${encodeURIComponent(personId)}`">Ask about them…</NuxtLink>
+                <NuxtLink v-if="canReplica" class="omni-btn ghost" :to="`${OMNI_BASE}/replicas/${encodeURIComponent(personId)}`">Replica…</NuxtLink>
+                <NuxtLink v-if="canManage" class="omni-btn ghost" :to="`${OMNI_BASE}/data?person=${encodeURIComponent(personId)}`">Data controls…</NuxtLink>
             </div>
         </div>
 
         <div v-if="d" class="omni-row chips" data-testid="person-chips">
-            <span v-if="d.isSelf" class="ot-chip ok">This is you</span>
-            <span class="ot-chip" :class="d.tier === 'tracked' ? 'ok' : d.tier === 'watch' ? 'warn' : ''">{{ d.tier }}</span>
-            <span v-if="d.pinned" class="ot-chip">★ pinned</span>
-            <span v-if="d.restricted" class="ot-chip warn" title="Under 18, or may be: routine patterns, zones and identity facts are not shown, and no alert is ever about them">under 18 or may be</span>
-            <span v-if="d.analysisOff" class="ot-chip bad" data-testid="analysis-off">analysis switched off</span>
+            <span v-if="d.isSelf" class="omni-chip ok">This is you</span>
+            <span class="omni-chip" :class="d.tier === 'tracked' ? 'ok' : d.tier === 'watch' ? 'warn' : ''">{{ d.tier }}</span>
+            <span v-if="d.pinned" class="omni-chip">★ pinned</span>
+            <span v-if="d.restricted" class="omni-chip warn" title="Under 18, or may be: routine patterns, zones and identity facts are not shown, and no alert is ever about them">under 18 or may be</span>
+            <span v-if="d.analysisOff" class="omni-chip bad" data-testid="analysis-off">analysis switched off</span>
             <span class="omni-muted">{{ d.coverage.platforms.join(', ') }} · {{ omniCount(d.coverage.conversations) }} conversations · {{ omniCount(d.coverage.guilds) }} servers</span>
         </div>
-        <div v-if="d?.analysisOff" class="ot-banner warn" role="status">
+        <div v-if="d?.analysisOff" class="omni-banner warn" role="status">
             <span class="glyph" aria-hidden="true">⏸</span>
             <div><strong>Analysis is switched off for this person.</strong>
                 <span class="muted">Their messages stay in the archive, but nothing is worked out from them. Switch it back on under Data controls.</span></div>
         </div>
-        <div v-else-if="d?.staleEvidence" class="ot-banner info" role="status">
+        <div v-else-if="d?.staleEvidence" class="omni-banner info" role="status">
             <span class="glyph" aria-hidden="true">ℹ</span>
             <div><strong>The newest evidence is old.</strong><span class="muted">Their last message was <OmniscienceV3Time :ms="d.newestEvidenceMs" mode="age" />.</span></div>
         </div>
 
-        <div class="ot-segment tabs" role="tablist" aria-label="This person">
+        <div class="omni-segment tabs" role="tablist" aria-label="This person">
             <button v-for="t in TABS" :key="t.value" type="button" role="tab" :aria-selected="view.tab === t.value" :aria-pressed="view.tab === t.value"
                     :data-testid="`person-tab-${t.value}`" @click="view.tab = t.value">{{ t.label }}</button>
         </div>
@@ -45,13 +45,13 @@
         <template v-else>
         <OmniscienceV3Panel title="Activity" :loading="dossier.loading.value" :error="dossier.error.value" :has-data="!!d" what="This person's page" @retry="dossier.refresh()">
             <template v-if="d">
-                <div class="ot-kpis tight" data-testid="person-kpis">
-                    <OmniTraderKpi label="Messages" :value="omniCount(d.activity.msgs)" small :foot="`${omniCount(d.activity.activeDays)} active days`" />
-                    <OmniTraderKpi label="Last 30 days" :value="omniCount(d.activity.msgs30)" small :foot="`${omniCount(d.activity.activeDays30)} active days`" />
-                    <OmniTraderKpi label="Last 90 days" :value="omniCount(d.activity.msgs90)" small />
-                    <OmniTraderKpi label="In direct chats" :value="omniPercent(d.activity.dmShare)" small />
-                    <OmniTraderKpi label="First seen" :value="d.activity.firstMs ? age(d.activity.firstMs) : '—'" small />
-                    <OmniTraderKpi label="Last seen" :value="d.activity.lastMs ? age(d.activity.lastMs) : '—'" small />
+                <div class="omni-kpis tight" data-testid="person-kpis">
+                    <OmniscienceV3Kpi label="Messages" :value="omniCount(d.activity.msgs)" small :foot="`${omniCount(d.activity.activeDays)} active days`" />
+                    <OmniscienceV3Kpi label="Last 30 days" :value="omniCount(d.activity.msgs30)" small :foot="`${omniCount(d.activity.activeDays30)} active days`" />
+                    <OmniscienceV3Kpi label="Last 90 days" :value="omniCount(d.activity.msgs90)" small />
+                    <OmniscienceV3Kpi label="In direct chats" :value="omniPercent(d.activity.dmShare)" small />
+                    <OmniscienceV3Kpi label="First seen" :value="d.activity.firstMs ? age(d.activity.firstMs) : '—'" small />
+                    <OmniscienceV3Kpi label="Last seen" :value="d.activity.lastMs ? age(d.activity.lastMs) : '—'" small />
                 </div>
                 <svg class="series" :viewBox="`0 0 ${d.series.length} 40`" preserveAspectRatio="none" role="img" :aria-label="`Messages per day over ${d.series.length} days`">
                     <rect v-for="(day, i) in d.series" :key="day.day" :x="i + 0.1" :width="0.8" :y="40 - bar(day.msgs)" :height="bar(day.msgs)"><title>{{ day.day }}: {{ day.msgs }}</title></rect>
@@ -64,9 +64,9 @@
             </template>
         </OmniscienceV3Panel>
 
-        <div class="ot-grid two">
+        <div class="omni-grid two">
             <OmniscienceV3Panel title="Talks most with" flush :loading="dossier.loading.value" :error="dossier.error.value" :has-data="!!d" :empty="!!d && !d.partners.length" empty-title="Nobody yet">
-                <table v-if="d" class="ot-table compact">
+                <table v-if="d" class="omni-table compact">
                     <thead><tr><th>Person</th><th class="num">Replies out/in</th><th class="num">Direct out/in</th><th class="num">Reciprocity</th></tr></thead>
                     <tbody>
                         <tr v-for="p in d.partners" :key="p.personId">
@@ -90,11 +90,11 @@
 
         <OmniscienceV3Panel title="Facts" flush :loading="dossier.loading.value" :error="dossier.error.value" :has-data="!!d" :empty="!!d && !d.facts.length" empty-title="No facts recorded"
                             empty-text="Facts come from reading their messages, each with its evidence.">
-            <template #controls><button class="ot-btn ghost sm" type="button" @click="view.tab = 'knowledge'">Everything known, with evidence</button></template>
-            <table v-if="d" class="ot-table compact">
+            <template #controls><button class="omni-btn ghost sm" type="button" @click="view.tab = 'knowledge'">Everything known, with evidence</button></template>
+            <table v-if="d" class="omni-table compact">
                 <thead><tr><th>Attribute</th><th>Value</th><th>Status</th><th class="num">Recorded</th></tr></thead>
                 <tbody>
-                    <tr v-for="f in d.facts" :key="f.assertionId"><td>{{ f.attribute }}</td><td>{{ f.value ?? '—' }}</td><td><span class="ot-chip">{{ f.status }}</span></td>
+                    <tr v-for="f in d.facts" :key="f.assertionId"><td>{{ f.attribute }}</td><td>{{ f.value ?? '—' }}</td><td><span class="omni-chip">{{ f.status }}</span></td>
                         <td class="num"><OmniscienceV3Time :ms="f.recordedAtMs" mode="age" /></td></tr>
                 </tbody>
             </table>
@@ -103,7 +103,7 @@
         <OmniscienceV3Panel title="Brief" :loading="brief.loading.value" :error="briefError" :has-data="!!brief.data.value" :empty="!brief.data.value && !briefError"
                             empty-title="No brief yet" empty-text="A brief summarises what this person has been saying lately, with every point cited." @retry="brief.refresh()">
             <template #controls>
-                <button v-if="canAnalyse" class="ot-btn sm" type="button" :disabled="busy !== null" data-testid="brief-request" @click="requestBrief()">
+                <button v-if="canAnalyse" class="omni-btn sm" type="button" :disabled="busy !== null" data-testid="brief-request" @click="requestBrief()">
                     {{ brief.data.value ? 'Write a fresh brief' : 'Write a brief' }}</button>
             </template>
             <template v-if="brief.data.value">
@@ -117,16 +117,16 @@
             </template>
         </OmniscienceV3Panel>
 
-        <div class="ot-grid two">
+        <div class="omni-grid two">
             <OmniscienceV3Panel title="Relationships" flush :loading="relationships.loading.value" :error="relationships.error.value" :has-data="!!relationships.data.value"
                                 :empty="!!relationships.data.value && !relationships.data.value.relationships.length" empty-title="No tracked relationships"
                                 empty-text="A pair is tracked once they have interacted enough." @retry="relationships.refresh()">
-                <table v-if="relationships.data.value" class="ot-table compact">
+                <table v-if="relationships.data.value" class="omni-table compact">
                     <thead><tr><th>With</th><th>Trend</th><th class="num">Closeness</th><th class="num">Tension</th></tr></thead>
                     <tbody>
                         <tr v-for="r in relationships.data.value.relationships" :key="r.a + r.b">
                             <td><NuxtLink :to="`${OMNI_BASE}/people/${encodeURIComponent(other(r.a, r.b))}`">{{ otherName(r) }}</NuxtLink></td>
-                            <td><span class="ot-chip" :class="trendTone(r.trend)">{{ r.trend }}</span></td>
+                            <td><span class="omni-chip" :class="trendTone(r.trend)">{{ r.trend }}</span></td>
                             <td class="num">{{ omniPercent(r.closeness, 1) }}</td>
                             <td class="num">{{ omniPercent(r.tension) }}</td>
                         </tr>
@@ -151,9 +151,9 @@
             <template v-if="links.data.value">
                 <p class="omni-row omni-muted pad">
                     {{ omniCount(links.data.value.shares) }} shares of {{ omniCount(links.data.value.links) }} links ·
-                    <span v-for="k in links.data.value.kinds" :key="k.key" class="ot-chip sm">{{ k.key }} {{ k.shares }}</span>
+                    <span v-for="k in links.data.value.kinds" :key="k.key" class="omni-chip sm">{{ k.key }} {{ k.shares }}</span>
                 </p>
-                <table class="ot-table compact">
+                <table class="omni-table compact">
                     <thead><tr><th>Link</th><th>Topic</th><th class="num">Shared</th></tr></thead>
                     <tbody>
                         <tr v-for="s in links.data.value.recent" :key="s.messageId + s.link.urlId">
@@ -170,13 +170,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { OMNI_BASE, omniGet, omniPost } from '~/scripts/omniscience/api';
 import type { DossierDto, PairSummaryDto, PersonBriefDto, PersonLinksDto, PersonRelationshipsDto, ReadModelDto, SimilarPeopleDto } from '~/scripts/omniscience/contracts';
 import { omniCount, omniPercent } from '~/scripts/omniscience/format';
-import { useOmniAction, useOmniCarry, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
-import { useUrlState } from '~/composables/useOmniTrader';
+import { useOmniAction, useOmniCarry, useOmniRecent, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
+import { useOmniUrlState } from '~/composables/useOmniscienceV3';
 import { useAccess } from '~/composables/useAccess';
 
 definePageMeta({ layout: 'navbar' });
@@ -200,7 +200,7 @@ const TABS: { value: Tab; label: string }[] = [
     { value: 'overview', label: 'Overview' }, { value: 'knowledge', label: 'What is known' }, { value: 'timeline', label: 'Timeline and plans' },
     { value: 'audit', label: 'How it was worked out' },
 ];
-const { state: view } = useUrlState({ tab: 'overview' as Tab });
+const { state: view } = useOmniUrlState({ tab: 'overview' as Tab });
 const knowledgeTab = ref<{ refresh: () => void } | null>(null);
 const timelineTab = ref<{ refresh: () => void } | null>(null);
 const auditTab = ref<{ refresh: () => void } | null>(null);
@@ -211,6 +211,9 @@ const dossier = useOmniResource(async signal => {
 });
 const d = computed(() => dossier.data.value);
 useHead({ title: computed(() => `Omniscience v3 · ${d.value?.displayName ?? 'Person'}`) });
+// The palette and the Brief offer the people opened last: this one joins them once its name is known.
+const { note: noteOpened } = useOmniRecent();
+watch(() => d.value?.displayName, name => { if (name) noteOpened(personId.value, name); }, { immediate: true });
 
 const brief = useOmniResource(signal => omniGet<PersonBriefDto>('briefs/person', { personId: personId.value }, signal));
 // "No brief yet" is an empty panel, not a failure.
@@ -247,16 +250,16 @@ function trendTone(trend: string): string { return trend === 'closer' || trend =
 <style scoped>
 .crumbs { margin: 0 0 2px; font-size: 12px; }
 .chips { gap: 6px; flex-wrap: wrap; margin: 0 0 10px; }
-.tabs { margin-bottom: var(--ot-gutter); }
+.tabs { margin-bottom: var(--omni-gutter); }
 .series { width: 100%; height: 60px; margin-top: 12px; }
-.series rect { fill: var(--ot-accent, #58a6ff); }
+.series rect { fill: var(--omni-accent, #58a6ff); }
 .hours { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; margin-top: 10px; font-size: 10px; }
-.hours .h { text-align: center; background: var(--ot-accent, #58a6ff); color: #fff; border-radius: 3px; padding: 2px 0; }
-.omni-h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--ot-muted); }
-.ot-grid.two { margin-top: var(--ot-gutter); }
+.hours .h { text-align: center; background: var(--omni-accent, #58a6ff); color: #fff; border-radius: 3px; padding: 2px 0; }
+.omni-h4 { margin: 10px 0 6px; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--omni-muted); }
+.omni-grid.two { margin-top: var(--omni-gutter); }
 .ranked { margin: 0 0 8px; padding-left: 22px; font-size: 13px; }
 .similar { list-style: none; margin: 0; padding: 6px 12px; }
-.similar li { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--ot-line); }
+.similar li { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--omni-line); }
 .similar .why { font-size: 12px; }
 .refs { font-size: 11px; }
 .pad { padding: 8px 12px; gap: 6px; flex-wrap: wrap; }

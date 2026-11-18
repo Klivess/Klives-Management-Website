@@ -1,4 +1,5 @@
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, type Ref, type ShallowRef } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch, type Ref, type ShallowRef } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { OmniApiError, isOmniAbort, omniGet, omniStreamUrl, toOmniError } from '~/scripts/omniscience/api';
 import type { PersonNamesDto, Selection, StreamEventDto, V3StatusDto } from '~/scripts/omniscience/contracts';
 import { omniAge, omniInstant, omniUtcIso, type OmniLens } from '~/scripts/omniscience/format';
@@ -429,4 +430,78 @@ export function useOmniDebounced<T>(source: () => T, fn: () => void, delayMs = 3
         timer = setTimeout(() => { timer = null; fn(); }, delayMs);
     }, { deep: true });
     onBeforeUnmount(() => { if (timer) clearTimeout(timer); });
+}
+
+// ── state kept in the link ───────────────────────────────────────────────────
+
+/**
+ * Filter and tab state mirrored into the query string. What you are looking at is part of the
+ * address, so a view can be linked, bookmarked and come back to, and a drill-down that returns
+ * lands on the same filtered set it left. Several of these can live on one page: each owns only
+ * the keys it was given.
+ */
+export function useOmniUrlState<T extends Record<string, string>>(defaults: T) {
+    const route = useRoute();
+    const router = useRouter();
+    const state = reactive({ ...defaults }) as T;
+
+    for (const key of Object.keys(defaults)) {
+        const value = route.query[key];
+        if (typeof value === 'string') (state as Record<string, string>)[key] = value;
+    }
+
+    // A navigation to the same page with a new query (the palette, a link) updates the view.
+    watch(() => route.query, query => {
+        for (const key of Object.keys(defaults)) {
+            const value = query[key];
+            const next = typeof value === 'string' ? value : defaults[key]!;
+            if ((state as Record<string, string>)[key] !== next) (state as Record<string, string>)[key] = next;
+        }
+    });
+
+    watch(state, () => {
+        const query: Record<string, string> = { ...(route.query as Record<string, string>) };
+        for (const [key, value] of Object.entries(state)) {
+            if (value === defaults[key] || value === '') delete query[key];
+            else query[key] = value as string;
+        }
+        void router.replace({ query });
+    }, { deep: true });
+
+    function reset() { Object.assign(state, defaults); }
+    const activeCount = computed(() => Object.entries(state).filter(([key, value]) => value !== defaults[key] && value !== '').length);
+
+    return { state, reset, activeCount };
+}
+
+// ── people opened recently ───────────────────────────────────────────────────
+
+export interface OmniRecentPerson { id: string; name: string; at: number }
+const RECENT_KEY = 'omni-v3:recent-people';
+
+/** The last few people opened in this browser: the quickest way back to someone. Never sent anywhere. */
+export function useOmniRecent() {
+    const recent = useState<OmniRecentPerson[]>('omni-v3:recent', () => []);
+    const loaded = useState('omni-v3:recent-loaded', () => false);
+
+    onMounted(() => {
+        if (loaded.value) return;
+        loaded.value = true;
+        try {
+            const saved = JSON.parse(window.localStorage.getItem(RECENT_KEY) ?? '[]');
+            if (Array.isArray(saved)) recent.value = saved.filter(r => r && typeof r.id === 'string' && typeof r.name === 'string').slice(0, 8);
+        } catch { recent.value = []; }
+    });
+
+    function note(id: string, name: string | null | undefined) {
+        if (!id || !name) return;
+        recent.value = [{ id, name, at: Date.now() }, ...recent.value.filter(r => r.id !== id)].slice(0, 8);
+        try { window.localStorage.setItem(RECENT_KEY, JSON.stringify(recent.value)); } catch { /* private mode: not remembered */ }
+    }
+    function forget(id: string) {
+        recent.value = recent.value.filter(r => r.id !== id);
+        try { window.localStorage.setItem(RECENT_KEY, JSON.stringify(recent.value)); } catch { /* not remembered either way */ }
+    }
+
+    return { recent, note, forget };
 }

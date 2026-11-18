@@ -1,22 +1,22 @@
 <template>
     <div class="report" data-testid="inquiry-report">
         <div class="omni-row verdict">
-            <span class="ot-chip big" :class="verdictTone(report.verdict)" data-testid="inquiry-verdict">{{ verdictLabel(report.verdict) }}</span>
+            <span class="omni-chip big" :class="verdictTone(report.verdict)" data-testid="inquiry-verdict">{{ verdictLabel(report.verdict) }}</span>
             <strong v-if="report.probability != null">{{ probabilityText(report.probability, report.bandLow, report.bandHigh) }}</strong>
             <span v-if="report.estimate != null" class="omni-mono">≈ {{ report.estimate }}</span>
-            <span v-if="report.probability != null && !report.calibrated" class="ot-chip sm warn" title="Too few of your right/wrong marks yet to correct the model's confidence">not calibrated yet</span>
-            <span v-if="report.isPrediction" class="ot-chip sm info">a prediction, not a fact</span>
-            <span v-if="report.worldKnowledgeDependent" class="ot-chip sm warn" title="Part of the answer rests on general knowledge, not on the messages">leans on general knowledge</span>
+            <span v-if="report.probability != null && !report.calibrated" class="omni-chip sm warn" title="Too few of your right/wrong marks yet to correct the model's confidence">not calibrated yet</span>
+            <span v-if="report.isPrediction" class="omni-chip sm info">a prediction, not a fact</span>
+            <span v-if="report.worldKnowledgeDependent" class="omni-chip sm warn" title="Part of the answer rests on general knowledge, not on the messages">leans on general knowledge</span>
         </div>
         <p class="understood"><span class="omni-muted">Understood as:</span> {{ report.restatement }}</p>
-        <div v-if="report.policyNote" class="ot-banner warn" role="status"><span class="glyph" aria-hidden="true">🔒</span><div><strong>Limited by policy</strong><span class="muted">{{ report.policyNote }}</span></div></div>
+        <div v-if="report.policyNote" class="omni-banner warn" role="status"><span class="glyph" aria-hidden="true">🔒</span><div><strong>Limited by policy</strong><span class="muted">{{ report.policyNote }}</span></div></div>
         <p v-if="report.asOfNote" class="omni-muted">{{ report.asOfNote }}</p>
 
         <section v-if="report.disambiguation.length" class="omni-section">
             <h4>Which person did you mean?</h4>
             <div v-for="dis in report.disambiguation" :key="dis.mention" class="omni-row">
                 <span>“{{ dis.mention }}” could be</span>
-                <button v-for="c in dis.candidates" :key="c.personId" class="ot-btn sm" type="button" :title="c.detail ?? undefined" @click="$emit('pick', c.personId, c.label)">{{ c.label }}</button>
+                <button v-for="c in dis.candidates" :key="c.personId" class="omni-btn sm" type="button" :title="c.detail ?? undefined" @click="$emit('pick', c.personId, c.label)">{{ c.label }}</button>
             </div>
         </section>
 
@@ -57,7 +57,7 @@
 
         <section class="omni-section">
             <h4>What was read</h4>
-            <dl class="ot-kv">
+            <dl class="omni-kv">
                 <dt>Messages</dt><dd>{{ omniCount(report.coverage.messagesConsidered) }} considered, {{ omniCount(report.coverage.itemsInDossier) }} shown to the model</dd>
                 <dt>Facts</dt><dd>{{ omniCount(report.coverage.factsConsidered) }}</dd>
                 <dt>Left out</dt><dd>{{ report.coverage.excludedAsJokeOrFiction }} as jokes or fiction, {{ report.coverage.excludedAfterAsOf }} written after the as-of time</dd>
@@ -89,23 +89,23 @@ defineEmits<{ pick: [personId: string, label: string] }>();
 
 <style scoped>
 .verdict { gap: 10px; }
-.ot-chip.big { font-size: 14px; padding: 4px 12px; }
+.omni-chip.big { font-size: 14px; padding: 4px 12px; }
 .understood { margin: 8px 0 0; font-size: 13px; }
 .reasoning { margin: 0; white-space: pre-wrap; }
 .evidence { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.evidence li { padding-left: 10px; border-left: 2px solid var(--ot-line-strong); }
-.evidence li.for { border-left-color: var(--ot-positive, #3fb950); }
-.evidence li.against { border-left-color: var(--ot-negative, #f85149); }
+.evidence li { padding-left: 10px; border-left: 2px solid var(--omni-line-strong); }
+.evidence li.for { border-left-color: var(--omni-positive, #3fb950); }
+.evidence li.against { border-left-color: var(--omni-negative, #f85149); }
 .bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .bars li { display: grid; grid-template-columns: minmax(80px, 180px) 1fr 48px; gap: 8px; align-items: center; font-size: 13px; }
-.bars .bar { height: 8px; background: var(--ot-surface-2); border-radius: 4px; overflow: hidden; }
-.bars .bar i { display: block; height: 100%; background: var(--ot-accent, #58a6ff); }
+.bars .bar { height: 8px; background: var(--omni-surface-2); border-radius: 4px; overflow: hidden; }
+.bars .bar i { display: block; height: 100%; background: var(--omni-accent, #58a6ff); }
 .bars .num { text-align: right; font-variant-numeric: tabular-nums; }
 .ranking { margin: 0; padding-left: 24px; font-size: 13px; }
 .ranking li { padding: 2px 0; }
-.ranking .reason { display: block; font-size: 12px; color: var(--ot-muted); }
+.ranking .reason { display: block; font-size: 12px; color: var(--omni-muted); }
 .notes { margin: 8px 0 0; padding-left: 20px; font-size: 12px; }
-.ot-banner .muted { display: block; color: var(--ot-text-2); }
+.omni-banner .muted { display: block; color: var(--omni-text-2); }
 section ul:not(.evidence):not(.bars) { margin: 0; padding-left: 20px; font-size: 13px; }
 p { margin: 0; }
 </style>

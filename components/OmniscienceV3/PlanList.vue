@@ -16,9 +16,9 @@
                     · {{ p.evidenceCount }} message{{ p.evidenceCount === 1 ? '' : 's' }}{{ p.recurrence ? ` · repeats ${p.recurrence}` : '' }}
                 </span>
             </span>
-            <span class="ot-chip sm">{{ planKindLabel(p) }}</span>
-            <span v-if="p.firmness !== 'firm'" class="ot-chip sm warn" title="How definite the plan sounded">{{ p.firmness }}</span>
-            <span class="ot-chip sm" :class="planTone(p.status)">{{ p.status }}</span>
+            <span class="omni-chip sm">{{ planKindLabel(p) }}</span>
+            <span v-if="p.firmness !== 'firm'" class="omni-chip sm warn" title="How definite the plan sounded">{{ p.firmness }}</span>
+            <span class="omni-chip sm" :class="planTone(p.status)">{{ p.status }}</span>
         </li>
     </ul>
 </template>
@@ -43,11 +43,11 @@ function personLink(id: string): string { return `${OMNI_BASE}/people/${encodeUR
 
 <style scoped>
 .plans { list-style: none; margin: 0; padding: 0; }
-.plans li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid var(--ot-line); font-size: 13px; }
-.plans li.bad { box-shadow: inset 2px 0 0 var(--ot-negative); }
-.plans li.warn { box-shadow: inset 2px 0 0 var(--ot-warning); }
+.plans li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid var(--omni-line); font-size: 13px; }
+.plans li.bad { box-shadow: inset 2px 0 0 var(--omni-negative); }
+.plans li.warn { box-shadow: inset 2px 0 0 var(--omni-warning); }
 .when { flex: 0 0 230px; font-variant-numeric: tabular-nums; }
 .what { flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; }
-.sub { font-size: 11.5px; color: var(--ot-muted); }
+.sub { font-size: 11.5px; color: var(--omni-muted); }
 @media (max-width: 768px) { .when { flex-basis: 100%; } }
 </style>

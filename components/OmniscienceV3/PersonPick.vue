@@ -1,13 +1,13 @@
 <template>
     <div class="pick" :data-testid="testid">
         <div v-if="modelValue.length" class="omni-row chosen">
-            <span v-for="p in modelValue" :key="p.id" class="ot-chip">
+            <span v-for="p in modelValue" :key="p.id" class="omni-chip">
                 {{ p.label ?? name(p.id) }}
                 <button class="x" type="button" :aria-label="`Remove ${p.label ?? name(p.id)}`" @click="remove(p.id)">✕</button>
             </span>
         </div>
         <div v-if="modelValue.length < max" class="search">
-            <input :id="inputId" v-model="text" class="ot-input" type="search" autocomplete="off" :placeholder="placeholder" :aria-label="inputId ? undefined : placeholder"
+            <input :id="inputId" v-model="text" class="omni-input" type="search" autocomplete="off" :placeholder="placeholder" :aria-label="inputId ? undefined : placeholder"
                    @keydown.down.prevent="move(1)" @keydown.up.prevent="move(-1)" @keydown.enter.prevent="choose(matches[index])" @keydown.esc="text = ''" />
             <ul v-if="text.trim() && (matches.length || searched)" class="results" role="listbox">
                 <li v-for="(m, i) in matches" :key="m.personId" role="option" :aria-selected="i === index" :class="{ active: i === index }"
@@ -93,11 +93,11 @@ function remove(id: string) {
 <style scoped>
 .pick { display: flex; flex-direction: column; gap: 6px; }
 .chosen { gap: 6px; }
-.ot-chip .x { background: none; border: 0; color: inherit; cursor: pointer; padding: 0 0 0 4px; }
+.omni-chip .x { background: none; border: 0; color: inherit; cursor: pointer; padding: 0 0 0 4px; }
 .search { position: relative; }
 .results { position: absolute; z-index: 30; left: 0; right: 0; top: 100%; margin: 2px 0 0; padding: 4px; list-style: none; max-height: 260px; overflow: auto;
-    background: var(--ot-surface-2); border: 1px solid var(--ot-line-strong); border-radius: var(--ot-radius-sm); box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45); }
+    background: var(--omni-surface-2); border: 1px solid var(--omni-line-strong); border-radius: var(--omni-radius-sm); box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45); }
 .results li { display: flex; justify-content: space-between; gap: 10px; padding: 6px 8px; border-radius: 3px; font-size: 13px; cursor: pointer; }
-.results li.active { background: var(--ot-surface-3, rgba(255, 255, 255, 0.08)); }
+.results li.active { background: var(--omni-surface-3, rgba(255, 255, 255, 0.08)); }
 .results li.omni-muted { cursor: default; }
 </style>

@@ -25,5 +25,5 @@ const { at, age, utc } = useOmniTime();
 
 <style scoped>
 .omni-time { white-space: nowrap; }
-.rel { color: var(--ot-muted); }
+.rel { color: var(--omni-muted); }
 </style>

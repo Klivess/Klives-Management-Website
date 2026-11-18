@@ -1,31 +1,31 @@
 <template>
     <OmniscienceV3ErrorBlock v-if="error && !run" :error="error" what="This run" @retry="follow" />
-    <div v-else-if="!run" class="ot-skelrows" aria-busy="true"><div v-for="n in 6" :key="n" class="ot-skel"></div></div>
+    <div v-else-if="!run" class="omni-skelrows" aria-busy="true"><div v-for="n in 6" :key="n" class="omni-skel"></div></div>
     <div v-else class="omni-run" data-testid="omni-run">
         <div class="omni-row">
-            <span class="ot-chip" :class="omniStateTone(run.state)" data-testid="omni-run-state">{{ run.state }}</span>
-            <span v-if="live" class="ot-chip info"><span class="ot-dot ok"></span>following live</span>
-            <span v-if="run.stale" class="ot-chip warn" title="The data this run read has changed since it finished">stale — re-run</span>
+            <span class="omni-chip" :class="omniStateTone(run.state)" data-testid="omni-run-state">{{ run.state }}</span>
+            <span v-if="live" class="omni-chip info"><span class="omni-dot ok"></span>following live</span>
+            <span v-if="run.stale" class="omni-chip warn" title="The data this run read has changed since it finished">stale — re-run</span>
             <span v-if="run.currentStage && !terminal" class="omni-muted">stage: {{ run.currentStage }}</span>
             <span style="flex:1"></span>
             <template v-if="canRun">
-                <button v-if="run.state === 'running' || run.state === 'queued'" class="ot-btn sm" type="button" :disabled="busy !== null" @click="act('pause')">Pause</button>
-                <button v-if="run.state === 'paused'" class="ot-btn primary sm" type="button" :disabled="busy !== null" @click="act('resume')">Resume</button>
-                <button v-if="!terminal" class="ot-btn warn sm" type="button" :disabled="busy !== null" @click="act('cancel')">Cancel</button>
-                <button v-if="terminal" class="ot-btn sm" type="button" :disabled="busy !== null" @click="rerun">Run again</button>
+                <button v-if="run.state === 'running' || run.state === 'queued'" class="omni-btn sm" type="button" :disabled="busy !== null" @click="act('pause')">Pause</button>
+                <button v-if="run.state === 'paused'" class="omni-btn primary sm" type="button" :disabled="busy !== null" @click="act('resume')">Resume</button>
+                <button v-if="!terminal" class="omni-btn warn sm" type="button" :disabled="busy !== null" @click="act('cancel')">Cancel</button>
+                <button v-if="terminal" class="omni-btn sm" type="button" :disabled="busy !== null" @click="rerun">Run again</button>
             </template>
         </div>
 
-        <div v-if="run.error" class="ot-banner" role="alert">
+        <div v-if="run.error" class="omni-banner" role="alert">
             <span class="glyph" aria-hidden="true">⚠</span><div><strong>The run failed</strong><span class="muted omni-wrap">{{ run.error }}</span></div>
         </div>
-        <div v-if="error" class="ot-banner warn" role="status">
+        <div v-if="error" class="omni-banner warn" role="status">
             <span class="glyph" aria-hidden="true">⚠</span>
             <div><strong>Live updates stopped</strong><span class="muted">{{ error.message }}</span></div>
-            <div class="actions"><button class="ot-btn sm" type="button" @click="follow">Reconnect</button></div>
+            <div class="actions"><button class="omni-btn sm" type="button" @click="follow">Reconnect</button></div>
         </div>
 
-        <dl class="ot-kv omni-section">
+        <dl class="omni-kv omni-section">
             <dt>Tactic</dt><dd>{{ run.tactic }} · v{{ run.tacticVersion }}</dd>
             <dt>Started by</dt><dd>{{ run.actor }}</dd>
             <dt>Created</dt><dd><OmniscienceV3Time :ms="run.createdAtMs" seconds /></dd>
@@ -42,14 +42,14 @@
             <p v-if="!outputs.length" class="omni-muted">{{ terminal ? 'This run produced no output.' : 'Results appear here as the run produces them.' }}</p>
             <div v-for="(out, i) in outputs" :key="i" class="output" data-testid="omni-output">
                 <div class="omni-row">
-                    <span class="ot-chip info">{{ out.kind }}</span>
+                    <span class="omni-chip info">{{ out.kind }}</span>
                     <strong v-if="out.summary">{{ out.summary }}</strong>
                 </div>
                 <template v-if="out.selection">
                     <div class="omni-row">
                         <span>{{ omniCount(out.selection.items.length) }} {{ out.selection.kind }} item{{ out.selection.items.length === 1 ? '' : 's' }}</span>
-                        <span v-if="out.selection.sampled" class="ot-chip warn">sampled from {{ omniCount(out.selection.totalBeforeSampling) }}</span>
-                        <button class="ot-btn sm" type="button" @click="$emit('use', { ...out.selection, origin: `run ${run.runId}` })">Use as input for another tactic</button>
+                        <span v-if="out.selection.sampled" class="omni-chip warn">sampled from {{ omniCount(out.selection.totalBeforeSampling) }}</span>
+                        <button class="omni-btn sm" type="button" @click="$emit('use', { ...out.selection, origin: `run ${run.runId}` })">Use as input for another tactic</button>
                     </div>
                     <ol class="items">
                         <li v-for="item in out.selection.items.slice(0, shown[i] ?? 20)" :key="item.id">
@@ -58,7 +58,7 @@
                             <span v-if="item.score != null" class="omni-muted"> · {{ item.score.toFixed(3) }}</span>
                         </li>
                     </ol>
-                    <button v-if="out.selection.items.length > (shown[i] ?? 20)" class="ot-btn ghost sm" type="button" @click="shown[i] = (shown[i] ?? 20) + 200">
+                    <button v-if="out.selection.items.length > (shown[i] ?? 20)" class="omni-btn ghost sm" type="button" @click="shown[i] = (shown[i] ?? 20) + 200">
                         Show more ({{ omniCount(out.selection.items.length - (shown[i] ?? 20)) }} hidden)
                     </button>
                 </template>
@@ -69,7 +69,7 @@
         <section v-if="events.length || run.progress != null" class="omni-section">
             <h4>Progress</h4>
             <OmniscienceV3Json v-if="run.progress != null && !events.length" :value="run.progress" />
-            <ul class="ot-timeline">
+            <ul class="omni-timeline">
                 <li v-for="ev in events" :key="ev.id">
                     <span class="omni-wrap">{{ ev.text }}</span>
                     <span class="sub"><OmniscienceV3Time :ms="ev.at" mode="absolute" seconds /></span>
@@ -174,9 +174,9 @@ onBeforeUnmount(() => controller?.abort());
 </script>
 
 <style scoped>
-.output { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; margin-bottom: 8px; border: 1px solid var(--ot-line); border-radius: var(--ot-radius-sm); }
+.output { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; margin-bottom: 8px; border: 1px solid var(--omni-line); border-radius: var(--omni-radius-sm); }
 .items .id { margin-left: 8px; }
 .items { margin: 0; padding-left: 28px; max-height: 300px; overflow: auto; font-size: 12.5px; }
-.ot-banner .muted { display: block; color: var(--ot-text-2); }
+.omni-banner .muted { display: block; color: var(--omni-text-2); }
 p { margin: 0; }
 </style>

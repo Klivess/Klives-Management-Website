@@ -1,7 +1,7 @@
 <template>
-    <OmniTraderStateBlock :kind="view.kind" :title="view.title" :detail="view.detail" :compact="compact">
-        <button v-if="view.retry" class="ot-btn sm" type="button" @click="$emit('retry')">Try again</button>
-    </OmniTraderStateBlock>
+    <OmniscienceV3StateBlock :kind="view.kind" :title="view.title" :detail="view.detail" :compact="compact">
+        <button v-if="view.retry" class="omni-btn sm" type="button" @click="$emit('retry')">Try again</button>
+    </OmniscienceV3StateBlock>
 </template>
 
 <script setup lang="ts">

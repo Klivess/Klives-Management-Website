@@ -1,26 +1,26 @@
 <template>
-    <div v-if="fields.length" class="ot-formgrid omni-schema">
-        <div v-for="f in fields" :key="f.name" class="ot-field" :class="{ wide: f.kind === 'json' || f.kind === 'text' }">
+    <div v-if="fields.length" class="omni-formgrid omni-schema">
+        <div v-for="f in fields" :key="f.name" class="omni-field" :class="{ wide: f.kind === 'json' || f.kind === 'text' }">
             <label :for="`${uid}-${f.name}`">{{ f.name }}<span v-if="f.required" aria-label="required"> *</span></label>
-            <select v-if="f.kind === 'enum'" :id="`${uid}-${f.name}`" class="ot-select" :value="modelValue[f.name] ?? ''" @change="set(f, ($event.target as HTMLSelectElement).value)">
+            <select v-if="f.kind === 'enum'" :id="`${uid}-${f.name}`" class="omni-select" :value="modelValue[f.name] ?? ''" @change="set(f, ($event.target as HTMLSelectElement).value)">
                 <option value="">{{ f.required ? 'Choose…' : '(not set)' }}</option>
                 <option v-for="o in f.options" :key="String(o)" :value="String(o)">{{ o }}</option>
             </select>
-            <label v-else-if="f.kind === 'boolean'" class="ot-check">
+            <label v-else-if="f.kind === 'boolean'" class="omni-check">
                 <input :id="`${uid}-${f.name}`" type="checkbox" :checked="modelValue[f.name] === true" @change="set(f, ($event.target as HTMLInputElement).checked)" /> yes
             </label>
-            <input v-else-if="f.kind === 'number'" :id="`${uid}-${f.name}`" class="ot-input mono" type="number" :step="f.integer ? 1 : 'any'" :min="f.min" :max="f.max"
+            <input v-else-if="f.kind === 'number'" :id="`${uid}-${f.name}`" class="omni-input mono" type="number" :step="f.integer ? 1 : 'any'" :min="f.min" :max="f.max"
                    :value="modelValue[f.name] ?? ''" @input="set(f, ($event.target as HTMLInputElement).value)" />
-            <textarea v-else-if="f.kind === 'json'" :id="`${uid}-${f.name}`" class="ot-input mono" rows="3" spellcheck="false" placeholder="JSON"
+            <textarea v-else-if="f.kind === 'json'" :id="`${uid}-${f.name}`" class="omni-input mono" rows="3" spellcheck="false" placeholder="JSON"
                       :value="jsonText[f.name] ?? stringify(modelValue[f.name])" @input="set(f, ($event.target as HTMLTextAreaElement).value)"></textarea>
-            <input v-else :id="`${uid}-${f.name}`" class="ot-input" type="text" :maxlength="f.maxLength" :value="modelValue[f.name] ?? ''"
+            <input v-else :id="`${uid}-${f.name}`" class="omni-input" type="text" :maxlength="f.maxLength" :value="modelValue[f.name] ?? ''"
                    @input="set(f, ($event.target as HTMLInputElement).value)" />
             <span v-if="f.description || jsonProblem[f.name]" class="help" :class="{ neg: !!jsonProblem[f.name] }">{{ jsonProblem[f.name] ?? f.description }}</span>
         </div>
     </div>
-    <div v-else-if="freeform" class="ot-field">
+    <div v-else-if="freeform" class="omni-field">
         <label :for="`${uid}-raw`">Parameters (JSON)</label>
-        <textarea :id="`${uid}-raw`" class="ot-input mono" rows="5" spellcheck="false" :value="rawText" @input="setRaw(($event.target as HTMLTextAreaElement).value)"></textarea>
+        <textarea :id="`${uid}-raw`" class="omni-input mono" rows="5" spellcheck="false" :value="rawText" @input="setRaw(($event.target as HTMLTextAreaElement).value)"></textarea>
         <span v-if="rawProblem" class="help neg">{{ rawProblem }}</span>
     </div>
     <p v-else class="omni-muted">This tactic takes no parameters.</p>
@@ -123,6 +123,6 @@ publish(props.modelValue);
 
 <style scoped>
 .omni-schema .wide { grid-column: 1 / -1; }
-textarea.ot-input { height: auto; padding: 8px 10px; line-height: 18px; resize: vertical; }
-.help.neg { color: var(--ot-negative); }
+textarea.omni-input { height: auto; padding: 8px 10px; line-height: 18px; resize: vertical; }
+.help.neg { color: var(--omni-negative); }
 </style>

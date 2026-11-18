@@ -26,13 +26,13 @@ const text = computed(() => (typeof parsed.value === 'string' ? parsed.value : J
     margin: 0;
     padding: 10px 12px;
     overflow: auto;
-    font-family: var(--ot-mono);
+    font-family: var(--omni-mono);
     font-size: 12px;
     line-height: 17px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    background: var(--ot-surface-1, rgba(0, 0, 0, 0.25));
-    border: 1px solid var(--ot-line);
-    border-radius: var(--ot-radius-sm);
+    background: var(--omni-surface-1, rgba(0, 0, 0, 0.25));
+    border: 1px solid var(--omni-line);
+    border-radius: var(--omni-radius-sm);
 }
 </style>

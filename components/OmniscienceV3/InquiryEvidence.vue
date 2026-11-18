@@ -5,8 +5,8 @@
             <template v-else>{{ evidence.kind === 'fact' ? 'a recorded fact' : 'someone' }}</template>
             · <OmniscienceV3Time :ms="evidence.atMs" mode="absolute" />
             <template v-if="evidence.where"> · {{ evidence.where }}</template>
-            <span class="ot-chip sm" :title="'How much weight this kind of evidence carries'">{{ sourceKindLabel(evidence.reliability) }}</span>
-            <span v-if="evidence.facet" class="ot-chip sm">{{ evidence.facet }}</span>
+            <span class="omni-chip sm" :title="'How much weight this kind of evidence carries'">{{ sourceKindLabel(evidence.reliability) }}</span>
+            <span v-if="evidence.facet" class="omni-chip sm">{{ evidence.facet }}</span>
         </span>
         <q>{{ evidence.quote }}</q>
     </div>

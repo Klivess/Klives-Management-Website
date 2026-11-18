@@ -61,10 +61,10 @@ onMounted(load);
     justify-content: center;
     overflow: hidden;
     min-height: 0;
-    border-radius: var(--ot-radius-sm);
-    background: var(--ot-surface-2);
+    border-radius: var(--omni-radius-sm);
+    background: var(--omni-surface-2);
 }
 .omni-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .omni-media.contain img { object-fit: contain; }
-.omni-media .ph { padding: 8px; font-size: 11.5px; color: var(--ot-muted); text-align: center; }
+.omni-media .ph { padding: 8px; font-size: 11.5px; color: var(--omni-muted); text-align: center; }
 </style>

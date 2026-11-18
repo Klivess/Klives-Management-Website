@@ -1,40 +1,40 @@
 <template>
     <OmniscienceV3Shell>
-        <div class="ot-pagehead">
+        <div class="omni-pagehead">
             <div>
                 <h1>Digests</h1>
                 <p class="subtitle">What happened while you were away, summarised per server and chat with every point cited. A digest reads the messages; it never sends anything.</p>
             </div>
-            <div class="ot-actions">
-                <button class="ot-btn ghost" type="button" :disabled="digests.loading.value" @click="digests.reload()">Refresh</button>
+            <div class="omni-actions">
+                <button class="omni-btn ghost" type="button" :disabled="digests.loading.value" @click="digests.reload()">Refresh</button>
             </div>
         </div>
 
-        <div class="ot-grid sidebar-left">
+        <div class="omni-grid sidebar-left">
             <div class="stack">
-                <OmniTraderCard v-if="canAnalyse" title="Write a digest now">
+                <OmniscienceV3Card v-if="canAnalyse" title="Write a digest now">
                     <form class="omni-form" data-testid="digest-run" @submit.prevent="runDigest()">
-                        <div class="ot-field"><label for="d-scope">Of</label>
-                            <select id="d-scope" v-model="runForm.scopeKind" class="ot-select">
+                        <div class="omni-field"><label for="d-scope">Of</label>
+                            <select id="d-scope" v-model="runForm.scopeKind" class="omni-select">
                                 <option v-for="s in SCOPES" :key="s.value" :value="s.value">{{ s.label }}</option>
                             </select></div>
-                        <div v-if="runForm.scopeKind !== 'all'" class="ot-field"><label for="d-id">{{ scopeLabel(runForm.scopeKind) }} id</label>
-                            <input id="d-id" v-model="runForm.scopeId" class="ot-input mono" required /></div>
-                        <div class="ot-field"><label for="d-range">Covering</label>
-                            <select id="d-range" v-model="runForm.range" class="ot-select">
+                        <div v-if="runForm.scopeKind !== 'all'" class="omni-field"><label for="d-id">{{ scopeLabel(runForm.scopeKind) }} id</label>
+                            <input id="d-id" v-model="runForm.scopeId" class="omni-input mono" required /></div>
+                        <div class="omni-field"><label for="d-range">Covering</label>
+                            <select id="d-range" v-model="runForm.range" class="omni-select">
                                 <option value="seen">Since I last read one</option>
                                 <option value="24">The last 24 hours</option>
                                 <option value="72">The last 3 days</option>
                                 <option value="168">The last week</option>
                             </select></div>
-                        <button class="ot-btn primary" type="submit" :disabled="busy !== null || (runForm.scopeKind !== 'all' && !runForm.scopeId.trim())">Write it</button>
+                        <button class="omni-btn primary" type="submit" :disabled="busy !== null || (runForm.scopeKind !== 'all' && !runForm.scopeId.trim())">Write it</button>
                     </form>
-                </OmniTraderCard>
+                </OmniscienceV3Card>
 
                 <OmniscienceV3Panel title="Digests" flush :loading="digests.loading.value" :error="digests.error.value" :has-data="digests.items.value.length > 0"
                                     :empty="!digests.items.value.length" empty-title="No digests yet" empty-text="The daily digest is written each morning; you can also write one now." @retry="digests.reload()">
                     <template #controls>
-                        <select v-model="filters.scopeKind" class="ot-select auto sm" aria-label="Scope">
+                        <select v-model="filters.scopeKind" class="omni-select auto sm" aria-label="Scope">
                             <option value="">Every scope</option>
                             <option v-for="s in SCOPES" :key="s.value" :value="s.value">{{ s.label }}</option>
                         </select>
@@ -45,14 +45,14 @@
                                 <span class="title">{{ dg.scopeTitle ?? scopeLabel(dg.scopeKind) }}</span>
                                 <span class="omni-muted">{{ at(dg.fromMs) }} → {{ at(dg.toMs) }}</span>
                                 <span class="omni-row">
-                                    <span class="ot-chip sm" :class="omniStateTone(dg.state)">{{ dg.state }}</span>
+                                    <span class="omni-chip sm" :class="omniStateTone(dg.state)">{{ dg.state }}</span>
                                     <span class="omni-muted">{{ dg.nothingNew ? 'nothing new' : `${omniCount(dg.messages)} messages · ${omniCount(dg.people)} people` }}</span>
                                 </span>
                             </button>
                         </li>
                     </ul>
                     <template v-if="digests.hasMore.value" #footer>
-                        <button class="ot-btn sm" type="button" :disabled="digests.loadingMore.value" @click="digests.loadMore()">{{ digests.loadingMore.value ? 'Loading…' : 'Older digests' }}</button>
+                        <button class="omni-btn sm" type="button" :disabled="digests.loadingMore.value" @click="digests.loadMore()">{{ digests.loadingMore.value ? 'Loading…' : 'Older digests' }}</button>
                     </template>
                 </OmniscienceV3Panel>
             </div>
@@ -62,10 +62,10 @@
                                     :loading="item.loading.value && !digest" :error="item.error.value" :has-data="!!digest" :empty="!digest"
                                     empty-title="Pick a digest" empty-text="Open one from the list to read it." @retry="item.refresh()">
                     <template v-if="digest" #controls>
-                        <button class="ot-btn sm" type="button" :disabled="busy !== null" data-testid="digest-seen" @click="markSeen(digest)">Mark as read</button>
+                        <button class="omni-btn sm" type="button" :disabled="busy !== null" data-testid="digest-seen" @click="markSeen(digest)">Mark as read</button>
                     </template>
                     <template v-if="digest">
-                        <div v-if="digest.state === 'queued' || digest.state === 'running'" class="ot-banner info" role="status">
+                        <div v-if="digest.state === 'queued' || digest.state === 'running'" class="omni-banner info" role="status">
                             <span class="glyph" aria-hidden="true">⏳</span><div><strong>Being written</strong><span class="muted">This page updates when it is done.</span></div>
                         </div>
                         <p v-if="digest.error" class="neg">{{ digest.error }}</p>
@@ -98,36 +98,36 @@
                 <OmniscienceV3Panel title="Subscriptions" flush :loading="subs.loading.value" :error="subs.error.value" :has-data="!!subs.data.value"
                                     :empty="!!subs.data.value && !subs.data.value.subscriptions.length" empty-title="No subscriptions"
                                     empty-text="The daily digest of everything is always written; subscribe to a server, chat or person for its own." @retry="subs.refresh()">
-                    <table v-if="subs.data.value" class="ot-table" data-testid="subs-table">
+                    <table v-if="subs.data.value" class="omni-table" data-testid="subs-table">
                         <thead><tr><th>Name</th><th>Of</th><th>When</th><th class="num">Last</th><th v-if="canManage"></th></tr></thead>
                         <tbody>
                             <tr v-for="s in subs.data.value.subscriptions" :key="s.subscriptionId">
-                                <td>{{ s.name }} <span v-if="!s.enabled" class="ot-chip sm">off</span></td>
+                                <td>{{ s.name }} <span v-if="!s.enabled" class="omni-chip sm">off</span></td>
                                 <td>{{ scopeLabel(s.scopeKind) }}<span v-if="s.scopeId" class="sub omni-mono">{{ s.scopeId }}</span></td>
                                 <td>{{ s.cadence === 'weekly' ? `${WEEKDAYS[s.weekday ?? 0]} ` : 'daily ' }}{{ s.at }}</td>
                                 <td class="num"><OmniscienceV3Time :ms="s.lastRunMs" mode="age" /></td>
                                 <td v-if="canManage" class="actions">
-                                    <button class="ot-btn ghost sm" type="button" @click="editSub(s)">Edit</button>
-                                    <button class="ot-btn ghost sm" type="button" :disabled="busy !== null" @click="deleteSub(s)">Delete</button>
+                                    <button class="omni-btn ghost sm" type="button" @click="editSub(s)">Edit</button>
+                                    <button class="omni-btn ghost sm" type="button" :disabled="busy !== null" @click="deleteSub(s)">Delete</button>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                     <template v-if="canManage" #footer>
                         <form class="subform" data-testid="sub-form" @submit.prevent="saveSub()">
-                            <input v-model="sub.name" class="ot-input" placeholder="Name" maxlength="80" aria-label="Subscription name" required />
-                            <select v-model="sub.scopeKind" class="ot-select auto" aria-label="Of">
+                            <input v-model="sub.name" class="omni-input" placeholder="Name" maxlength="80" aria-label="Subscription name" required />
+                            <select v-model="sub.scopeKind" class="omni-select auto" aria-label="Of">
                                 <option v-for="s in SCOPES" :key="s.value" :value="s.value">{{ s.label }}</option>
                             </select>
-                            <input v-if="sub.scopeKind !== 'all'" v-model="sub.scopeId" class="ot-input mono" :placeholder="`${scopeLabel(sub.scopeKind)} id`" aria-label="Scope id" required />
-                            <select v-model="sub.cadence" class="ot-select auto" aria-label="Cadence"><option value="daily">Daily</option><option value="weekly">Weekly</option></select>
-                            <select v-if="sub.cadence === 'weekly'" v-model.number="sub.weekday" class="ot-select auto" aria-label="Weekday">
+                            <input v-if="sub.scopeKind !== 'all'" v-model="sub.scopeId" class="omni-input mono" :placeholder="`${scopeLabel(sub.scopeKind)} id`" aria-label="Scope id" required />
+                            <select v-model="sub.cadence" class="omni-select auto" aria-label="Cadence"><option value="daily">Daily</option><option value="weekly">Weekly</option></select>
+                            <select v-if="sub.cadence === 'weekly'" v-model.number="sub.weekday" class="omni-select auto" aria-label="Weekday">
                                 <option v-for="(w, i) in WEEKDAYS" :key="w" :value="i">{{ w }}</option>
                             </select>
-                            <input v-model="sub.at" class="ot-input auto" type="time" aria-label="Time of day" required />
-                            <label class="ot-check"><input v-model="sub.enabled" type="checkbox" /> On</label>
-                            <button class="ot-btn primary sm" type="submit" :disabled="busy !== null || !sub.name.trim()">{{ sub.subscriptionId ? 'Save' : 'Subscribe' }}</button>
-                            <button v-if="sub.subscriptionId" class="ot-btn ghost sm" type="button" @click="resetSub()">Cancel</button>
+                            <input v-model="sub.at" class="omni-input auto" type="time" aria-label="Time of day" required />
+                            <label class="omni-check"><input v-model="sub.enabled" type="checkbox" /> On</label>
+                            <button class="omni-btn primary sm" type="submit" :disabled="busy !== null || !sub.name.trim()">{{ sub.subscriptionId ? 'Save' : 'Subscribe' }}</button>
+                            <button v-if="sub.subscriptionId" class="omni-btn ghost sm" type="button" @click="resetSub()">Cancel</button>
                         </form>
                     </template>
                 </OmniscienceV3Panel>
@@ -142,7 +142,7 @@ import { OMNI_BASE, omniGet, omniPost } from '~/scripts/omniscience/api';
 import type { DigestDto, DigestPageDto, DigestSeenDto, DigestSubscriptionDeletedDto, DigestSubscriptionDto, DigestSubscriptionListDto } from '~/scripts/omniscience/contracts';
 import { omniCount, omniStateTone } from '~/scripts/omniscience/format';
 import { useOmniAction, useOmniDebounced, useOmniPaged, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
-import { useUrlState } from '~/composables/useOmniTrader';
+import { useOmniUrlState } from '~/composables/useOmniscienceV3';
 import { useAccess } from '~/composables/useAccess';
 
 definePageMeta({ layout: 'navbar' });
@@ -159,7 +159,7 @@ const canAnalyse = computed(() => can('omniscience.analysis.run'));
 const canManage = computed(() => can('omniscience.alerts.manage'));
 const { busy, run } = useOmniAction();
 const { at } = useOmniTime();
-const { state: filters } = useUrlState({ scopeKind: '', digest: '' });
+const { state: filters } = useOmniUrlState({ scopeKind: '', digest: '' });
 
 function scopeLabel(kind: string): string {
     return kind === 'all' ? 'Everything' : kind === 'guild' ? 'Server' : kind === 'conversation' ? 'Chat' : kind === 'person' ? 'Person' : kind;
@@ -217,16 +217,16 @@ async function deleteSub(s: DigestSubscriptionDto) {
 </script>
 
 <style scoped>
-.stack { display: flex; flex-direction: column; gap: var(--ot-gutter); min-width: 0; }
+.stack { display: flex; flex-direction: column; gap: var(--omni-gutter); min-width: 0; }
 .omni-form { display: flex; flex-direction: column; gap: 10px; }
 .digests { list-style: none; margin: 0; padding: 0; }
-.digests li button { all: unset; box-sizing: border-box; width: 100%; display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-bottom: 1px solid var(--ot-line); cursor: pointer; font-size: 13px; }
-.digests li button:hover { background: var(--ot-surface-3); }
-.digests li.active button { background: var(--ot-accent-soft); box-shadow: inset 2px 0 0 var(--ot-accent); }
+.digests li button { all: unset; box-sizing: border-box; width: 100%; display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-bottom: 1px solid var(--omni-line); cursor: pointer; font-size: 13px; }
+.digests li button:hover { background: var(--omni-surface-3); }
+.digests li.active button { background: var(--omni-accent-soft); box-shadow: inset 2px 0 0 var(--omni-accent); }
 .digests .title { font-weight: 600; }
-.refs { font-size: 11px; color: var(--ot-muted); }
+.refs { font-size: 11px; color: var(--omni-muted); }
 .child { margin: 6px 0 0 14px; font-size: 13px; }
 td.actions { white-space: nowrap; text-align: right; }
 .subform { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.subform .ot-input:not(.auto) { width: 160px; }
+.subform .omni-input:not(.auto) { width: 160px; }
 </style>

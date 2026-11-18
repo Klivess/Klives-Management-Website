@@ -3,43 +3,43 @@
         <p v-if="!accepts.length" class="omni-muted">This tactic takes no selection.</p>
         <div v-for="(sel, i) in modelValue" :key="i" class="sel">
             <div class="omni-row">
-                <select class="ot-select auto" :value="sel.kind" :aria-label="`Selection ${i + 1} kind`" @change="setKind(i, ($event.target as HTMLSelectElement).value as SelectionKind)">
+                <select class="omni-select auto" :value="sel.kind" :aria-label="`Selection ${i + 1} kind`" @change="setKind(i, ($event.target as HTMLSelectElement).value as SelectionKind)">
                     <option v-for="k in accepts" :key="k" :value="k">{{ KIND_LABEL[k] }}</option>
                 </select>
                 <span class="omni-muted">{{ describe(sel) }}</span>
-                <span v-if="sel.origin" class="ot-chip info" :title="sel.origin">from {{ sel.origin }}</span>
-                <span v-if="sel.sampled" class="ot-chip warn" :title="`Sampled down from ${sel.totalBeforeSampling ?? 'more'} items`">sampled</span>
+                <span v-if="sel.origin" class="omni-chip info" :title="sel.origin">from {{ sel.origin }}</span>
+                <span v-if="sel.sampled" class="omni-chip warn" :title="`Sampled down from ${sel.totalBeforeSampling ?? 'more'} items`">sampled</span>
                 <span style="flex:1"></span>
-                <button class="ot-btn ghost sm" type="button" :aria-label="`Remove selection ${i + 1}`" @click="remove(i)">Remove</button>
+                <button class="omni-btn ghost sm" type="button" :aria-label="`Remove selection ${i + 1}`" @click="remove(i)">Remove</button>
             </div>
 
-            <div v-if="sel.kind === 'TimeRange'" class="ot-formgrid">
-                <div class="ot-field">
+            <div v-if="sel.kind === 'TimeRange'" class="omni-formgrid">
+                <div class="omni-field">
                     <label :for="`${uid}-${i}-from`">From ({{ zoneLabel }})</label>
-                    <input :id="`${uid}-${i}-from`" class="ot-input" type="datetime-local" :value="rangeInput(i, 0)" @change="setRange(i, 0, ($event.target as HTMLInputElement).value)" />
+                    <input :id="`${uid}-${i}-from`" class="omni-input" type="datetime-local" :value="rangeInput(i, 0)" @change="setRange(i, 0, ($event.target as HTMLInputElement).value)" />
                 </div>
-                <div class="ot-field">
+                <div class="omni-field">
                     <label :for="`${uid}-${i}-to`">Until, exclusive ({{ zoneLabel }})</label>
-                    <input :id="`${uid}-${i}-to`" class="ot-input" type="datetime-local" :value="rangeInput(i, 1)" @change="setRange(i, 1, ($event.target as HTMLInputElement).value)" />
+                    <input :id="`${uid}-${i}-to`" class="omni-input" type="datetime-local" :value="rangeInput(i, 1)" @change="setRange(i, 1, ($event.target as HTMLInputElement).value)" />
                 </div>
             </div>
-            <div v-else-if="sel.kind === 'Question'" class="ot-field">
+            <div v-else-if="sel.kind === 'Question'" class="omni-field">
                 <label :for="`${uid}-${i}-q`">Question</label>
-                <textarea :id="`${uid}-${i}-q`" class="ot-input" rows="2" :value="sel.items[0]?.label ?? ''"
+                <textarea :id="`${uid}-${i}-q`" class="omni-input" rows="2" :value="sel.items[0]?.label ?? ''"
                           @input="setQuestion(i, ($event.target as HTMLTextAreaElement).value)"></textarea>
             </div>
-            <div v-else class="ot-field">
+            <div v-else class="omni-field">
                 <label :for="`${uid}-${i}-ids`">{{ KIND_LABEL[sel.kind] }} ids, one per line</label>
-                <textarea :id="`${uid}-${i}-ids`" class="ot-input mono" rows="3" spellcheck="false" :placeholder="PLACEHOLDER[sel.kind] ?? ''"
+                <textarea :id="`${uid}-${i}-ids`" class="omni-input mono" rows="3" spellcheck="false" :placeholder="PLACEHOLDER[sel.kind] ?? ''"
                           :value="idText(sel)" @change="setIds(i, ($event.target as HTMLTextAreaElement).value)"></textarea>
                 <span class="help">Ids are the corpus's own keys. Labels shown elsewhere are kept when an id is unchanged.</span>
             </div>
         </div>
 
         <div v-if="accepts.length && modelValue.length < max" class="omni-row">
-            <button class="ot-btn sm" type="button" @click="add">Add a selection</button>
+            <button class="omni-btn sm" type="button" @click="add">Add a selection</button>
             <template v-if="accepts.includes('Person') && cohorts.length">
-                <select v-model="cohortPick" class="ot-select auto" aria-label="Add a saved cohort">
+                <select v-model="cohortPick" class="omni-select auto" aria-label="Add a saved cohort">
                     <option value="">Add a saved cohort…</option>
                     <option v-for="c in cohorts" :key="c.cohortId" :value="c.cohortId">{{ c.name }} ({{ c.members }})</option>
                 </select>
@@ -166,7 +166,7 @@ onMounted(async () => {
 
 <style scoped>
 .omni-selections { display: flex; flex-direction: column; gap: 12px; }
-.sel { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--ot-line); border-radius: var(--ot-radius-sm); }
-textarea.ot-input { height: auto; padding: 8px 10px; line-height: 18px; resize: vertical; width: 100%; }
+.sel { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--omni-line); border-radius: var(--omni-radius-sm); }
+textarea.omni-input { height: auto; padding: 8px 10px; line-height: 18px; resize: vertical; width: 100%; }
 p { margin: 0; font-size: 12.5px; }
 </style>

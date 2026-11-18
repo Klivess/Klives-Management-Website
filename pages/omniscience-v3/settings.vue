@@ -1,33 +1,33 @@
 <template>
     <OmniscienceV3Shell>
-        <div class="ot-pagehead">
+        <div class="omni-pagehead">
             <div>
                 <h1>Settings</h1>
                 <p class="subtitle">Engine and module settings. Changes apply at once and are recorded in the audit log.</p>
             </div>
-            <div class="ot-actions">
-                <button class="ot-btn ghost" type="button" :disabled="settings.refreshing.value" @click="settings.refresh()">Refresh</button>
+            <div class="omni-actions">
+                <button class="omni-btn ghost" type="button" :disabled="settings.refreshing.value" @click="settings.refresh()">Refresh</button>
             </div>
         </div>
 
-        <div class="ot-filterbar">
-            <label class="ot-search">
+        <div class="omni-filterbar">
+            <label class="omni-search">
                 <span class="glyph" aria-hidden="true">⌕</span>
                 <span class="visually-hidden">Search settings</span>
-                <input v-model="filters.q" class="ot-input" type="search" placeholder="key or description…" />
+                <input v-model="filters.q" class="omni-input" type="search" placeholder="key or description…" />
             </label>
-            <div class="ot-segment" role="group" aria-label="Which settings">
+            <div class="omni-segment" role="group" aria-label="Which settings">
                 <button type="button" :aria-pressed="filters.show === 'all'" @click="filters.show = 'all'">All</button>
                 <button type="button" :aria-pressed="filters.show === 'changed'" @click="filters.show = 'changed'">
                     Changed <span class="facet">{{ changedCount }}</span>
                 </button>
             </div>
             <span class="summary"><b>{{ visibleCount }}</b> of {{ all.length }} settings</span>
-            <button v-if="activeCount" class="ot-filterchip" type="button" @click="reset">Clear filters <span class="x" aria-hidden="true">✕</span></button>
+            <button v-if="activeCount" class="omni-filterchip" type="button" @click="reset">Clear filters <span class="x" aria-hidden="true">✕</span></button>
             <div class="grow"></div>
         </div>
 
-        <div v-if="!canManage && all.length" class="ot-banner info" role="note">
+        <div v-if="!canManage && all.length" class="omni-banner info" role="note">
             <span class="glyph" aria-hidden="true">🔒</span>
             <div><strong>Read only</strong><span class="muted">Changing settings needs the “Manage the intelligence engine” permission.</span></div>
         </div>
@@ -36,7 +36,7 @@
                             :has-data="!!settings.data.value" :empty="!visibleCount" :empty-kind="activeCount ? 'filtered' : 'empty'"
                             :empty-title="activeCount ? 'No settings match these filters' : 'No settings declared'" @retry="settings.refresh()" />
 
-        <div class="ot-stack">
+        <div class="omni-stack">
             <OmniscienceV3Panel v-for="group in groups" :key="group.scope" :title="group.title" :subtitle="group.subtitle" flush
                                 :error="settings.error.value" has-data @retry="settings.refresh()">
                 <OmniscienceV3SettingRows :settings="group.items" :editable="canManage" @saved="onSaved" />
@@ -50,7 +50,7 @@ import { computed } from 'vue';
 import { omniGet } from '~/scripts/omniscience/api';
 import type { SettingDto } from '~/scripts/omniscience/contracts';
 import { useOmniEngine, useOmniResource, useOmniToasts } from '~/composables/useOmniscienceV3';
-import { useUrlState } from '~/composables/useOmniTrader';
+import { useOmniUrlState } from '~/composables/useOmniscienceV3';
 import { useAccess } from '~/composables/useAccess';
 
 definePageMeta({ layout: 'navbar' });
@@ -60,7 +60,7 @@ const { can } = useAccess();
 const canManage = computed(() => can('omniscience.engine.manage'));
 const { refreshStatus } = useOmniEngine();
 const { push } = useOmniToasts();
-const { state: filters, reset, activeCount } = useUrlState({ q: '', show: 'all' });
+const { state: filters, reset, activeCount } = useOmniUrlState({ q: '', show: 'all' });
 
 const settings = useOmniResource(signal => omniGet<SettingDto[]>('settings', {}, signal));
 const all = computed(() => settings.data.value ?? []);

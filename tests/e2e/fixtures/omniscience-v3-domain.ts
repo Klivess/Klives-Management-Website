@@ -1,6 +1,6 @@
 import type {
     AlertDto, AnalysisOffPersonDto, BackupDto, CommunitiesDto, DigestDto, DigestSubscriptionDto, DossierDto, ForgetPreviewDto, ForgetRunDto, HealthListDto,
-    InboxItemDto, LinkDto, LinkShareDto, LinkTrackDto, MonitorEventDto, MonitorRuleDto, NoticeDto, PeopleMapDto, PersonBriefDto, PersonCardDto, PersonLinksDto,
+    InboxItemDto, LinkDto, LinkShareDto, LinkTrackDto, MonitorEventDto, MonitorRuleDto, NoticeDto, PairDetailDto, PeopleMapDto, PersonBriefDto, PersonCardDto, PersonLinksDto,
     PersonRelationshipsDto, ReadModelDto, RetentionDto, SimilarPeopleDto, SpaceCardDto, SpacePageDto, TopicStatusDto, TranslateStatusDto, WatchRuleDto,
     WellbeingSuggestionDto,
 } from '../../../scripts/omniscience/contracts';
@@ -195,6 +195,20 @@ export async function handleDomain(key: string, p: URLSearchParams, body: any, d
                 mood: null, style: null, facts: [], openThreads: [], error: null, llmCalls: 2, requestedAtMs: NOW, finishedAtMs: NOW + 30_000,
             };
             await json(d.brief, 202); return true;
+        }
+        case 'GET insights/pair': {
+            // Like the server: only a pair with enough interactions is tracked; anything else is a 404 that says so.
+            const pair = [p.get('a'), p.get('b')].sort().join('|');
+            if (pair !== 'person-a|person-b') { await fail(404, 'not_found', 'These two have too few interactions to be tracked as a relationship.'); return true; }
+            const detail: PairDetailDto = {
+                summary: { a: 'person-a', aName: 'Synthetic Ada', b: 'person-b', bName: 'Synthetic Bo', interactions: 300, recent: 40, closeness: 0.62, previousCloseness: 0.5, reciprocity: 0.8, tension: 0.05,
+                    trend: 'closer', firstWeek: '2025-W30', lastWeek: '2026-W26' },
+                weeks: [{ week: '2026-W24', fromA: 12, fromB: 9, conflict: 0, negative: 1, positive: 6, answered: 15, closeness: 0.58 }, { week: '2026-W25', fromA: 18, fromB: 14, conflict: 0, negative: 0, positive: 9, answered: 24, closeness: 0.6 },
+                    { week: '2026-W26', fromA: 10, fromB: 16, conflict: 1, negative: 2, positive: 7, answered: 20, closeness: 0.62 }],
+                events: [{ eventId: 'pe-1', a: 'person-a', b: 'person-b', kind: 'grew_closer', week: '2026-W25', atMs: NOW - 7 * DAY, data: null }],
+                medianReplySecondsFromA: 95, medianReplySecondsFromB: 240, asOfMs: NOW - HOUR,
+            };
+            await json(detail); return true;
         }
         case 'GET insights/person': {
             const rel: PersonRelationshipsDto = {

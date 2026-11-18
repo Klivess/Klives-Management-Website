@@ -3,8 +3,8 @@
         <div v-for="s in settings" :key="s.key" class="row" :class="{ changed: s.valueJson != null }" :data-setting="s.key">
             <div class="what">
                 <code>{{ s.key }}</code>
-                <span v-if="s.scope === 'orphaned'" class="ot-chip warn">orphaned</span>
-                <span v-else-if="s.valueJson != null" class="ot-chip info" :title="s.updatedAtMs ? `Changed ${at(s.updatedAtMs)}` : ''">changed</span>
+                <span v-if="s.scope === 'orphaned'" class="omni-chip warn">orphaned</span>
+                <span v-else-if="s.valueJson != null" class="omni-chip info" :title="s.updatedAtMs ? `Changed ${at(s.updatedAtMs)}` : ''">changed</span>
                 <p>{{ s.description }}</p>
                 <p class="omni-muted">
                     Default <code>{{ s.defaultJson }}</code>
@@ -14,18 +14,18 @@
             </div>
             <div class="edit">
                 <template v-if="s.scope === 'orphaned'"><code>{{ s.valueJson }}</code></template>
-                <label v-else-if="s.type === 'bool'" class="ot-check">
+                <label v-else-if="s.type === 'bool'" class="omni-check">
                     <input type="checkbox" :checked="draft(s) === true" :disabled="!editable || busy === s.key"
                            :aria-label="s.key" @change="save(s, ($event.target as HTMLInputElement).checked)" />
                     {{ draft(s) === true ? 'On' : 'Off' }}
                 </label>
                 <form v-else class="omni-row" novalidate @submit.prevent="submit(s)">
-                    <input class="ot-input sm mono" :type="isNumber(s) ? 'number' : 'text'" :step="s.type === 'int' ? 1 : 'any'"
+                    <input class="omni-input sm mono" :type="isNumber(s) ? 'number' : 'text'" :step="s.type === 'int' ? 1 : 'any'"
                            :min="s.min ?? undefined" :max="s.max ?? undefined" :disabled="!editable || busy === s.key" :aria-label="s.key"
                            :value="text[s.key] ?? shown(s)" @input="text[s.key] = ($event.target as HTMLInputElement).value" />
-                    <button class="ot-btn sm" type="submit" :disabled="!editable || busy === s.key || text[s.key] === undefined || text[s.key] === shown(s)">Save</button>
+                    <button class="omni-btn sm" type="submit" :disabled="!editable || busy === s.key || text[s.key] === undefined || text[s.key] === shown(s)">Save</button>
                 </form>
-                <button v-if="s.scope !== 'orphaned' && s.valueJson != null && editable" class="ot-btn ghost sm" type="button"
+                <button v-if="s.scope !== 'orphaned' && s.valueJson != null && editable" class="omni-btn ghost sm" type="button"
                         :disabled="busy === s.key" @click="reset(s)">Reset to default</button>
                 <p v-if="problems[s.key]" class="neg" role="alert">{{ problems[s.key] }}</p>
             </div>
@@ -101,14 +101,14 @@ async function reset(s: SettingDto) {
 
 <style scoped>
 .omni-settings { display: flex; flex-direction: column; }
-.row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 340px); gap: 16px; padding: 12px 16px; border-bottom: 1px solid var(--ot-line); }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 340px); gap: 16px; padding: 12px 16px; border-bottom: 1px solid var(--omni-line); }
 .row:last-child { border-bottom: 0; }
-.row.changed { box-shadow: inset 2px 0 0 var(--ot-info); }
-.what code { font-family: var(--ot-mono); font-size: 12.5px; margin-right: 8px; }
-.what p { margin: 4px 0 0; font-size: 12.5px; color: var(--ot-text-2); }
-.what p.omni-muted { color: var(--ot-muted); font-size: 11.5px; }
+.row.changed { box-shadow: inset 2px 0 0 var(--omni-info); }
+.what code { font-family: var(--omni-mono); font-size: 12.5px; margin-right: 8px; }
+.what p { margin: 4px 0 0; font-size: 12.5px; color: var(--omni-text-2); }
+.what p.omni-muted { color: var(--omni-muted); font-size: 11.5px; }
 .edit { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
-.edit .ot-input { min-width: 0; flex: 1 1 140px; }
+.edit .omni-input { min-width: 0; flex: 1 1 140px; }
 .edit p { margin: 0; font-size: 12px; }
 .stacked .row { grid-template-columns: minmax(0, 1fr); padding-left: 12px; padding-right: 0; }
 @media (max-width: 760px) { .row { grid-template-columns: minmax(0, 1fr); } }

@@ -1,5 +1,5 @@
 <template>
-    <table class="ot-table compact" :data-testid="testid">
+    <table class="omni-table compact" :data-testid="testid">
         <thead><tr><th>Measured over</th><th>What</th><th class="num">Value</th><th class="num">Cases</th><th>Prompt</th></tr></thead>
         <tbody>
             <tr v-for="(m, i) in metrics" :key="i">

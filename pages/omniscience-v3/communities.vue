@@ -1,22 +1,22 @@
 <template>
     <OmniscienceV3Shell>
-        <div class="ot-pagehead">
+        <div class="omni-pagehead">
             <div>
                 <h1>Communities</h1>
                 <p class="subtitle">Servers and group chats as places (who carries them, who is rising, their tone and what they say about you), the circles people form, and a map of who resembles whom.</p>
             </div>
-            <div class="ot-actions">
-                <button v-if="canManage && filters.tab === 'circles'" class="ot-btn ghost" type="button" :disabled="busy !== null" @click="refreshCircles()">Recompute circles</button>
+            <div class="omni-actions">
+                <button v-if="canManage && filters.tab === 'circles'" class="omni-btn ghost" type="button" :disabled="busy !== null" @click="refreshCircles()">Recompute circles</button>
             </div>
         </div>
 
-        <div class="ot-segment tabs" role="tablist" aria-label="Communities">
+        <div class="omni-segment tabs" role="tablist" aria-label="Communities">
             <button v-for="t in TABS" :key="t.value" type="button" role="tab" :aria-selected="filters.tab === t.value" :aria-pressed="filters.tab === t.value"
                     :data-testid="`communities-tab-${t.value}`" @click="filters.tab = t.value">{{ t.label }}</button>
         </div>
 
         <!-- ── places ───────────────────────────────────────────────────── -->
-        <div v-if="filters.tab === 'places'" class="ot-grid sidebar-left">
+        <div v-if="filters.tab === 'places'" class="omni-grid sidebar-left">
             <OmniscienceV3Panel title="Places" :subtitle="spaces.data.value ? `last ${spaces.data.value.windowDays} days` : undefined" flush
                                 :loading="spaces.loading.value" :error="spaces.error.value" :has-data="!!spaces.data.value"
                                 :empty="!!spaces.data.value && !spaces.data.value.spaces.length" empty-title="No community pages yet"
@@ -39,14 +39,14 @@
                                     :loading="page.loading.value && !!filters.scopeId" :error="page.error.value" :has-data="!!page.data.value"
                                     :empty="!filters.scopeId" empty-title="Pick a place" empty-text="Open a server or group chat from the list." @retry="page.refresh()">
                     <template v-if="canManage && filters.scopeId" #controls>
-                        <button class="ot-btn sm" type="button" :disabled="busy !== null" data-testid="space-refresh" @click="rebuild()">Rebuild this page</button>
+                        <button class="omni-btn sm" type="button" :disabled="busy !== null" data-testid="space-refresh" @click="rebuild()">Rebuild this page</button>
                     </template>
                     <template v-if="p">
-                        <div class="ot-kpis tight">
-                            <OmniTraderKpi label="Messages" :value="omniCount(p.messages)" small :foot="`before: ${omniCount(p.previousMessages)}`" />
-                            <OmniTraderKpi label="People" :value="omniCount(p.people)" small :foot="`before: ${omniCount(p.previousPeople)}`" />
-                            <OmniTraderKpi label="About you" :value="omniCount(p.aboutKlives.messages)" small :foot="`before: ${omniCount(p.aboutKlives.previousMessages)}`" />
-                            <OmniTraderKpi label="Conflict" :value="omniPercent(p.tone.conflictRecent)" small :foot="`usual ${omniPercent(p.tone.conflictBaseline)}`" />
+                        <div class="omni-kpis tight">
+                            <OmniscienceV3Kpi label="Messages" :value="omniCount(p.messages)" small :foot="`before: ${omniCount(p.previousMessages)}`" />
+                            <OmniscienceV3Kpi label="People" :value="omniCount(p.people)" small :foot="`before: ${omniCount(p.previousPeople)}`" />
+                            <OmniscienceV3Kpi label="About you" :value="omniCount(p.aboutKlives.messages)" small :foot="`before: ${omniCount(p.aboutKlives.previousMessages)}`" />
+                            <OmniscienceV3Kpi label="Conflict" :value="omniPercent(p.tone.conflictRecent)" small :foot="`usual ${omniPercent(p.tone.conflictBaseline)}`" />
                         </div>
                         <svg class="series" :viewBox="`0 0 ${Math.max(1, p.days.length)} 40`" preserveAspectRatio="none" role="img" aria-label="Messages per day">
                             <rect v-for="(day, i) in p.days" :key="day.day" :x="i + 0.1" width="0.8" :y="40 - bar(day.messages, maxDay)" :height="bar(day.messages, maxDay)"><title>{{ day.day }}: {{ day.messages }} messages, {{ day.people }} people</title></rect>
@@ -56,34 +56,34 @@
                     </template>
                 </OmniscienceV3Panel>
 
-                <div v-if="p" class="ot-grid two">
-                    <OmniTraderCard title="Who carries it" flush>
-                        <table class="ot-table" data-testid="space-core">
+                <div v-if="p" class="omni-grid two">
+                    <OmniscienceV3Card title="Who carries it" flush>
+                        <table class="omni-table" data-testid="space-core">
                             <thead><tr><th>Person</th><th class="num">Messages</th><th class="num">Share</th><th class="num">Days</th></tr></thead>
                             <tbody><tr v-for="m in p.core" :key="m.personId">
                                 <td><NuxtLink :to="personLink(m.personId)">{{ m.name ?? m.personId }}</NuxtLink></td>
                                 <td class="num">{{ omniCount(m.messages) }}</td><td class="num">{{ omniPercent(m.share) }}</td><td class="num">{{ m.activeDays }}</td>
                             </tr></tbody>
                         </table>
-                    </OmniTraderCard>
-                    <OmniTraderCard title="Rising" flush :empty="!p.rising.length" empty-title="Nobody rising">
-                        <table class="ot-table">
+                    </OmniscienceV3Card>
+                    <OmniscienceV3Card title="Rising" flush :empty="!p.rising.length" empty-title="Nobody rising">
+                        <table class="omni-table">
                             <thead><tr><th>Person</th><th class="num">Recent</th><th class="num">Earlier</th><th></th></tr></thead>
                             <tbody><tr v-for="r in p.rising" :key="r.personId">
                                 <td><NuxtLink :to="personLink(r.personId)">{{ r.name ?? r.personId }}</NuxtLink></td>
                                 <td class="num">{{ omniCount(r.recent) }}</td><td class="num">{{ omniCount(r.earlier) }}</td>
-                                <td><span v-if="r.isNew" class="ot-chip sm info">new</span><span v-if="r.everywhere" class="ot-chip sm" title="As busy everywhere, not just here">everywhere</span></td>
+                                <td><span v-if="r.isNew" class="omni-chip sm info">new</span><span v-if="r.everywhere" class="omni-chip sm" title="As busy everywhere, not just here">everywhere</span></td>
                             </tr></tbody>
                         </table>
-                    </OmniTraderCard>
-                    <OmniTraderCard title="Tone">
+                    </OmniscienceV3Card>
+                    <OmniscienceV3Card title="Tone">
                         <div v-for="label in TONE" :key="label" class="tone">
                             <span class="lbl">{{ label }}</span>
                             <span class="bars"><span class="now" :style="{ width: share(p.tone.recent, label) }"></span></span>
                             <span class="omni-muted">{{ share(p.tone.recent, label) }} <span class="base">(usual {{ share(p.tone.baseline, label) }})</span></span>
                         </div>
-                    </OmniTraderCard>
-                    <OmniTraderCard title="What it says about you" :empty="!p.aboutKlives.messages" empty-title="Nothing about you here">
+                    </OmniscienceV3Card>
+                    <OmniscienceV3Card title="What it says about you" :empty="!p.aboutKlives.messages" empty-title="Nothing about you here">
                         <p class="omni-muted">{{ Object.entries(p.aboutKlives.kinds).map(([k, n]) => `${omniHumanise(k).toLowerCase()} ${n}`).join(' · ') }}</p>
                         <div v-for="label in TONE" :key="label" class="tone">
                             <span class="lbl">{{ label }}</span>
@@ -92,25 +92,25 @@
                         </div>
                         <p class="omni-muted">Mostly from: <template v-for="(t, i) in p.aboutKlives.people" :key="t.personId"><template v-if="i">, </template>
                             <NuxtLink :to="personLink(t.personId)">{{ t.name ?? t.personId }}</NuxtLink> ({{ t.messages }})</template></p>
-                    </OmniTraderCard>
+                    </OmniscienceV3Card>
                 </div>
 
-                <OmniTraderCard v-if="p && p.events.length" title="What changed">
+                <OmniscienceV3Card v-if="p && p.events.length" title="What changed">
                     <ul class="events"><li v-for="e in p.events" :key="e.day + e.kind"><span class="omni-muted">{{ e.day }}</span> {{ e.text }}</li></ul>
-                </OmniTraderCard>
-                <div v-if="p && (p.factions.length || p.channels.length)" class="ot-grid two">
-                    <OmniTraderCard title="Factions" :subtitle="p.factionModularity != null ? `modularity ${p.factionModularity.toFixed(2)}` : undefined" :empty="!p.factions.length" empty-title="One group">
+                </OmniscienceV3Card>
+                <div v-if="p && (p.factions.length || p.channels.length)" class="omni-grid two">
+                    <OmniscienceV3Card title="Factions" :subtitle="p.factionModularity != null ? `modularity ${p.factionModularity.toFixed(2)}` : undefined" :empty="!p.factions.length" empty-title="One group">
                         <div v-for="f in p.factions" :key="f.factionId" class="faction">
                             <strong>{{ f.size }} people</strong>
                             <span class="omni-muted"><template v-for="(m, i) in f.members" :key="m.personId"><template v-if="i">, </template>
                                 <NuxtLink :to="personLink(m.personId)">{{ m.name ?? m.personId }}</NuxtLink></template></span>
                         </div>
-                    </OmniTraderCard>
-                    <OmniTraderCard title="Channels" flush :empty="!p.channels.length">
-                        <table class="ot-table"><tbody>
+                    </OmniscienceV3Card>
+                    <OmniscienceV3Card title="Channels" flush :empty="!p.channels.length">
+                        <table class="omni-table"><tbody>
                             <tr v-for="c in p.channels" :key="c.conversationId"><td>{{ c.title ?? c.conversationId }}</td><td class="num">{{ omniCount(c.messages) }}</td><td class="num">{{ c.people }} people</td></tr>
                         </tbody></table>
-                    </OmniTraderCard>
+                    </OmniscienceV3Card>
                 </div>
             </div>
         </div>
@@ -166,7 +166,7 @@ import type { CommunitiesDto, InsightsRefreshDto, PeopleMapDto, SpaceListDto, Sp
 import { omniCount, omniPercent } from '~/scripts/omniscience/format';
 import { omniHumanise } from '~/scripts/omniscience/findings';
 import { useOmniAction, useOmniResource } from '~/composables/useOmniscienceV3';
-import { useUrlState } from '~/composables/useOmniTrader';
+import { useOmniUrlState } from '~/composables/useOmniscienceV3';
 import { useAccess } from '~/composables/useAccess';
 
 definePageMeta({ layout: 'navbar' });
@@ -181,7 +181,7 @@ const router = useRouter();
 const { can } = useAccess();
 const canManage = computed(() => can('omniscience.engine.manage'));
 const { busy, run } = useOmniAction();
-const { state: filters } = useUrlState({ tab: 'places' as Tab, scopeKind: '', scopeId: '' });
+const { state: filters } = useOmniUrlState({ tab: 'places' as Tab, scopeKind: '', scopeId: '' });
 
 function personLink(id: string): string { return `${OMNI_BASE}/people/${encodeURIComponent(id)}`; }
 function isOpen(kind: string, id: string): boolean { return filters.scopeKind === kind && filters.scopeId === id; }
@@ -235,7 +235,7 @@ const communityIndex = computed(() => {
     return index;
 });
 function colour(communityId?: string | null): string {
-    if (!communityId) return 'var(--ot-muted, #8b949e)';
+    if (!communityId) return 'var(--omni-muted, #8b949e)';
     let i = communityIndex.value.get(communityId);
     if (i === undefined) i = [...communityId].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
     return PALETTE[i % PALETTE.length]!;
@@ -243,23 +243,23 @@ function colour(communityId?: string | null): string {
 </script>
 
 <style scoped>
-.tabs { margin-bottom: var(--ot-gutter); }
-.stack { display: flex; flex-direction: column; gap: var(--ot-gutter); min-width: 0; }
+.tabs { margin-bottom: var(--omni-gutter); }
+.stack { display: flex; flex-direction: column; gap: var(--omni-gutter); min-width: 0; }
 .places { list-style: none; margin: 0; padding: 0; }
-.places li button { all: unset; box-sizing: border-box; width: 100%; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-bottom: 1px solid var(--ot-line); cursor: pointer; font-size: 13px; }
-.places li button:hover { background: var(--ot-surface-3); }
-.places li.active button { background: var(--ot-accent-soft); box-shadow: inset 2px 0 0 var(--ot-accent); }
+.places li button { all: unset; box-sizing: border-box; width: 100%; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-bottom: 1px solid var(--omni-line); cursor: pointer; font-size: 13px; }
+.places li button:hover { background: var(--omni-surface-3); }
+.places li.active button { background: var(--omni-accent-soft); box-shadow: inset 2px 0 0 var(--omni-accent); }
 .places .title { font-weight: 600; }
 .series { width: 100%; height: 70px; margin-top: 12px; }
-.series rect { fill: var(--ot-accent, #58a6ff); }
+.series rect { fill: var(--omni-accent, #58a6ff); }
 .tone { display: grid; grid-template-columns: 70px 1fr auto; gap: 8px; align-items: center; font-size: 12.5px; margin: 4px 0; }
-.tone .bars { height: 8px; background: var(--ot-line); border-radius: 4px; overflow: hidden; }
-.tone .bars .now { display: block; height: 100%; background: var(--ot-accent, #58a6ff); }
+.tone .bars { height: 8px; background: var(--omni-line); border-radius: 4px; overflow: hidden; }
+.tone .bars .now { display: block; height: 100%; background: var(--omni-accent, #58a6ff); }
 .tone .base { font-size: 11px; }
 .events { margin: 0; padding-left: 18px; font-size: 13px; }
-.faction, .circle { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; border-bottom: 1px solid var(--ot-line); font-size: 13px; }
+.faction, .circle { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; border-bottom: 1px solid var(--omni-line); font-size: 13px; }
 .circles { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0 16px; }
-.map { width: 100%; height: min(70vh, 640px); background: var(--ot-surface-2); border-radius: 6px; }
+.map { width: 100%; height: min(70vh, 640px); background: var(--omni-surface-2); border-radius: 6px; }
 .map circle { opacity: 0.85; cursor: pointer; }
-.map circle:hover { opacity: 1; stroke: var(--ot-text); stroke-width: 0.002; }
+.map circle:hover { opacity: 1; stroke: var(--omni-text); stroke-width: 0.002; }
 </style>

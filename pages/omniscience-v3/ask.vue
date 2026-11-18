@@ -1,41 +1,41 @@
 <template>
     <OmniscienceV3Shell>
-        <div class="ot-pagehead">
+        <div class="omni-pagehead">
             <div>
                 <h1>Ask</h1>
                 <p class="subtitle">Ask anything about the people in the archive. The answer comes from several independent readings of the evidence, with every message it rests on quoted, and it says when it does not know.</p>
             </div>
-            <div class="ot-actions"><button class="ot-btn ghost" type="button" @click="refreshTab()">Refresh</button></div>
+            <div class="omni-actions"><button class="omni-btn ghost" type="button" @click="refreshTab()">Refresh</button></div>
         </div>
 
-        <div class="ot-segment tabs" role="tablist" aria-label="Ask">
+        <div class="omni-segment tabs" role="tablist" aria-label="Ask">
             <button v-for="t in TABS" :key="t.value" type="button" role="tab" :aria-selected="view.tab === t.value" :aria-pressed="view.tab === t.value"
                     :data-testid="`ask-tab-${t.value}`" @click="view.tab = t.value">{{ t.label }}</button>
         </div>
 
         <!-- ── ask ──────────────────────────────────────────────────────────── -->
         <template v-if="view.tab === 'ask'">
-            <div class="ot-grid sidebar">
-                <OmniTraderCard title="Your question">
+            <div class="omni-grid sidebar">
+                <OmniscienceV3Card title="Your question">
                     <form class="omni-form" data-testid="ask-form" @submit.prevent="ask()">
-                        <div class="ot-field">
+                        <div class="omni-field">
                             <label for="ask-q">Question</label>
-                            <textarea id="ask-q" v-model="draft.question" class="ot-input" rows="4" maxlength="2000" required placeholder="e.g. Does Ada still live in Leeds?"></textarea>
+                            <textarea id="ask-q" v-model="draft.question" class="omni-input" rows="4" maxlength="2000" required placeholder="e.g. Does Ada still live in Leeds?"></textarea>
                         </div>
-                        <div class="ot-field">
+                        <div class="omni-field">
                             <label for="ask-people">About (optional)</label>
                             <OmniscienceV3PersonPick v-model="draft.people" input-id="ask-people" :max="6" testid="ask-people" />
                             <span class="help">Leave empty to let the question name them. Nothing is ever worked out about someone under 18.</span>
                         </div>
-                        <div class="ot-field">
+                        <div class="omni-field">
                             <label for="ask-asof">As of (optional)</label>
-                            <input id="ask-asof" v-model="draft.asOf" class="ot-input" type="datetime-local" />
+                            <input id="ask-asof" v-model="draft.asOf" class="omni-input" type="datetime-local" />
                             <span class="help">Answer as if it were then: nothing written later is read. In {{ zoneLabel }}.</span>
                         </div>
-                        <label class="ot-check"><input v-model="draft.standing" type="checkbox" /> Keep watching: ask again when new messages bear on it, and tell me if the answer changes</label>
+                        <label class="omni-check"><input v-model="draft.standing" type="checkbox" /> Keep watching: ask again when new messages bear on it, and tell me if the answer changes</label>
                         <div class="omni-row">
-                            <button class="ot-btn primary" type="submit" :disabled="!canAsk || busy !== null || !draft.question.trim()" data-testid="ask-submit">Ask</button>
-                            <button class="ot-btn" type="button" :disabled="!canRun || busy !== null || !draft.question.trim()" data-testid="ask-plan" @click="preview()">How would it be answered?</button>
+                            <button class="omni-btn primary" type="submit" :disabled="!canAsk || busy !== null || !draft.question.trim()" data-testid="ask-submit">Ask</button>
+                            <button class="omni-btn" type="button" :disabled="!canRun || busy !== null || !draft.question.trim()" data-testid="ask-plan" @click="preview()">How would it be answered?</button>
                         </div>
                         <p v-if="!canAsk" class="omni-muted">Asking needs the “Run tactics and inquiries” and “Ask about people” permissions.</p>
                     </form>
@@ -46,29 +46,29 @@
                         <p><span class="omni-muted">Understood as:</span> {{ plan.restatement }}</p>
                         <div v-if="plan.people.length" class="omni-row">
                             <span class="omni-muted">People it found:</span>
-                            <button v-for="c in plan.people" :key="c.personId" class="ot-btn ghost sm" type="button" :title="c.detail ?? undefined" @click="addPerson(c.personId, c.label)">+ {{ c.label }}</button>
+                            <button v-for="c in plan.people" :key="c.personId" class="omni-btn ghost sm" type="button" :title="c.detail ?? undefined" @click="addPerson(c.personId, c.label)">+ {{ c.label }}</button>
                         </div>
                         <p v-if="planTactic && planTactic.category !== 'Inquiry'" class="omni-muted">
                             This is not a question for the inquiry engine. <NuxtLink :to="`${OMNI_BASE}/tactics?tactic=${encodeURIComponent(plan.tactic)}`">Open “{{ planTactic.title }}” under Tactics</NuxtLink>.
                         </p>
                     </div>
-                </OmniTraderCard>
+                </OmniscienceV3Card>
 
                 <div>
-                    <OmniTraderCard v-if="!view.run" title="The answer" empty empty-title="Nothing asked yet"
+                    <OmniscienceV3Card v-if="!view.run" title="The answer" empty empty-title="Nothing asked yet"
                                     empty-text="Ask a question, or open a past answer. A typical answer takes a minute or two: it reads the evidence several times and compares the readings." />
                     <template v-else>
-                        <OmniTraderCard v-if="answer" title="The answer">
+                        <OmniscienceV3Card v-if="answer" title="The answer">
                             <template #controls>
-                                <button v-if="canReview && !answerFeedback" class="ot-btn ghost sm" type="button" :disabled="busy !== null" @click="feedback(answer.inquiryId, 'correct')">It was right</button>
-                                <button v-if="canReview && !answerFeedback" class="ot-btn ghost sm" type="button" :disabled="busy !== null" @click="feedback(answer.inquiryId, 'incorrect')">It was wrong</button>
-                                <span v-if="answerFeedback" class="ot-chip sm ok">you said: {{ answerFeedback }}</span>
+                                <button v-if="canReview && !answerFeedback" class="omni-btn ghost sm" type="button" :disabled="busy !== null" @click="feedback(answer.inquiryId, 'correct')">It was right</button>
+                                <button v-if="canReview && !answerFeedback" class="omni-btn ghost sm" type="button" :disabled="busy !== null" @click="feedback(answer.inquiryId, 'incorrect')">It was wrong</button>
+                                <span v-if="answerFeedback" class="omni-chip sm ok">you said: {{ answerFeedback }}</span>
                             </template>
                             <OmniscienceV3InquiryReport :report="answer" @pick="(id, label) => askAbout(answer, id, label)" />
-                        </OmniTraderCard>
-                        <OmniTraderCard :title="answer ? 'How it ran' : 'Working on it'">
+                        </OmniscienceV3Card>
+                        <OmniscienceV3Card :title="answer ? 'How it ran' : 'Working on it'">
                             <OmniscienceV3TacticRunView :run-id="view.run" @changed="onRunChanged()" @open="id => (view.run = id)" @use="useSelection" />
-                        </OmniTraderCard>
+                        </OmniscienceV3Card>
                     </template>
                 </div>
             </div>
@@ -76,46 +76,46 @@
 
         <!-- ── past answers ─────────────────────────────────────────────────── -->
         <template v-else-if="view.tab === 'past'">
-            <div class="ot-filterbar">
-                <div class="ot-segment" role="group" aria-label="Outcome">
+            <div class="omni-filterbar">
+                <div class="omni-segment" role="group" aria-label="Outcome">
                     <button v-for="s in STATES" :key="s.value" type="button" :aria-pressed="view.state === s.value" @click="view.state = s.value">{{ s.label }}</button>
                 </div>
                 <span class="summary"><b>{{ past.items.value.length }}</b> shown</span>
             </div>
             <OmniscienceV3Panel title="Past answers" flush :loading="past.loading.value" :error="past.error.value" :has-data="past.items.value.length > 0" :empty="!past.items.value.length"
                                 empty-title="No answers here" :empty-kind="view.state ? 'filtered' : 'empty'" @retry="past.reload()">
-                <table class="ot-table" data-testid="inquiries-table">
+                <table class="omni-table" data-testid="inquiries-table">
                     <thead><tr><th>Asked</th><th>Question</th><th>Answer</th><th class="num">Confidence</th><th>About</th><th>Your verdict</th></tr></thead>
                     <tbody>
                         <tr v-for="i in past.items.value" :key="i.inquiryId" class="clickable" :class="{ selected: view.inquiry === i.inquiryId }" @click="view.inquiry = i.inquiryId">
                             <td class="num"><OmniscienceV3Time :ms="i.createdAtMs" mode="age" /></td>
                             <td><span class="cellstack"><span>{{ i.question }}</span><span v-if="i.restatement && i.restatement !== i.question" class="sub">{{ i.restatement }}</span></span></td>
-                            <td><span class="ot-chip" :class="verdictTone(i.verdict)">{{ verdictLabel(i.verdict) }}</span>
-                                <span v-if="i.standingId" class="ot-chip sm info" title="Asked again whenever new messages bear on it">watching</span></td>
+                            <td><span class="omni-chip" :class="verdictTone(i.verdict)">{{ verdictLabel(i.verdict) }}</span>
+                                <span v-if="i.standingId" class="omni-chip sm info" title="Asked again whenever new messages bear on it">watching</span></td>
                             <td class="num">{{ omniPercent(i.probability) }}</td>
                             <td><NuxtLink v-if="i.primarySubjectId" :to="personLink(i.primarySubjectId)" @click.stop>{{ name(i.primarySubjectId) }}</NuxtLink><span v-else class="omni-muted">—</span></td>
-                            <td><span v-if="i.feedback" class="ot-chip sm" :class="i.feedback === 'correct' || i.feedback === 'yes' ? 'ok' : 'warn'">{{ i.feedback }}</span><span v-else class="omni-muted">—</span></td>
+                            <td><span v-if="i.feedback" class="omni-chip sm" :class="i.feedback === 'correct' || i.feedback === 'yes' ? 'ok' : 'warn'">{{ i.feedback }}</span><span v-else class="omni-muted">—</span></td>
                         </tr>
                     </tbody>
                 </table>
                 <template v-if="past.hasMore.value" #footer>
-                    <button class="ot-btn sm" type="button" :disabled="past.loadingMore.value" @click="past.loadMore()">{{ past.loadingMore.value ? 'Loading…' : 'Load older answers' }}</button>
+                    <button class="omni-btn sm" type="button" :disabled="past.loadingMore.value" @click="past.loadMore()">{{ past.loadingMore.value ? 'Loading…' : 'Load older answers' }}</button>
                 </template>
             </OmniscienceV3Panel>
 
-            <OmniTraderDrawer :open="!!view.inquiry" :title="opened.data.value?.question ?? 'Answer'" wide @close="view.inquiry = ''">
+            <OmniscienceV3Drawer :open="!!view.inquiry" :title="opened.data.value?.question ?? 'Answer'" wide @close="view.inquiry = ''">
                 <OmniscienceV3ErrorBlock v-if="opened.error.value && !opened.data.value" :error="opened.error.value" what="This answer" @retry="opened.refresh()" />
-                <div v-else-if="!opened.data.value" class="ot-skelrows" aria-busy="true"><div v-for="n in 6" :key="n" class="ot-skel"></div></div>
+                <div v-else-if="!opened.data.value" class="omni-skelrows" aria-busy="true"><div v-for="n in 6" :key="n" class="omni-skel"></div></div>
                 <template v-else>
                     <div v-if="canReview" class="omni-row feedback">
                         <span class="omni-muted">Was it right?</span>
-                        <button class="ot-btn sm" type="button" :disabled="busy !== null" data-testid="inquiry-right" @click="feedback(opened.data.value.inquiryId, 'correct')">It was right</button>
-                        <button class="ot-btn sm" type="button" :disabled="busy !== null" data-testid="inquiry-wrong" @click="feedback(opened.data.value.inquiryId, 'incorrect')">It was wrong</button>
+                        <button class="omni-btn sm" type="button" :disabled="busy !== null" data-testid="inquiry-right" @click="feedback(opened.data.value.inquiryId, 'correct')">It was right</button>
+                        <button class="omni-btn sm" type="button" :disabled="busy !== null" data-testid="inquiry-wrong" @click="feedback(opened.data.value.inquiryId, 'incorrect')">It was wrong</button>
                         <span class="omni-muted">Your marks are what the confidence numbers are corrected against.</span>
                     </div>
                     <OmniscienceV3InquiryReport :report="opened.data.value" @pick="(id, label) => askAbout(opened.data.value, id, label)" />
                 </template>
-            </OmniTraderDrawer>
+            </OmniscienceV3Drawer>
         </template>
 
         <!-- ── standing questions ───────────────────────────────────────────── -->
@@ -124,20 +124,20 @@
                                 :empty="!!standing.data.value && !standing.data.value.length" empty-title="No questions are being watched"
                                 empty-text="Tick “Keep watching” when you ask. The question is asked again when new live messages bear on it, and a change of answer becomes a notice under Signals."
                                 @retry="standing.refresh()">
-                <table v-if="standing.data.value" class="ot-table" data-testid="standing-table">
+                <table v-if="standing.data.value" class="omni-table" data-testid="standing-table">
                     <thead><tr><th>Question</th><th>About</th><th>Last answer</th><th class="num">Asked again</th><th class="num">At most every</th><th>State</th><th v-if="canRun"></th></tr></thead>
                     <tbody>
                         <tr v-for="q in standing.data.value" :key="q.questionId">
                             <td>{{ q.question }}</td>
                             <td><NuxtLink v-for="p in q.personIds" :key="p" class="who" :to="personLink(p)">{{ name(p) }}</NuxtLink></td>
-                            <td><span class="ot-chip" :class="verdictTone(q.lastVerdict)">{{ verdictLabel(q.lastVerdict) }}</span> <span class="omni-muted">{{ omniPercent(q.lastProbability) }}</span></td>
+                            <td><span class="omni-chip" :class="verdictTone(q.lastVerdict)">{{ verdictLabel(q.lastVerdict) }}</span> <span class="omni-muted">{{ omniPercent(q.lastProbability) }}</span></td>
                             <td class="num"><OmniscienceV3Time :ms="q.lastEvaluatedMs" mode="age" /></td>
                             <td class="num">{{ omniDuration(q.minIntervalMs) }}</td>
-                            <td><span class="ot-chip sm" :class="q.enabled ? 'ok' : ''">{{ q.enabled ? 'watching' : 'off' }}</span>
-                                <span v-if="q.pending" class="ot-chip sm info" title="New evidence arrived; it will be asked again once its minimum interval has passed">due</span></td>
+                            <td><span class="omni-chip sm" :class="q.enabled ? 'ok' : ''">{{ q.enabled ? 'watching' : 'off' }}</span>
+                                <span v-if="q.pending" class="omni-chip sm info" title="New evidence arrived; it will be asked again once its minimum interval has passed">due</span></td>
                             <td v-if="canRun" class="actions">
-                                <button class="ot-btn ghost sm" type="button" :disabled="busy !== null" @click="toggleStanding(q)">{{ q.enabled ? 'Stop watching' : 'Watch again' }}</button>
-                                <button class="ot-btn ghost sm" type="button" @click="showHistory(q.questionId)">Its answers</button>
+                                <button class="omni-btn ghost sm" type="button" :disabled="busy !== null" @click="toggleStanding(q)">{{ q.enabled ? 'Stop watching' : 'Watch again' }}</button>
+                                <button class="omni-btn ghost sm" type="button" @click="showHistory(q.questionId)">Its answers</button>
                             </td>
                         </tr>
                     </tbody>
@@ -157,7 +157,7 @@ import type {
 import { omniDuration, omniPercent, omniZonedToMs } from '~/scripts/omniscience/format';
 import { verdictLabel, verdictTone } from '~/scripts/omniscience/knowledge';
 import { useOmniAction, useOmniCarry, useOmniDebounced, useOmniNames, useOmniPaged, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
-import { useUrlState } from '~/composables/useOmniTrader';
+import { useOmniUrlState } from '~/composables/useOmniscienceV3';
 import { useAccess } from '~/composables/useAccess';
 import type { PickedPerson } from '~/components/OmniscienceV3/PersonPick.vue';
 
@@ -181,7 +181,7 @@ const canReview = computed(() => can('omniscience.review.act'));
 const { busy, run } = useOmniAction();
 const { zone, lens } = useOmniTime();
 const zoneLabel = computed(() => (lens.value === 'Utc' ? 'UTC' : zone.value));
-const { state: view } = useUrlState({ tab: 'ask' as Tab, run: '', state: '', standing: '', inquiry: '' });
+const { state: view } = useOmniUrlState({ tab: 'ask' as Tab, run: '', state: '', standing: '', inquiry: '' });
 
 function personLink(id: string): string { return `${OMNI_BASE}/people/${encodeURIComponent(id)}`; }
 
@@ -296,11 +296,11 @@ function refreshTab() {
 </script>
 
 <style scoped>
-.tabs { margin-bottom: var(--ot-gutter); }
+.tabs { margin-bottom: var(--omni-gutter); }
 .omni-form { display: flex; flex-direction: column; gap: 12px; }
-.plan { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--ot-line); display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.plan { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--omni-line); display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .plan p { margin: 0; }
-.omni-h4 { margin: 0; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--ot-muted); }
+.omni-h4 { margin: 0; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--omni-muted); }
 .feedback { margin-bottom: 12px; }
 td.actions { white-space: nowrap; text-align: right; }
 .who { margin-right: 6px; }

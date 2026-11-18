@@ -1,22 +1,22 @@
 <template>
     <OmniscienceV3Shell>
-        <div class="ot-pagehead">
+        <div class="omni-pagehead">
             <div>
                 <h1>Quality Lab</h1>
                 <p class="subtitle">How often the facts are right, measured two ways: against your own confirm and reject decisions, and against a made-up set of conversations where the true facts are known. A prompt that does worse than the last one is blocked before it reads anything.</p>
             </div>
-            <div class="ot-actions">
-                <button class="ot-btn ghost" type="button" :disabled="lab.refreshing.value" @click="lab.refresh()">Refresh</button>
+            <div class="omni-actions">
+                <button class="omni-btn ghost" type="button" :disabled="lab.refreshing.value" @click="lab.refresh()">Refresh</button>
                 <template v-if="canRun">
-                    <button class="ot-btn" type="button" :disabled="busy !== null" data-testid="quality-run-lab" @click="start('lab')">Measure against my decisions</button>
-                    <button class="ot-btn" type="button" :disabled="busy !== null" data-testid="quality-run-planted" @click="start('planted')">Run the planted-fact test</button>
+                    <button class="omni-btn" type="button" :disabled="busy !== null" data-testid="quality-run-lab" @click="start('lab')">Measure against my decisions</button>
+                    <button class="omni-btn" type="button" :disabled="busy !== null" data-testid="quality-run-planted" @click="start('planted')">Run the planted-fact test</button>
                 </template>
             </div>
         </div>
 
         <OmniscienceV3ErrorBlock v-if="lab.error.value && !q" :error="lab.error.value" what="The Quality Lab" @retry="lab.refresh()" />
         <template v-else-if="q">
-            <div class="ot-banner" :class="gateTone" role="status" data-testid="quality-gate">
+            <div class="omni-banner" :class="gateTone" role="status" data-testid="quality-gate">
                 <span class="glyph" aria-hidden="true">{{ q.gate?.decision === 'block' ? '⛔' : q.gate ? '✓' : 'ℹ' }}</span>
                 <div>
                     <strong>{{ gateTitle }}</strong>
@@ -25,7 +25,7 @@
                 </div>
             </div>
 
-            <div class="ot-grid two">
+            <div class="omni-grid two">
                 <OmniscienceV3Panel title="Against your decisions" flush :has-data="true" :empty="!q.gold.length" empty-title="Not measured yet"
                                     empty-text="Each fact you confirm, reject or correct is a known answer. Once there are enough, this shows how often the engine agreed with you.">
                     <OmniscienceV3QualityTable :metrics="q.gold" testid="quality-gold" />
@@ -37,7 +37,7 @@
             </div>
             <p class="omni-muted asof">Measured <OmniscienceV3Time :ms="q.asOfMs" />. A range in brackets is where the true value most likely lies given how few cases there are: a wide range means too few to say.</p>
         </template>
-        <div v-else class="ot-skelrows" aria-busy="true"><div v-for="n in 6" :key="n" class="ot-skel"></div></div>
+        <div v-else class="omni-skelrows" aria-busy="true"><div v-for="n in 6" :key="n" class="omni-skel"></div></div>
     </OmniscienceV3Shell>
 </template>
 
@@ -75,8 +75,8 @@ async function start(kind: 'lab' | 'planted') {
 </script>
 
 <style scoped>
-.ot-grid.two { margin-top: var(--ot-gutter); }
-.ot-banner .muted { display: block; color: var(--ot-text-2); }
+.omni-grid.two { margin-top: var(--omni-gutter); }
+.omni-banner .muted { display: block; color: var(--omni-text-2); }
 .reasons { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; }
 .asof { margin: 10px 0 0; font-size: 12px; }
 </style>

@@ -29,7 +29,7 @@ async function go(page: Page, path: string) {
     await page.evaluate(to => (document.querySelector('#__nuxt') as any).__vue_app__.config.globalProperties.$router.push(to), path);
 }
 
-const card = (page: Page, title: string) => page.locator('.ot-card').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
+const card = (page: Page, title: string) => page.locator('.omni-card').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
 const posts = (state: Awaited<ReturnType<typeof mockV3>>, sub: string) => state.posts.filter(r => r.path === `${V3}/${sub}`);
 /** Answers every confirm with yes, and every prompt with `text`. */
 const answerDialogs = (page: Page, text = 'settled by hand') => page.on('dialog', d => { void d.accept(d.type() === 'prompt' ? text : undefined); });
@@ -478,7 +478,7 @@ test('images: found by description, narrowed by who posted them, and opened with
     await expect(results).toHaveCount(1);
     expect(state.requests.some(r => r.startsWith(`GET ${V3}/media/search?`) && r.includes('person=person-b'))).toBe(true);
     await results.first().getByRole('button').click();
-    const drawer = page.locator('.ot-drawer');
+    const drawer = page.locator('.omni-drawer');
     await expect(drawer).toContainText('A cat asleep on a keyboard.');
     await expect(drawer).toContainText('never say who anyone is');
     expect(state.unknown).toEqual([]);

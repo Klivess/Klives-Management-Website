@@ -1,56 +1,56 @@
 <template>
     <OmniscienceV3Shell>
-        <div class="ot-pagehead">
+        <div class="omni-pagehead">
             <div>
                 <h1>LLM use</h1>
                 <p class="subtitle">Every model call Omniscience makes is logged: what it was for, how much of the prompt was served from cache, and how it ended.</p>
             </div>
-            <div class="ot-actions">
-                <button class="ot-btn ghost" type="button" @click="reloadAll">Refresh</button>
+            <div class="omni-actions">
+                <button class="omni-btn ghost" type="button" @click="reloadAll">Refresh</button>
             </div>
         </div>
 
-        <div class="ot-filterbar">
-            <div class="ot-segment" role="group" aria-label="Time window">
+        <div class="omni-filterbar">
+            <div class="omni-segment" role="group" aria-label="Time window">
                 <button v-for="w in WINDOWS" :key="w.value" type="button" :aria-pressed="filters.window === w.value" @click="filters.window = w.value">{{ w.label }}</button>
             </div>
-            <select v-model="filters.module" class="ot-select auto" aria-label="Module">
+            <select v-model="filters.module" class="omni-select auto" aria-label="Module">
                 <option value="">All modules</option>
                 <option v-for="m in moduleIds" :key="m" :value="m">{{ m }}</option>
             </select>
-            <select v-model="filters.workClass" class="ot-select auto" aria-label="Work class">
+            <select v-model="filters.workClass" class="omni-select auto" aria-label="Work class">
                 <option value="">All work classes</option>
                 <option v-for="c in workClasses" :key="c" :value="c">{{ c }}</option>
             </select>
-            <label class="ot-search"><span class="visually-hidden">Purpose</span>
-                <input v-model="filters.purpose" class="ot-input" type="search" placeholder="purpose (exact)…" /></label>
-            <label class="ot-search"><span class="visually-hidden">Outcome</span>
-                <input v-model="filters.outcome" class="ot-input" type="search" placeholder="outcome (exact)…" /></label>
-            <span v-if="filters.jobId" class="ot-chip info">job #{{ filters.jobId }}</span>
-            <button v-if="activeCount" class="ot-filterchip" type="button" @click="clearFilters">Clear filters <span class="x" aria-hidden="true">✕</span></button>
+            <label class="omni-search"><span class="visually-hidden">Purpose</span>
+                <input v-model="filters.purpose" class="omni-input" type="search" placeholder="purpose (exact)…" /></label>
+            <label class="omni-search"><span class="visually-hidden">Outcome</span>
+                <input v-model="filters.outcome" class="omni-input" type="search" placeholder="outcome (exact)…" /></label>
+            <span v-if="filters.jobId" class="omni-chip info">job #{{ filters.jobId }}</span>
+            <button v-if="activeCount" class="omni-filterchip" type="button" @click="clearFilters">Clear filters <span class="x" aria-hidden="true">✕</span></button>
             <div class="grow"></div>
         </div>
 
-        <div class="ot-kpis">
-            <OmniTraderKpi label="Calls" :value="omniCount(total.calls)" :loading="summary.loading.value" :foot="windowLabel" />
-            <OmniTraderKpi label="Failed" :value="omniCount(total.failed)" :loading="summary.loading.value" :tone="total.failed ? 'warn' : 'good'"
+        <div class="omni-kpis">
+            <OmniscienceV3Kpi label="Calls" :value="omniCount(total.calls)" :loading="summary.loading.value" :foot="windowLabel" />
+            <OmniscienceV3Kpi label="Failed" :value="omniCount(total.failed)" :loading="summary.loading.value" :tone="total.failed ? 'warn' : 'good'"
                            :foot="total.calls ? omniPercent(total.failed / total.calls, 1) + ' of calls' : undefined" />
-            <OmniTraderKpi label="Prompt tokens" :value="omniCompact(total.promptTokens)" :loading="summary.loading.value" />
-            <OmniTraderKpi label="Served from cache" :value="total.promptTokens ? omniPercent(total.cachedTokens / total.promptTokens) : '—'"
+            <OmniscienceV3Kpi label="Prompt tokens" :value="omniCompact(total.promptTokens)" :loading="summary.loading.value" />
+            <OmniscienceV3Kpi label="Served from cache" :value="total.promptTokens ? omniPercent(total.cachedTokens / total.promptTokens) : '—'"
                            :loading="summary.loading.value" :tone="cacheTone"
                            help="Cached prompt tokens ÷ prompt tokens. A low rate is what got an AIRouter key suspended; background work pauses itself below the floor." />
-            <OmniTraderKpi label="Output tokens" :value="omniCompact(total.completionTokens)" :loading="summary.loading.value" />
+            <OmniscienceV3Kpi label="Output tokens" :value="omniCompact(total.completionTokens)" :loading="summary.loading.value" />
         </div>
 
         <OmniscienceV3Panel title="Breakdown" :subtitle="`Grouped by ${groupLabel.toLowerCase()}, ${windowLabel}.`" flush
                             :loading="summary.loading.value" :error="summary.error.value" :has-data="!!summary.data.value"
                             :empty="!summaryRows.length" empty-title="No calls in this window" @retry="summary.refresh()">
             <template #controls>
-                <div class="ot-segment sm" role="group" aria-label="Group by">
+                <div class="omni-segment sm" role="group" aria-label="Group by">
                     <button v-for="g in GROUPS" :key="g.value" type="button" :aria-pressed="filters.groupBy === g.value" @click="filters.groupBy = g.value">{{ g.label }}</button>
                 </div>
             </template>
-            <OmniTraderDataTable :rows="summaryRows" :columns="summaryColumns" :row-key="r => r.key" label="groups" bare max-height="360px" default-sort="calls"
+            <OmniscienceV3DataTable :rows="summaryRows" :columns="summaryColumns" :row-key="r => r.key" label="groups" bare max-height="360px" default-sort="calls"
                                  selectable @select="drill($event)">
                 <template #cell-failed="{ row }"><span :class="row.failed ? 'neg' : 'omni-muted'">{{ omniCount(row.failed) }}</span></template>
                 <template #cell-promptTokens="{ row }">{{ omniCompact(row.promptTokens) }}</template>
@@ -59,43 +59,43 @@
                 <template #cell-p50LatencyMs="{ row }">{{ omniDuration(row.p50LatencyMs) }}</template>
                 <template #cell-p95LatencyMs="{ row }">{{ omniDuration(row.p95LatencyMs) }}</template>
                 <template #cell-lastAtMs="{ row }"><OmniscienceV3Time :ms="row.lastAtMs" mode="age" /></template>
-            </OmniTraderDataTable>
+            </OmniscienceV3DataTable>
         </OmniscienceV3Panel>
 
-        <OmniscienceV3Panel title="Calls" subtitle="Newest first." flush style="margin-top: var(--ot-gutter)"
+        <OmniscienceV3Panel title="Calls" subtitle="Newest first." flush style="margin-top: var(--omni-gutter)"
                             :loading="calls.loading.value" :error="calls.error.value" :has-data="calls.items.value.length > 0"
                             :empty="!calls.items.value.length" :empty-kind="activeCount ? 'filtered' : 'empty'"
                             empty-title="No calls match" @retry="calls.reload()">
-            <OmniTraderDataTable :rows="calls.items.value" :columns="callColumns" :row-key="r => String(r.callId)" label="calls" :searchable="false" pinned
+            <OmniscienceV3DataTable :rows="calls.items.value" :columns="callColumns" :row-key="r => String(r.callId)" label="calls" :searchable="false" pinned
                                  selectable :selected-key="selected ? String(selected.callId) : null" default-sort="callId" max-height="none"
                                  :row-class="r => (r.outcome === 'ok' ? '' : 'attention')" @select="selected = $event">
                 <template #cell-atMs="{ row }"><OmniscienceV3Time :ms="row.atMs" mode="age" /></template>
                 <template #cell-purpose="{ row }">
                     <span class="cellstack"><span>{{ row.purpose }}</span><span class="sub omni-mono">{{ row.moduleId }}</span></span>
                 </template>
-                <template #cell-outcome="{ row }"><span class="ot-chip" :class="row.outcome === 'ok' ? 'ok' : 'bad'">{{ row.outcome }}</span></template>
+                <template #cell-outcome="{ row }"><span class="omni-chip" :class="row.outcome === 'ok' ? 'ok' : 'bad'">{{ row.outcome }}</span></template>
                 <template #cell-promptTokens="{ row }">{{ omniCompact(row.promptTokens) }}</template>
                 <template #cell-cached="{ row }">{{ row.promptTokens ? omniPercent((row.cachedTokens ?? 0) / row.promptTokens) : '—' }}</template>
                 <template #cell-completionTokens="{ row }">{{ omniCompact(row.completionTokens) }}</template>
                 <template #cell-latencyMs="{ row }">{{ omniDuration(row.latencyMs) }}</template>
-            </OmniTraderDataTable>
+            </OmniscienceV3DataTable>
             <template v-if="calls.hasMore.value" #footer>
-                <button class="ot-btn sm" type="button" :disabled="calls.loadingMore.value" @click="calls.loadMore()">
+                <button class="omni-btn sm" type="button" :disabled="calls.loadingMore.value" @click="calls.loadMore()">
                     {{ calls.loadingMore.value ? 'Loading…' : 'Load older calls' }}
                 </button>
             </template>
         </OmniscienceV3Panel>
 
-        <OmniTraderDrawer :open="!!selected" :title="selected ? `Call #${selected.callId}` : ''" :subtitle="selected ? `${selected.moduleId} · ${selected.purpose}` : ''" @close="selected = null">
+        <OmniscienceV3Drawer :open="!!selected" :title="selected ? `Call #${selected.callId}` : ''" :subtitle="selected ? `${selected.moduleId} · ${selected.purpose}` : ''" @close="selected = null">
             <template v-if="selected">
                 <div class="omni-row">
-                    <span class="ot-chip" :class="selected.outcome === 'ok' ? 'ok' : 'bad'">{{ selected.outcome }}</span>
-                    <span v-if="selected.workClass" class="ot-chip">{{ selected.workClass }}</span>
+                    <span class="omni-chip" :class="selected.outcome === 'ok' ? 'ok' : 'bad'">{{ selected.outcome }}</span>
+                    <span v-if="selected.workClass" class="omni-chip">{{ selected.workClass }}</span>
                 </div>
-                <div v-if="selected.error" class="ot-banner" role="alert">
+                <div v-if="selected.error" class="omni-banner" role="alert">
                     <span class="glyph" aria-hidden="true">⚠</span><div class="omni-wrap">{{ selected.error }}</div>
                 </div>
-                <dl class="ot-kv omni-section">
+                <dl class="omni-kv omni-section">
                     <dt>When</dt><dd><OmniscienceV3Time :ms="selected.atMs" seconds /></dd>
                     <dt>Model</dt><dd>{{ selected.model ?? '—' }}</dd>
                     <dt>Provider</dt><dd>{{ selected.provider ?? '—' }}</dd>
@@ -110,7 +110,7 @@
                     <dd><NuxtLink v-if="selected.jobId" :to="`${OMNI_BASE}/jobs?job=${selected.jobId}`">#{{ selected.jobId }}</NuxtLink><template v-else>—</template></dd>
                 </dl>
             </template>
-        </OmniTraderDrawer>
+        </OmniscienceV3Drawer>
     </OmniscienceV3Shell>
 </template>
 
@@ -120,8 +120,8 @@ import { OMNI_BASE, omniGet } from '~/scripts/omniscience/api';
 import type { LlmCallDto, LlmCallPage, LlmGroupBy, LlmSummaryDto, LlmSummaryRowDto } from '~/scripts/omniscience/contracts';
 import { omniBytes, omniCompact, omniCount, omniDuration, omniPercent } from '~/scripts/omniscience/format';
 import { useOmniDebounced, useOmniEngine, useOmniPaged, useOmniResource } from '~/composables/useOmniscienceV3';
-import { useUrlState } from '~/composables/useOmniTrader';
-import type { TableColumn } from '~/components/OmniTrader/DataTable.vue';
+import { useOmniUrlState } from '~/composables/useOmniscienceV3';
+import type { TableColumn } from '~/components/OmniscienceV3/DataTable.vue';
 
 definePageMeta({ layout: 'navbar' });
 useHead({ title: 'Omniscience v3 · LLM' });
@@ -140,7 +140,7 @@ const GROUP_FILTER: Record<LlmGroupBy, 'workClass' | 'module' | 'purpose' | 'out
 };
 
 const { status } = useOmniEngine();
-const { state: filters } = useUrlState({ window: '24h', groupBy: 'WorkClass', module: '', workClass: '', purpose: '', outcome: '', jobId: '' });
+const { state: filters } = useOmniUrlState({ window: '24h', groupBy: 'WorkClass', module: '', workClass: '', purpose: '', outcome: '', jobId: '' });
 const selected = ref<LlmCallDto | null>(null);
 
 const moduleIds = computed(() => (status.value?.modules ?? []).map(m => m.moduleId).sort());

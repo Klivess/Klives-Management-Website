@@ -31,7 +31,7 @@ async function go(page: Page, path: string) {
     await page.evaluate(to => (document.querySelector('#__nuxt') as any).__vue_app__.config.globalProperties.$router.push(to), path);
 }
 
-const card = (page: Page, title: string) => page.locator('.ot-card').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
+const card = (page: Page, title: string) => page.locator('.omni-card').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
 const posts = (state: Awaited<ReturnType<typeof mockV3>>, sub: string) => state.posts.filter(r => r.path === `${V3}/${sub}`);
 
 test.describe('time helpers', () => {
@@ -65,12 +65,12 @@ test.describe('time helpers', () => {
 test('overview shows the engine, and the time lens changes every time on the page', async ({ page }) => {
     const state = await mockV3(page);
     await page.setViewportSize({ width: 1600, height: 1000 });
-    await loadPage(page, BASE);
+    await loadPage(page, `${BASE}/engine`);
 
     await expect(page.getByRole('heading', { name: 'Engine overview' })).toBeVisible(BOOT);
     await expect(page.getByTestId('omni-phase')).toContainText('Ready');
     await expect(page.getByTestId('omni-engine-banner')).toHaveCount(0);
-    await expect(page.locator('.ot-top')).toContainText('2 dead jobs');
+    await expect(page.locator('.omni-top')).toContainText('2 dead jobs');
     await expect(card(page, 'Job lanes')).toContainText('LlmBackground');
     await expect(card(page, 'Stores')).toContainText('6.0 GB');
     // Only modules that need attention are listed here: the failing one, not the healthy or the idle one.
@@ -81,7 +81,7 @@ test('overview shows the engine, and the time lens changes every time on the pag
     // Klives's zone (BST) by default, UTC on demand; the choice survives a reload.
     const foot = page.locator('.omni-foot');
     await expect(foot).toContainText('13:00:00 BST');
-    await page.locator('.ot-top .ot-segment').getByRole('button', { name: 'UTC' }).click();
+    await page.locator('.omni-top .omni-segment').getByRole('button', { name: 'UTC' }).click();
     await expect(foot).toContainText('12:00:00 UTC');
     await shot(page, 'overview');
     await page.reload();
@@ -89,8 +89,8 @@ test('overview shows the engine, and the time lens changes every time on the pag
 
     // The command palette reaches pages and tactics.
     await page.keyboard.press('Control+k');
-    await page.getByLabel('Search pages and tactics').fill('set alg');
-    await expect(page.locator('.ot-palette li').first()).toContainText('X27 Set algebra');
+    await page.getByLabel('Search pages, people and tactics').fill('set alg');
+    await expect(page.locator('.omni-palette li[role="option"]').first()).toContainText('X27 Set algebra');
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/omniscience-v3\/tactics\?tactic=x27\.setalgebra/);
     expect(state.unknown).toEqual([]);
@@ -109,7 +109,7 @@ for (const [phase, title, detail] of [
         await expect(page.getByTestId('omni-engine-banner')).toContainText(detail);
         await expect(page.getByTestId('omni-phase')).toContainText(phase);
         // The panel names the same cause, with a way to try again.
-        await expect(card(page, 'Jobs').locator('.ot-state')).toContainText(detail);
+        await expect(card(page, 'Jobs').locator('.omni-state')).toContainText(detail);
         await expect(card(page, 'Jobs').getByRole('button', { name: 'Try again' })).toBeVisible();
         expect(state.unknown).toEqual([]);
     });
@@ -126,7 +126,7 @@ test('modules: filter, inspect, disable, and edit a setting with server validati
     await expect(page).toHaveURL(/state=attention/);
     await table.locator('tr').first().click();
 
-    const drawer = page.locator('.ot-drawer');
+    const drawer = page.locator('.omni-drawer');
     await expect(drawer).toContainText('provider answered 503 three times');
     await expect(drawer).toContainText('daily at 03:30 (Europe/London)');
     await expect(drawer).toContainText('420 changes behind');
@@ -194,17 +194,17 @@ test('jobs: filters live in the URL and reach the server, pages use the cursor, 
     expect(state.requests.some(r => r.startsWith(`GET ${V3}/jobs?`) && r.includes('state=dead'))).toBe(true);
 
     await rows.first().click();
-    const drawer = page.locator('.ot-drawer');
+    const drawer = page.locator('.omni-drawer');
     await expect(drawer).toContainText('provider answered 503 three times');
     await expect(drawer).toContainText('attempt 5 of 5');
     await drawer.getByRole('button', { name: 'Retry' }).click();
-    await expect(drawer.locator('.ot-chip').first()).toHaveText('queued');
+    await expect(drawer.locator('.omni-chip').first()).toHaveText('queued');
     expect(posts(state, 'jobs/retry').at(-1)?.body).toEqual({ jobId: 1204 });
     await shot(page, 'jobs');
 
     // A shared link reproduces the view: filter and open job.
     await go(page, `${BASE}/jobs?lane=Io&job=1206`);
-    await expect(page.locator('.ot-drawer')).toContainText('worker-io-1', BOOT);
+    await expect(page.locator('.omni-drawer')).toContainText('worker-io-1', BOOT);
     await expect(card(page, 'Jobs').locator('tbody tr')).toHaveCount(1);
     expect(state.unknown).toEqual([]);
     expect(state.errors).toEqual([]);
@@ -215,7 +215,7 @@ test('llm: breakdown groups drill into the call list', async ({ page }) => {
     await loadPage(page, `${BASE}/llm`);
     await expect(card(page, 'Breakdown').locator('tbody tr')).toHaveCount(2, BOOT);
     await expect(card(page, 'Calls').locator('tbody tr')).toHaveCount(3);
-    await expect(page.locator('.ot-kpi').filter({ hasText: 'Served from cache' })).toContainText('80%');
+    await expect(page.locator('.omni-kpi').filter({ hasText: 'Served from cache' })).toContainText('80%');
     // The window is sent as an instant, never as a label for the server to interpret.
     expect(state.requests.some(r => r.includes(`${V3}/llm/summary`) && r.includes(`from=${NOW - 86_400_000}`))).toBe(true);
 
@@ -223,7 +223,7 @@ test('llm: breakdown groups drill into the call list', async ({ page }) => {
     await expect(page).toHaveURL(/workClass=Interactive/);
     await expect(card(page, 'Calls').locator('tbody tr')).toHaveCount(1);
     await card(page, 'Calls').locator('tbody tr').first().click();
-    await expect(page.locator('.ot-drawer')).toContainText('provider answered 503');
+    await expect(page.locator('.omni-drawer')).toContainText('provider answered 503');
     expect(state.unknown).toEqual([]);
     expect(state.errors).toEqual([]);
 });
@@ -236,7 +236,7 @@ test('tactics: a schema-generated form, an estimate, a streamed run, and its out
     await expect(catalogue).toHaveCount(3, BOOT);
 
     await catalogue.filter({ hasText: 'Set algebra' }).click();
-    const drawer = page.locator('.ot-drawer');
+    const drawer = page.locator('.omni-drawer');
     await expect(drawer.getByRole('button', { name: 'Run', exact: true })).toBeDisabled();
     await expect(drawer).toContainText('Needs at least 1 input set.');
 
@@ -270,9 +270,9 @@ test('tactics: a schema-generated form, an estimate, a streamed run, and its out
     await expect(page.getByTestId('omni-carry')).toContainText('3 Person items from run run-1');
     await expect(catalogue).toHaveCount(2);
     await catalogue.filter({ hasText: 'Save as cohort' }).click();
-    await expect(page.locator('.ot-drawer')).toContainText('from run run-1');
-    await page.locator('.ot-drawer').getByLabel('name *').fill('Sorted friends');
-    await page.locator('.ot-drawer').getByRole('button', { name: 'Run', exact: true }).click();
+    await expect(page.locator('.omni-drawer')).toContainText('from run run-1');
+    await page.locator('.omni-drawer').getByLabel('name *').fill('Sorted friends');
+    await page.locator('.omni-drawer').getByRole('button', { name: 'Run', exact: true }).click();
     await expect.poll(() => posts(state, 'tactics/run').length).toBe(2);
     expect(posts(state, 'tactics/run')[1]!.body.parameters).toEqual({ name: 'Sorted friends' });
     expect(posts(state, 'tactics/run')[1]!.body.selections[0].origin).toBe('run run-1');
@@ -284,7 +284,7 @@ test('tactics: a policy refusal is shown as such, and outbound tactics cannot be
     const state = await mockV3(page);
     state.refuseRuns = { status: 422, code: 'refused', message: 'This person is covered by the minor-safety guard; replicas are not built for them.' };
     await loadPage(page, `${BASE}/tactics?tactic=x26.cohort`);
-    const drawer = page.locator('.ot-drawer');
+    const drawer = page.locator('.omni-drawer');
     await expect(drawer).toContainText('Save as cohort', BOOT);
     await drawer.getByRole('button', { name: 'Add a selection' }).click();
     await drawer.getByLabel('People ids, one per line').fill('person-a\nperson-a\nperson-b');
@@ -297,11 +297,11 @@ test('tactics: a policy refusal is shown as such, and outbound tactics cannot be
     expect(posts(state, 'tactics/run').at(-1)?.body.selections[0].items).toEqual([{ id: 'person-a' }, { id: 'person-b' }]);
 
     await go(page, `${BASE}/tactics?tactic=x77.notify`);
-    await expect(page.locator('.ot-drawer')).toContainText('acts on the outside world', BOOT);
-    await page.locator('.ot-drawer').getByRole('button', { name: 'Add a selection' }).click();
-    await page.locator('.ot-drawer').getByLabel('Messages ids, one per line').fill('discord:1');
-    await page.locator('.ot-drawer').getByLabel('Messages ids, one per line').blur();
-    await expect(page.locator('.ot-drawer').getByRole('button', { name: 'Run', exact: true })).toBeDisabled();
+    await expect(page.locator('.omni-drawer')).toContainText('acts on the outside world', BOOT);
+    await page.locator('.omni-drawer').getByRole('button', { name: 'Add a selection' }).click();
+    await page.locator('.omni-drawer').getByLabel('Messages ids, one per line').fill('discord:1');
+    await page.locator('.omni-drawer').getByLabel('Messages ids, one per line').blur();
+    await expect(page.locator('.omni-drawer').getByRole('button', { name: 'Run', exact: true })).toBeDisabled();
     expect(state.unknown).toEqual([]);
 });
 
@@ -311,7 +311,7 @@ test('playbooks: the server validates the draft, and the saved trigger carries o
     await expect(card(page, 'Playbooks')).toContainText('Sun at 10:00 (Europe/London)', BOOT);
 
     await page.getByRole('button', { name: 'New playbook' }).click();
-    const drawer = page.locator('.ot-drawer');
+    const drawer = page.locator('.omni-drawer');
     await drawer.getByLabel('Name').fill('Morning sort');
     await drawer.getByLabel('Step 1 tactic').selectOption('x27.setalgebra');
     await drawer.getByLabel('op *').selectOption('topk');
@@ -356,7 +356,7 @@ test('explore: the view is the URL, every row opens its records, and a result ca
     expect(query).toMatchObject({ dataset: 'messages', measures: ['count'], groupBy: ['where.platform'], bucket: 'None', lens: 'Klives', filters: [], asOfMs: null });
     // An unknown value is shown as unknown, never as zero or blank.
     await expect(result.locator('tbody tr').nth(2)).toContainText('unknown');
-    await expect(card(page, 'Messages by Platform').locator('.ot-bar')).toHaveCount(3);
+    await expect(card(page, 'Messages by Platform').locator('.omni-bar')).toHaveCount(3);
 
     // An unfinished filter never widens the result: no query is sent until it has a value.
     const before = posts(state, 'explore/query').length;
@@ -379,7 +379,7 @@ test('explore: the view is the URL, every row opens its records, and a result ca
         drillToken: 'drill-fixture', narrow: [{ dimension: 'where.platform', op: 'Eq', values: ['whatsapp'] }], limit: 100,
     });
     await shot(page, 'explore-drill');
-    await page.locator('.ot-drawer').getByRole('button', { name: /Close/ }).click();
+    await page.locator('.omni-drawer').getByRole('button', { name: /Close/ }).click();
 
     // The link alone restores the whole view.
     const link = new URL(page.url());
@@ -399,7 +399,7 @@ test('explore: the view is the URL, every row opens its records, and a result ca
 test('explore: a build without the engine says so', async ({ page }) => {
     const state = await mockV3(page, { exploreInstalled: false });
     await loadPage(page, `${BASE}/explore`);
-    await expect(card(page, 'Messages').locator('.ot-state')).toContainText('The Explore engine is not installed in this build yet.', BOOT);
+    await expect(card(page, 'Messages').locator('.omni-state')).toContainText('The Explore engine is not installed in this build yet.', BOOT);
     expect(state.unknown).toEqual([]);
 });
 
@@ -443,7 +443,7 @@ test('cohorts: members are listed and the cohort becomes a tactic input', async 
     const state = await mockV3(page);
     await loadPage(page, `${BASE}/cohorts`);
     await card(page, 'Cohorts').locator('tbody tr').first().click(BOOT);
-    await expect(page.locator('.ot-drawer')).toContainText('Synthetic Bo');
+    await expect(page.locator('.omni-drawer')).toContainText('Synthetic Bo');
     await page.getByRole('button', { name: 'Run a tactic on this cohort' }).click();
     await expect(page.getByTestId('omni-carry')).toContainText('3 Person items from cohort Close friends', BOOT);
     expect(state.unknown).toEqual([]);
@@ -452,12 +452,12 @@ test('cohorts: members are listed and the cohort becomes a tactic input', async 
 test('a profile without the engine permission sees no controls it cannot use', async ({ page }) => {
     const state = await mockV3(page, { permissions: ['omniscience.overview.view'] });
     await loadPage(page, `${BASE}/modules?module=knowledge.deduction`);
-    const drawer = page.locator('.ot-drawer');
+    const drawer = page.locator('.omni-drawer');
     await expect(drawer).toContainText('Extracts, verifies and consolidates', BOOT);
     await expect(drawer.getByRole('button', { name: 'Disable' })).toHaveCount(0);
 
     await go(page, `${BASE}/tactics?tactic=x27.setalgebra`);
-    await expect(page.locator('.ot-drawer')).toContainText('You cannot run this tactic.', BOOT);
-    await expect(page.locator('.ot-drawer').getByRole('button', { name: 'Run', exact: true })).toBeDisabled();
+    await expect(page.locator('.omni-drawer')).toContainText('You cannot run this tactic.', BOOT);
+    await expect(page.locator('.omni-drawer').getByRole('button', { name: 'Run', exact: true })).toBeDisabled();
     expect(state.unknown).toEqual([]);
 });

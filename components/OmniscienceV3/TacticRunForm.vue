@@ -2,17 +2,17 @@
     <form class="omni-runform" @submit.prevent="start">
         <p>{{ tactic.description }}</p>
         <div class="omni-row">
-            <span class="ot-chip">{{ tactic.category }}</span>
-            <span class="ot-chip">{{ tactic.lane }}</span>
+            <span class="omni-chip">{{ tactic.category }}</span>
+            <span class="omni-chip">{{ tactic.lane }}</span>
             <span class="omni-muted">usually {{ omniDuration(tactic.typicalDurationMs) }}<template v-if="tactic.typicalLlmCalls"> · about {{ tactic.typicalLlmCalls }} LLM call{{ tactic.typicalLlmCalls === 1 ? '' : 's' }}</template></span>
-            <span v-if="tactic.minorRestriction" class="ot-chip violet" title="Refused for anyone the minor-safety guard covers">minor-restricted</span>
+            <span v-if="tactic.minorRestriction" class="omni-chip violet" title="Refused for anyone the minor-safety guard covers">minor-restricted</span>
         </div>
 
-        <div v-if="!permitted" class="ot-banner warn" role="note">
+        <div v-if="!permitted" class="omni-banner warn" role="note">
             <span class="glyph" aria-hidden="true">🔒</span>
             <div><strong>You cannot run this tactic.</strong><span class="muted">It needs {{ tactic.requiredPermission }} and omniscience.tactics.run.</span></div>
         </div>
-        <div v-else-if="tactic.outbound" class="ot-banner warn" role="note">
+        <div v-else-if="tactic.outbound" class="omni-banner warn" role="note">
             <span class="glyph" aria-hidden="true">✋</span>
             <div><strong>This tactic acts on the outside world.</strong>
                 <span class="muted">It runs only after a preview and an explicit confirmation. That confirmation step is not part of this build yet, so it cannot be started from here.</span></div>
@@ -30,14 +30,14 @@
 
         <section class="omni-section">
             <h4>As of</h4>
-            <div class="ot-field">
+            <div class="omni-field">
                 <label :for="`${uid}-asof`">Answer as the world was known at ({{ zone }})</label>
-                <input :id="`${uid}-asof`" v-model="asOfLocal" class="ot-input" type="datetime-local" />
+                <input :id="`${uid}-asof`" v-model="asOfLocal" class="omni-input" type="datetime-local" />
                 <span class="help">Leave empty for now. A past time ignores everything learned after it.</span>
             </div>
         </section>
 
-        <div v-if="estimate" class="ot-banner info" role="status" data-testid="omni-estimate">
+        <div v-if="estimate" class="omni-banner info" role="status" data-testid="omni-estimate">
             <span class="glyph" aria-hidden="true">ℹ</span>
             <div>
                 <strong>Estimate: {{ omniDuration(estimate.durationMs) }}, {{ estimate.llmCalls }} LLM call{{ estimate.llmCalls === 1 ? '' : 's' }}, {{ omniCount(estimate.items) }} item{{ estimate.items === 1 ? '' : 's' }}</strong>
@@ -45,14 +45,14 @@
                 <span v-if="estimate.note" class="muted">{{ estimate.note }}</span>
             </div>
         </div>
-        <div v-if="problem" class="ot-banner" role="alert" data-testid="omni-run-problem">
+        <div v-if="problem" class="omni-banner" role="alert" data-testid="omni-run-problem">
             <span class="glyph" aria-hidden="true">⚠</span>
             <div><strong>{{ problem.title }}</strong><span class="muted omni-wrap">{{ problem.detail }}</span></div>
         </div>
 
         <div class="omni-row omni-section">
-            <button class="ot-btn primary" type="submit" :disabled="!runnable || working !== null">{{ working === 'run' ? 'Starting…' : 'Run' }}</button>
-            <button class="ot-btn" type="button" :disabled="!ready || working !== null" @click="doEstimate">{{ working === 'estimate' ? 'Estimating…' : 'Estimate first' }}</button>
+            <button class="omni-btn primary" type="submit" :disabled="!runnable || working !== null">{{ working === 'run' ? 'Starting…' : 'Run' }}</button>
+            <button class="omni-btn" type="button" :disabled="!ready || working !== null" @click="doEstimate">{{ working === 'estimate' ? 'Estimating…' : 'Estimate first' }}</button>
             <span v-if="shortfall" class="omni-muted">{{ shortfall }}</span>
         </div>
     </form>
@@ -155,5 +155,5 @@ async function start() {
 
 <style scoped>
 .omni-runform p { margin: 0 0 8px; }
-.ot-banner .muted { display: block; color: var(--ot-text-2); }
+.omni-banner .muted { display: block; color: var(--omni-text-2); }
 </style>

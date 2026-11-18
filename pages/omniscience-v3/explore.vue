@@ -1,13 +1,13 @@
 <template>
     <OmniscienceV3Shell>
-        <div class="ot-pagehead">
+        <div class="omni-pagehead">
             <div>
                 <h1>Explore</h1>
                 <p class="subtitle">Ask any dataset a question: pick what to measure, how to split it and what to keep. Every number opens the records behind it.</p>
             </div>
-            <div class="ot-actions">
-                <button class="ot-btn ghost" type="button" :disabled="!canQuery || result.refreshing.value" @click="result.refresh()">Run again</button>
-                <button v-if="canExport" class="ot-btn" type="button" :disabled="!rows.length" @click="exportCsv">Export CSV</button>
+            <div class="omni-actions">
+                <button class="omni-btn ghost" type="button" :disabled="!canQuery || result.refreshing.value" @click="result.refresh()">Run again</button>
+                <button v-if="canExport" class="omni-btn" type="button" :disabled="!rows.length" @click="exportCsv">Export CSV</button>
             </div>
         </div>
 
@@ -16,47 +16,47 @@
                             empty-text="Modules declare their datasets as they are installed; none is available to you yet." @retry="catalog.refresh()" />
 
         <template v-else>
-            <div class="ot-filterbar">
-                <select v-model="state.dataset" class="ot-select auto" aria-label="Dataset">
+            <div class="omni-filterbar">
+                <select v-model="state.dataset" class="omni-select auto" aria-label="Dataset">
                     <option v-for="d in datasets" :key="d.id" :value="d.id">{{ d.title }}</option>
                 </select>
                 <details class="omni-pick">
-                    <summary class="ot-btn sm">Measure: {{ measureSummary }}</summary>
+                    <summary class="omni-btn sm">Measure: {{ measureSummary }}</summary>
                     <div class="menu" role="group" aria-label="Measures">
-                        <label v-for="m in dataset?.measures ?? []" :key="m.id" class="ot-check">
+                        <label v-for="m in dataset?.measures ?? []" :key="m.id" class="omni-check">
                             <input type="checkbox" :checked="measures.includes(m.id)" @change="toggle('measures', m.id)" /> {{ m.title }}
                             <span class="omni-muted">{{ m.aggregate }}{{ m.unit ? ` · ${m.unit}` : '' }}</span>
                         </label>
                     </div>
                 </details>
                 <details class="omni-pick">
-                    <summary class="ot-btn sm">Split by: {{ groupSummary }}</summary>
+                    <summary class="omni-btn sm">Split by: {{ groupSummary }}</summary>
                     <div class="menu" role="group" aria-label="Split by">
                         <template v-for="g in dimensionGroups" :key="g.group">
                             <span class="grp">{{ g.group }}</span>
-                            <label v-for="d in g.items" :key="d.id" class="ot-check">
+                            <label v-for="d in g.items" :key="d.id" class="omni-check">
                                 <input type="checkbox" :checked="groupBy.includes(d.id)" @change="toggle('groupBy', d.id)" /> {{ d.title }}
                             </label>
                         </template>
                     </div>
                 </details>
                 <template v-if="timeDimensions.length">
-                    <select v-model="state.bucket" class="ot-select auto" aria-label="Time bucket">
+                    <select v-model="state.bucket" class="omni-select auto" aria-label="Time bucket">
                         <option v-for="b in BUCKETS" :key="b.value" :value="b.value">{{ b.label }}</option>
                     </select>
-                    <select v-if="state.bucket !== 'None' && timeDimensions.length > 1" v-model="state.timeDim" class="ot-select auto" aria-label="Time dimension">
+                    <select v-if="state.bucket !== 'None' && timeDimensions.length > 1" v-model="state.timeDim" class="omni-select auto" aria-label="Time dimension">
                         <option value="">{{ timeDimensions[0]!.title }} (default)</option>
                         <option v-for="d in timeDimensions.slice(1)" :key="d.id" :value="d.id">{{ d.title }}</option>
                     </select>
-                    <select v-if="state.bucket !== 'None'" v-model="state.lens" class="ot-select auto" aria-label="Whose clock buckets use"
+                    <select v-if="state.bucket !== 'None'" v-model="state.lens" class="omni-select auto" aria-label="Whose clock buckets use"
                             title="Whose clock hours and days are read on">
                         <option value="Klives">Klives's clock</option>
                         <option value="Subject">Each person's own clock</option>
                         <option value="Utc">UTC</option>
                     </select>
                 </template>
-                <button class="ot-btn sm" type="button" @click="addFilter">Add filter</button>
-                <button v-if="filterRows.length || groupBy.length || state.bucket !== 'None' || state.asOf" class="ot-filterchip" type="button" @click="clearAll">
+                <button class="omni-btn sm" type="button" @click="addFilter">Add filter</button>
+                <button v-if="filterRows.length || groupBy.length || state.bucket !== 'None' || state.asOf" class="omni-filterchip" type="button" @click="clearAll">
                     Reset <span class="x" aria-hidden="true">✕</span>
                 </button>
                 <div class="grow"></div>
@@ -64,66 +64,66 @@
 
             <div v-if="filterRows.length || state.asOf || showAsOf" class="omni-filters">
                 <div v-for="(f, i) in filterRows" :key="i" class="omni-row frow">
-                    <select class="ot-select auto" :value="f.d" :aria-label="`Filter ${i + 1} dimension`" @change="patchFilter(i, { d: ($event.target as HTMLSelectElement).value, v: '' })">
+                    <select class="omni-select auto" :value="f.d" :aria-label="`Filter ${i + 1} dimension`" @change="patchFilter(i, { d: ($event.target as HTMLSelectElement).value, v: '' })">
                         <option v-for="d in dimensions" :key="d.id" :value="d.id">{{ d.title }}</option>
                     </select>
-                    <select class="ot-select auto" :value="f.o" :aria-label="`Filter ${i + 1} operator`" @change="patchFilter(i, { o: ($event.target as HTMLSelectElement).value as FilterOp })">
+                    <select class="omni-select auto" :value="f.o" :aria-label="`Filter ${i + 1} operator`" @change="patchFilter(i, { o: ($event.target as HTMLSelectElement).value as FilterOp })">
                         <option v-for="o in OPS" :key="o.value" :value="o.value">{{ o.label }}</option>
                     </select>
                     <template v-if="f.o !== 'IsNull' && f.o !== 'IsNotNull'">
                         <template v-if="kindOf(f.d) === 'Time'">
-                            <input class="ot-input" type="datetime-local" :value="f.v.split(',')[0] ?? ''" :aria-label="`Filter ${i + 1} from (${boundsZone})`"
+                            <input class="omni-input" type="datetime-local" :value="f.v.split(',')[0] ?? ''" :aria-label="`Filter ${i + 1} from (${boundsZone})`"
                                    @change="setTimeValue(i, 0, ($event.target as HTMLInputElement).value)" />
-                            <input v-if="f.o === 'Between'" class="ot-input" type="datetime-local" :value="f.v.split(',')[1] ?? ''" :aria-label="`Filter ${i + 1} until (${boundsZone})`"
+                            <input v-if="f.o === 'Between'" class="omni-input" type="datetime-local" :value="f.v.split(',')[1] ?? ''" :aria-label="`Filter ${i + 1} until (${boundsZone})`"
                                    @change="setTimeValue(i, 1, ($event.target as HTMLInputElement).value)" />
                             <span class="omni-muted">{{ boundsZone }}</span>
                         </template>
-                        <select v-else-if="kindOf(f.d) === 'Flag'" class="ot-select auto" :value="f.v" :aria-label="`Filter ${i + 1} value`"
+                        <select v-else-if="kindOf(f.d) === 'Flag'" class="omni-select auto" :value="f.v" :aria-label="`Filter ${i + 1} value`"
                                 @change="patchFilter(i, { v: ($event.target as HTMLSelectElement).value })">
                             <option value="">Choose…</option><option value="true">yes</option><option value="false">no</option>
                         </select>
-                        <input v-else class="ot-input" type="text" :value="f.v" :aria-label="`Filter ${i + 1} value`"
+                        <input v-else class="omni-input" type="text" :value="f.v" :aria-label="`Filter ${i + 1} value`"
                                :placeholder="f.o === 'In' || f.o === 'NotIn' ? 'values, separated by commas' : f.o === 'Between' ? 'low, high' : 'value'"
                                @change="patchFilter(i, { v: ($event.target as HTMLInputElement).value })" />
                     </template>
-                    <button class="ot-btn ghost sm" type="button" :aria-label="`Remove filter ${i + 1}`" @click="removeFilter(i)">✕</button>
+                    <button class="omni-btn ghost sm" type="button" :aria-label="`Remove filter ${i + 1}`" @click="removeFilter(i)">✕</button>
                     <span v-if="filterProblem(f)" class="neg">{{ filterProblem(f) }}</span>
                 </div>
                 <div class="omni-row frow">
                     <label class="omni-muted" for="explore-asof">As of</label>
-                    <input id="explore-asof" v-model="state.asOf" class="ot-input" type="datetime-local" />
+                    <input id="explore-asof" v-model="state.asOf" class="omni-input" type="datetime-local" />
                     <span class="omni-muted">{{ state.asOf ? `${klivesZone}: only what was known then` : 'now' }}</span>
                 </div>
             </div>
-            <button v-else class="ot-btn ghost sm" type="button" style="margin-bottom:12px" @click="showAsOf = true">Time travel (as of)…</button>
+            <button v-else class="omni-btn ghost sm" type="button" style="margin-bottom:12px" @click="showAsOf = true">Time travel (as of)…</button>
 
-            <div class="ot-grid" :class="chartItems.length ? 'sidebar' : ''">
+            <div class="omni-grid" :class="chartItems.length ? 'sidebar' : ''">
                 <OmniscienceV3Panel :title="dataset?.title ?? 'Result'" :subtitle="resultSubtitle" flush
                                     :loading="result.loading.value || (result.refreshing.value && !result.data.value)" :error="queryError" :has-data="!!result.data.value"
                                     :empty="!rows.length" :empty-kind="filterRows.length ? 'filtered' : 'empty'"
                                     :empty-title="!canQuery ? 'Choose at least one measure' : 'No data for these filters'"
                                     :empty-text="!canQuery ? undefined : coverageText" what="This query" @retry="result.refresh()">
-                    <OmniTraderDataTable :rows="tableRows" :columns="tableColumns" :row-key="r => String(r.__i)" label="rows" pinned selectable max-height="62vh"
+                    <OmniscienceV3DataTable :rows="tableRows" :columns="tableColumns" :row-key="r => String(r.__i)" label="rows" pinned selectable max-height="62vh"
                                          :selected-key="drill ? String(drill.index) : null" search-placeholder="Filter loaded rows…" @select="openDrill($event.__i)">
                         <template v-for="(col, c) in columns" :key="col.id" #[`cell-c${c}`]="{ row }">
                             <span :class="{ 'omni-muted': row[`c${c}`] === null }">{{ cell(col, row[`c${c}`]) }}</span>
                         </template>
-                    </OmniTraderDataTable>
+                    </OmniscienceV3DataTable>
                     <template #footer>
                         <span data-testid="omni-coverage">{{ coverageText }}</span>
-                        <button v-if="result.data.value?.drillToken" class="ot-btn ghost sm" type="button" style="margin-left:12px" @click="openDrill(-1)">Show all records</button>
-                        <button v-if="result.data.value?.drillToken && canRunTactics" class="ot-btn ghost sm" type="button" @click="useInTactic">Use these records in a tactic</button>
+                        <button v-if="result.data.value?.drillToken" class="omni-btn ghost sm" type="button" style="margin-left:12px" @click="openDrill(-1)">Show all records</button>
+                        <button v-if="result.data.value?.drillToken && canRunTactics" class="omni-btn ghost sm" type="button" @click="useInTactic">Use these records in a tactic</button>
                     </template>
                 </OmniscienceV3Panel>
 
                 <OmniscienceV3Panel v-if="chartItems.length" :title="chartTitle" subtitle="Click a bar to open its records.">
-                    <OmniTraderBarList :items="chartItems" :limit="24" :signed="false" :on-select="key => openDrill(Number(key))" />
+                    <OmniscienceV3BarList :items="chartItems" :limit="24" :signed="false" :on-select="key => openDrill(Number(key))" />
                 </OmniscienceV3Panel>
             </div>
 
             <details v-if="result.data.value" class="omni-explain">
                 <summary>Explain this result</summary>
-                <dl class="ot-kv">
+                <dl class="omni-kv">
                     <dt>As of</dt><dd><OmniscienceV3Time :ms="result.data.value.asOfMs" seconds /></dd>
                     <dt>Coverage</dt><dd>{{ coverageText }}</dd>
                     <dt>Sources</dt><dd>{{ result.data.value.coverage.sources.length ? result.data.value.coverage.sources.join(', ') : 'none named' }}</dd>
@@ -133,13 +133,13 @@
             </details>
         </template>
 
-        <OmniTraderDrawer :open="!!drill" :title="drill?.title ?? ''" :subtitle="drillSubtitle" wide @close="drill = null">
+        <OmniscienceV3Drawer :open="!!drill" :title="drill?.title ?? ''" :subtitle="drillSubtitle" wide @close="drill = null">
             <OmniscienceV3ErrorBlock v-if="records.error.value && !records.items.value.length" :error="records.error.value" what="These records" @retry="records.reload()" />
-            <div v-else-if="records.loading.value" class="ot-skelrows" aria-busy="true"><div v-for="n in 8" :key="n" class="ot-skel"></div></div>
-            <OmniTraderStateBlock v-else-if="!records.items.value.length" kind="empty" title="No records behind this" />
+            <div v-else-if="records.loading.value" class="omni-skelrows" aria-busy="true"><div v-for="n in 8" :key="n" class="omni-skel"></div></div>
+            <OmniscienceV3StateBlock v-else-if="!records.items.value.length" kind="empty" title="No records behind this" />
             <template v-else>
-                <div class="ot-tablewrap" style="max-height: 70vh">
-                    <table class="ot-table pinned" data-testid="omni-records">
+                <div class="omni-tablewrap" style="max-height: 70vh">
+                    <table class="omni-table pinned" data-testid="omni-records">
                         <thead><tr><th v-for="k in recordKeys" :key="k">{{ k }}</th></tr></thead>
                         <tbody>
                             <tr v-for="(rec, i) in records.items.value" :key="i">
@@ -149,11 +149,11 @@
                     </table>
                 </div>
                 <div class="omni-row omni-section">
-                    <button v-if="records.hasMore.value" class="ot-btn sm" type="button" :disabled="records.loadingMore.value" @click="records.loadMore()">Load more</button>
+                    <button v-if="records.hasMore.value" class="omni-btn sm" type="button" :disabled="records.loadingMore.value" @click="records.loadMore()">Load more</button>
                     <span class="omni-muted">{{ omniCount(records.items.value.length) }} of {{ omniCount(recordTotal) }} records</span>
                 </div>
             </template>
-        </OmniTraderDrawer>
+        </OmniscienceV3Drawer>
     </OmniscienceV3Shell>
 </template>
 
@@ -167,10 +167,10 @@ import type {
 } from '~/scripts/omniscience/contracts';
 import { omniCount, omniCsv, omniDownload, omniZonedToMs } from '~/scripts/omniscience/format';
 import { useOmniCarry, useOmniDebounced, useOmniEngine, useOmniPaged, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
-import { useUrlState } from '~/composables/useOmniTrader';
+import { useOmniUrlState } from '~/composables/useOmniscienceV3';
 import { useAccess } from '~/composables/useAccess';
-import type { TableColumn } from '~/components/OmniTrader/DataTable.vue';
-import type { BarItem } from '~/components/OmniTrader/BarList.vue';
+import type { TableColumn } from '~/components/OmniscienceV3/DataTable.vue';
+import type { BarItem } from '~/components/OmniscienceV3/BarList.vue';
 
 definePageMeta({ layout: 'navbar' });
 useHead({ title: 'Omniscience v3 · Explore' });
@@ -196,7 +196,7 @@ const { klivesZone } = useOmniEngine();
 const { at } = useOmniTime();
 const carry = useOmniCarry();
 // Everything that defines the view lives in the URL, so a view can be linked and returned to.
-const { state } = useUrlState({ dataset: '', measures: '', groupBy: '', bucket: 'None', timeDim: '', lens: 'Klives', filters: '', asOf: '' });
+const { state } = useOmniUrlState({ dataset: '', measures: '', groupBy: '', bucket: 'None', timeDim: '', lens: 'Klives', filters: '', asOf: '' });
 const showAsOf = ref(false);
 
 const catalog = useOmniResource(signal => omniGet<DatasetCatalogDto>('explore/datasets', {}, signal));
@@ -430,11 +430,11 @@ function recordCell(key: string, value: unknown): string {
 .omni-pick .menu {
     position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; min-width: 260px; max-height: 50vh; overflow-y: auto;
     display: flex; flex-direction: column; gap: 6px; padding: 10px 12px;
-    background: var(--ot-surface-2); border: 1px solid var(--ot-line-strong); border-radius: var(--ot-radius-sm); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    background: var(--omni-surface-2); border: 1px solid var(--omni-line-strong); border-radius: var(--omni-radius-sm); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
 }
-.omni-pick .grp { font-size: 9.5px; letter-spacing: 1px; text-transform: uppercase; color: var(--ot-muted); font-weight: 700; margin-top: 4px; }
-.omni-filters { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--ot-line); border-radius: var(--ot-radius-sm); }
-.frow .ot-input { width: auto; min-width: 180px; }
+.omni-pick .grp { font-size: 9.5px; letter-spacing: 1px; text-transform: uppercase; color: var(--omni-muted); font-weight: 700; margin-top: 4px; }
+.omni-filters { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--omni-line); border-radius: var(--omni-radius-sm); }
+.frow .omni-input { width: auto; min-width: 180px; }
 .omni-explain { margin-top: 16px; font-size: 12.5px; }
-.omni-explain > summary { cursor: pointer; color: var(--ot-text-2); margin-bottom: 8px; }
+.omni-explain > summary { cursor: pointer; color: var(--omni-text-2); margin-bottom: 8px; }
 </style>

@@ -14,7 +14,7 @@
                 <div class="card-body">
                     <div class="card-top">
                         <span class="card-icon">🎯</span>
-                        <span class="card-badge badge-active">Active</span>
+                        <span class="card-badge badge-active" :title="cs2Stats.buying === false ? 'Auto-buy is off: deals are found and logged, never bought' : ''">{{ cs2Stats.buying === false ? 'Watching' : 'Active' }}</span>
                     </div>
                     <h2 class="card-title">CS2 Arbitrage Bot</h2>
                     <p class="card-desc">Watches every new CSFloat listing and buys underpriced items to resell on CSFloat or the Steam market after trade protection.</p>
@@ -25,8 +25,8 @@
                             <span class="stat-label">Valued</span>
                             <span class="stat-value">{{ cs2Stats.valued.toLocaleString() }}</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Opportunities</span>
+                        <div class="stat-item" :title="cs2Stats.modelCounted ? 'Confirmed by the exit model with live evidence (counted since it started counting)' : 'Passed the quick screen; the exit model turned most of these down'">
+                            <span class="stat-label">{{ cs2Stats.modelCounted ? 'Worth buying' : 'Screen passes' }}</span>
                             <span class="stat-value">{{ cs2Stats.opportunities.toLocaleString() }}</span>
                         </div>
                         <div class="stat-item">
@@ -287,7 +287,7 @@ definePageMeta({ layout: 'navbar' });
 
 const omnigramStats = ref({ accounts: 0, followers: 0, postsThisWeek: 0, loading: true });
 const omnitumblrStats = ref({ accounts: 0, autopilot: 0, followers: 0, postsThisWeek: 0, loading: true });
-const cs2Stats = ref({ valued: 0, opportunities: 0, purchases: 0, loading: true });
+const cs2Stats = ref({ valued: 0, opportunities: 0, purchases: 0, modelCounted: false, buying: null, loading: true });
 const memescraperStats = ref({ totalSources: 0, totalMemes: 0, todayDownloads: 0, loading: true });
 const omnibloxStats = ref({ enabled: false, live: 0, production: 0, robux30d: 0, loading: true });
 const omnitraderStats = ref({ paperCount: 0, liveCount: 0, liveArmed: 0, paperPnL: 0, backtestCount: 0, krakenOn: false, loading: true });
@@ -355,19 +355,32 @@ const fetchOmniTumblrStats = async () => {
     }
 };
 
+// Three numbers and a badge: the compact analytics (an older bot ignores ?compact=1 and sends the full payload) and
+// whether buying is on. "Opportunities" used to show the quick screen's passes (4,543 on 13 Nov 2026) while nothing
+// had been bought since 9 Oct, because the exit model turned them down; it now shows what the model confirmed.
 const fetchCS2Stats = async () => {
     try {
-        const response = await RequestGETFromKliveAPI('/cs2arbitragebot/getscanalytics', false, false);
-        if (response.ok) {
-            const data = await response.json();
+        const [analyticsResponse, statusResponse] = await Promise.all([
+            RequestGETFromKliveAPI('/cs2arbitragebot/getscanalytics?compact=1', false, false),
+            RequestGETFromKliveAPI('/cs2arbitragebot/status', false, false).catch(() => null),
+        ]);
+        let buying = null;
+        if (statusResponse?.ok) {
+            try { buying = (await statusResponse.json())?.settings?.PurchasingEnabled ?? null; } catch { buying = null; }
+        }
+        if (analyticsResponse.ok) {
+            const data = await analyticsResponse.json();
+            const modelCounted = typeof data.ModelChecked === 'number';
             cs2Stats.value = {
                 valued: data.TotalListingsScanned || 0,
-                opportunities: data.QualifiedOpportunities || 0,
+                opportunities: modelCounted ? (data.ModelConfirmed || 0) : (data.QualifiedOpportunities || 0),
                 purchases: data.Purchases ?? (data.AllPurchasedItems?.length || 0),
+                modelCounted,
+                buying,
                 loading: false
             };
         } else {
-            cs2Stats.value.loading = false;
+            cs2Stats.value = { ...cs2Stats.value, buying, loading: false };
         }
     } catch (error) {
         console.error('Failed to fetch CS2 stats:', error);

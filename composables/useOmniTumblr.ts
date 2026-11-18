@@ -28,7 +28,7 @@ export function notify(title: string, text = '', icon: 'success' | 'error' | 'in
 // ─────────────────────────────── API types (mirror the C# DTOs) ───────────────────────────────
 
 export type PostStatus = 'Draft' | 'Planned' | 'Ready' | 'AwaitingApproval' | 'Publishing' | 'Published' | 'Failed' | 'Cancelled' | 'Skipped' | 'Removed';
-export type PostKind = 'Video' | 'Photo' | 'Text' | 'Link';
+export type PostKind = 'Video' | 'Photo' | 'Text' | 'Link' | 'Reblog';
 export type CaptionMode = 'None' | 'Fixed' | 'Rotate' | 'AI' | 'Original';
 export type ContentSourceKind = 'None' | 'MemeScraper' | 'Folder' | 'Library';
 export type ContentPick = 'Best' | 'Newest' | 'Random' | 'Oldest';
@@ -85,6 +85,21 @@ export interface PostSummary {
     OriginalCaption: string | null;
     ContentViews: number | null;
     TumblrState: TumblrPostState;
+    /** A reblog (Kind 'Reblog'): whose post it is and how it was doing when picked. Its notes are the original's, never the blog's. */
+    ReblogOf?: string | null;
+    ReblogUrl?: string | null;
+    ReblogSummary?: string | null;
+    ReblogNotes?: number | null;
+    ReblogTag?: string | null;
+    ReblogType?: string | null;
+    ReblogReason?: string | null;
+    ReblogSeenByModel?: boolean | null;
+}
+
+/** What a reblog row shows where a post shows its caption. */
+export function reblogLine(post: Pick<PostSummary, 'ReblogOf' | 'ReblogSummary' | 'Caption'>): string {
+    const what = post.ReblogSummary?.trim() || '(no text)';
+    return `⟳ @${post.ReblogOf ?? 'someone'}: ${what}${post.Caption?.trim() ? ` — “${post.Caption.trim()}”` : ''}`;
 }
 
 export interface BlogSummary {
@@ -295,8 +310,28 @@ export interface Strategy {
     RotatingTags: string[];
     RotatingTagsPerPost: number;
     MaxTags: number;
+    /** Look each AI-suggested tag up on Tumblr and leave out the ones nobody else uses. */
+    ResearchTags: boolean;
+    Reblogs: ReblogSettings;
     PostState: TumblrPostState;
     CreditSource: boolean;
+}
+
+/** Curated reblogs: a few well-liked posts a day from the blog's tags, each screened first. Off until switched on. */
+export interface ReblogSettings {
+    Enabled: boolean;
+    PerDay: number;
+    /** Tags to look in; empty means the blog's fixed and rotating tags. */
+    Tags: string[];
+    MinNotes: number;
+    MaxAgeHours: number;
+    Images: boolean;
+    Videos: boolean;
+    Text: boolean;
+    RequireApproval: boolean;
+    StartHour: number;
+    EndHour: number;
+    Guidance: string;
 }
 
 export interface ContentPreview {
@@ -386,13 +421,58 @@ export interface Analytics {
 
 export interface Ranked { Key: string; Posts: number; AvgNotes: number; TotalNotes: number }
 
+export type TagVerdict = 'Unknown' | 'Dead' | 'Quiet' | 'Active' | 'Crowded';
+
+/** One tag as Tumblr's own listing of it shows it: how often others post under it and what their posts earn. */
+export interface TagHealth {
+    Tag: string;
+    Source: 'fixed' | 'rotating' | 'ai' | 'checked' | 'post';
+    Verdict: TagVerdict;
+    Score: number;
+    PostsPerDay: number | null;
+    TypicalNotes: number | null;
+    ShareWithNotes: number | null;
+    Settled: number;
+    CheckedUtc: string | null;
+    OurPosts: number;
+    OurAvgNotes: number | null;
+    Summary: string;
+    Related: string[];
+}
+
+export interface ReachFinding {
+    Level: 'problem' | 'warning' | 'info' | 'good';
+    Title: string;
+    Detail: string;
+    Action: 'strategy' | 'schedule' | 'profile' | null;
+}
+
+export interface ReachReport {
+    BlogId: string;
+    Posts30d: number;
+    WithNotes30d: number;
+    Notes30d: number;
+    AvgNotes30d: number | null;
+    Followers: number | null;
+    FollowersDelta30d: number | null;
+    PostsPerDay: number;
+    TagResearchOn: boolean;
+    Search: { CheckedUtc: string | null; Listed: boolean | null; Tag: string | null; PostId: string | null; LastListedUtc: string | null; Misses: number };
+    Findings: ReachFinding[];
+    Tags: TagHealth[];
+    RelatedTags: string[];
+}
+
 export interface PostDetail {
     Post: PostSummary;
     Media: { Index: number; MimeType: string; Bytes: number; Width: number | null; Height: number | null; DurationSeconds: number | null; HasThumbnail: boolean; Exists: boolean; FileName: string }[];
     AttemptLog: { Utc: string; Ok: boolean; Code: string | null; Message: string | null; DurationMs: number }[];
     MetricsHistory: { Utc: string; Notes: number; Likes: number | null; Reblogs: number | null }[];
-    CaptionInfo: { Mode: CaptionMode; Model: string | null; UsedVision: boolean; GeneratedUtc: string | null; Edited: boolean; Error: string | null; Failures: number; AltText: string | null; SuggestedTags: string[]; Direction: string | null };
+    /** One entry per tag on the post; Verdict is 'Unknown' for a tag not looked up yet. */
+    TagHealth?: TagHealth[];
+    CaptionInfo: { Mode: CaptionMode; Model: string | null; UsedVision: boolean; GeneratedUtc: string | null; Edited: boolean; Error: string | null; Failures: number; AltText: string | null; SuggestedTags: string[]; DroppedTags?: string[]; TagsResearched?: boolean; Direction: string | null };
     Content: { Kind: ContentSourceKind; Key: string; Origin: string | null; OriginalCaption: string | null; OriginalUrl: string | null; Views: number | null; Likes: number | null; CreatedUtc: string | null } | null;
+    Reblog?: { ParentPostId: string; ParentBlogName: string; ParentUrl: string | null; Summary: string | null; ParentTags: string[]; ParentNotes: number; ParentPublishedUtc: string | null; ParentType: string | null; FoundUnderTag: string | null; SeenByModel: boolean; Reason: string | null } | null;
     Slug: string | null;
     Deferrals: number;
     NeedsReconcile: boolean;
@@ -700,6 +780,32 @@ export function statusTone(status: PostStatus): string {
         case 'Planned': return 'violet';
         default: return '';
     }
+}
+
+export const TAG_VERDICT_LABEL: Record<TagVerdict, string> = {
+    Unknown: 'Not checked',
+    Dead: 'Nobody there',
+    Quiet: 'Quiet',
+    Active: 'Active',
+    Crowded: 'Flooded',
+};
+
+/** Chip tone for a tag: green when posts under it get notes, red when nobody else uses it. */
+export function tagVerdictTone(tag: Pick<TagHealth, 'Verdict' | 'Score'>): string {
+    switch (tag.Verdict) {
+        case 'Dead': return 'bad';
+        case 'Crowded': return 'warn';
+        case 'Active': case 'Quiet': return tag.Score >= 20 ? 'ok' : 'info';
+        default: return '';
+    }
+}
+
+export function fmtTagRate(perDay: number | null | undefined): string {
+    if (perDay == null) return '—';
+    if (perDay >= 48) return `${Math.round(perDay / 24)}/hour`;
+    if (perDay >= 2) return `${Math.round(perDay)}/day`;
+    if (perDay >= 2 / 7) return `${Math.round(perDay * 7)}/week`;
+    return `${Math.max(1, Math.round(perDay * 30))}/month`;
 }
 
 export function blogStateTone(state: BlogSummary['State']): string {

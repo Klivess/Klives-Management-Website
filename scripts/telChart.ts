@@ -85,6 +85,40 @@ export const crosshairPlugin: Plugin = {
     },
 };
 
+/**
+ * Draws event marks (routing changes, restarts…) as dashed vertical lines, from
+ * `options.telMarks` [{ t, label }]. Nothing is drawn when a chart has no marks, so charts
+ * that never pass any are unchanged.
+ */
+export const marksPlugin: Plugin = {
+    id: 'telMarks',
+    afterDatasetsDraw(chart) {
+        const opts = (chart.options as any).telTime as { t0: number; step: number } | undefined;
+        const marks = (chart.options as any).telMarks as { t: number; label?: string }[] | undefined;
+        if (!opts || !marks?.length) return;
+        const count = chart.data.labels?.length ?? 0;
+        if (count < 2) return;
+        const { top, bottom } = chart.chartArea;
+        const ctx = chart.ctx;
+        const colour = cssVar(chart.canvas, '--tel-mark', '#f5b942');
+        ctx.save();
+        ctx.strokeStyle = colour;
+        ctx.globalAlpha = 0.75;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        for (const mark of marks) {
+            const i = (mark.t - opts.t0) / opts.step - 0.5;
+            if (i < -0.5 || i > count - 0.5) continue;
+            const x = Math.round(chart.scales.x.getPixelForValue(i)) + 0.5;
+            ctx.beginPath();
+            ctx.moveTo(x, top);
+            ctx.lineTo(x, bottom);
+            ctx.stroke();
+        }
+        ctx.restore();
+    },
+};
+
 /** Draws the drag-to-zoom selection band stored on `chart.$telDrag`. */
 export const selectionPlugin: Plugin = {
     id: 'telSelection',

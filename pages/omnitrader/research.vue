@@ -236,6 +236,7 @@
                 <button class="ot-btn" type="button" @click="reevaluate">Re-evaluate</button>
                 <button class="ot-btn danger" type="button" @click="setCandStatus('Rejected')">Reject</button>
                 <button class="ot-btn ok" type="button" @click="setCandStatus('Promoted')">Promote</button>
+                <NuxtLink v-if="cand" class="ot-btn primary" :to="`/omnitrader/strategies?candidate=${cand.Id}`" title="Open a deployment filled in with the settings this candidate was tested on" data-testid="cand-deploy">Deploy…</NuxtLink>
             </template>
         </OmniTraderDrawer>
 
@@ -411,10 +412,28 @@ async function ingest() {
 // candidates
 const candidates = ref<any[]>([]);
 const loadingCands = ref(false);
+// Which candidates run as deployments: by the candidate a plan recorded, else (older deployments) by strategy.
+const deployments = ref<any[]>([]);
 async function loadCandidates() {
     loadingCands.value = true;
-    try { candidates.value = await tGet<any[]>('/alpha/candidates', { status: state.cstatus || undefined, limit: 500 }) ?? []; }
+    try {
+        const [c, d] = await Promise.allSettled([
+            tGet<any[]>('/alpha/candidates', { status: state.cstatus || undefined, limit: 500 }),
+            tGet<any[]>('/deployments'),
+        ]);
+        candidates.value = c.status === 'fulfilled' ? c.value ?? [] : candidates.value;
+        if (d.status === 'fulfilled' && Array.isArray(d.value)) deployments.value = d.value;
+        if (c.status === 'rejected') throw c.reason;
+    }
     finally { loadingCands.value = false; }
+}
+function deployedOf(r: any): string | null {
+    const mine = deployments.value.filter(d => d.Origin?.CandidateId
+        ? d.Origin.CandidateId === r.Id
+        : String(d.StrategyClass ?? '').split('@')[0] === `studio:${r.StrategyId}`);
+    if (!mine.length) return null;
+    const live = mine.filter(d => d.Status === 'Running' || d.Status === 'Paused');
+    return live.length ? `▶ ${live.length} running` : `${mine.length} stopped`;
 }
 watch(() => state.cstatus, () => void loadCandidates());
 const candCols: GridColumn[] = [
@@ -428,6 +447,7 @@ const candCols: GridColumn[] = [
     { key: 'StressedSharpe', label: '2× cost SR', format: 'num', hidden: true }, { key: 'Trades', label: 'Trades', format: 'int' },
     { key: 'Profitable', label: 'Breadth', format: 'text', value: r => (r.Symbols ? `${r.Profitable}/${r.Symbols}` : null) },
     { key: 'SubmittedBy', label: 'By', format: 'text', hidden: true }, { key: 'UpdatedUtc', label: 'Updated', format: 'age' },
+    { key: 'Deployed', label: 'Deployed', format: 'text', value: deployedOf, hint: 'Deployments of this candidate (or, for older ones, of its strategy)' },
 ];
 function candTone(s: string) { return ({ Promising: 'ok', Promoted: 'accent', Weak: 'warn', Rejected: 'bad', Failed: 'bad', Evaluating: 'info' } as Record<string, string>)[s] ?? ''; }
 

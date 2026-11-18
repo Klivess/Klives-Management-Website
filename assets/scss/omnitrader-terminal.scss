@@ -394,6 +394,15 @@
     .ot-page { padding: var(--ot-space-2) var(--ot-space-3) 48px; width: 100%; }
     @media (max-width: 767px) { .ot-page { padding: var(--ot-space-2) var(--ot-space-2) 40px; } }
 
+    /* On a phone the top bar wraps instead of pushing every OmniTrader page 330 px sideways
+       (brand, command line, environment, status, clock and menu on one 38 px row needed ~720 px). */
+    @media (max-width: 767px) {
+        .ot-top { flex-wrap: wrap; height: auto; min-height: 38px; padding: 6px var(--ot-space-2); row-gap: 6px; }
+        .ot-top .ot-clock, .ot-top .ot-fresh, .ot-top-spacer { display: none; }
+        .ot-top .ot-envselect { max-width: 96px; }
+        .ot-top .ot-menu .pop { right: 0; left: auto; max-width: calc(100vw - 16px); }
+    }
+
     .ot-pagehead {
         display: flex;
         align-items: center;

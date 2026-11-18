@@ -11,19 +11,28 @@ export default defineNuxtConfig({
   routeRules: {
     '/': {prerender: true},
     '/administration/**': {ssr: false}, // Disable SSR for admin routes
+    '/admin': {ssr: false}, // Live console: polled, teleported layers, per-browser preferences
     '/dashboard': {ssr: false}, // Disable SSR for dashboard to avoid hydration issues
     '/profilepage': {ssr: false}, // Disable SSR for profilepage
     '/account': {ssr: false}, // Your sessions and permissions: client-driven, never cached HTML
     '/omnidefence': {ssr: false}, // Live security console is client-driven
+    '/omniscience': {ssr: false}, // Live console: polled, teleported layers, per-browser working set
+    '/kliveagent': {ssr: false}, // Live agent console: long-polled runs, talk mode, per-browser layout
+    '/klivecloud': {ssr: false}, // The drive: authenticated thumbnails, tickets, drag and drop, per-browser layout
     '/klivetech': {ssr: false}, // Telemetry needs WebSocket, object URLs and ResizeObserver
     '/schemery/omnitumblr': {ssr: false}, // Authenticated blob previews, popups and local-time rendering
     '/schemery/omnitumblr/**': {ssr: false},
+    '/schemery/memescraper': {ssr: false}, // Live console: authenticated thumbnails and video blobs, per-browser layout
+    '/schemery/memescraper/**': {ssr: false},
     '/schemery/omniblox': {ssr: false}, // Authenticated renders and media are fetched as blobs
     '/schemery/omniblox/**': {ssr: false},
     '/omnitrader': {ssr: false}, // Terminal: client-fetched behind auth, persisted per-browser layout, live charts
     '/omnitrader/**': {ssr: false},
     '/omniscience-v3': {ssr: false}, // v3 engine pages: client-fetched behind auth, live stream, browser time zones
     '/omniscience-v3/**': {ssr: false},
+    // Projects became Demiurge: old /projects links (Discord, bookmarks) keep landing.
+    '/projects': {redirect: {to: '/demiurge', statusCode: 301}},
+    '/projects/**': {redirect: {to: '/demiurge/**', statusCode: 301}},
     '/*': {cors: true},
   },
   vite: {
@@ -59,7 +68,6 @@ export default defineNuxtConfig({
     '~/assets/scss/inputbox.scss',
     '~/assets/scss/navbar.scss',
     '~/assets/scss/klivetech-os.scss',
-    '~/assets/scss/omniscience.scss',
     '~/assets/scss/omnitrader-os.scss',
     '~/assets/scss/omnitrader-terminal.scss',
     '~/assets/scss/klivechat.scss',

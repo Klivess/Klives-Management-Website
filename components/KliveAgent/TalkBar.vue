@@ -172,6 +172,10 @@ function ms(value) {
   overflow: visible;
   box-shadow: none;
   font-family: inherit;
+  /* The console resets every button with all: unset, which leaves them inline. */
+  display: inline-grid;
+  place-items: center;
+  box-sizing: border-box;
 }
 
 .talk-bar .tb-orb {
@@ -180,21 +184,21 @@ function ms(value) {
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: #1f2a1c;
-  color: #e3f6d9;
-  border: 1px solid rgba(98, 206, 71, 0.45);
+  background: #1d1934;
+  color: #ddd6ff;
+  border: 1px solid rgba(165, 148, 255, 0.45);
   cursor: pointer;
   touch-action: none;
-  &:hover { background: #263522; border-color: $teritary; box-shadow: none; }
-  &:active { background: #2c3d27; }
-  :deep(.kc-icon) { position: relative; z-index: 1; color: #e3f6d9; }
+  &:hover { background: #262046; border-color: #a594ff; box-shadow: none; }
+  &:active { background: #2e2754; }
+  :deep(.kc-icon) { position: relative; z-index: 1; color: #ddd6ff; }
 }
 
 .tb-orb-glow {
   position: absolute;
   inset: 6px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(98, 206, 71, 0.55), rgba(98, 206, 71, 0.05) 70%);
+  background: radial-gradient(circle, rgba(165, 148, 255, 0.55), rgba(165, 148, 255, 0.05) 70%);
   transition: transform 80ms linear;
   pointer-events: none;
 }
@@ -214,7 +218,7 @@ function ms(value) {
 .tb-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 
 .tb-state {
-  color: #cfe8c7;
+  color: #d9dcef;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -227,15 +231,15 @@ function ms(value) {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #5d6b58;
+  background: #565b6e;
   flex: 0 0 auto;
 }
 .is-listening .tb-dot,
-.is-hearing .tb-dot { background: $teritary; box-shadow: 0 0 6px rgba(98, 206, 71, 0.8); }
+.is-hearing .tb-dot { background: #a594ff; box-shadow: 0 0 6px rgba(165, 148, 255, 0.8); }
 .is-speaking .tb-dot { background: #8fd3ff; }
 .is-error .tb-dot { background: #c96464; }
 
-.tb-detail { color: #9fb69a; font-weight: 500; }
+.tb-detail { color: #aeb2c6; font-weight: 500; }
 
 .tb-caption {
   color: #8e8e8e;
@@ -247,7 +251,7 @@ function ms(value) {
   &.is-final { color: #e8e8e8; }
 }
 
-.tb-latency { color: #7f8f7a; font-size: 11px; font-variant-numeric: tabular-nums; }
+.tb-latency { color: #7c8196; font-size: 11px; font-variant-numeric: tabular-nums; }
 .tb-error { color: #f4a6a6; font-size: 12px; }
 
 .tb-actions { display: flex; gap: 6px; flex: 0 0 auto; }
@@ -263,7 +267,7 @@ function ms(value) {
   :deep(.kc-icon) { color: #d8d8d8; }
   &:hover { background: #222; border-color: rgba(255, 255, 255, 0.25); box-shadow: none; }
   &:active { background: #2a2a2a; }
-  &.is-on { border-color: rgba(98, 206, 71, 0.6); background: #1f2a1c; }
+  &.is-on { border-color: rgba(165, 148, 255, 0.6); background: #1d1934; }
 }
 
 .tb-settings {
@@ -314,7 +318,7 @@ function ms(value) {
   font-size: 12px;
   cursor: pointer;
   &:hover { background: #242424; box-shadow: none; border-color: rgba(255, 255, 255, 0.25); }
-  &.is-on { border-color: rgba(98, 206, 71, 0.6); background: #1f2a1c; color: #e3f6d9; }
+  &.is-on { border-color: rgba(165, 148, 255, 0.6); background: #1d1934; color: #ddd6ff; }
 }
 
 .tb-note { margin: 0; color: #7d7d7d; font-size: 11px; line-height: 1.4; }

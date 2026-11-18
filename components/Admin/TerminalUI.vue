@@ -40,10 +40,14 @@
 </template>
 
 <script setup>
-import { nextTick, onMounted, ref } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 
 const SESSION_STORAGE_KEY = 'omnipotent-terminal-session-id';
+// Opening answers in under half a second when it rejoins a session that already exists, and took
+// 3 to 120 seconds in production whenever the server had to start a new one. Past this many
+// seconds the screen says what it is waiting for instead of staying on "Connecting...".
+const SLOW_OPEN_AFTER_SECONDS = 3;
 
 const currentCommand = ref('');
 const transcript = ref([]);
@@ -106,8 +110,27 @@ function syncSessionState(session) {
     scrollToBottom();
 }
 
-async function openSession(forceNew = false) {
+let openTicker = null;
+
+function startOpenProgress() {
+    stopOpenProgress();
+    const startedAt = Date.now();
     banner.value = 'Connecting...';
+    openTicker = setInterval(() => {
+        const seconds = Math.round((Date.now() - startedAt) / 1000);
+        if (seconds >= SLOW_OPEN_AFTER_SECONDS) {
+            banner.value = `Starting PowerShell on the server... ${seconds}s. A new session can take a minute or two.`;
+        }
+    }, 1000);
+}
+
+function stopOpenProgress() {
+    if (openTicker) clearInterval(openTicker);
+    openTicker = null;
+}
+
+async function openSession(forceNew = false) {
+    startOpenProgress();
 
     try {
         const response = await RequestPOSTFromKliveAPI(
@@ -130,6 +153,9 @@ async function openSession(forceNew = false) {
         currentPath.value = '';
         storeSessionId('');
         banner.value = error?.message || 'Failed to connect to the terminal backend.';
+    } finally {
+        // Nothing awaits between the banner being set above and this, so no tick can overwrite it.
+        stopOpenProgress();
     }
 }
 
@@ -219,7 +245,9 @@ async function resetSession() {
 }
 
 function focusInput() {
-    nextTick(() => inputField.value?.focus());
+    // preventScroll: the terminal can live in a dock pinned to the window edge, where the browser's
+    // own scroll-into-view would drag the page behind it.
+    nextTick(() => inputField.value?.focus({ preventScroll: true }));
 }
 
 function resizeInput() {
@@ -271,6 +299,11 @@ function scrollToBottom() {
 onMounted(async () => {
     await openSession(false);
 });
+
+onBeforeUnmount(stopOpenProgress);
+
+// The Admin page keeps the terminal in a dock: it puts the cursor here whenever the dock opens.
+defineExpose({ focus: focusInput });
 </script>
 
 <style scoped>

@@ -4,9 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { catalogPayload, mePayload } from './fixtures/permissions';
 
 /**
- * MemeScraper pages against fixtures written by the real analytics engine
- * (Omnipotent.Tests MemeScraperFixtureExport: MEMESCRAPER_FIXTURES=<this folder>/fixtures/memescraper).
- * Each step also saves a screenshot under test-results/memescraper/ for visual review.
+ * The MemeScraper console (pages/schemery/memescraper/index.vue, components/Meme/*) against fixtures written by
+ * the real analytics engine (Omnipotent.Tests MemeScraperFixtureExport: MEMESCRAPER_FIXTURES=<this folder>/fixtures/memescraper).
+ * The fake API answers /batch the way KliveAPI does. Screenshots go to test-results/memescraper/ for review.
  */
 
 const apiOrigin = 'https://klive.dev';
@@ -21,323 +21,386 @@ const baseHealth = load('health');
 /** The fixtures were generated at this instant; the browser clock is pinned just after it. */
 const NOW = new Date(baseHealth.GeneratedUtc).getTime() + 60_000;
 const SHOTS = 'test-results/memescraper';
-/** The first page a cold dev server serves compiles the whole app. */
 const BOOT = { timeout: 45_000 };
 
 test.describe.configure({ timeout: 120_000 });
 
 function thumbSvg(seed: string) {
-    let h = 0;
-    for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-    const a = h % 360;
-    const b = (a + 50) % 360;
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="270" height="420" viewBox="0 0 270 420">
+  let h = 0;
+  for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  const a = h % 360;
+  const b = (a + 50) % 360;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="270" height="420" viewBox="0 0 270 420">
 <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${a},50%,36%)"/><stop offset="1" stop-color="hsl(${b},55%,16%)"/></linearGradient></defs>
 <rect width="270" height="420" fill="url(#g)"/><circle cx="135" cy="170" r="54" fill="rgba(255,255,255,0.16)"/>
 <text x="135" y="320" text-anchor="middle" font-family="sans-serif" font-size="26" fill="rgba(255,255,255,0.8)">meme ${seed.slice(-3)}</text></svg>`;
 }
 
 function dashboardKey(p: URLSearchParams) {
-    const base = p.get('from') ? 'custom' : (p.get('range') ?? '30d');
-    if (p.get('sources')) return `${base}-src`;
-    if (p.get('niche')) return `${base}-niche`;
-    if (p.get('granularity') === 'week') return `${base}-week`;
-    return base;
+  const base = p.get('from') ? 'custom' : (p.get('range') ?? '30d');
+  if (p.get('sources')) return `${base}-src`;
+  return base;
 }
 
 function reelsKey(p: URLSearchParams) {
-    const base = p.get('from') ? '30d' : (p.get('range') ?? '30d');
-    if (p.get('sources')) return `${base}-src`;
-    if (p.get('q')) return `${base}-q`;
-    if (p.get('sort') === 'views') return `${base}-views`;
-    if (Number(p.get('offset') ?? 0) >= 48) return `${base}-p2`;
-    return base;
+  const range = p.get('range');
+  const base = p.get('from') || !range || range === 'all' ? '30d' : range;
+  if (p.get('sources')) return `${base}-src`;
+  if (p.get('q')) return `${base}-q`;
+  if (p.get('sort') === 'views') return `${base}-views`;
+  return base;
 }
 
-function historyKey(p: URLSearchParams) {
-    if (p.get('sources')) return 'src';
-    const base = p.get('range') ?? '30d';
-    return p.get('status') === 'failed' ? `${base}-failed` : base;
-}
+interface Answer { status: number; body: unknown; contentType?: string }
 
-async function mockApi(page: Page, rank = 5) {
-    const state = {
-        requests: [] as string[],
-        mutations: [] as { path: string; body: any }[],
-        health: structuredClone(baseHealth),
-        settings: { Paused: false, IntervalHours: 24, MaxPagesPerScrape: 40, OnServer: true },
-    };
-    await page.clock.setFixedTime(NOW);
-    await page.routeWebSocket('wss://klive.dev/**', () => {});
-    await page.route(`${apiOrigin}/**`, async route => {
-        const request = route.request();
-        const url = new URL(request.url());
-        const path = url.pathname;
-        const p = url.searchParams;
-        const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'Authorization, Content-Type, X-Klive-Client, X-Klive-Page, Cache-Control', 'access-control-expose-headers': '*' };
-        if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors, body: '' });
-        const json = (body: unknown, status = 200) => route.fulfill({ status, headers: cors, contentType: 'application/json', body: JSON.stringify(body) });
-        state.requests.push(`${request.method()} ${path}${url.search}`);
-        if (request.method() === 'POST') {
-            const raw = request.postData();
-            let body: any = raw;
-            try { body = raw ? JSON.parse(raw) : null; } catch { /* plain text */ }
-            state.mutations.push({ path: `${path}${url.search}`, body });
-        }
+async function mockApi(page: Page, opts: { rank?: number; starting?: boolean } = {}) {
+  const state = {
+    requests: [] as string[],
+    batches: [] as string[][],
+    mutations: [] as { path: string; body: any }[],
+    health: structuredClone(baseHealth),
+    starting: !!opts.starting,
+  };
+  if (state.starting) {
+    state.health.DataLoaded = false;
+    state.health.Startup = { ...state.health.Startup, DataReadyUtc: null, DataLoadMs: null, Progress: { Done: 4210, Total: 6521 }, Reels: null, Reconcile: null };
+  }
 
-        switch (path) {
-            case '/KMProfiles/LoginStatus': return route.fulfill({ status: 200, headers: cors, body: 'SessionActive' });
-            case '/KMProfiles/me': return json(mePayload({ rank }));
-            case '/KMProfiles/permissions/catalog': return json(catalogPayload(false));
-            case '/KMProfiles/GetCurrentProfile': return json({ Name: rank === 5 ? 'Klives' : 'Guest', KlivesManagementRank: rank });
-            case '/memescraper/scraperHealth': return json(state.health);
-            case '/memescraper/summary': return json(summary);
-            case '/memescraper/dashboard': {
-                const key = dashboardKey(p);
-                return json(dashboards[key] ?? dashboards[key.split('-')[0]] ?? dashboards['30d']);
-            }
-            case '/memescraper/reels': {
-                if (p.get('format') === 'csv') return route.fulfill({ status: 200, headers: cors, contentType: 'text/csv', body: 'PostID,Owner\n1,codememes\n' });
-                // The single-source fixture belongs to @codememes; any other source gets an honest empty page.
-                if (p.get('sources') && p.get('sources') !== 'codememes') return json({ ...reelPages['30d'], Filtered: 0, Rows: [] });
-                const key = reelsKey(p);
-                return json(reelPages[key] ?? reelPages[key.split('-')[0]] ?? reelPages['30d']);
-            }
-            case '/memescraper/reel': {
-                const detail = reelDetails[p.get('postId') ?? ''];
-                return detail ? json(detail) : json({ error: 'No reel with that post id.' }, 404);
-            }
-            case '/memescraper/reelThumb': return route.fulfill({ status: 200, headers: cors, contentType: 'image/svg+xml', body: thumbSvg(p.get('postId') ?? 'x') });
-            case '/memescraper/reelVideo': return json({ error: 'The reel\'s video file is missing.' }, 404);
-            case '/memescraper/scrapeHistory': {
-                const who = p.get('sources');
-                if (who && who !== 'codememes') {
-                    const rows = histories.all.Rows.filter((r: any) => r.Username === who).slice(0, Number(p.get('limit') ?? 25));
-                    return json({ ...histories.all, Filtered: rows.length, Rows: rows });
-                }
-                return json(histories[historyKey(p)] ?? histories['30d']);
-            }
-            case '/memescraper/settings': return json(state.settings);
-            case '/memescraper/saveSettings': {
-                const body = state.mutations[state.mutations.length - 1].body ?? {};
-                if (typeof body.paused === 'boolean') state.settings.Paused = body.paused;
-                if (typeof body.intervalHours === 'number') state.settings.IntervalHours = body.intervalHours;
-                if (typeof body.maxPagesPerScrape === 'number') state.settings.MaxPagesPerScrape = body.maxPagesPerScrape;
-                state.health.Settings = { ...state.settings };
-                return json(state.settings);
-            }
-            case '/memescraper/scrapeNow': {
-                const who = p.get('sourceAccountID') ? state.health.Sources.find((s: any) => s.AccountID === p.get('sourceAccountID'))?.Username : null;
-                state.health.CurrentScrape = `@${who ?? 'codememes'} (manual:Klives) since 2026-10-11 15:01:00Z`;
-                state.health.ScrapeQueued = who ? 1 : state.health.Sources.filter((s: any) => s.DownloadReels).length;
-                return json({ queued: [who ?? 'codememes'], note: 'Scrapes run one at a time.' }, 202);
-            }
-            case '/memescraper/diagnoseProviders': return json({ Username: p.get('username'), State: 'queued', Results: [] }, 202);
-            case '/memescraper/updateInstagramSource': {
-                const body = state.mutations[state.mutations.length - 1].body;
-                return json({ Username: 'x', AccountID: body.accountId, DownloadReels: body.downloadReels ?? true, Niches: body.niches ?? [] });
-            }
-            case '/memescraper/removeInstagramSource': return json({ removed: 'x', reelsDeleted: 0 });
-            case '/memescraper/refreshSourceProfile': return json({ State: 'queued' }, 202);
-            case '/memescraper/addInstagramSource': return route.fulfill({ status: 200, headers: cors, body: 'Instagram source being added.' });
-            default: return json({});
+  function answer(method: string, path: string, p: URLSearchParams, body: any): Answer {
+    const ok = (b: unknown, status = 200): Answer => ({ status, body: b });
+    if (path.startsWith('/memescraper/') && state.starting && !['/memescraper/scraperHealth'].includes(path)) {
+      return ok({ error: 'MemeScraper is still loading its data; try again in a moment.' }, 503);
+    }
+    switch (path) {
+      case '/memescraper/scraperHealth': return ok(state.health);
+      case '/memescraper/summary': return ok(summary);
+      case '/memescraper/dashboard': {
+        const key = dashboardKey(p);
+        return ok(dashboards[key] ?? dashboards[key.split('-')[0]] ?? dashboards['30d']);
+      }
+      case '/memescraper/reels': {
+        if (p.get('format') === 'csv') return { status: 200, body: 'PostID,Owner\n1,codememes\n', contentType: 'text/csv' };
+        if (p.get('sources') && p.get('sources') !== 'codememes') return ok({ ...reelPages['30d'], Filtered: 0, Rows: [] });
+        const key = reelsKey(p);
+        return ok(reelPages[key] ?? reelPages['30d']);
+      }
+      case '/memescraper/reel': {
+        const detail = reelDetails[p.get('postId') ?? ''];
+        if (detail) return ok(detail);
+        const row = Object.values(reelPages).flatMap((pg: any) => pg.Rows).find((r: any) => r.PostID === p.get('postId'));
+        return row ? ok({ Reel: { ...row, VideoExists: true, Bytes: 4_200_000 }, OwnerReels: 120, OwnerRank: 7, OwnerMedianViews: 50_000, Thumbnail: false }) : ok({ error: 'No reel with that post id.' }, 404);
+      }
+      case '/memescraper/reelVideo': return ok({ error: 'The reel\'s video file is missing.' }, 404);
+      case '/memescraper/scrapeHistory': {
+        const who = p.get('sources');
+        if (who) {
+          const rows = histories.all.Rows.filter((r: any) => r.Username === who).slice(0, Number(p.get('limit') ?? 25));
+          return ok({ ...histories.all, Filtered: rows.length, Rows: rows });
         }
-    });
-    return state;
+        if (p.get('status') === 'failed') return ok(histories['30d-failed']);
+        return ok(histories['30d']);
+      }
+      case '/memescraper/saveSettings': {
+        if (typeof body?.paused === 'boolean') state.health.Settings.Paused = body.paused;
+        if (typeof body?.intervalHours === 'number') state.health.Settings.IntervalHours = body.intervalHours;
+        if (typeof body?.maxPagesPerScrape === 'number') state.health.Settings.MaxPagesPerScrape = body.maxPagesPerScrape;
+        return ok({ ...state.health.Settings, OnServer: true });
+      }
+      case '/memescraper/scrapeNow': {
+        const who = p.get('sourceAccountID') ? state.health.Sources.find((s: any) => s.AccountID === p.get('sourceAccountID'))?.Username : null;
+        state.health.CurrentScrape = `@${who ?? 'codememes'} (manual:Klives) since 2026-10-11 15:01:00Z`;
+        state.health.ScrapeQueued = who ? 1 : state.health.Sources.filter((s: any) => s.DownloadReels).length;
+        return ok({ queued: who ? [who] : state.health.Sources.filter((s: any) => s.DownloadReels).map((s: any) => s.Username), note: 'Scrapes run one at a time.' }, 202);
+      }
+      case '/memescraper/diagnoseProviders': return ok({ Username: p.get('username'), State: 'queued', Results: [] }, 202);
+      case '/memescraper/updateInstagramSource': return ok({ Username: 'x', AccountID: body?.accountId, DownloadReels: body?.downloadReels ?? true, Niches: body?.niches ?? [] });
+      case '/memescraper/removeInstagramSource': return ok({ removed: 'x', reelsDeleted: body?.deleteReels ? 12 : 0 });
+      case '/memescraper/refreshSourceProfile': return ok({ State: 'queued' }, 202);
+      case '/memescraper/addInstagramSource': return { status: 200, body: 'Instagram source being added.', contentType: 'text/plain' };
+      default: return ok({});
+    }
+  }
+
+  await page.clock.setFixedTime(NOW);
+  await page.routeWebSocket('wss://klive.dev/**', () => {});
+  await page.route(`${apiOrigin}/**`, async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'Authorization, Content-Type, X-Klive-Client, X-Klive-Page, Cache-Control', 'access-control-expose-headers': '*' };
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors, body: '' });
+    const json = (body: unknown, status = 200) => route.fulfill({ status, headers: cors, contentType: 'application/json', body: JSON.stringify(body) });
+    state.requests.push(`${request.method()} ${path}${url.search}`);
+    let body: any = null;
+    if (request.method() === 'POST') {
+      const raw = request.postData();
+      body = raw;
+      try { body = raw ? JSON.parse(raw) : null; } catch { /* plain text */ }
+      if (path !== '/batch') state.mutations.push({ path: `${path}${url.search}`, body });
+    }
+
+    switch (path) {
+      case '/KMProfiles/LoginStatus': return route.fulfill({ status: 200, headers: cors, body: 'SessionActive' });
+      case '/KMProfiles/me': return json(mePayload({ rank: opts.rank ?? 5 }));
+      case '/KMProfiles/permissions/catalog': return json(catalogPayload(false));
+      case '/KMProfiles/GetCurrentProfile': return json({ Name: 'Klives', KlivesManagementRank: opts.rank ?? 5 });
+      case '/memescraper/reelThumb': return route.fulfill({ status: 200, headers: cors, contentType: 'image/svg+xml', body: thumbSvg(url.searchParams.get('postId') ?? 'x') });
+      case '/batch': {
+        const paths: string[] = (Array.isArray(body) ? body : []).map((e: any) => e.path);
+        state.batches.push(paths);
+        return json(paths.map(full => {
+          const u = new URL(full, apiOrigin);
+          state.requests.push(`GET ${u.pathname}${u.search} (batch)`);
+          const a = answer('GET', u.pathname, u.searchParams, null);
+          return { path: full, status: a.status, ok: a.status >= 200 && a.status < 300, contentType: a.contentType ?? 'application/json', body: a.body };
+        }));
+      }
+      default: {
+        const a = answer(request.method(), path, url.searchParams, body);
+        if (a.contentType && a.contentType !== 'application/json') return route.fulfill({ status: a.status, headers: cors, contentType: a.contentType, body: String(a.body) });
+        return json(a.body, a.status);
+      }
+    }
+  });
+  return state;
 }
 
 test.beforeEach(async ({ context }) => {
-    const origin = new URL(process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? '4173'}`).origin;
-    await context.addCookies([{ name: 'km_session', value: 'kms_e2e', url: origin }]);
+  const origin = new URL(process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? '4173'}`).origin;
+  await context.addCookies([{ name: 'km_session', value: 'kms_e2e', url: origin }]);
 });
 
-test('overview: KPIs, insights, chart and the shared date window', async ({ page }) => {
-    const state = await mockApi(page);
-    await page.setViewportSize({ width: 1500, height: 1200 });
-    await page.goto('/schemery/memescraper');
+test('overview: state, what needs you, figures, chart and feed in one request', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.setViewportSize({ width: 1600, height: 1250 });
+  await page.goto('/schemery/memescraper');
 
-    await expect(page.getByRole('heading', { name: 'Reel scraper' })).toBeVisible(BOOT);
-    const d30 = dashboards['30d'];
-    await expect(page.locator('.ot-kpi').filter({ hasText: 'Reels downloaded' })).toContainText(d30.Kpis.Downloaded.toLocaleString());
-    await expect(page.locator('.ot-kpi').filter({ hasText: 'Active sources' })).toContainText(`${d30.Kpis.ActiveSources} / ${d30.Kpis.SourcesInScope}`);
-    await expect(page.getByText('@techhumour keeps failing').first()).toBeVisible();
-    await expect(page.getByText('@uni.struggles has gone quiet')).toBeVisible();
-    await expect(page.locator('.ms-bars svg')).toBeVisible();
-    await expect(page.locator('.ms-ranked').first()).toContainText('@catmemes.daily');
-    await expect(page.locator('.ms-reel')).toHaveCount(d30.TopReels.length);
-    expect(state.requests.some(r => r.startsWith('GET /memescraper/dashboard') && r.includes('range=30d') && r.includes('tz='))).toBe(true);
-    await page.screenshot({ path: `${SHOTS}/overview-30d.png`, fullPage: true });
+  const d30 = dashboards['30d'];
+  await expect(page.getByTestId('kpi-reels')).toContainText(d30.Kpis.Downloaded.toLocaleString('en-GB'), BOOT);
+  await expect(page.getByTestId('kpi-active')).toContainText(`${d30.Kpis.ActiveSources}`);
+  await expect(page.getByTestId('kpi-active')).toContainText('2 never have');
+  // The first read is one /batch: the window's dashboard and the scraper's health.
+  expect(state.batches[0].some(p => p.startsWith('/memescraper/dashboard') && p.includes('range=30d') && p.includes('tz='))).toBe(true);
+  expect(state.batches[0]).toContain('/memescraper/scraperHealth');
+  expect(state.requests.some(r => r.startsWith('GET /memescraper/dashboard') && !r.endsWith('(batch)'))).toBe(false);
 
-    // Presets rewrite the URL and the request; the data follows.
-    await page.getByRole('button', { name: '90D' }).click();
-    await expect(page).toHaveURL(/range=90d/);
-    await expect(page.locator('.ot-kpi').filter({ hasText: 'Reels downloaded' })).toContainText(dashboards['90d'].Kpis.Downloaded.toLocaleString());
-    expect(state.requests.some(r => r.includes('/memescraper/dashboard') && r.includes('range=90d'))).toBe(true);
+  // What needs a person: the failing source first, then the two that never had a reel.
+  const pulse = page.getByTestId('msx-pulse');
+  await expect(pulse).toContainText('@techhumour keeps failing');
+  await expect(page.getByTestId('issue-empty')).toContainText('2 sources have never had a reel');
+  await expect(page.getByTestId('issue-empty').getByRole('button', { name: 'Pause all 2' })).toBeVisible();
+  await expect(page.getByTestId('issue-quiet')).toContainText('@uni.struggles');
 
-    await page.getByRole('button', { name: 'All', exact: true }).click();
-    await expect(page).toHaveURL(/range=all/);
-    await expect(page.locator('.ms-rangebar .summary')).toContainText(new Date(`${dashboards.all.Range.From}T12:00:00`).getFullYear().toString());
-
-    // A custom window from the date inputs.
-    await page.locator('#ms-range-from').fill('2026-08-01');
-    await expect(page).toHaveURL(/from=2026-08-01/);
-    await page.locator('#ms-range-to').fill('2026-08-31');
-    await expect(page).toHaveURL(/to=2026-08-31/);
-    await expect(page.getByText('4 days without a download')).toBeVisible();
-    await expect(page.locator('#ms-range-from')).toHaveClass(/ot-input/);
-    await page.screenshot({ path: `${SHOTS}/overview-custom-august.png`, fullPage: true });
-
-    // The window survives switching tabs.
-    await page.locator('.ot-nav').getByRole('link', { name: /^Sources/ }).click();
-    await expect(page).toHaveURL(/\/schemery\/memescraper\/sources\?.*from=2026-08-01/);
+  await expect(page.getByTestId('msx-chart').locator('svg')).toBeVisible();
+  await expect(page.getByTestId('msx-top-reels').locator('.msx-reel')).toHaveCount(d30.TopReels.length);
+  await expect(page.getByTestId('msx-top-sources')).toContainText('@catmemes.daily');
+  await expect(page.getByTestId('msx-feed').locator('.msx-feed__row')).toHaveCount(9);
+  await expect(page.getByTestId('msx-subline')).toContainText(`${d30.Library.TotalReels.toLocaleString('en-GB')} reels`);
+  await page.screenshot({ path: `${SHOTS}/overview-1600.png`, fullPage: true });
 });
 
-test('overview: drag across the chart zooms, legend filters, drawer edits a source', async ({ page }) => {
-    const state = await mockApi(page);
-    await page.setViewportSize({ width: 1500, height: 1100 });
-    await page.goto('/schemery/memescraper');
-    const svg = page.locator('.ms-bars svg');
-    await expect(svg).toBeVisible(BOOT);
+test('window: presets and dates live in the URL, the legend filters to a source', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.setViewportSize({ width: 1500, height: 1100 });
+  await page.goto('/schemery/memescraper');
+  await expect(page.getByTestId('kpi-reels')).toContainText(dashboards['30d'].Kpis.Downloaded.toLocaleString('en-GB'), BOOT);
 
-    const box = (await svg.boundingBox())!;
-    await page.mouse.move(box.x + 70, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width * 0.45, box.y + box.height / 2, { steps: 8 });
-    await expect(page.locator('.ms-bars .brush')).toBeVisible();
-    await page.screenshot({ path: `${SHOTS}/overview-brush.png` });
-    await page.mouse.up();
-    await expect(page).toHaveURL(/from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}|to=\d{4}-\d{2}-\d{2}.*from=/);
+  await page.getByRole('button', { name: '90D' }).click();
+  await expect(page).toHaveURL(/range=90d/);
+  await expect(page.getByTestId('kpi-reels')).toContainText(dashboards['90d'].Kpis.Downloaded.toLocaleString('en-GB'));
+  expect(state.batches.some(b => b.some(p => p.includes('range=90d')))).toBe(true);
 
-    await page.getByRole('button', { name: '30D' }).click();
-    await page.locator('.ms-bars .ms-legendbtn').filter({ hasText: '@codememes' }).click();
-    await expect(page).toHaveURL(/src=codememes/);
-    await expect(page.getByRole('button', { name: /Stop filtering to @codememes/ })).toBeVisible();
-    expect(state.requests.some(r => r.includes('/memescraper/dashboard') && r.includes('sources=codememes'))).toBe(true);
-    await page.getByRole('button', { name: 'Clear filters' }).click();
-    await expect(page).not.toHaveURL(/src=/);
+  await page.getByTestId('msx-dates').click();
+  await page.locator('#msx-from').fill('2026-08-01');
+  await page.locator('#msx-to').fill('2026-08-31');
+  await expect(page).toHaveURL(/from=2026-08-01/);
+  await expect(page).toHaveURL(/to=2026-08-31/);
+  await expect(page.getByTestId('msx-window')).toContainText('Aug 2026');
 
-    // Insight chip → source drawer → pause and edit niches (JSON bodies).
-    await page.locator('.ms-insight').filter({ hasText: 'gone quiet' }).getByRole('button', { name: '@uni.struggles' }).click();
-    const drawer = page.locator('.ot-drawer');
-    await expect(drawer.getByText('@uni.struggles').first()).toBeVisible();
-    await expect(drawer.getByText('Quiet', { exact: true })).toBeVisible();
-    await expect(drawer.getByText('Recent scrapes')).toBeVisible();
-    await page.screenshot({ path: `${SHOTS}/source-drawer.png` });
-    await drawer.getByRole('button', { name: 'Pause reels' }).click();
-    await expect.poll(() => state.mutations.find(m => m.path === '/memescraper/updateInstagramSource')?.body).toMatchObject({ downloadReels: false });
-    await drawer.locator('#ms-source-niches').fill('campus');
-    await drawer.locator('#ms-source-niches').press('Enter');
-    await drawer.getByRole('button', { name: 'Save niches' }).click();
-    await expect.poll(() => state.mutations.filter(m => m.path === '/memescraper/updateInstagramSource').at(-1)?.body?.niches).toEqual(['relatable', 'students', 'campus']);
+  await page.getByRole('button', { name: '30D' }).click();
+  await page.locator('.msx-legend__item').filter({ hasText: '@codememes' }).click();
+  await expect(page).toHaveURL(/src=codememes/);
+  await expect(page.getByRole('button', { name: 'Stop filtering to @codememes' })).toBeVisible();
+  expect(state.batches.some(b => b.some(p => p.includes('sources=codememes')))).toBe(true);
+  await page.getByRole('button', { name: 'Clear filters' }).click();
+  await expect(page).not.toHaveURL(/src=/);
 });
 
-test('sources: table, state filters and per-source scrape', async ({ page }) => {
-    const state = await mockApi(page);
-    await page.setViewportSize({ width: 1500, height: 1100 });
-    await page.goto('/schemery/memescraper/sources');
+test('pausing the sources that never had a reel: confirm, one request each, undo offered', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.setViewportSize({ width: 1500, height: 1100 });
+  await page.goto('/schemery/memescraper');
+  await page.getByTestId('issue-empty').getByRole('button', { name: 'Pause all 2' }).click(BOOT);
 
-    await expect(page.getByRole('heading', { name: 'Sources' })).toBeVisible(BOOT);
-    const rows = page.locator('table.ot-table tbody tr');
-    await expect(rows).toHaveCount(dashboards['30d'].Sources.length);
-    await page.screenshot({ path: `${SHOTS}/sources.png`, fullPage: true });
+  const dialog = page.getByTestId('msx-pause-dialog');
+  await expect(dialog).toContainText('@lol.reposts');
+  await expect(dialog).toContainText('@memevault.archive');
+  await page.screenshot({ path: `${SHOTS}/pause-empty-dialog.png` });
+  await dialog.getByTestId('pause-confirm').click();
 
-    await page.getByRole('button', { name: /Needs attention/ }).click();
-    await expect(page).toHaveURL(/state=attention/);
-    await expect(rows).toHaveCount(2);
-    await expect(rows.filter({ hasText: '@techhumour' })).toHaveCount(1);
-    await expect(rows.filter({ hasText: '@sigmagrindset' })).toHaveCount(1);
-    await expect(rows.filter({ hasText: '@sigmagrindset' })).toContainText('overdue');
-
-    await rows.filter({ hasText: '@sigmagrindset' }).getByRole('button', { name: '▶' }).click();
-    await expect.poll(() => state.mutations.some(m => m.path.startsWith('/memescraper/scrapeNow?sourceAccountID='))).toBe(true);
-    await expect(page.locator('.ot-top')).toContainText('Scraping @sigmagrindset');
-
-    await rows.filter({ hasText: '@techhumour' }).click();
-    await expect(page.locator('.ot-drawer')).toContainText('4 failed scrapes in a row');
-    await page.waitForTimeout(400); // let the drawer finish sliding in before the screenshot
-    await page.screenshot({ path: `${SHOTS}/sources-drawer-failing.png` });
+  await expect.poll(() => state.mutations.filter(m => m.path === '/memescraper/updateInstagramSource').length).toBe(2);
+  for (const m of state.mutations.filter(x => x.path === '/memescraper/updateInstagramSource')) expect(m.body).toMatchObject({ downloadReels: false });
+  const toast = page.getByTestId('msx-toast').filter({ hasText: 'Paused 2 sources' });
+  await expect(toast).toBeVisible();
+  await expect(toast.getByRole('button', { name: 'Undo' })).toBeVisible();
 });
 
-test('library: search, sort, table view, reel drawer and CSV', async ({ page }) => {
-    const state = await mockApi(page);
-    await page.setViewportSize({ width: 1500, height: 1100 });
-    await page.goto('/schemery/memescraper/library');
+test('sources: states, search, sheet with actions and niches', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.setViewportSize({ width: 1600, height: 1100 });
+  await page.goto('/schemery/memescraper?view=sources');
+  const table = page.getByTestId('msx-sources');
+  await expect(table.locator('tbody tr')).toHaveCount(dashboards['30d'].Sources.filter((s: any) => s.Registered).length, BOOT);
+  await page.screenshot({ path: `${SHOTS}/sources-1600.png`, fullPage: true });
 
-    await expect(page.getByRole('heading', { name: 'Library' })).toBeVisible(BOOT);
-    await expect(page.locator('.libgrid .ms-reel')).toHaveCount(reelPages['30d'].Rows.length);
-    await expect(page.locator('.ot-pagehead .subtitle')).toContainText(`${reelPages['30d'].Filtered.toLocaleString()} of ${reelPages['30d'].Total.toLocaleString()} reels`);
-    await page.screenshot({ path: `${SHOTS}/library-grid.png`, fullPage: true });
+  await page.getByTestId('sources-states').getByRole('button', { name: /Never had a reel/ }).click();
+  await expect(page).toHaveURL(/state=empty/);
+  await expect(table.locator('tbody tr')).toHaveCount(2);
+  await page.getByTestId('sources-states').getByRole('button', { name: /^All/ }).click();
 
-    await page.getByLabel('Sort by').selectOption('views');
-    await expect(page).toHaveURL(/sort=views/);
-    await expect(page.locator('.libgrid .ms-reel').first()).toContainText(reelPages['30d-views'].Rows[0].Owner);
+  await page.getByTestId('sources-search').fill('gym');
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+  await table.locator('tbody tr').first().click();
 
-    await page.getByLabel('Search the library').fill('cat');
-    await expect(page).toHaveURL(/q=cat/);
-    expect(state.requests.some(r => r.includes('/memescraper/reels') && r.includes('q=cat'))).toBe(true);
-    await page.getByLabel('Search the library').fill('');
-    await expect(page).not.toHaveURL(/q=cat/);
+  const sheet = page.getByTestId('msx-sheet');
+  await expect(sheet).toContainText('@gymhumor');
+  await expect(sheet.getByTestId('sheet-state')).toContainText('Healthy');
+  await expect(sheet).toContainText('Recent scrapes');
+  expect(state.batches.some(b => b.some(p => p.includes('/memescraper/scrapeHistory') && p.includes('sources=gymhumor')))).toBe(true);
 
-    await page.getByRole('button', { name: 'Table' }).click();
-    await expect(page).toHaveURL(/view=table/);
-    await expect(page.locator('table.ot-table tbody tr')).toHaveCount(reelPages['30d-views'].Rows.length);
-    await page.screenshot({ path: `${SHOTS}/library-table.png`, fullPage: true });
+  await sheet.getByTestId('sheet-pause').click();
+  await expect.poll(() => state.mutations.find(m => m.path === '/memescraper/updateInstagramSource')?.body).toMatchObject({ downloadReels: false });
 
-    await page.locator('table.ot-table tbody tr').first().click();
-    const drawer = page.locator('.ot-drawer');
-    await expect(drawer.getByText('Views', { exact: true })).toBeVisible();
-    await expect(drawer).toContainText(`of ${reelDetails[reelPages['30d-views'].Rows[0].PostID].OwnerReels.toLocaleString()} reels`);
-    await page.screenshot({ path: `${SHOTS}/reel-drawer.png` });
-    await drawer.getByRole('button', { name: /Close/ }).click();
+  await sheet.getByTestId('sheet-niche').fill('fitness');
+  await sheet.getByTestId('sheet-niche').press('Enter');
+  await sheet.getByTestId('sheet-niche-save').click();
+  await expect.poll(() => state.mutations.filter(m => m.path === '/memescraper/updateInstagramSource').at(-1)?.body?.niches).toContain('fitness');
+  await page.screenshot({ path: `${SHOTS}/source-sheet.png` });
 
-    const download = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Export CSV' }).click();
-    expect((await download).suggestedFilename()).toMatch(/^memescraper-reels-\d{4}-\d{2}-\d{2}\.csv$/);
-    expect(state.requests.some(r => r.includes('/memescraper/reels') && r.includes('format=csv') && !r.includes('offset='))).toBe(true);
+  await sheet.getByTestId('sheet-scrape').click();
+  await expect.poll(() => state.mutations.some(m => m.path.startsWith('/memescraper/scrapeNow?sourceAccountID='))).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(sheet).toBeHidden();
 });
 
-test('health: providers, runs, schedule settings and history filters', async ({ page }) => {
-    const state = await mockApi(page);
-    await page.setViewportSize({ width: 1500, height: 1200 });
-    await page.goto('/schemery/memescraper/health');
+test('library: thumbnails load as they come into view, search, viewer with arrows', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.setViewportSize({ width: 1500, height: 900 });
+  await page.goto('/schemery/memescraper?view=library');
+  const grid = page.getByTestId('library-grid');
+  const rows = reelPages['30d'].Rows.length;
+  await expect(grid.locator('.msx-reel')).toHaveCount(rows, BOOT);
+  await expect(grid.locator('img.msx-thumb').first()).toBeVisible();
+  // Only what is on (or near) the screen asked for its thumbnail, not the whole page of reels at once.
+  const thumbs = () => state.requests.filter(r => r.startsWith('GET /memescraper/reelThumb')).length;
+  await expect.poll(thumbs).toBeGreaterThan(0);
+  expect(thumbs()).toBeLessThan(rows);
+  expect(state.requests.some(r => r.startsWith('GET /memescraper/reels?') && r.includes('range=all') && r.includes('limit=36'))).toBe(true);
+  // The library's scope is everything ever saved, and the window buttons say so; picking 30D narrows it.
+  await expect(page.getByRole('button', { name: 'All', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.screenshot({ path: `${SHOTS}/library-1500.png` });
+  await page.getByRole('button', { name: '30D' }).click();
+  await expect(page).toHaveURL(/range=30d/);
+  await expect.poll(() => state.requests.some(r => r.startsWith('GET /memescraper/reels?') && r.includes('range=30d'))).toBe(true);
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  await expect(page).toHaveURL(/range=all/);
 
-    await expect(page.getByRole('heading', { name: 'Health' })).toBeVisible(BOOT);
-    await expect(page.getByText('inflact.com').first()).toBeVisible();
-    await expect(page.locator('.ot-rule.pass')).toHaveCount(2);
-    await expect(page.locator('.ot-kpi').filter({ hasText: 'Library on disk' })).toContainText('3 missing');
-    await expect(page.getByText('Scrape runs')).toBeVisible();
-    await page.screenshot({ path: `${SHOTS}/health.png`, fullPage: true });
+  await page.getByTestId('library-search').fill('cat');
+  await expect(page).toHaveURL(/q=cat/);
+  await expect.poll(() => state.requests.some(r => r.startsWith('GET /memescraper/reels?') && r.includes('q=cat'))).toBe(true);
 
-    await page.locator('#ms-interval').fill('12');
-    await page.locator('.ms-switch').click();
-    await page.getByRole('button', { name: 'Save schedule' }).click();
-    await expect.poll(() => state.mutations.find(m => m.path === '/memescraper/saveSettings')?.body).toEqual({ paused: true, intervalHours: 12 });
-    await expect(page.getByText('Scheduled scrapes are paused').first()).toBeVisible();
-
-    await page.getByRole('group', { name: 'Outcome' }).getByRole('button', { name: 'Failed' }).click();
-    await expect(page).toHaveURL(/status=failed/);
-    const failedRows = page.locator('.ot-card').filter({ hasText: 'Scrape history' }).locator('tbody tr.clickable');
-    await expect(failedRows).toHaveCount(histories['30d-failed'].Rows.length);
-    await failedRows.first().click();
-    await expect(page.locator('.detailrow')).toContainText('Error');
-    await page.screenshot({ path: `${SHOTS}/health-failed-runs.png`, fullPage: true });
+  const first = reelPages['30d-q'].Rows[0];
+  const second = reelPages['30d-q'].Rows[1];
+  await grid.locator(`[data-testid="reel-${first.PostID}"]`).click();
+  const viewer = page.getByTestId('msx-viewer');
+  await expect(viewer).toContainText(`@${first.Owner}`);
+  await expect(page.getByTestId('viewer-state')).toContainText('no longer on disk');
+  await page.screenshot({ path: `${SHOTS}/reel-viewer.png` });
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => state.requests.some(r => r.includes(`/memescraper/reel?postId=${second.PostID}`))).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(viewer).toBeHidden();
 });
 
-test('a guest sees analytics but no controls', async ({ page }) => {
-    await mockApi(page, 1);
-    await page.setViewportSize({ width: 1400, height: 1000 });
-    await page.goto('/schemery/memescraper');
-    await expect(page.getByRole('heading', { name: 'Reel scraper' })).toBeVisible(BOOT);
-    await expect(page.locator('.ot-kpi').first()).toBeVisible();
-    await expect(page.getByRole('button', { name: /Scrape all/ })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Add source' })).toHaveCount(0);
+test('activity: schedule settings, providers, start-up and the scrape log', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.setViewportSize({ width: 1500, height: 1200 });
+  await page.goto('/schemery/memescraper?view=activity');
+  await expect(page.getByTestId('act-startup')).toContainText('reel index', BOOT);
+  await expect(page.getByTestId('act-startup')).toContainText('2 new');
+  await expect(page.getByTestId('act-providers')).toContainText('inflact.com');
+  await expect(page.getByTestId('act-check-result')).toContainText('@codememes');
+  await expect(page.getByTestId('act-disk')).toContainText('3 missing');
+  await expect(page.getByTestId('act-disk')).toContainText('412 made · 5,180 to go');
+  await expect(page.getByTestId('act-log-table').locator('tbody tr').first()).toBeVisible();
+  await page.screenshot({ path: `${SHOTS}/activity-1500.png`, fullPage: true });
+
+  await page.getByTestId('act-log').getByRole('button', { name: 'Failed' }).click();
+  await expect.poll(() => state.requests.some(r => r.includes('/memescraper/scrapeHistory') && r.includes('status=failed'))).toBe(true);
+
+  await page.getByTestId('act-paused').click();
+  await page.getByTestId('act-save').click();
+  await expect.poll(() => state.mutations.find(m => m.path === '/memescraper/saveSettings')?.body).toEqual({ paused: true });
+  await expect(page.getByTestId('msx-toast').filter({ hasText: 'Scheduled scrapes paused' })).toBeVisible();
 });
 
-test('phone width keeps the page usable', async ({ page }) => {
-    await mockApi(page);
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/schemery/memescraper');
-    await expect(page.getByRole('heading', { name: 'Reel scraper' })).toBeVisible(BOOT);
-    await expect(page.locator('.ms-bars svg')).toBeVisible();
-    await page.screenshot({ path: `${SHOTS}/overview-phone.png`, fullPage: true });
+test('palette: find a source by typing, add a typed account', async ({ page }) => {
+  const state = await mockApi(page);
+  await page.setViewportSize({ width: 1400, height: 1000 });
+  await page.goto('/schemery/memescraper');
+  await expect(page.getByTestId('kpi-reels')).toContainText(/\d/, BOOT);
+
+  await page.keyboard.press('Control+k');
+  await page.getByTestId('palette-input').fill('codem');
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('msx-sheet')).toContainText('@codememes');
+  await page.keyboard.press('Escape');
+
+  await page.keyboard.press('Control+k');
+  await page.getByTestId('palette-input').fill('freshmemes.uk');
+  await page.getByRole('option', { name: /Add @freshmemes\.uk/ }).click();
+  const add = page.getByTestId('msx-add-dialog');
+  await expect(add.getByTestId('add-username')).toHaveValue('freshmemes.uk');
+  await add.getByTestId('add-submit').click();
+  await expect.poll(() => state.mutations.find(m => m.path === '/memescraper/addInstagramSource')?.body).toMatchObject({ username: 'freshmemes.uk', downloadReels: true });
+  await expect(add).toBeHidden();
+
+  // Number keys switch views.
+  await page.keyboard.press('3');
+  await expect(page).toHaveURL(/view=library/);
+});
+
+test('starting up: progress instead of errors, then the figures arrive', async ({ page }) => {
+  const state = await mockApi(page, { starting: true });
+  await page.setViewportSize({ width: 1400, height: 1000 });
+  await page.goto('/schemery/memescraper');
+  await expect(page.getByTestId('msx-starting')).toContainText('4,210 of 6,521', BOOT);
+  await expect(page.getByTestId('msx-live')).toContainText('Starting');
+  await page.screenshot({ path: `${SHOTS}/starting.png` });
+
+  state.starting = false;
+  state.health = structuredClone(baseHealth);
+  await expect(page.getByTestId('kpi-reels')).toContainText(dashboards['30d'].Kpis.Downloaded.toLocaleString('en-GB'), { timeout: 15_000 });
+  await expect(page.getByTestId('msx-starting')).toBeHidden();
+});
+
+test('phone width: no sideways scroll, views still reachable', async ({ page }) => {
+  await mockApi(page);
+  await page.setViewportSize({ width: 390, height: 860 });
+  await page.goto('/schemery/memescraper');
+  await expect(page.getByTestId('kpi-reels')).toContainText(/\d/, BOOT);
+  const overflow = await page.getByTestId('msx-root').evaluate(el => el.scrollWidth - el.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: `${SHOTS}/overview-390.png`, fullPage: true });
+  await page.getByTestId('tab-sources').click();
+  await expect(page.getByTestId('msx-sources').locator('tbody tr').first()).toBeVisible();
+  await page.screenshot({ path: `${SHOTS}/sources-390.png`, fullPage: true });
+});
+
+test('old addresses land on the matching view', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/schemery/memescraper/health?range=90d');
+  await expect(page).toHaveURL(/\/schemery\/memescraper\?.*view=activity/, BOOT);
+  await expect(page).toHaveURL(/range=90d/);
+  await expect(page.getByTestId('msx-activity')).toBeVisible();
 });

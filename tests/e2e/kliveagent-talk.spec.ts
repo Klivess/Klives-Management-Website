@@ -156,9 +156,9 @@ test('a spoken turn is detected, streamed, answered aloud and can be talked over
     expect(commit.endpointMs).toBeLessThan(1200);
 
     // The turn lands in the conversation as a spoken message, and its run's reply follows.
-    const chat = page.locator('.chat-panel');
+    const chat = page.getByTestId('kax-thread');
     await expect(chat).toContainText('Check the trader.');
-    await expect(chat.locator('.msg-user .msg-spoken')).toHaveCount(1);
+    await expect(chat.locator('[data-testid="msg-user"] [data-testid="msg-spoken"]')).toHaveCount(1);
     await expect(chat).toContainText('The trader is up and trading normally.');
 
     // The reply is played (the page reports when its first audio started)...

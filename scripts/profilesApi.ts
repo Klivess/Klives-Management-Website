@@ -1,5 +1,6 @@
 import { BuildKliveWsUrl, RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
 import type { MeProfile } from '~/composables/useCurrentProfile';
+import type { InsightsPayload } from '~/scripts/profilesConsole';
 
 /*
  * Typed client for /KMProfiles/* — the profile console, /account and the access components.
@@ -155,6 +156,12 @@ export interface ActivitySummary {
     fromMs: number;
     toMs: number;
     bucketMs: number;
+    /** 'rollup' (hourly rollups) or 'rows' (raw rows, while the server backfills); absent on older servers. */
+    source?: 'rollup' | 'rows';
+    /** Requests signed with the password instead of a session (newer servers). */
+    passwordRequests?: number;
+    /** "METHOD /path" by count (newer servers). */
+    topRoutes?: KeyCount[];
     services: string[];
     buckets: { t: number; byService: Record<string, number>; denied: number }[];
     requests: number;
@@ -240,6 +247,11 @@ export const profilesApi = {
 
     sessions: (id: string, includeEnded = false) => get<SessionRow[]>(`/KMProfiles/sessions?id=${q(id)}${includeEnded ? '&ended=1' : ''}`),
     revokeSessions: (id: string, sessionId?: string) => post<{ revoked: number }>('/KMProfiles/sessions/revoke', { id, sessionId }),
+    /** Signs out the devices this profile hasn't used for `idleDays` (servers before 13 Nov 2026 ignore idleDays: never call it there). */
+    revokeIdleSessions: (id: string, idleDays: number) => post<{ revoked: number }>('/KMProfiles/sessions/revoke', { id, idleDays }),
+    revokeMyIdleSessions: (idleDays: number) => post<{ revoked: number }>('/KMProfiles/sessions/mine/revoke', { idleDays }),
+    /** The directory's review: activity shape, credentials, idle devices, permission use (each part only as permissions allow). */
+    insights: (signal?: AbortSignal) => get<InsightsPayload>('/KMProfiles/insights', signal),
     resetPassword: (id: string, password?: string) =>
         post<{ reset: boolean; password: string | null; signedOutSessions: number }>('/KMProfiles/credentials/reset', { id, password: password || undefined }),
 

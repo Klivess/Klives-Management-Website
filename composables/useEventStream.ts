@@ -2,24 +2,24 @@ import { ref, onUnmounted, type Ref } from 'vue';
 import { KliveAPIUrl, GetAuthToken } from '~/scripts/APIInterface';
 
 /**
- * Phase 3 server-push client for the Projects event log. Connects to /projects/events/stream over a
+ * Phase 3 server-push client for the Demiurge event log. Connects to /demiurge/events/stream over a
  * WebSocket and delivers events without polling. Two modes:
- *   - per-project: pass `projectID`; receives every ProjectEvent (the server first replays events
+ *   - per-Steward: pass `stewardID`; receives every StewardEvent (the server first replays events
  *     after `sinceRef`, then streams live). `sinceRef` is advanced as events arrive so a reconnect
  *     resumes without a gap.
- *   - fleet firehose: omit `projectID`; `onFleet(projectID, type)` fires on any project's event so a
+ *   - fleet firehose: omit `stewardID`; `onFleet(stewardID, type)` fires on any Steward's event so a
  *     dashboard can refresh live.
  * Mirrors useScreenStream's auth (the session token as `authorization=`) and auto-reconnect.
  *
- * The per-project socket also carries live agent activity — who is generating tokens right now and
+ * The per-Steward socket also carries live agent activity — who is generating tokens right now and
  * what — which is ephemeral (no sequence, never replayed): `onActivity` receives a whole snapshot
  * per agent, `onActivityEnded` clears one, and a connect delivers a snapshot of everyone mid-turn.
  */
 export function useEventStream(opts: {
-  projectId?: string | null;
+  stewardId?: string | null;
   sinceRef?: Ref<number>;
   onEvent?: (e: any) => void;
-  onFleet?: (projectID: string, type: string) => void;
+  onFleet?: (stewardID: string, type: string) => void;
   onActivity?: (a: any) => void;
   onActivityEnded?: (agentID: string) => void;
 }) {
@@ -35,10 +35,10 @@ export function useEventStream(opts: {
   function open() {
     if (stopped || typeof window === 'undefined') return;
     const parts = [`authorization=${encodeURIComponent(GetAuthToken())}`];
-    if (opts.projectId) parts.push(`projectID=${encodeURIComponent(opts.projectId)}`);
-    if (opts.projectId && opts.sinceRef) parts.push(`since=${opts.sinceRef.value ?? 0}`);
+    if (opts.stewardId) parts.push(`stewardID=${encodeURIComponent(opts.stewardId)}`);
+    if (opts.stewardId && opts.sinceRef) parts.push(`since=${opts.sinceRef.value ?? 0}`);
     try {
-      ws = new WebSocket(`${wsBase()}/projects/events/stream?${parts.join('&')}`);
+      ws = new WebSocket(`${wsBase()}/demiurge/events/stream?${parts.join('&')}`);
       ws.onopen = () => { connected.value = true; };
       ws.onmessage = (ev) => {
         let msg: any;
@@ -48,8 +48,8 @@ export function useEventStream(opts: {
           if (opts.sinceRef && typeof msg.event.sequence === 'number' && msg.event.sequence > opts.sinceRef.value)
             opts.sinceRef.value = msg.event.sequence;
           opts.onEvent?.(msg.event);
-        } else if (msg.kind === 'project-event') {
-          opts.onFleet?.(msg.projectID, msg.type);
+        } else if (msg.kind === 'steward-event') {
+          opts.onFleet?.(msg.stewardID, msg.type);
         } else if (msg.kind === 'resync') {
           opts.onFleet?.('', 'resync');
         } else if (msg.kind === 'activity' && msg.activity) {

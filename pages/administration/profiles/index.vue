@@ -1,447 +1,484 @@
 <template>
-    <ProfilesShell :scope="scopeText" :scope-dot="onlineCount ? 'online' : ''" :fresh-label="freshLabel" :error="error"
-                   :loading="loading" refreshable @refresh="load">
-        <div class="ot-pagehead">
-            <div>
-                <h1>Profiles</h1>
-                <p class="subtitle">Everyone who can sign in to Klives Management, what they're doing right now, and what they're allowed to do.</p>
-            </div>
-            <div class="ot-actions">
-                <NuxtLink v-if="can('profiles.lifecycle.create')" class="ot-btn primary" to="/administration/profiles/new">
-                    <AccessIcon name="plus" :size="15" /> New profile
-                </NuxtLink>
-            </div>
-        </div>
+  <div class="pfx" data-testid="pfx-root">
+    <!-- ── bar ── -->
+    <header class="pfx-bar">
+      <div class="pfx-bar__id">
+        <span class="pfx-bar__mark"><PeopleIcon name="users" /></span>
+        <h1 class="pfx-bar__title">Profiles</h1>
+        <span class="pfx-bar__sub" data-testid="pfx-subline">{{ subline }}</span>
+      </div>
+      <button class="pfx-search" aria-label="Find a profile or run an action" aria-keyshortcuts="Control+K" data-testid="pfx-search" @click="paletteOpen = true">
+        <PeopleIcon name="search" />
+        <span class="pfx-search__text">Find someone, suspend, sign out idle devices…</span>
+        <span class="pfx-kbd">Ctrl</span><span class="pfx-kbd">K</span>
+      </button>
+      <span class="pfx-bar__spacer"></span>
+      <div class="pfx-bar__actions">
+        <button class="pfx-live" :data-state="linkState" :data-tone="linkTone" :title="linkTitle" :aria-label="linkTitle" data-testid="pfx-live" @click="setPaused(!paused)">
+          <span class="pfx-live__dot"></span>
+          <span class="pfx-hide-sm">{{ linkWord }}</span>
+          <span v-if="linkState === 'live'" :key="loadedAt" class="pfx-live__sweep"></span>
+        </button>
+        <button class="pfx-iconbtn" title="Refresh now (R)" aria-label="Refresh now" @click="refresh()"><PeopleIcon name="refresh" :class="{ 'pfx-spin': loading }" /></button>
+        <NuxtLink v-if="can('profiles.permissions.view')" class="pfx-btn pfx-btn--ghost" to="/administration/profiles/catalog" title="Every permission, its tier, and who holds it" aria-label="Permissions"><PeopleIcon name="catalog" /><span class="pfx-hide-sm">Permissions</span></NuxtLink>
+        <NuxtLink v-if="can('profiles.lifecycle.create')" class="pfx-btn pfx-btn--primary" to="/administration/profiles/new" data-testid="pfx-new" title="New profile (N)" aria-label="New profile"><PeopleIcon name="user-plus" /><span class="pfx-hide-sm">New profile</span></NuxtLink>
+      </div>
+    </header>
 
-        <div v-if="isOwner && payload?.acceptPasswordAsBearer" class="ot-banner info" role="note">
-            <span class="glyph" aria-hidden="true">ℹ</span>
-            <div>
-                <strong>Passwords still work as API keys</strong>
-                Every profile's password is accepted in place of a session, so older devices and scripts keep working.
-                Once they all sign in properly, turn off <code class="km-key">KMProfiles_AcceptPasswordAsBearer</code> in
-                <NuxtLink to="/administration/omnisettings" class="pc-link">OmniSettings</NuxtLink> — profiles can still be allowed one by one.
+    <div class="pfx-main" :class="{ 'pfx-enter': firstPaint }">
+      <div v-if="error && !list" class="pfx-banner" data-tone="crit" role="alert">
+        <PeopleIcon name="octagon-x" />
+        <div><strong>Couldn't load the directory</strong>{{ error }}</div>
+        <div class="pfx-banner__actions"><button class="pfx-btn pfx-btn--sm" @click="refresh()">Try again</button></div>
+      </div>
+
+      <!-- ── figures, then the review ── -->
+      <div class="pfx-kpis">
+        <PeopleKpi label="Online now" icon="activity" :value="list ? String(online) : null" :tone="online ? 'ok' : ''" clickable testid="kpi-online" @open="filter = 'online'">
+          <template #sub><template v-if="list">{{ idle ? `${idle} idle · ` : '' }}{{ tabs }} tab{{ tabs === 1 ? '' : 's' }} open</template></template>
+          <div v-if="presenceMix.length" style="padding-top: 14px">
+            <div class="pfx-mix"><span v-for="m in presenceMix" :key="m.id" :style="{ flex: m.count, background: m.color }"></span></div>
+            <div class="pfx-mix__legend"><span v-for="m in presenceMix" :key="m.id"><i :style="{ background: m.color }"></i>{{ m.label }} {{ m.count }}</span></div>
+          </div>
+        </PeopleKpi>
+        <PeopleKpi label="Requests" icon="route" unit="24 h" :value="list ? fmtCount(requests) : null" :tone="refused ? 'warn' : ''" :state="refused ? `${refused} refused` : ''" testid="kpi-requests">
+          <template #sub><template v-if="list">{{ busiest ? `mostly ${busiest}` : 'nothing yet today' }}</template></template>
+          <PeopleSpark v-if="hourly.length" :values="hourly" />
+        </PeopleKpi>
+        <PeopleKpi label="Signed-in devices" icon="device" :value="list ? String(devices) : null" :tone="idleDevices ? 'warn' : ''" :state="idleDevices ? `${idleDevices} idle` : ''" clickable testid="kpi-devices" @open="idleDevices ? (idleOpen = true) : undefined">
+          <template #sub><template v-if="list">{{ idleDevices ? `${idleDevices} unused for 7+ days` : 'all used this week' }}</template></template>
+          <div v-if="devices" style="padding-top: 14px">
+            <div class="pfx-mix"><span :style="{ flex: devices - idleDevices, background: '#a78bfa' }"></span><span v-if="idleDevices" :style="{ flex: idleDevices, background: '#fbbf24' }"></span></div>
+          </div>
+        </PeopleKpi>
+        <PeopleKpi label="Permissions in use" icon="layers" :value="usage ? `${usage.pct}%` : list ? '—' : null" :tone="usage && usage.pct < 40 ? 'warn' : ''" testid="kpi-usage">
+          <template #sub>
+            <template v-if="usage"><b>{{ usage.used }}</b> of {{ usage.held }} held were used in 30 days</template>
+            <template v-else-if="list">needs activity access and the newer server</template>
+          </template>
+          <div v-if="usage" style="padding-top: 14px"><span class="pfx-meter" :data-tone="usage.pct < 40 ? 'warn' : 'violet'"><span :style="{ width: `${usage.pct}%` }"></span></span></div>
+        </PeopleKpi>
+      </div>
+
+      <PeopleReview :review="review" @act="onIssue">
+        <template #foot>
+          <span><b>{{ rows.length }}</b> profiles</span>
+          <span v-if="trackingSince">activity on record since <b>{{ trackingSince }}</b></span>
+          <span v-if="insights?.passwordBearer">passwords as API keys: <b :style="{ color: insights.passwordBearer.accepted ? 'var(--pfx-warn)' : 'var(--pfx-ok)' }">{{ insights.passwordBearer.accepted ? 'accepted' : 'off' }}</b></span>
+          <span v-if="!insightsSupported" title="This server predates /KMProfiles/insights">review figures need the newer server</span>
+        </template>
+      </PeopleReview>
+
+      <!-- ── the directory ── -->
+      <section class="pfx-card" aria-label="Directory">
+        <header class="pfx-card__head">
+          <h2 class="pfx-card__title"><PeopleIcon :name="view === 'matrix' ? 'grid' : 'users'" />{{ view === 'matrix' ? 'Who holds what' : 'Everyone' }}</h2>
+          <span class="pfx-card__meta pfx-num" data-testid="pfx-count">{{ view === 'list' ? `${visible.length} of ${rows.length}` : `${catalog.services.value.length} services` }}</span>
+          <div class="pfx-card__tools">
+            <div class="pfx-seg" role="group" aria-label="View">
+              <button class="pfx-seg__opt" :aria-pressed="view === 'list'" title="List (L)" @click="setView('list')"><PeopleIcon name="list" />List</button>
+              <button v-if="canSeeGrants" class="pfx-seg__opt" :aria-pressed="view === 'matrix'" title="Who holds what (M)" data-testid="view-matrix" @click="setView('matrix')"><PeopleIcon name="grid" />Matrix</button>
             </div>
-        </div>
+          </div>
+        </header>
 
-        <div class="ot-kpis pc-kpis">
-            <OmniTraderKpi label="Online now" :value="String(onlineCount)" :loading="!payload" :tone="onlineCount ? 'good' : ''"
-                           :foot="idleCount ? `${idleCount} idle` : 'active in the last minute'" />
-            <OmniTraderKpi label="Profiles" :value="String(rows.length)" :loading="!payload" :foot="statusFoot" />
-            <OmniTraderKpi label="Requests · 24h" :value="fmtCount(requests24h)" :loading="!payload"
-                           :foot="denied24h ? `${fmtCount(denied24h)} refused` : 'none refused'" :attention-soft="denied24h > 0" />
-            <OmniTraderKpi label="Signed-in devices" :value="String(sessionCount)" :loading="!payload" foot="active sessions" />
-        </div>
-
-        <div class="ot-filterbar pc-filters">
-            <label class="ot-search">
-                <span class="glyph" aria-hidden="true"><AccessIcon name="search" :size="13" /></span>
-                <input v-model="search" class="ot-input" type="search" placeholder="Search profiles" aria-label="Search profiles" />
+        <template v-if="view === 'list'">
+          <div class="pfx-dir__tools">
+            <label class="pfx-field">
+              <PeopleIcon name="search" />
+              <input ref="searchInput" v-model="search" type="search" placeholder="Filter by name, rank or page  ( / )" aria-label="Filter profiles" data-testid="pfx-filter" @keydown.esc="search = ''; ($event.target as HTMLInputElement).blur()" />
             </label>
-            <div class="ot-segment sm" role="group" aria-label="Show">
-                <button v-for="f in FILTERS" :key="f.key" type="button" :aria-pressed="filter === f.key" @click="filter = f.key">
-                    {{ f.label }}<span v-if="f.key !== 'all' && counts[f.key]" class="pc-count">{{ counts[f.key] }}</span>
-                </button>
+            <div class="pfx-seg" role="group" aria-label="Show">
+              <button v-for="f in FILTERS" :key="f.id" class="pfx-seg__opt" :aria-pressed="filter === f.id" :data-tone="f.id === 'attention' && counts.attention ? 'warn' : undefined" :data-testid="`filter-${f.id}`" @click="filter = f.id">
+                {{ f.label }}<span v-if="f.id !== 'all' && counts[f.id]" class="pfx-seg__count">{{ counts[f.id] }}</span>
+              </button>
             </div>
-            <span class="grow"></span>
-            <label class="summary pc-sort">
-                Sort
-                <select v-model="sort" class="ot-select auto" aria-label="Sort profiles">
-                    <option value="rank">Rank</option>
-                    <option value="seen">Last seen</option>
-                    <option value="activity">Activity</option>
-                    <option value="name">Name</option>
-                </select>
+            <span class="pfx-toolbar__grow"></span>
+            <label class="pfx-dim" style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px">
+              Sort
+              <select v-model="sort" class="pfx-select pfx-select--sm" aria-label="Sort profiles">
+                <option v-for="s in SORTS" :key="s.id" :value="s.id">{{ s.label }}</option>
+              </select>
             </label>
+          </div>
+
+          <div class="pfx-table" role="grid" aria-label="Profiles">
+            <div class="pfx-trow pfx-trow--head" role="row">
+              <span></span><span role="columnheader">Who</span><span role="columnheader" class="pfx-trow__where">Where</span>
+              <span role="columnheader" class="pfx-trow__activity">Last 24 hours</span><span role="columnheader" class="pfx-trow__access">Permissions · 30 d</span>
+              <span role="columnheader" class="pfx-trow__devices">Devices</span><span></span>
+            </div>
+            <template v-if="!list && loading">
+              <div v-for="n in 5" :key="n" class="pfx-trow"><span class="pfx-skel" style="height: 32px; width: 32px"></span><span class="pfx-skel" style="height: 14px; width: 60%"></span></div>
+            </template>
+            <PeopleRow
+              v-for="(row, i) in visible"
+              :key="row.userId"
+              :row="row"
+              :insights="insights"
+              :now="now"
+              :selected="selectedId === row.userId || sheetId === row.userId"
+              @open="select(i); openSheet(row.userId)"
+              @page="openPage(row.userId)"
+              @menu="e => openMenu(row, e)"
+            />
+            <div v-if="list && !visible.length" class="pfx-empty"><PeopleIcon name="filter" />{{ rows.length ? 'Nobody matches these filters.' : 'No profiles yet.' }}
+              <button v-if="rows.length" class="pfx-btn pfx-btn--sm" @click="filter = 'all'; search = ''">Show everyone</button>
+            </div>
+          </div>
+          <footer class="pfx-card__foot">
+            <span><span class="pfx-kbd">↑</span> <span class="pfx-kbd">↓</span> move · <span class="pfx-kbd">↵</span> quick look · <span class="pfx-kbd">O</span> open · <span class="pfx-kbd">/</span> filter · <span class="pfx-kbd">M</span> matrix</span>
+          </footer>
+        </template>
+
+        <PeopleMatrix v-else :services="catalog.services.value" :people="matrixPeople" @cell="(id, service) => openPage(id, 'access', service)" @person="id => openSheet(id)" />
+      </section>
+    </div>
+
+    <!-- ── one profile, beside the list ── -->
+    <PeopleSheet
+      :profile="sheet"
+      :person="sheetPerson"
+      :insights="insights"
+      :sessions="sheetSessions"
+      :activity="sheetActivity"
+      :loading="sheetLoading"
+      :busy="busy"
+      :now="now"
+      :can-control="!!sheet && sheet.manageable && can('profiles.access.control')"
+      :can-activity="can('profiles.activity.read')"
+      :can-access="canSeeGrants"
+      :title-of="titleOf"
+      @close="closeSheet()"
+      @page="tab => sheet && openPage(sheet.userId, tab)"
+      @suspend="sheet && (suspending = sheet)"
+      @unsuspend="sheet && actions.unsuspend(sheet)"
+      @read-only="on => sheet && actions.setReadOnly(sheet, on)"
+      @login="on => sheet && (on ? actions.setLogin(sheet, true) : (confirming = { row: sheet, kind: 'login-off' }))"
+      @sign-out-all="sheet && (confirming = { row: sheet, kind: 'signout' })"
+      @sign-out-idle="sheet && signOutIdleOf(sheet, sheetIdleIds)"
+      @revoke="id => sheet && actions.signOutDevice(sheet, id).then(() => sheet && loadSheet(sheet.userId, true))"
+    />
+
+    <!-- ── row menu ── -->
+    <Teleport to="body">
+      <div v-if="menu" class="pfx-layer" style="position: fixed; inset: 0; z-index: 1190" @pointerdown.self="menu = null">
+        <div class="pfx-menu" role="menu" :aria-label="`Actions for ${menu.row.name}`" :style="{ top: `${menu.y}px`, left: `${menu.x}px` }" data-testid="pfx-menu" @keydown.esc="menu = null">
+          <button class="pfx-menu__item" role="menuitem" @click="withMenu(r => openPage(r.userId))"><PeopleIcon name="external" />Open profile</button>
+          <button class="pfx-menu__item" role="menuitem" @click="withMenu(r => openSheet(r.userId))"><PeopleIcon name="eye" />Quick look</button>
+          <template v-if="menu.row.manageable && can('profiles.access.control')">
+            <div class="pfx-menu__sep"></div>
+            <button v-if="!menu.row.suspended" class="pfx-menu__item" role="menuitem" @click="withMenu(r => (suspending = r))"><PeopleIcon name="pause" />Suspend…</button>
+            <button v-else class="pfx-menu__item" role="menuitem" @click="withMenu(r => actions.unsuspend(r))"><PeopleIcon name="play" />Lift suspension</button>
+            <button class="pfx-menu__item" role="menuitem" @click="withMenu(r => actions.setReadOnly(r, !r.readOnly))"><PeopleIcon name="eye" />{{ menu.row.readOnly ? 'Lift read-only' : 'Make read-only' }}</button>
+            <button class="pfx-menu__item" role="menuitem" :disabled="!menu.row.idleDevices" @click="withMenu(r => signOutIdleOf(r))"><PeopleIcon name="clock" />Sign out idle devices{{ menu.row.idleDevices ? ` (${menu.row.idleDevices})` : '' }}</button>
+            <button class="pfx-menu__item" role="menuitem" :disabled="!menu.row.sessions" @click="withMenu(r => (confirming = { row: r, kind: 'signout' }))"><PeopleIcon name="signout" />Sign out everywhere</button>
+            <button class="pfx-menu__item" role="menuitem" data-danger="true" @click="withMenu(r => (r.canLogin ? (confirming = { row: r, kind: 'login-off' }) : actions.setLogin(r, true)))"><PeopleIcon name="power" />{{ menu.row.canLogin ? 'Turn sign-in off…' : 'Turn sign-in on' }}</button>
+          </template>
+          <template v-else-if="menu.row.isYou && menu.row.idleDevices">
+            <div class="pfx-menu__sep"></div>
+            <button class="pfx-menu__item" role="menuitem" @click="withMenu(r => signOutIdleOf(r))"><PeopleIcon name="clock" />Sign out my idle devices ({{ menu.row.idleDevices }})</button>
+          </template>
+          <template v-if="canSeeGrants && !menu.row.isOwner">
+            <div class="pfx-menu__sep"></div>
+            <button class="pfx-menu__item" role="menuitem" @click="withMenu(r => openPage(r.userId, 'access'))"><PeopleIcon name="layers" />{{ menu.row.unused.length ? `Permissions · ${menu.row.unused.length} unused` : 'Permissions' }}</button>
+          </template>
         </div>
+      </div>
+    </Teleport>
 
-        <section class="pc-list" aria-label="Profiles">
-            <template v-if="!payload && loading">
-                <div v-for="n in 4" :key="n" class="ot-skel pc-skelrow"></div>
-            </template>
-            <OmniTraderStateBlock v-else-if="payload && !visible.length" :kind="rows.length ? 'filtered' : 'empty'"
-                                  :title="rows.length ? 'No profiles match' : 'No profiles yet'" />
+    <!-- ── dialogs ── -->
+    <PeopleSuspendDialog :open="!!suspending" :name="suspending?.name ?? ''" :busy="busy === 'suspend'" @close="suspending = null" @confirm="doSuspend" />
 
-            <article v-for="row in visible" :key="row.userId" class="pc-row" :class="{ suspended: row.suspended, disabled: !row.canLogin }"
-                     tabindex="0" @click="open(row)" @keydown.enter="open(row)">
-                <ProfilesAvatar :name="row.name" :id="row.userId" :owner="row.isOwner" :presence="row.presence.state" :size="40" />
+    <PeopleDialog :open="!!confirming" :title="confirmCopy.title" :sub="confirmCopy.sub" :icon="confirming?.kind === 'login-off' ? 'power' : 'signout'" tone="crit" testid="pfx-confirm" @close="confirming = null">
+      <p>{{ confirmCopy.text }}</p>
+      <template #actions>
+        <button class="pfx-btn pfx-btn--ghost" @click="confirming = null">Cancel</button>
+        <button class="pfx-btn pfx-btn--solid-danger" :disabled="!!busy" data-testid="pfx-confirm-go" @click="runConfirmed">{{ confirmCopy.button }}</button>
+      </template>
+    </PeopleDialog>
 
-                <div class="pc-who">
-                    <div class="pc-name">
-                        <strong>{{ row.name }}</strong>
-                        <span v-if="row.isYou" class="pc-you">you</span>
-                        <span class="km-rank" :class="`r${row.rankValue}`">{{ row.isOwner ? 'Owner' : row.rank }}</span>
-                    </div>
-                    <div class="pc-flags">
-                        <span v-if="row.suspended" class="ot-chip bad" :title="row.suspensionReason ?? ''">⏸ Suspended {{ row.suspendedUntilUtc ? untilTime(row.suspendedUntilUtc, now) : '' }}</span>
-                        <span v-if="row.readOnly" class="ot-chip info">◐ Read-only</span>
-                        <span v-if="!row.canLogin" class="ot-chip bad">⏻ Sign-in off</span>
-                        <span v-if="row.temporaryGrantCount" class="ot-chip violet">⏱ {{ row.temporaryGrantCount }} temporary</span>
-                    </div>
-                </div>
+    <PeopleDialog :open="idleOpen" title="Sign out idle devices" :sub="`Devices nobody has used for ${IDLE_DAYS}+ days. Each would otherwise stay signed in for 30 days after its last use.`" icon="clock" tone="warn" testid="pfx-idle" @close="idleOpen = false">
+      <div v-for="r in idleRows" :key="r.userId" class="pfx-form__row">
+        <span style="display: flex; align-items: center; gap: 9px; min-width: 0">
+          <PeopleAvatar :name="r.name" :id="r.userId" :owner="r.isOwner" :size="26" />
+          <span class="pfx-truncate"><strong>{{ r.name }}</strong><span class="pfx-dim"> · {{ r.idleDevices }} of {{ r.sessions }} device{{ r.sessions === 1 ? '' : 's' }}</span></span>
+        </span>
+        <span v-if="!canSignOutIdle(r)" class="pfx-dim" style="font-size: 12px">not yours to manage</span>
+        <label v-else class="pfx-check"><input v-model="idlePick" type="checkbox" :value="r.userId" />Sign out</label>
+      </div>
+      <p class="pfx-help" style="margin-top: 10px">Your own idle devices are signed out from your account; the device you're on is never touched.</p>
+      <template #actions>
+        <button class="pfx-btn pfx-btn--ghost" @click="idleOpen = false">Cancel</button>
+        <button class="pfx-btn pfx-btn--warn" :disabled="!!busy || !idlePick.length" data-testid="pfx-idle-go" @click="signOutIdleChosen">
+          <PeopleIcon name="signout" />Sign out {{ idleChosenCount }} device{{ idleChosenCount === 1 ? '' : 's' }}
+        </button>
+      </template>
+    </PeopleDialog>
 
-                <div class="pc-where" :class="row.presence.state">
-                    <template v-if="row.presence.state !== 'offline'">
-                        <span class="pc-where-main">{{ presenceText(row.presence, now) }}</span>
-                        <span class="pc-sub">{{ row.presence.connections }} tab{{ row.presence.connections === 1 ? '' : 's' }} open</span>
-                    </template>
-                    <template v-else>
-                        <span class="pc-where-main">Offline</span>
-                        <span class="pc-sub">{{ row.lastSeenUtc ? `Last seen ${relTime(row.lastSeenUtc, now)}` : 'Never seen' }}</span>
-                    </template>
-                </div>
-
-                <div class="pc-stat perms" :title="row.isOwner ? 'The owner holds every permission' : `${row.grantCount} permissions`">
-                    <span class="pc-stat-v">{{ row.isOwner ? 'All' : row.grantCount }}</span>
-                    <span class="pc-sub">permissions</span>
-                </div>
-                <div class="pc-stat activity">
-                    <span class="pc-stat-v">{{ fmtCount(row.requests24h) }}<em v-if="row.denied24h" class="pc-denied" :title="`${row.denied24h} refused`"> · {{ row.denied24h }}✕</em></span>
-                    <span class="pc-sub">requests 24h</span>
-                </div>
-                <div class="pc-stat devices">
-                    <span class="pc-stat-v">{{ row.sessions }}</span>
-                    <span class="pc-sub">devices</span>
-                </div>
-
-                <div class="pc-menu" @click.stop @keydown.enter.stop>
-                    <button v-if="quickActions(row)" type="button" class="ot-btn ghost sm" :aria-expanded="menuFor === row.userId"
-                            :aria-label="`Actions for ${row.name}`" @click="menuFor = menuFor === row.userId ? null : row.userId">
-                        <AccessIcon name="more" :size="16" />
-                    </button>
-                    <div v-if="menuFor === row.userId" class="pc-popover" role="menu">
-                        <button v-if="!row.suspended" type="button" role="menuitem" @click="startSuspend(row)"><AccessIcon name="pause" :size="14" /> Suspend…</button>
-                        <button v-else type="button" role="menuitem" @click="act(row, 'unsuspend')"><AccessIcon name="bolt" :size="14" /> Lift suspension</button>
-                        <button type="button" role="menuitem" @click="act(row, row.readOnly ? 'read-write' : 'read-only')"><AccessIcon name="eye" :size="14" /> {{ row.readOnly ? 'Lift read-only' : 'Make read-only' }}</button>
-                        <button type="button" role="menuitem" :disabled="!row.sessions" @click="confirmAction(row, 'signout')"><AccessIcon name="signout" :size="14" /> Sign out everywhere</button>
-                        <button type="button" role="menuitem" class="danger" @click="row.canLogin ? confirmAction(row, 'login-off') : act(row, 'login-on')"><AccessIcon name="power" :size="14" /> {{ row.canLogin ? 'Turn sign-in off' : 'Turn sign-in on' }}</button>
-                        <NuxtLink role="menuitem" :to="`/administration/profiles/${row.userId}`"><AccessIcon name="chevron" :size="14" /> Open profile</NuxtLink>
-                    </div>
-                </div>
-            </article>
-        </section>
-
-        <ProfilesSuspendDialog :open="!!suspending" :name="suspending?.name ?? ''" :busy="busy" :error="actionError"
-                               @close="suspending = null" @confirm="doSuspend" />
-
-        <ProfilesModal :open="!!confirming" :title="confirmTitle" tone="danger" @close="confirming = null">
-            <p class="pc-confirm">{{ confirmText }}</p>
-            <p v-if="actionError" class="pc-error" role="alert">{{ actionError }}</p>
-            <template #footer>
-                <button type="button" class="ot-btn ghost" @click="confirming = null">Cancel</button>
-                <button type="button" class="ot-btn danger" :disabled="busy" @click="runConfirmed">{{ busy ? 'Working…' : confirmButton }}</button>
-            </template>
-        </ProfilesModal>
-    </ProfilesShell>
+    <PeoplePalette :open="paletteOpen" :commands="commands" @close="paletteOpen = false" />
+    <PeopleToasts :toasts="toasts" @dismiss="dismiss" />
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAccess } from '~/composables/useAccess';
-import { pushToast } from '~/scripts/accessState';
-import { profilesApi, ProfilesApiError, type ProfileListPayload, type ProfileRow } from '~/scripts/profilesApi';
-import { fmtCount, presenceText, relTime, untilTime } from '~/scripts/profileFormat';
+import { useAccess, usePermissionCatalog } from '~/composables/useAccess';
+import { useProfilesConsole } from '~/composables/useProfilesConsole';
+import { fmtCount } from '~/scripts/profileFormat';
+import type { ProfileRow } from '~/scripts/profilesApi';
+import {
+  addSeries, computeReview, FILTERS, IDLE_DAYS, isIdleSession, matchesFilter, matchesText, SORTS, sortRows,
+  type ConsoleCommand, type DirectoryFilter, type DirectorySort, type PersonRow, type ReviewIssue,
+} from '~/scripts/profilesConsole';
 
 definePageMeta({ layout: 'navbar' });
 
-type Filter = 'all' | 'online' | 'suspended' | 'readOnly' | 'disabled';
-const FILTERS: { key: Filter; label: string }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'online', label: 'Online' },
-    { key: 'suspended', label: 'Suspended' },
-    { key: 'readOnly', label: 'Read-only' },
-    { key: 'disabled', label: 'Sign-in off' },
-];
-
 const router = useRouter();
-const { can, isOwner } = useAccess();
+const { can } = useAccess();
+const catalog = usePermissionCatalog();
+const console_ = useProfilesConsole();
+const {
+  list, insights, insightsSupported, rows, loading, error, loadedAt, now, linkState, paused, setPaused, refresh,
+  toasts, busy, dismiss, actions, sheetId, sheet, sheetSessions, sheetActivity, sheetLoading, openSheet, closeSheet, loadSheet,
+} = console_;
 
-const payload = ref<ProfileListPayload | null>(null);
-const loading = ref(false);
-const error = ref<string | null>(null);
-const loadedAt = ref(0);
-const now = ref(Date.now());
+const canSeeGrants = computed(() => can('profiles.permissions.view'));
+const titleOf = (key: string) => catalog.describe(key).title;
+
+// ───────────────────────────── preferences ─────────────────────────────
+
+const PREFS_KEY = 'pfx:directory';
 const search = ref('');
-const filter = ref<Filter>('all');
-const sort = ref<'rank' | 'seen' | 'activity' | 'name'>('rank');
-const menuFor = ref<string | null>(null);
-const suspending = ref<ProfileRow | null>(null);
-const confirming = ref<{ row: ProfileRow; kind: 'signout' | 'login-off' } | null>(null);
-const busy = ref(false);
-const actionError = ref<string | null>(null);
-let poll: number | undefined;
-let clock: number | undefined;
+const filter = ref<DirectoryFilter>('all');
+const sort = ref<DirectorySort>('rank');
+const view = ref<'list' | 'matrix'>('list');
+if (import.meta.client) {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}');
+    if (SORTS.some(s => s.id === saved.sort)) sort.value = saved.sort;
+    if (saved.view === 'matrix' || saved.view === 'list') view.value = saved.view;
+  } catch { /* storage blocked: defaults */ }
+}
+watch([sort, view], () => {
+  try { window.localStorage.setItem(PREFS_KEY, JSON.stringify({ sort: sort.value, view: view.value })); } catch { /* storage blocked */ }
+});
+function setView(next: 'list' | 'matrix') {
+  view.value = next === 'matrix' && !canSeeGrants.value ? 'list' : next;
+  if (view.value === 'matrix') void catalog.load();
+}
 
-const rows = computed(() => payload.value?.profiles ?? []);
-const onlineCount = computed(() => rows.value.filter(r => r.presence.state === 'online').length);
-const idleCount = computed(() => rows.value.filter(r => r.presence.state === 'idle').length);
-const requests24h = computed(() => rows.value.reduce((s, r) => s + r.requests24h, 0));
-const denied24h = computed(() => rows.value.reduce((s, r) => s + r.denied24h, 0));
-const sessionCount = computed(() => rows.value.reduce((s, r) => s + r.sessions, 0));
-const counts = computed<Record<Filter, number>>(() => ({
-    all: rows.value.length,
-    online: rows.value.filter(r => r.presence.state !== 'offline').length,
-    suspended: rows.value.filter(r => r.suspended).length,
-    readOnly: rows.value.filter(r => r.readOnly).length,
-    disabled: rows.value.filter(r => !r.canLogin).length,
+// ───────────────────────────── bar ─────────────────────────────
+
+const linkTone = computed(() => ({ live: 'ok', paused: 'neutral', stale: 'warn', offline: 'crit', connecting: 'neutral' } as Record<string, string>)[linkState.value]);
+const linkWord = computed(() => ({ live: 'Live', paused: 'Paused', stale: 'Stale', offline: 'Offline', connecting: 'Connecting' } as Record<string, string>)[linkState.value]);
+const linkTitle = computed(() => (linkState.value === 'live' ? 'Live: read every 15 seconds while this tab is open. Click to pause.'
+  : linkState.value === 'paused' ? 'Paused. Click to resume.' : linkState.value === 'offline' ? 'No answer from the server. Still trying.' : 'Connecting…'));
+
+const online = computed(() => rows.value.filter(r => r.presence.state === 'online').length);
+const idle = computed(() => rows.value.filter(r => r.presence.state === 'idle').length);
+const tabs = computed(() => rows.value.reduce((n, r) => n + r.presence.connections, 0));
+const subline = computed(() => (list.value ? `${rows.value.length} profiles · ${online.value} online` : ''));
+
+// ───────────────────────────── figures ─────────────────────────────
+
+const requests = computed(() => rows.value.reduce((n, r) => n + r.requests24h, 0));
+const refused = computed(() => rows.value.reduce((n, r) => n + r.denied24h, 0));
+const hourly = computed(() => addSeries(rows.value.map(r => r.hourly)));
+const busiest = computed(() => {
+  const top = [...rows.value].sort((a, b) => b.requests24h - a.requests24h)[0];
+  return top && top.requests24h ? top.name : '';
+});
+const devices = computed(() => rows.value.reduce((n, r) => n + r.sessions, 0));
+const idleDevices = computed(() => rows.value.reduce((n, r) => n + r.idleDevices, 0));
+const presenceMix = computed(() => {
+  const counts = { online: online.value, idle: idle.value, offline: rows.value.length - online.value - idle.value };
+  return [
+    { id: 'online', label: 'Online', count: counts.online, color: '#4ade80' },
+    { id: 'idle', label: 'Idle', count: counts.idle, color: '#fbbf24' },
+    { id: 'offline', label: 'Offline', count: counts.offline, color: '#3b3a4c' },
+  ].filter(m => m.count > 0);
+});
+/** Across profiles that can sign in (the owner excluded): held permissions used in the last 30 days. */
+const usage = computed(() => {
+  const people = rows.value.filter(r => !r.isOwner && r.canLogin && r.used != null);
+  if (!people.length) return null;
+  const held = people.reduce((n, r) => n + r.held, 0);
+  const used = people.reduce((n, r) => n + (r.used ?? 0), 0);
+  return { held, used, pct: held ? Math.round((used / held) * 100) : 100 };
+});
+const trackingSince = computed(() => {
+  const ms = Date.parse(insights.value?.trackingSinceUtc ?? '');
+  return Number.isFinite(ms) ? new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '';
+});
+
+const review = computed(() => computeReview(rows.value, insights.value, now.value));
+
+// ───────────────────────────── the list ─────────────────────────────
+
+const counts = computed<Record<DirectoryFilter, number>>(() => ({
+  all: rows.value.length,
+  online: rows.value.filter(r => matchesFilter(r, 'online')).length,
+  attention: rows.value.filter(r => matchesFilter(r, 'attention')).length,
+  off: rows.value.filter(r => matchesFilter(r, 'off')).length,
+  suspended: rows.value.filter(r => matchesFilter(r, 'suspended')).length,
 }));
-const statusFoot = computed(() => {
-    const parts = [];
-    if (counts.value.suspended) parts.push(`${counts.value.suspended} suspended`);
-    if (counts.value.readOnly) parts.push(`${counts.value.readOnly} read-only`);
-    if (counts.value.disabled) parts.push(`${counts.value.disabled} sign-in off`);
-    return parts.join(' · ') || 'all active';
-});
-const scopeText = computed(() => (payload.value ? `${onlineCount.value} online · ${rows.value.length} profiles` : ''));
-const freshLabel = computed(() => (loadedAt.value ? `Updated ${relTime(loadedAt.value, now.value)}` : 'Loading…'));
+const visible = computed(() => sortRows(rows.value.filter(r => matchesFilter(r, filter.value) && matchesText(r, search.value)), sort.value));
+const selectedId = ref<string | null>(null);
+function select(index: number) {
+  selectedId.value = visible.value[index]?.userId ?? null;
+}
+const selectedIndex = computed(() => visible.value.findIndex(r => r.userId === selectedId.value));
+const sheetPerson = computed(() => rows.value.find(r => r.userId === sheetId.value) ?? null);
+/** The sheet's idle devices by id, once its device list has loaded (undefined until then: the list's idleDays path). */
+const sheetIdleIds = computed(() => (sheetSessions.value.length
+  ? sheetSessions.value.filter(s => !s.current && isIdleSession(s, now.value)).map(s => s.sessionId)
+  : undefined));
+const matrixPeople = computed(() => sortRows(rows.value, 'rank').map(r => ({ userId: r.userId, name: r.name, isOwner: r.isOwner, effective: r.insight?.effective })));
 
-const visible = computed(() => {
-    const q = search.value.trim().toLowerCase();
-    const list = rows.value.filter(r => {
-        if (q && !r.name.toLowerCase().includes(q) && !r.rank.toLowerCase().includes(q)) return false;
-        switch (filter.value) {
-            case 'online': return r.presence.state !== 'offline';
-            case 'suspended': return r.suspended;
-            case 'readOnly': return r.readOnly;
-            case 'disabled': return !r.canLogin;
-            default: return true;
-        }
-    });
-    const seen = (r: ProfileRow) => (r.presence.state !== 'offline' ? Number.MAX_SAFE_INTEGER : Date.parse(r.lastSeenUtc ?? '') || 0);
-    return [...list].sort((a, b) => {
-        switch (sort.value) {
-            case 'seen': return seen(b) - seen(a);
-            case 'activity': return b.requests24h - a.requests24h;
-            case 'name': return a.name.localeCompare(b.name);
-            default:
-                return Number(b.isOwner) - Number(a.isOwner) || b.rankValue - a.rankValue || a.name.localeCompare(b.name);
-        }
-    });
-});
-
-function quickActions(row: ProfileRow) {
-    return row.manageable && can('profiles.access.control');
+function openPage(userId: string, tab = '', service = '') {
+  const query: Record<string, string> = {};
+  if (tab) query.tab = tab;
+  if (service) query.service = service;
+  void router.push({ path: `/administration/profiles/${userId}`, query });
 }
 
-async function load() {
-    if (loading.value) return;
-    loading.value = true;
-    try {
-        payload.value = await profilesApi.list();
-        loadedAt.value = Date.now();
-        error.value = null;
-    } catch (e) {
-        error.value = e instanceof Error ? e.message : 'Could not load profiles.';
-    } finally {
-        loading.value = false;
-    }
+// ───────────────────────────── review actions ─────────────────────────────
+
+function onIssue(issue: ReviewIssue) {
+  const action = issue.action;
+  if (!action) return;
+  if (action.kind === 'filter') { view.value = 'list'; filter.value = action.filter; search.value = ''; }
+  else if (action.kind === 'profile') openPage(action.userId, action.tab);
+  else if (action.kind === 'sheet') openSheet(action.userId);
+  else if (action.kind === 'idle') idleOpen.value = true;
+  else if (action.kind === 'settings') void router.push({ path: '/administration/omnisettings', query: { q: 'KMProfiles_AcceptPasswordAsBearer', focus: 'KMProfiles_AcceptPasswordAsBearer' } });
 }
 
-function open(row: ProfileRow) {
-    void router.push(`/administration/profiles/${row.userId}`);
+// ───────────────────────────── actions ─────────────────────────────
+
+const menu = ref<{ row: PersonRow; x: number; y: number } | null>(null);
+function openMenu(row: PersonRow, event: MouseEvent) {
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  menu.value = { row, x: Math.max(8, Math.min(rect.right - 224, window.innerWidth - 232)), y: Math.min(rect.bottom + 4, window.innerHeight - 320) };
+}
+/** Runs a menu item on the row it was opened for, after closing the menu. */
+function withMenu(run: (row: PersonRow) => unknown) {
+  const row = menu.value?.row;
+  menu.value = null;
+  if (row) void run(row);
 }
 
-function replaceRow(updated: ProfileRow) {
-    if (!payload.value) return;
-    const i = payload.value.profiles.findIndex(r => r.userId === updated.userId);
-    // Quick-action responses carry no 24h counters or last-seen: keep the ones already shown.
-    if (i >= 0) payload.value.profiles[i] = { ...payload.value.profiles[i], ...updated, requests24h: payload.value.profiles[i].requests24h, denied24h: payload.value.profiles[i].denied24h, lastSeenUtc: payload.value.profiles[i].lastSeenUtc };
-}
-
-function done(title: string, detail = '') {
-    pushToast({ tone: 'info', title, detail, permissions: [], reason: 'info' }, 4_000);
-}
-
-async function act(row: ProfileRow, kind: 'unsuspend' | 'read-only' | 'read-write' | 'login-on') {
-    menuFor.value = null;
-    try {
-        if (kind === 'unsuspend') { replaceRow(await profilesApi.unsuspend(row.userId)); done(`${row.name} can use the site again`); }
-        if (kind === 'read-only') { replaceRow(await profilesApi.setReadOnly(row.userId, true)); done(`${row.name} is read-only`, 'They can look, but every change is blocked.'); }
-        if (kind === 'read-write') { replaceRow(await profilesApi.setReadOnly(row.userId, false)); done(`Read-only lifted for ${row.name}`); }
-        if (kind === 'login-on') { replaceRow(await profilesApi.setLogin(row.userId, true)); done(`${row.name} can sign in again`); }
-    } catch (e) {
-        if (!(e instanceof ProfilesApiError && e.denied)) pushToast({ tone: 'error', title: 'That didn\'t work', detail: e instanceof Error ? e.message : '', permissions: [], reason: 'error' });
-    }
-}
-
-function startSuspend(row: ProfileRow) {
-    menuFor.value = null;
-    actionError.value = null;
-    suspending.value = row;
-}
-
+const suspending = ref<ProfileRow | null>(null);
 async function doSuspend(options: { minutes?: number; untilUtc?: string }, reason: string) {
-    if (!suspending.value) return;
-    busy.value = true;
-    actionError.value = null;
-    try {
-        const row = suspending.value;
-        replaceRow(await profilesApi.suspend(row.userId, options, reason));
-        done(`${row.name} is suspended`, 'Their open tabs locked straight away.');
-        suspending.value = null;
-    } catch (e) {
-        actionError.value = e instanceof Error ? e.message : 'Could not suspend.';
-    } finally {
-        busy.value = false;
-    }
+  const row = suspending.value;
+  if (!row) return;
+  if (await actions.suspend(row, options, reason)) suspending.value = null;
 }
 
-function confirmAction(row: ProfileRow, kind: 'signout' | 'login-off') {
-    menuFor.value = null;
-    actionError.value = null;
-    confirming.value = { row, kind };
-}
-
-const confirmTitle = computed(() => (confirming.value?.kind === 'signout' ? `Sign ${confirming.value.row.name} out everywhere?` : `Turn sign-in off for ${confirming.value?.row.name}?`));
-const confirmText = computed(() => (confirming.value?.kind === 'signout'
-    ? `All ${confirming.value.row.sessions} of their sessions end now; every open tab returns to the sign-in page. They can sign in again with their password.`
-    : 'Every session ends now and they can\'t sign in again until you turn it back on. Their permissions are kept.'));
-const confirmButton = computed(() => (confirming.value?.kind === 'signout' ? 'Sign out everywhere' : 'Turn sign-in off'));
-
+const confirming = ref<{ row: ProfileRow; kind: 'signout' | 'login-off' } | null>(null);
+const confirmCopy = computed(() => {
+  const c = confirming.value;
+  if (!c) return { title: '', sub: '', text: '', button: '' };
+  return c.kind === 'signout'
+    ? { title: `Sign ${c.row.name} out everywhere?`, sub: `${c.row.sessions} device${c.row.sessions === 1 ? '' : 's'}`, text: 'Every session ends now and every open tab goes back to the sign-in page. They can sign in again with their password.', button: 'Sign out everywhere' }
+    : { title: `Turn sign-in off for ${c.row.name}?`, sub: 'Their permissions are kept', text: 'Every session ends now and they can’t sign in again until you turn it back on.', button: 'Turn sign-in off' };
+});
 async function runConfirmed() {
-    const c = confirming.value;
-    if (!c) return;
-    busy.value = true;
-    actionError.value = null;
-    try {
-        if (c.kind === 'signout') {
-            const { revoked } = await profilesApi.revokeSessions(c.row.userId);
-            done(`${c.row.name} was signed out`, `${revoked} session${revoked === 1 ? '' : 's'} ended.`);
-        } else {
-            replaceRow(await profilesApi.setLogin(c.row.userId, false));
-            done(`Sign-in turned off for ${c.row.name}`);
-        }
-        confirming.value = null;
-        void load();
-    } catch (e) {
-        actionError.value = e instanceof Error ? e.message : 'That didn\'t work.';
-    } finally {
-        busy.value = false;
+  const c = confirming.value;
+  if (!c) return;
+  const ok = c.kind === 'signout' ? await actions.signOutEverywhere(c.row) : await actions.setLogin(c.row, false);
+  if (ok) confirming.value = null;
+}
+
+const canSignOutIdle = (r: PersonRow) => r.isYou || (r.manageable && can('profiles.access.control'));
+/** From the sheet, with its device list loaded, devices go one by one; from the list, by idleDays (see useProfileActions). */
+async function signOutIdleOf(row: ProfileRow, idleSessionIds?: string[]) {
+  const result = await actions.signOutIdle(row, idleSessionIds);
+  if (result && sheet.value?.userId === row.userId) void loadSheet(row.userId, true);
+}
+
+const idleOpen = ref(false);
+const idlePick = ref<string[]>([]);
+const idleRows = computed(() => rows.value.filter(r => r.idleDevices > 0));
+const idleChosenCount = computed(() => idleRows.value.filter(r => idlePick.value.includes(r.userId)).reduce((n, r) => n + r.idleDevices, 0));
+watch(idleOpen, open => { if (open) idlePick.value = idleRows.value.filter(canSignOutIdle).map(r => r.userId); });
+async function signOutIdleChosen() {
+  const chosen = idleRows.value.filter(r => idlePick.value.includes(r.userId) && canSignOutIdle(r));
+  idleOpen.value = false;
+  for (const row of chosen) await actions.signOutIdle(row);
+}
+
+// ───────────────────────────── palette ─────────────────────────────
+
+const paletteOpen = ref(false);
+const commands = computed<ConsoleCommand[]>(() => {
+  const out: ConsoleCommand[] = [];
+  for (const r of sortRows(rows.value, 'rank')) {
+    out.push({ id: `open-${r.userId}`, group: 'Profiles', title: r.name, icon: 'user', hint: r.isOwner ? 'Owner' : r.rank, keywords: `${r.rank} open profile`, run: () => openPage(r.userId) });
+  }
+  if (can('profiles.lifecycle.create')) out.push({ id: 'new', group: 'Go to', title: 'New profile', icon: 'user-plus', keywords: 'create add', run: () => router.push('/administration/profiles/new') });
+  if (canSeeGrants.value) {
+    out.push({ id: 'catalog', group: 'Go to', title: 'Permission catalog', icon: 'catalog', keywords: 'permissions keys routes tiers', run: () => router.push('/administration/profiles/catalog') });
+    out.push({ id: 'matrix', group: 'Go to', title: 'Who holds what (matrix)', icon: 'grid', keywords: 'access matrix compare', run: () => setView('matrix') });
+  }
+  out.push({ id: 'account', group: 'Go to', title: 'Your account', icon: 'user', keywords: 'me password devices', run: () => router.push('/account') });
+  for (const f of FILTERS) out.push({ id: `filter-${f.id}`, group: 'Show', title: `Show: ${f.label}`, icon: 'filter', run: () => { view.value = 'list'; filter.value = f.id; } });
+  if (idleDevices.value) out.push({ id: 'idle-all', group: 'Actions', title: `Sign out idle devices (${idleDevices.value})`, icon: 'clock', keywords: 'sessions unused stale', run: () => { idleOpen.value = true; } });
+  if (can('profiles.access.control')) {
+    for (const r of rows.value.filter(row => row.manageable)) {
+      if (!r.suspended) out.push({ id: `suspend-${r.userId}`, group: 'Actions', title: `Suspend ${r.name}…`, icon: 'pause', keywords: 'pause lock', run: () => { suspending.value = r; } });
+      else out.push({ id: `unsuspend-${r.userId}`, group: 'Actions', title: `Lift ${r.name}'s suspension`, icon: 'play', run: () => actions.unsuspend(r) });
+      out.push({ id: `ro-${r.userId}`, group: 'Actions', title: r.readOnly ? `Lift read-only for ${r.name}` : `Make ${r.name} read-only`, icon: 'eye', run: () => actions.setReadOnly(r, !r.readOnly) });
+      if (r.idleDevices) out.push({ id: `idle-${r.userId}`, group: 'Actions', title: `Sign out ${r.name}'s idle devices (${r.idleDevices})`, icon: 'clock', danger: true, run: () => signOutIdleOf(r) });
+      if (r.sessions) out.push({ id: `signout-${r.userId}`, group: 'Actions', title: `Sign ${r.name} out everywhere`, icon: 'signout', danger: true, run: () => actions.signOutEverywhere(r) });
+      out.push({ id: `login-${r.userId}`, group: 'Actions', title: r.canLogin ? `Turn sign-in off for ${r.name}` : `Turn sign-in on for ${r.name}`, icon: 'power', danger: r.canLogin, run: () => actions.setLogin(r, !r.canLogin) });
     }
+  }
+  out.push({ id: 'refresh', group: 'Actions', title: 'Refresh now', icon: 'refresh', run: () => refresh() });
+  return out;
+});
+
+// ───────────────────────────── keyboard ─────────────────────────────
+
+const searchInput = ref<HTMLInputElement | null>(null);
+function typing(target: EventTarget | null) {
+  const el = target as HTMLElement | null;
+  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+}
+function onKey(event: KeyboardEvent) {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); paletteOpen.value = true; return; }
+  if (paletteOpen.value || suspending.value || confirming.value || idleOpen.value || typing(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.key === 'Escape') { if (menu.value) menu.value = null; else if (sheetId.value) closeSheet(); return; }
+  if (view.value === 'list' && (event.key === 'ArrowDown' || event.key === 'j' || event.key === 'ArrowUp' || event.key === 'k')) {
+    event.preventDefault();
+    const n = visible.value.length;
+    if (!n) return;
+    const at = selectedIndex.value;
+    const next = event.key === 'ArrowDown' || event.key === 'j' ? Math.min(n - 1, at + 1) : Math.max(0, at < 0 ? 0 : at - 1);
+    select(next);
+    if (sheetId.value) openSheet(visible.value[next].userId);
+    void nextTick(() => document.querySelector(`[data-testid="row-${visible.value[next].userId}"]`)?.scrollIntoView({ block: 'nearest' }));
+    return;
+  }
+  const current = visible.value[selectedIndex.value];
+  if (event.key === 'Enter' && current) { event.preventDefault(); openSheet(current.userId); return; }
+  if (event.key === 'o' && (current || sheetId.value)) { event.preventDefault(); openPage(current?.userId ?? sheetId.value!); return; }
+  if (event.key === '/') { event.preventDefault(); setView('list'); void nextTick(() => searchInput.value?.focus()); return; }
+  if (event.key === 'm' && canSeeGrants.value) { setView(view.value === 'matrix' ? 'list' : 'matrix'); return; }
+  if (event.key === 'l') { setView('list'); return; }
+  if (event.key === 'r') { void refresh(); return; }
+  if (event.key === 'n' && can('profiles.lifecycle.create')) { void router.push('/administration/profiles/new'); }
 }
 
-function closeMenu(event: MouseEvent) {
-    if (!(event.target as HTMLElement | null)?.closest('.pc-menu')) menuFor.value = null;
-}
-
-function onVisibility() {
-    if (document.visibilityState === 'visible') void load();
-}
-
+const firstPaint = ref(true);
 onMounted(() => {
-    void load();
-    poll = window.setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 10_000);
-    clock = window.setInterval(() => { now.value = Date.now(); }, 15_000);
-    document.addEventListener('click', closeMenu);
-    document.addEventListener('visibilitychange', onVisibility);
+  void catalog.load();
+  window.addEventListener('keydown', onKey);
+  window.setTimeout(() => { firstPaint.value = false; }, 800);
 });
-
-onBeforeUnmount(() => {
-    window.clearInterval(poll);
-    window.clearInterval(clock);
-    document.removeEventListener('click', closeMenu);
-    document.removeEventListener('visibilitychange', onVisibility);
-});
+onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 </script>
 
-<style scoped>
-.pc-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-@media (min-width: 980px) { .pc-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-
-.pc-filters .ot-search { flex: 1 1 220px; max-width: 320px; }
-.pc-filters .ot-segment { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
-.pc-count {
-    margin-left: 5px;
-    padding: 0 5px;
-    border-radius: 999px;
-    font-size: 10px;
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--ot-text-2);
-}
-.pc-sort { gap: 6px; }
-
-.pc-list { display: flex; flex-direction: column; gap: 8px; }
-.pc-skelrow { height: 68px; border-radius: var(--ot-radius); }
-
-.pc-row {
-    display: grid;
-    grid-template-columns: auto minmax(180px, 1.4fr) minmax(160px, 1.2fr) repeat(3, minmax(74px, 0.5fr)) auto;
-    align-items: center;
-    gap: 16px;
-    padding: 12px 14px;
-    border-radius: var(--ot-radius);
-    border: 1px solid var(--ot-line);
-    background: var(--ot-surface);
-    cursor: pointer;
-    transition: border-color var(--ot-fast), background var(--ot-fast);
-    position: relative;
-}
-.pc-row:hover { border-color: var(--ot-line-strong); background: var(--ot-surface-2); }
-.pc-row.suspended { border-color: rgba(255, 123, 123, 0.32); }
-.pc-row.disabled { opacity: 0.75; }
-
-.pc-who { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
-.pc-name { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
-.pc-name strong { font-size: 14.5px; font-weight: 620; color: var(--ot-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pc-you { font-size: 10.5px; color: var(--ot-accent); border: 1px solid var(--ot-line-strong); border-radius: 999px; padding: 0 6px; }
-.pc-flags { display: flex; gap: 5px; flex-wrap: wrap; }
-.pc-flags:empty { display: none; }
-
-.pc-where { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.pc-where-main { font-size: 13px; color: var(--ot-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pc-where.online .pc-where-main { color: var(--ot-positive); }
-.pc-where.idle .pc-where-main { color: var(--ot-warning); }
-.pc-sub { font-size: 11.5px; color: var(--ot-muted); }
-
-.pc-stat { display: flex; flex-direction: column; gap: 1px; text-align: right; }
-.pc-stat-v { font-family: var(--ot-mono); font-size: 15px; font-weight: 600; color: var(--ot-text); white-space: nowrap; }
-.pc-denied { font-style: normal; color: var(--ot-warning); font-size: 12px; }
-
-.pc-menu { position: relative; display: flex; justify-content: flex-end; min-width: 34px; }
-.pc-popover {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    z-index: var(--ot-z-popover);
-    min-width: 220px;
-    padding: 4px;
-    border-radius: var(--ot-radius);
-    border: 1px solid var(--ot-line-strong);
-    background: var(--ot-surface-2);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
-    display: flex;
-    flex-direction: column;
-}
-.pc-popover button, .pc-popover a {
-    display: flex !important;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 8px 10px !important;
-    border: 0 !important;
-    border-radius: 6px;
-    background: none !important;
-    color: var(--ot-text-2);
-    font-size: 13px;
-    text-align: left;
-    cursor: pointer;
-}
-.pc-popover button:hover:not(:disabled), .pc-popover a:hover { background: rgba(255, 255, 255, 0.05) !important; color: var(--ot-text); }
-.pc-popover button:disabled { opacity: 0.4; cursor: not-allowed; }
-.pc-popover .danger { color: #ffb4b4; }
-
-.pc-link { color: var(--ot-accent); }
-.pc-confirm { color: var(--ot-text-2); }
-.pc-error { margin-top: 10px; color: var(--ot-negative); font-size: 12.5px; }
-
-@media (max-width: 1100px) {
-    .pc-row { grid-template-columns: auto minmax(0, 1fr) repeat(2, minmax(64px, auto)) auto; }
-    .pc-where { grid-column: 2 / 3; grid-row: 2; }
-    .pc-row > .pc-stat.devices { display: none; }
-}
-@media (max-width: 640px) {
-    .pc-row { grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px 12px; }
-    .pc-row > .pc-stat { display: none; }
-    .pc-where { grid-column: 2 / 4; }
-}
-</style>
+<style lang="scss" src="~/assets/scss/profiles-console.scss"></style>

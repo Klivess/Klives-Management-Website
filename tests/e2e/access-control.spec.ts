@@ -35,7 +35,7 @@ test('a limited profile only sees the pages it may open', async ({ page, context
   const nav = page.locator('nav.vnav-body');
   await expect(nav.getByRole('link', { name: 'KliveCloud' })).toBeVisible();
   await expect(nav.getByRole('link', { name: 'OmniTrader' })).toBeVisible();
-  for (const hidden of ['Omniscience', 'OmniDefence', 'Tripwires', 'KliveMail', 'KliveAgent', 'Projects', 'Profiles', 'API telemetry']) {
+  for (const hidden of ['Omniscience', 'OmniDefence', 'Tripwires', 'KliveMail', 'KliveAgent', 'Demiurge', 'Profiles', 'API telemetry']) {
     await expect(nav.getByRole('link', { name: hidden, exact: true })).toHaveCount(0);
   }
 });
@@ -57,7 +57,7 @@ test('a page it cannot open says why, in place, with the nav kept', async ({ pag
 
 test('a refused request is explained once, without leaving the page', async ({ page, context }) => {
   const api = await installProfilesApiMock(page, { me: GUEST });
-  api.overrides['/KliveCloud/Browse'] = denial('klivecloud.files.browse', '/KliveCloud/Browse');
+  api.overrides['/KliveCloud/GetFolderTree'] = denial('klivecloud.files.browse', '/KliveCloud/GetFolderTree');
   await signIn(context);
   await page.goto('/klivecloud');
 

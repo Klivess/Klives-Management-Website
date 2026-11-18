@@ -112,7 +112,7 @@ const NAV_GROUPS = [
       { to: '/klivechat', label: 'KliveChat', icon: '✉' },
       { to: '/klivemail', label: 'KliveMail', icon: '@' },
       { to: '/kliveagent', label: 'KliveAgent', icon: '◈' },
-      { to: '/projects', label: 'Projects', icon: '⛓' },
+      { to: '/demiurge', label: 'Demiurge', icon: '⛓' },
       { to: '/klivegames', label: 'KliveGames', icon: '⛏' },
       { to: '/klivelink', label: 'KliveLink', icon: '⌁' },
       { to: '/klivetools', label: 'KliveTools', icon: '⚒' },
@@ -125,6 +125,7 @@ const NAV_GROUPS = [
     items: [
       { to: '/botSchedule', label: 'Schedule', icon: '◷' },
       { to: '/admin', label: 'Admin', icon: '★' },
+      { to: '/klivellm', label: 'KliveLLM', icon: '⌬' },
       { to: '/administration/profiles', label: 'Profiles', icon: '◉' },
       { to: '/administration/api-telemetry', label: 'API telemetry', icon: '⌇' },
     ],

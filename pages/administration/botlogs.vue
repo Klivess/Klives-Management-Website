@@ -2,7 +2,7 @@
     <main class="botlogs-page">
         <header class="page-toolbar">
             <div class="title-block">
-                <NuxtLink to="/admin" class="back-link">â† Admin</NuxtLink>
+                <NuxtLink to="/admin" class="back-link">← Admin</NuxtLink>
                 <div class="title-row">
                     <h1>Bot logs</h1>
                     <span class="live-indicator"><i></i> Live buffer</span>
@@ -13,7 +13,7 @@
             <div class="toolbar-actions">
                 <span class="updated-at">{{ refreshLabel }}</span>
                 <button class="refresh-button" :disabled="loading" @click="loadData()">
-                    <span :class="{ spinning: loading }">â†»</span>
+                    <span :class="{ spinning: loading }">↻</span>
                     {{ loading ? 'Refreshing' : 'Refresh' }}
                 </button>
             </div>
@@ -132,7 +132,7 @@
                 <button v-if="filtersActive" class="clear-button" @click="clearFilters">Clear</button>
             </div>
 
-            <div v-if="loading && !logs.length" class="panel-state">Loading log streamâ€¦</div>
+            <div v-if="loading && !logs.length" class="panel-state">Loading log stream…</div>
             <div v-else-if="apiError" class="panel-state panel-state--error">
                 <strong>Could not load logs.</strong>
                 <span>{{ errorMessage }}</span>
@@ -209,9 +209,10 @@ const typeOptions = [
     { value: 'update', label: 'Updates' }
 ];
 
-const serviceOptions = computed(() => [...new Set(logs.value
-    .map(log => log.serviceName)
-    .filter(Boolean))].sort((a, b) => a.localeCompare(b)));
+// Every service seen so far: once a service filter narrows the fetch, the entries on screen no
+// longer name the others.
+const knownServices = ref(new Set());
+const serviceOptions = computed(() => [...knownServices.value].sort((a, b) => a.localeCompare(b)));
 
 const filteredLogs = computed(() => {
     const search = searchTerm.value.toLowerCase();
@@ -241,29 +242,46 @@ const timeline = computed(() => summary.value?.Timeline ?? localTimeline());
 const topServices = computed(() => summary.value?.TopServices ?? localTopServices());
 const errorFamilies = computed(() => summary.value?.ErrorFamilies ?? localErrorFamilies());
 const filtersActive = computed(() => Boolean(searchTerm.value || selectedService.value || selectedType.value !== 'all'));
-const refreshLabel = computed(() => lastRefreshedAt.value ? `Updated ${relativeTime(lastRefreshedAt.value)}` : 'Connectingâ€¦');
+const refreshLabel = computed(() => lastRefreshedAt.value ? `Updated ${relativeTime(lastRefreshedAt.value)}` : 'Connecting…');
 
 watch([searchTerm, selectedService, selectedType], () => {
     currentPage.value = 1;
     expandedLogId.value = '';
 });
 
+// The service and type filters are applied by the server, so they reach the whole buffer.
+watch([selectedService, selectedType], () => { void loadData(); });
+
 watch(totalPages, pages => {
     if (currentPage.value > pages) currentPage.value = pages;
 });
 
+// The newest 250 entries overall rarely include a quiet service, while the buffer holds 4,000:
+// asking the server for one service (or one type) finds entries a filter over the page could not.
+function logsQuery() {
+    const params = new URLSearchParams({ limit: '250', sort: 'desc' });
+    if (selectedService.value) params.set('service', selectedService.value);
+    if (selectedType.value !== 'all') params.set('type', String(typeNumber(selectedType.value)));
+    return `/api/logs?${params}`;
+}
+
+let loadSequence = 0;
+
 async function loadData() {
     if (!process.client) return;
 
+    const sequence = ++loadSequence;
     loading.value = true;
     apiError.value = false;
     errorMessage.value = '';
 
     try {
         const [logResponse, summaryResponse] = await Promise.all([
-            RequestGETFromKliveAPI('/api/logs?limit=250&sort=desc', false, false),
+            RequestGETFromKliveAPI(logsQuery(), false, false),
             RequestGETFromKliveAPI('/api/logs/summary?hours=12', false, false)
         ]);
+        // A filter changed while this was in flight: the newer request owns the page.
+        if (sequence !== loadSequence) return;
 
         if (!logResponse.ok) throw new Error(responseMessage(logResponse));
         const payload = await logResponse.json();
@@ -271,14 +289,24 @@ async function loadData() {
 
         logs.value = payload;
         summary.value = summaryResponse.ok ? await summaryResponse.json() : null;
+        rememberServices();
         lastRefreshedAt.value = new Date();
     } catch (error) {
+        if (sequence !== loadSequence) return;
         apiError.value = true;
         errorMessage.value = error?.message || 'The log service is unavailable.';
         summary.value = null;
     } finally {
-        loading.value = false;
+        if (sequence === loadSequence) loading.value = false;
     }
+}
+
+function rememberServices() {
+    const names = new Set(knownServices.value);
+    for (const log of logs.value) if (log.serviceName) names.add(log.serviceName);
+    for (const service of summary.value?.TopServices ?? []) if (service.ServiceName) names.add(service.ServiceName);
+    if (selectedService.value) names.add(selectedService.value);
+    knownServices.value = names;
 }
 
 function responseMessage(response) {
@@ -350,9 +378,9 @@ function formatDate(value) {
 }
 
 function compactTime(value) {
-    if (!value) return 'â€”';
+    if (!value) return '—';
     const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return 'â€”';
+    if (Number.isNaN(date.getTime())) return '—';
     const today = new Date();
     return date.toDateString() === today.toDateString()
         ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -421,7 +449,17 @@ function localErrorFamilies() {
     }, {})).sort((a, b) => b.Count - a.Count).slice(0, 5);
 }
 
-onMounted(loadData);
+// Links from the Admin page open the log already narrowed: ?service=KliveAPI&type=error.
+onMounted(() => {
+    const query = useRoute().query;
+    const service = typeof query.service === 'string' ? query.service.trim() : '';
+    const type = typeof query.type === 'string' ? query.type.trim().toLowerCase() : '';
+    const filtered = Boolean(service) || typeOptions.some(option => option.value === type && type !== 'all');
+    if (service) selectedService.value = service;
+    if (typeOptions.some(option => option.value === type)) selectedType.value = type;
+    // Setting either filter starts the load through its watcher.
+    if (!filtered) void loadData();
+});
 </script>
 
 <style scoped>

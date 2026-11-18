@@ -4,8 +4,8 @@ import { openDashboard } from './fixtures/dashboard-api';
 test('chat accepts dropped files and combines them with file picker selections', async ({ page }) => {
   await openDashboard(page, 'Klives');
   await page.goto('/kliveagent');
-  const chat = page.locator('.chat-panel');
-  await expect(chat.locator('.chat-attach-btn')).toBeVisible();
+  const chat = page.getByTestId('kax-thread');
+  await expect(chat.getByTestId('kax-attach')).toBeVisible();
   await expect(chat.locator('input[type=file]')).toBeEnabled();
 
   await chat.evaluate((element) => {
@@ -15,15 +15,15 @@ test('chat accepts dropped files and combines them with file picker selections',
     element.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: transfer }));
     element.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: transfer }));
   });
-  await expect(chat.locator('.chat-attachment')).toContainText('sample.png');
-  await expect(chat.locator('.chat-drop-overlay')).toHaveCount(0);
+  await expect(chat.getByTestId('kax-attachment')).toContainText('sample.png');
+  await expect(chat.getByTestId('kax-drop')).toHaveCount(0);
 
   await chat.locator('input[type=file]').setInputFiles({
     name: 'clip.mp4', mimeType: 'video/mp4', buffer: Buffer.from('video fixture'),
   });
-  await expect(chat.locator('.chat-attachment')).toHaveCount(2);
-  await expect(chat.locator('.chat-attachment').nth(1)).toContainText('clip.mp4');
-  await expect(chat.locator('.chat-send-btn')).toBeEnabled();
+  await expect(chat.getByTestId('kax-attachment')).toHaveCount(2);
+  await expect(chat.getByTestId('kax-attachment').nth(1)).toContainText('clip.mp4');
+  await expect(chat.getByTestId('kax-send')).toBeEnabled();
 
   const uploaded: string[] = [];
   let chatPayload: any = null;
@@ -38,19 +38,22 @@ test('chat accepts dropped files and combines them with file picker selections',
     chatPayload = JSON.parse(route.request().postData() || '{}');
     await route.fulfill({ status: 200, headers, body: JSON.stringify({ success: true, response: 'Received the files.', conversationId: chatPayload.conversationId }) });
   });
-  await chat.locator('.chat-send-btn').click();
+  await chat.getByTestId('kax-send').click();
   await expect.poll(() => uploaded).toEqual(['sample.png', 'clip.mp4']);
   await expect.poll(() => chatPayload?.attachmentIds).toEqual(['attachment-1', 'attachment-2']);
-  await expect(chat.locator('.chat-attachment')).toHaveCount(0);
+  await expect(chat.getByTestId('kax-attachment')).toHaveCount(0);
+  // A finished reply that came back in the POST itself is shown at once.
+  await expect(chat).toContainText('Received the files.');
+});
 
-  await page.route('https://klive.dev/kliveagent/stats/prompt-cache**', async (route) => {
-    await route.fulfill({ status: 200, headers, body: JSON.stringify({
-      status: 'warming', verdict: 'Collecting provider measurements.', requests: 1,
-      measuredRequests: 1, cachedTokens: 600, uncachedTokens: 400, cacheHitRatePct: 60,
-      telemetryCoveragePct: 100, series: [], breakdown: [], recent: [],
-    }) });
-  });
-  await page.locator('.ka-header').getByRole('button', { name: 'Analytics' }).click();
-  await expect(page.getByRole('heading', { name: 'Prompt cache' })).toBeVisible();
-  await expect(page.locator('.cache-panel')).toContainText('600');
+test('a file that is too large or one too many is refused with a reason', async ({ page }) => {
+  await openDashboard(page, 'Klives');
+  await page.goto('/kliveagent');
+  const chat = page.getByTestId('kax-thread');
+  await expect(chat.locator('input[type=file]')).toBeEnabled();
+  await chat.locator('input[type=file]').setInputFiles(Array.from({ length: 9 }, (_, i) => ({
+    name: `note-${i}.txt`, mimeType: 'text/plain', buffer: Buffer.from('x'),
+  })));
+  await expect(chat.getByTestId('kax-attachment')).toHaveCount(8);
+  await expect(chat.getByTestId('kax-attachment-error')).toContainText('at most 8 files');
 });

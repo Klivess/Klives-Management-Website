@@ -5,9 +5,9 @@
  *
  * A page requires *some* key of its service: what you then see inside depends on the exact
  * keys you hold, and sections you lack are locked individually. The server stays the
- * authority â€” this only avoids offering pages that would be refused.
+ * authority — this only avoids offering pages that would be refused.
  *
- * A page can override its entry with `definePageMeta({ access: { any: ['â€¦'] } })`.
+ * A page can override its entry with `definePageMeta({ access: { any: ['…'] } })`.
  */
 
 export type AccessRule =
@@ -17,7 +17,7 @@ export type AccessRule =
 
 export interface PageAccess {
     rule: AccessRule;
-    /** What the page is, for "you don't have access to â€¦". */
+    /** What the page is, for "you don't have access to …". */
     label: string;
 }
 
@@ -86,9 +86,9 @@ const ENTRIES: Entry[] = [
     { prefix: '/klivetech', label: 'KliveTech', rule: anyOf('klivetech.') },
     { prefix: '/klivemail', label: 'KliveMail', rule: anyOf('klivemail.') },
     { prefix: '/kliveagent', label: 'KliveAgent', rule: anyOf('kliveagent.') },
-    { prefix: '/projects', label: 'Projects', rule: anyOf('projects.') },
-    { prefix: '/projects/new', label: 'New project', rule: allOf('projects.lifecycle.manage') },
-    { prefix: '/projects/accounts', label: 'Agent accounts', rule: anyOf('accounts.') },
+    { prefix: '/demiurge', label: 'Demiurge', rule: anyOf('demiurge.') },
+    { prefix: '/demiurge/new', label: 'New Steward', rule: allOf('demiurge.lifecycle.manage') },
+    { prefix: '/demiurge/accounts', label: 'Agent accounts', rule: anyOf('accounts.') },
     { prefix: '/klivegames', label: 'KliveGames', rule: anyOf('klivegames.') },
     { prefix: '/klivelink', label: 'KliveLink', rule: anyOf('klivelink.') },
     { prefix: '/klivelink/collection', label: 'KliveLink collection', rule: anyOf('klivelink.collection.') },
@@ -99,6 +99,7 @@ const ENTRIES: Entry[] = [
 
     { prefix: '/botSchedule', label: 'Schedule', rule: anyOf('system.scheduler.read') },
     { prefix: '/admin', label: 'Admin', rule: anyOf('system.') },
+    { prefix: '/klivellm', label: 'KliveLLM', rule: anyOf('klivellm.') },
     { prefix: '/administration/api-telemetry', label: 'API telemetry', rule: anyOf('system.api.telemetry.read') },
     { prefix: '/administration/omnisettings', label: 'OmniSettings', rule: anyOf('system.settings.read') },
     { prefix: '/administration/botlogs', label: 'Service logs', rule: anyOf('system.logs.read') },

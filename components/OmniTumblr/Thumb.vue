@@ -36,6 +36,7 @@ const glyph = computed(() => {
         case 'Photo': return '◩';
         case 'Link': return '⌁';
         case 'Text': return '¶';
+        case 'Reblog': return '⟳';
         default: return '○';
     }
 });

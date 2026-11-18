@@ -35,7 +35,7 @@ test('a limited profile only sees the pages it may open', async ({ page, context
   const nav = page.locator('nav.vnav-body');
   await expect(nav.getByRole('link', { name: 'KliveCloud' })).toBeVisible();
   await expect(nav.getByRole('link', { name: 'OmniTrader' })).toBeVisible();
-  for (const hidden of ['Omniscience', 'OmniDefence', 'Tripwires', 'KliveMail', 'KliveAgent', 'Projects', 'Profiles', 'API telemetry']) {
+  for (const hidden of ['Omniscience', 'OmniDefence', 'Tripwires', 'KliveMail', 'KliveAgent', 'Demiurge', 'Profiles', 'API telemetry']) {
     await expect(nav.getByRole('link', { name: hidden, exact: true })).toHaveCount(0);
   }
 });

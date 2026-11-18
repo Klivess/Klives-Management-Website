@@ -85,7 +85,7 @@ const SERVICE_NAMES: Array<[string, string]> = [
   ['KMProfileManager', 'Critical'], ['MemeScraper', 'Standard'], ['OmniBlox', 'Standard'], ['OmniDefence', 'High'],
   ['OmniGlobalSettingsManager', 'Critical'], ['OmniGram', 'Standard'], ['OmniLogging', 'Critical'], ['Omnipotent Service Monitoring', 'Standard'],
   ['Omniscience', 'Standard'], ['OmniTrader', 'High'], ['OmniTube', 'Low'], ['OmniTumblr', 'Standard'],
-  ['OmniUpdater', 'Low'], ['PortForwardManager', 'Standard'], ['Projects', 'High'], ['SeleniumManager', 'Standard'],
+  ['OmniUpdater', 'Low'], ['PortForwardManager', 'Standard'], ['Demiurge', 'High'], ['SeleniumManager', 'Standard'],
   ['Stratum', 'Standard'], ['Time Management', 'High'], ['Tripwires', 'Standard'],
 ];
 
@@ -341,14 +341,14 @@ export async function installAdminApiMock(page: Page, options: AdminMockOptions 
       historyWindow: { firstDay: dailyHistory[0].date, lastDay: dailyHistory[days - 1].date, totalDays: days, recordedDays: 200 },
       dailyHistory,
       topRoutes: [
-        route('/batch', 9_811_233, 212, 180_221, 'POST'), route('/projects/list', 4_001_882, 31, 90_112),
+        route('/batch', 9_811_233, 212, 180_221, 'POST'), route('/demiurge/list', 4_001_882, 31, 90_112),
         route('/GeneralBotStatistics/GetFrontpageStats', 3_200_114, 2.1, 9_114), route('/kliveagent/status', 2_911_004, 1.4, 4_811),
-        route('/omnidefence/overview', 1_882_114, 14, 31_882), route('/projects/overview', 1_200_332, 44, 61_114),
+        route('/omnidefence/overview', 1_882_114, 14, 31_882), route('/demiurge/overview', 1_200_332, 44, 61_114),
         route('/KMProfiles/me', 911_004, 0.9, 2_114), route('/api/logs/summary', 611_882, 3.2, 8_811),
       ],
       slowestRoutes: [
         route('/omniblox/game/map', 3_114, 48_211, 297_114), route('/omniscience/workspace/health', 811, 21_004, 180_332),
-        route('/projects/computers/diagnostics', 412, 9_882, 20_114), route('/api/omnitrader/lab/backtests', 9_114, 4_211, 31_004),
+        route('/demiurge/computers/diagnostics', 412, 9_882, 20_114), route('/api/omnitrader/lab/backtests', 9_114, 4_211, 31_004),
         route('/memescraper/dashboard', 21_114, 1_882, 122_004), route('/KliveCloud/ListItems', 61_004, 911, 44_118),
         route('/omnidefence/ip-map', 18_332, 640, 31_882), route('/stratum/runs/list', 2_114, 512, 9_004),
       ],
@@ -384,7 +384,7 @@ export async function installAdminApiMock(page: Page, options: AdminMockOptions 
         };
       }),
       TopServices: [
-        { ServiceName: 'Projects', TotalCount: 1211, ErrorCount: noisy ? 14 : 0, LastActivityAt: new Date(now - 4_000).toISOString() },
+        { ServiceName: 'Demiurge', TotalCount: 1211, ErrorCount: noisy ? 14 : 0, LastActivityAt: new Date(now - 4_000).toISOString() },
         { ServiceName: 'CS2ArbitrageBot', TotalCount: 904, ErrorCount: noisy ? 233 : 4, LastActivityAt: new Date(now - 9_000).toISOString() },
         { ServiceName: 'KliveAgent', TotalCount: 611, ErrorCount: 2, LastActivityAt: new Date(now - 30_000).toISOString() },
       ],
@@ -452,7 +452,7 @@ export async function installAdminApiMock(page: Page, options: AdminMockOptions 
         const now = Date.now();
         const entries = [
           { logID: 'log-1', TimeOfLog: new Date(now - 60_000).toISOString(), type: 1, serviceName: 'KliveAPI', message: 'Client disconnected mid-response', errorInfo: { ExceptionType: 'System.Net.HttpListenerException', Message: 'The specified network name is no longer available.' } },
-          { logID: 'log-2', TimeOfLog: new Date(now - 90_000).toISOString(), type: 0, serviceName: 'Projects', message: 'Commander wake completed.' },
+          { logID: 'log-2', TimeOfLog: new Date(now - 90_000).toISOString(), type: 0, serviceName: 'Demiurge', message: 'Commander wake completed.' },
           { logID: 'log-3', TimeOfLog: new Date(now - 120_000).toISOString(), type: 1, serviceName: 'CS2ArbitrageBot', message: 'Trade re-price was refused', errorInfo: null },
         ];
         return { status: 200, body: entries.filter(entry => (!service || entry.serviceName === service) && (!url.searchParams.get('type') || String(entry.type) === url.searchParams.get('type'))) };

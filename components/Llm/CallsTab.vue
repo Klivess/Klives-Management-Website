@@ -157,7 +157,7 @@ const FLAG_INFO: Record<string, { icon: string; title: string }> = {
   Pinned: { icon: 'pin', title: 'The route’s pinned model replaced the service’s own' },
   ContentKept: { icon: 'text', title: 'Prompt and reply text were kept' },
   Stalled: { icon: 'clock', title: 'The stream stalled' },
-  Imported: { icon: 'download', title: 'Imported from the Projects journal' },
+  Imported: { icon: 'download', title: 'Imported from the Demiurge journal' },
   Estimated: { icon: 'info', title: 'Tokens estimated: the router reported none' },
 };
 const flagsOf = (r: any) => (r.flags ?? []).filter((f: string) => FLAG_INFO[f]).map((f: string) => ({ id: f, ...FLAG_INFO[f] }));

@@ -149,8 +149,8 @@ function loudestService(server: HomeServer): string {
 
 /** Everything the tiles read, by source. Any of it may be missing: not permitted, not deployed, failing. */
 export interface HomeSources {
-  projects?: any[] | null;
-  projectsOverview?: any;
+  stewards?: any[] | null;
+  demiurgeOverview?: any;
   agentStatus?: any;
   agentStats?: any;
   agentNotifications?: any[] | null;
@@ -192,20 +192,20 @@ export function latestMailCode(messages: unknown, now: number, maxAgeMs = 30 * 6
   return null;
 }
 
-export function projectsPulse(list: any[] | null | undefined, overview: any, now: number): HomePulse | null {
+export function demiurgePulse(list: any[] | null | undefined, overview: any, now: number): HomePulse | null {
   if (!Array.isArray(list) && !overview) return null;
-  const projects = arr(list).map(p => ({
-    id: str(pick(p, 'projectID', 'ProjectID')),
-    name: str(pick(p, 'name', 'Name')) || 'Unnamed project',
+  const stewards = arr(list).map(p => ({
+    id: str(pick(p, 'stewardID', 'StewardID')),
+    name: str(pick(p, 'name', 'Name')) || 'Unnamed Steward',
     status: str(pick(p, 'status', 'Status')),
     halted: !!pick(p, 'halted', 'Halted'),
     approvals: n0(pick(p, 'pendingApprovals', 'PendingApprovals')),
     blocker: str(pick(p, 'blocker', 'Blocker')),
   }));
-  const live = projects.filter(p => !['archived', 'completed'].includes(p.status.toLowerCase()));
+  const live = stewards.filter(p => !['archived', 'completed'].includes(p.status.toLowerCase()));
   const halted = live.filter(p => p.halted);
   const paused = live.filter(p => !p.halted && /paused/i.test(p.status));
-  const working = num(pick(overview, 'workingProjects', 'WorkingProjects'));
+  const working = num(pick(overview, 'workingStewards', 'WorkingStewards'));
   const active = live.filter(p => !p.halted && /^(active|planning)$/i.test(p.status));
   const approvals = live.reduce((sum, p) => sum + p.approvals, 0);
   const blocked = live.filter(p => /blocked/i.test(p.status));
@@ -215,29 +215,29 @@ export function projectsPulse(list: any[] | null | undefined, overview: any, now
   if (approvals) {
     const first = live.find(p => p.approvals);
     findings.push({
-      id: 'projects:approvals', system: 'Projects', tone: 'warn',
+      id: 'demiurge:approvals', system: 'Demiurge', tone: 'warn',
       title: `${plural(approvals, 'approval')} waiting`,
       detail: live.filter(p => p.approvals).map(p => p.name).slice(0, 3).join(', '),
-      href: live.filter(p => p.approvals).length === 1 && first ? `/projects/${encodeURIComponent(first.id)}` : '/projects',
+      href: live.filter(p => p.approvals).length === 1 && first ? `/demiurge/${encodeURIComponent(first.id)}` : '/demiurge',
     });
   }
-  for (const project of blocked.slice(0, 2)) {
-    findings.push({ id: `projects:blocked:${project.id}`, system: 'Projects', tone: 'warn', title: `${project.name} is blocked`, detail: clip(project.blocker, 90), href: `/projects/${encodeURIComponent(project.id)}` });
+  for (const steward of blocked.slice(0, 2)) {
+    findings.push({ id: `demiurge:blocked:${steward.id}`, system: 'Demiurge', tone: 'warn', title: `${steward.name} is blocked`, detail: clip(steward.blocker, 90), href: `/demiurge/${encodeURIComponent(steward.id)}` });
   }
   if (halted.length && halted.length === live.length) {
-    findings.push({ id: 'projects:halted', system: 'Projects', tone: 'info', chronic: true, title: `Fleet halted · ${plural(halted.length, 'project')}`, href: '/projects', action: 'resume-fleet' });
+    findings.push({ id: 'demiurge:halted', system: 'Demiurge', tone: 'info', chronic: true, title: `Fleet halted · ${plural(halted.length, 'Steward')}`, href: '/demiurge', action: 'resume-fleet' });
   }
 
   const workingCount = working ?? active.length;
   let line: string;
-  if (!live.length) line = 'No live projects';
+  if (!live.length) line = 'No live Stewards';
   else if (halted.length === live.length) line = `All ${fmtInt(live.length)} halted`;
   else line = [`${fmtInt(active.length)} active`, paused.length ? `${fmtInt(paused.length)} paused` : '', halted.length ? `${fmtInt(halted.length)} halted` : ''].filter(Boolean).join(' · ');
 
   const series = arr(pick(overview, 'series', 'Series'));
   const spark = series.map((point: any, index: number) => ({ t: toMs(pick(point, 'day', 'Day', 't', 'T')) ?? index, v: n0(pick(point, 'spendUsd', 'SpendUsd', 'events', 'Events')) }));
   return {
-    id: 'projects', label: 'Projects', icon: 'projects', href: '/projects',
+    id: 'stewards', label: 'Demiurge', icon: 'stewards', href: '/demiurge',
     tone: findings.some(f => f.tone === 'warn') ? 'warn' : !live.length || halted.length === live.length ? 'idle' : 'ok',
     value: fmtInt(workingCount), unit: 'working', line,
     foot: approvals ? `${plural(approvals, 'approval')} waiting` : spend != null ? `${fmtMoney(spend, 'USD')} on models, 7 d` : undefined,
@@ -489,7 +489,7 @@ export function omnisciencePulse(stats: any): HomePulse | null {
     value: fmtInt(alerts), unit: alerts === 1 ? 'radar alert, 24 h' : 'radar alerts, 24 h',
     line: `${fmtCompact(stats.messages ?? 0)} messages · ${fmtCompact(stats.persons ?? 0)} people`,
     foot: stats.tracked != null ? `${fmtInt(stats.tracked)} tracked · ${fmtInt(stats.facts_active ?? 0)} facts` : undefined,
-    findings: alerts ? [{ id: 'omniscience:radar', system: 'Omniscience', tone: 'info', title: `${plural(alerts, 'radar alert')} in the last day`, href: '/omniscience' }] : [],
+    findings: alerts ? [{ id: 'omniscience:radar', system: 'Omniscience', tone: 'info', title: `${plural(alerts, 'radar alert')} in the last day`, href: '/omniscience?view=review&tab=mentions' }] : [],
   };
 }
 
@@ -559,7 +559,7 @@ export function bloxPulse(overview: any, now: number): HomePulse | null {
 /** Every tile this profile's sources allow, in a fixed order the frecency list then reorders. */
 export function buildPulses(sources: HomeSources, now: number): HomePulse[] {
   return [
-    projectsPulse(sources.projects, sources.projectsOverview, now),
+    demiurgePulse(sources.stewards, sources.demiurgeOverview, now),
     agentPulse(sources.agentStatus, sources.agentStats, sources.agentNotifications, sources.agentJobs),
     traderPulse(sources.trader, now),
     bloxPulse(sources.blox, now),
@@ -648,7 +648,7 @@ export interface HomePage { path: string; label: string; icon: string; group: st
 /** Every page worth offering from Home; the access table decides which a profile sees. */
 export const HOME_PAGES: HomePage[] = [
   { path: '/kliveagent', label: 'KliveAgent', icon: 'agent', group: 'Klive Suite', about: 'Talk to the agent, its jobs and notes', keywords: 'ai chat assistant' },
-  { path: '/projects', label: 'Projects', icon: 'projects', group: 'Klive Suite', about: 'Autonomous task forces', keywords: 'fleet commander agents' },
+  { path: '/demiurge', label: 'Demiurge', icon: 'stewards', group: 'Klive Suite', about: 'Autonomous task forces', keywords: 'fleet commander agents stewards projects' },
   { path: '/klivecloud', label: 'KliveCloud', icon: 'cloud', group: 'Klive Suite', about: 'Files, folders and share links', keywords: 'drive storage upload' },
   { path: '/klivemail', label: 'KliveMail', icon: 'mail', group: 'Klive Suite', about: 'Every mailbox on klive.dev', keywords: 'email inbox codes' },
   { path: '/klivechat', label: 'KliveChat', icon: 'chat', group: 'Klive Suite', about: 'Rooms and messages', keywords: 'chat rooms' },
@@ -693,7 +693,7 @@ export function decayed(record: VisitRecord, now: number): number {
   return record.score * Math.pow(0.5, Math.max(0, now - record.at) / FRECENCY_HALF_LIFE_MS);
 }
 
-/** Top-level page a path counts towards: a project counts as Projects, a person as Omniscience. */
+/** Top-level page a path counts towards: a Steward counts as Demiurge, a person as Omniscience. */
 export function pageKey(path: string): string {
   const clean = (path || '').split(/[?#]/)[0].replace(/\/+$/, '') || '/';
   const known = HOME_PAGES.map(page => page.path).sort((a, b) => b.length - a.length).find(prefix => clean === prefix || clean.startsWith(`${prefix}/`));
@@ -734,8 +734,8 @@ export function seedVisits(items: Array<{ page?: string; tsMs?: number; title?: 
 
 export interface HomeCommand {
   id: string;
-  /** "Projects" and "Services" are listed only once something is typed. */
-  group: 'Go to' | 'Actions' | 'Projects' | 'Services';
+  /** "Stewards" and "Services" are listed only once something is typed. */
+  group: 'Go to' | 'Actions' | 'Stewards' | 'Services';
   title: string;
   icon: string;
   keywords?: string;

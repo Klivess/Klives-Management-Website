@@ -161,9 +161,9 @@ test.describe('OmniSettings', () => {
     await page.getByTestId('view-secrets').click();
     await expect(page.getByTestId('ost-scope')).toHaveCount(0);
 
-    await page.getByTestId('rail-Projects').click();
+    await page.getByTestId('rail-Demiurge').click();
     await expect(page.locator('.ost-group')).toHaveCount(1);
-    await expect(page.getByTestId('ost-scope')).toContainText('3 settings in Projects');
+    await expect(page.getByTestId('ost-scope')).toContainText('3 settings in Demiurge');
     await page.getByTestId('rail-all').click();
     await expect(page.locator('.ost-group')).toHaveCount(9);
 
@@ -204,13 +204,13 @@ test.describe('OmniSettings', () => {
 
   test('typing in several rows collects in the tray, and Ctrl+S saves them all', async ({ page }) => {
     const api = await openSettings(page);
-    await row(page, 'Projects', 'Projects_CacheHaltWindowMinutes').getByRole('textbox').fill('45');
+    await row(page, 'Demiurge', 'Demiurge_CacheHaltWindowMinutes').getByRole('textbox').fill('45');
     await row(page, 'CS2ArbitrageBot', 'CS2ArbitrageMinimumProfitPence').getByRole('textbox').fill('30');
     await expect(page.getByTestId('ost-tray')).toContainText('2 unsaved');
     await page.keyboard.press('Control+s');
     await expect.poll(() => api.sets.length).toBe(2);
     expect(api.sets.map(set => [set.name, set.value])).toEqual([
-      ['Projects_CacheHaltWindowMinutes', '45'],
+      ['Demiurge_CacheHaltWindowMinutes', '45'],
       ['CS2ArbitrageMinimumProfitPence', '30'],
     ]);
     await expect(page.getByTestId('ost-tray')).toHaveCount(0);
@@ -230,8 +230,8 @@ test.describe('OmniSettings', () => {
   });
 
   test('a link with ?focus= lands on that setting', async ({ page }) => {
-    await openSettings(page, { path: '/administration/omnisettings?focus=Projects_FileMaxSizeGb' });
-    const target = row(page, 'Projects', 'Projects_FileMaxSizeGb');
+    await openSettings(page, { path: '/administration/omnisettings?focus=Demiurge_FileMaxSizeGb' });
+    const target = row(page, 'Demiurge', 'Demiurge_FileMaxSizeGb');
     await expect(target.getByRole('textbox')).toBeFocused();
     await expect(target).toHaveAttribute('data-flash', 'true');
   });
@@ -256,10 +256,10 @@ test.describe('OmniSettings', () => {
     const api = await openSettings(page, { readOnly: true });
     await expect(page.getByTestId('ost-readonly')).toBeVisible();
     await expect(row(page, 'KliveAgent', 'KliveAgent_VisionEnabled').getByRole('switch')).toBeDisabled();
-    await expect(row(page, 'Projects', 'Projects_FileMaxSizeGb').getByRole('textbox')).toHaveAttribute('readonly', '');
+    await expect(row(page, 'Demiurge', 'Demiurge_FileMaxSizeGb').getByRole('textbox')).toHaveAttribute('readonly', '');
     await expect(group(page, 'KliveLLM').getByLabel('Replacement value for OpenRouterLLMToken', { exact: true })).toBeDisabled();
     await expect(page.getByTestId('need-remove-duplicate')).toHaveCount(0);
-    await expect(page.getByTestId('delete-Projects_FileMaxSizeGb')).toHaveCount(0);
+    await expect(page.getByTestId('delete-Demiurge_FileMaxSizeGb')).toHaveCount(0);
     expect(api.sets).toEqual([]);
   });
 

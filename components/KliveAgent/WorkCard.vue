@@ -20,7 +20,7 @@
           <template v-else>{{ plainText(job.result || job.goal, 140) }} · {{ shortWhen(job.lastUpdated, now) }}</template>
         </span>
         <span class="kax-row__actions">
-          <NuxtLink v-if="job.projectId" class="kax-btn kax-btn--xs" :to="`/projects/${job.projectId}`"><KliveAgentIcon name="external" />Project</NuxtLink>
+          <NuxtLink v-if="job.stewardId" class="kax-btn kax-btn--xs" :to="`/demiurge/${job.stewardId}`"><KliveAgentIcon name="external" />Steward</NuxtLink>
           <button v-if="canManage && canSteerJob(job)" class="kax-btn kax-btn--xs" type="button" @click="steering = steering === job.jobId ? null : job.jobId">Steer</button>
           <button v-if="canManage && canStopJob(job)" class="kax-btn kax-btn--xs kax-btn--danger" type="button" @click="emit('stop', job)">Stop</button>
           <button v-if="canManage && canResumeJob(job)" class="kax-btn kax-btn--xs kax-btn--ok" type="button" @click="emit('resume', job)">Resume</button>

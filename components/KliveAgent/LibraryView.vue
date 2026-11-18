@@ -51,7 +51,7 @@
               </span>
               <p class="kax-item__text" :data-clamped="!expanded.has(m.id)" @click="toggle(m.id)">{{ m.content }}</p>
               <div class="kax-item__meta">
-                <span class="kax-chip" :data-tone="m.source === 'projects' ? 'info' : m.source === 'user' ? 'accent' : 'neutral'">{{ m.source || 'agent' }}</span>
+                <span class="kax-chip" :data-tone="sourceOf(m) === 'demiurge' ? 'info' : sourceOf(m) === 'user' ? 'accent' : 'neutral'">{{ sourceOf(m) }}</span>
                 <span v-if="m.memoryType" class="kax-chip" data-tone="neutral">{{ m.memoryType }}</span>
                 <span v-for="t in (m.tags || []).slice(0, 6)" :key="t">#{{ t }}</span>
                 <span style="margin-left: auto">{{ shortWhen(m.createdAt, now) }}</span>
@@ -155,14 +155,14 @@ const loading = reactive({ memories: false, shortcuts: false, capabilities: fals
 const loaded = reactive(new Set<LibTab>());
 const expanded = ref(new Set<string>());
 const tags = ref<string[]>([]);
-const source = ref<'all' | 'agent' | 'projects' | 'user'>('all');
+const source = ref<'all' | 'agent' | 'demiurge' | 'user'>('all');
 const shownCount = ref(60);
 const recalled = ref('');
 const adding = ref(false);
 const saving = ref(false);
 const draft = reactive({ content: '', tags: '' });
 
-const SOURCES = [{ id: 'all', label: 'All' }, { id: 'agent', label: 'Agent' }, { id: 'projects', label: 'Projects' }, { id: 'user', label: 'You' }] as const;
+const SOURCES = [{ id: 'all', label: 'All' }, { id: 'agent', label: 'Agent' }, { id: 'demiurge', label: 'Demiurge' }, { id: 'user', label: 'You' }] as const;
 
 const tabs = computed(() => [
   { id: 'memories' as const, label: 'Memories', icon: 'memory', count: loaded.has('memories') ? memories.value.length : null },
@@ -216,7 +216,9 @@ async function recall() {
 }
 function clearRecall() { recalled.value = ''; void load('memories', true); }
 
-const sourceCount = (id: string) => (id === 'all' ? memories.value.length : memories.value.filter(m => (m.source || 'agent') === id).length);
+// Memories saved by Stewards before Projects became Demiurge say "projects".
+const sourceOf = (m: any): string => { const s = m?.source || 'agent'; return s === 'projects' ? 'demiurge' : s; };
+const sourceCount = (id: string) => (id === 'all' ? memories.value.length : memories.value.filter(m => sourceOf(m) === id).length);
 const topTags = computed(() => {
   const counts = new Map<string, number>();
   memories.value.forEach(m => (m.tags || []).forEach((t: string) => counts.set(t, (counts.get(t) ?? 0) + 1)));
@@ -226,7 +228,7 @@ function toggleTag(tag: string) { tags.value = tags.value.includes(tag) ? tags.v
 const needle = computed(() => text.value.trim().toLowerCase());
 const matches = (item: any) => !needle.value || `${item.title ?? ''} ${item.content ?? ''} ${(item.tags || []).join(' ')}`.toLowerCase().includes(needle.value);
 const visibleMemories = computed(() => memories.value
-  .filter(m => source.value === 'all' || (m.source || 'agent') === source.value)
+  .filter(m => source.value === 'all' || sourceOf(m) === source.value)
   .filter(m => !tags.value.length || tags.value.every(t => (m.tags || []).includes(t)))
   .filter(matches)
   .sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? ''))));

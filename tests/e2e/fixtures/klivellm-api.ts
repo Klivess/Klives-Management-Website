@@ -46,9 +46,9 @@ const ROUTERS = [
 const LANES = [
   { service: 'KliveAgent', lane: 'chat', label: 'Chat', description: 'Klives talking to KliveAgent', workClass: 'Interactive', needsToolCalling: true, defaultSpending: 'PrimaryOnly', modelSource: 'KliveAgent_FastModel', fixedRouter: null, perDay: 120, prompt: 18_000, completion: 900 },
   { service: 'KliveAgent', lane: 'speech', label: 'Speech', description: 'Whisper and Kokoro', workClass: 'Interactive', needsToolCalling: false, defaultSpending: 'PrimaryOnly', modelSource: null, fixedRouter: 'airouter', perDay: 15, prompt: 0, completion: 0 },
-  { service: 'Projects', lane: 'commander', label: 'Commander', description: 'Each project’s planner', workClass: 'Background', needsToolCalling: true, defaultSpending: 'PrimaryOnly', modelSource: 'per-project model routes', fixedRouter: null, perDay: 900, prompt: 42_000, completion: 1_100 },
-  { service: 'Projects', lane: 'subagent', label: 'Sub-agents', description: 'Workers a commander starts', workClass: 'Background', needsToolCalling: true, defaultSpending: 'PrimaryOnly', modelSource: 'per-project model routes', fixedRouter: null, perDay: 1_500, prompt: 28_000, completion: 700 },
-  { service: 'Projects', lane: 'utility', label: 'Utility', description: 'Summaries and titles', workClass: 'Background', needsToolCalling: false, defaultSpending: 'PrimaryOnly', modelSource: null, fixedRouter: null, perDay: 300, prompt: 3_000, completion: 300 },
+  { service: 'Demiurge', lane: 'commander', label: 'Commander', description: 'Each Steward’s planner', workClass: 'Background', needsToolCalling: true, defaultSpending: 'PrimaryOnly', modelSource: 'per-Steward model routes', fixedRouter: null, perDay: 900, prompt: 42_000, completion: 1_100 },
+  { service: 'Demiurge', lane: 'subagent', label: 'Sub-agents', description: 'Workers a commander starts', workClass: 'Background', needsToolCalling: true, defaultSpending: 'PrimaryOnly', modelSource: 'per-Steward model routes', fixedRouter: null, perDay: 1_500, prompt: 28_000, completion: 700 },
+  { service: 'Demiurge', lane: 'utility', label: 'Utility', description: 'Summaries and titles', workClass: 'Background', needsToolCalling: false, defaultSpending: 'PrimaryOnly', modelSource: null, fixedRouter: null, perDay: 300, prompt: 3_000, completion: 300 },
   { service: 'OmniBlox', lane: 'agents', label: 'Studio agents', description: 'The game builders', workClass: 'Background', needsToolCalling: true, defaultSpending: 'Never', modelSource: null, fixedRouter: null, perDay: 400, prompt: 24_000, completion: 1_400 },
   { service: 'Omniscience', lane: 'profiling', label: 'Profiling', description: 'Free-model profile passes', workClass: 'Batch', needsToolCalling: false, defaultSpending: 'Never', modelSource: null, fixedRouter: null, perDay: 2_000, prompt: 2_000, completion: 400, free: true },
   { service: 'Stratum', lane: 'engineer', label: 'Engineer', description: 'The geometry agent', workClass: 'Interactive', needsToolCalling: true, defaultSpending: 'PrimaryOnly', modelSource: 'StratumEngineerModelID', fixedRouter: null, perDay: 30, prompt: 30_000, completion: 2_000 },
@@ -148,7 +148,7 @@ export async function installLlmApiMock(page: Page, options: LlmMockOptions = {}
   const laneRow = (lane: (typeof LANES)[number]) => ({
     key: lane.key, service: lane.service, lane: lane.lane, label: lane.label, description: lane.description, catalogued: true,
     workClass: lane.workClass, needsToolCalling: lane.needsToolCalling, defaultSpending: lane.defaultSpending, modelSource: lane.modelSource,
-    modelSourceLink: null, fixedRouter: lane.fixedRouter, sessions: lane.service === 'Projects' ? 6 : 1, warmSessions: lane.service === 'Projects' ? 4 : 1,
+    modelSourceLink: null, fixedRouter: lane.fixedRouter, sessions: lane.service === 'Demiurge' ? 6 : 1, warmSessions: lane.service === 'Demiurge' ? 4 : 1,
     effective: resolve(lane),
   });
 
@@ -306,7 +306,7 @@ export async function installLlmApiMock(page: Page, options: LlmMockOptions = {}
     const eff = resolve(lane);
     const prompt = lane.prompt, completion = lane.completion;
     return {
-      id, startedMs: Date.now() - ago - 6_000, endedMs: Date.now() - ago, service: lane.service, lane: lane.lane, laneLabel: lane.label, subject: lane.service === 'Projects' ? 'tiktok-growth' : null,
+      id, startedMs: Date.now() - ago - 6_000, endedMs: Date.now() - ago, service: lane.service, lane: lane.lane, laneLabel: lane.label, subject: lane.service === 'Demiurge' ? 'tiktok-growth' : null,
       operation: null, session: `s-${lane.lane}-1`, kind: lane.needsToolCalling ? 'tool' : 'chat', workClass: lane.workClass, router: eff.router, routerName: eff.routerName,
       provider: eff.router.startsWith('openrouter') ? 'Together' : null, modelRequested: eff.model, model: eff.model, stream: true, outcome,
       httpStatus: outcome === 'ok' ? 200 : 503, finishReason: outcome === 'ok' ? 'stop' : null, attempts: outcome === 'ok' ? 1 : 3,
@@ -361,7 +361,7 @@ export async function installLlmApiMock(page: Page, options: LlmMockOptions = {}
         return { status: 200, body: {
           asOf: Date.now(), ledger: overview(q).ledger, ledgerError: null,
           inFlight: [
-            { id: 99_001, service: 'Projects', lane: 'commander', laneLabel: 'Commander', laneKey: 'Projects/commander', subject: 'tiktok-growth', kind: 'tool', router: resolve(LANES[2]).router, routerName: resolve(LANES[2]).routerName, model: resolve(LANES[2]).model, state: 'Streaming', elapsedMs: 4_200, stateMs: 1_000, queueMs: 300, ttftMs: 900, streamedChars: 420, attempts: 1, fallbackFrom: null, sessionId: 's-1', workClass: 'Background' },
+            { id: 99_001, service: 'Demiurge', lane: 'commander', laneLabel: 'Commander', laneKey: 'Demiurge/commander', subject: 'tiktok-growth', kind: 'tool', router: resolve(LANES[2]).router, routerName: resolve(LANES[2]).routerName, model: resolve(LANES[2]).model, state: 'Streaming', elapsedMs: 4_200, stateMs: 1_000, queueMs: 300, ttftMs: 900, streamedChars: 420, attempts: 1, fallbackFrom: null, sessionId: 's-1', workClass: 'Background' },
             { id: 99_002, service: 'OmniBlox', lane: 'agents', laneKey: 'OmniBlox/agents', subject: 'game-7', kind: 'tool', router: 'airouter', routerName: 'AIRouter', model: 'Qwen3.8', state: 'Queued', elapsedMs: 1_900, stateMs: 1_900, queueMs: 1_900, ttftMs: null, streamedChars: 0, attempts: 1, fallbackFrom: null, sessionId: 's-2', workClass: 'Background' },
           ],
           recent: calls.slice(0, 30),
@@ -416,7 +416,7 @@ export async function installLlmApiMock(page: Page, options: LlmMockOptions = {}
         const w = windowOf(q);
         const by = q.get('groupBy') ?? 'lane';
         const scale = q.get('from') && Number(q.get('to')) <= Date.now() - 60_000 ? 0.8 : 1;
-        if (by === 'subject') return { status: 200, body: { from: w.from, to: w.to, groupBy: 'subject', groups: [{ key: 'Projects#tiktok-growth', subject: 'tiktok-growth', service: 'Projects', lanes: ['commander', 'subagent'], values: sum([laneValues(LANES[2], w.days, 0.6)]) }] } };
+        if (by === 'subject') return { status: 200, body: { from: w.from, to: w.to, groupBy: 'subject', groups: [{ key: 'Demiurge#tiktok-growth', subject: 'tiktok-growth', service: 'Demiurge', lanes: ['commander', 'subagent'], values: sum([laneValues(LANES[2], w.days, 0.6)]) }] } };
         const groups = groupsOf(q, by, w, scale);
         const total = sum(groups.map(g => g.values));
         return { status: 200, body: { from: w.from, to: w.to, step: w.step, groupBy: by, total, groups: groups.map(g => ({
@@ -509,7 +509,7 @@ export async function installLlmApiMock(page: Page, options: LlmMockOptions = {}
         return;
       }
       if (url.pathname === '/klivellm/export') {
-        await route.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*', 'content-type': 'text/csv' }, body: 'id,service\n1,Projects\n' });
+        await route.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*', 'content-type': 'text/csv' }, body: 'id,service\n1,Demiurge\n' });
         return;
       }
       const answer = getResponse(pathWithQuery);
@@ -528,7 +528,7 @@ export async function installLlmApiMock(page: Page, options: LlmMockOptions = {}
         const next = body.document;
         const lanes = LANES.map(l => ({ l, before: resolve(l), after: resolve(l, next) }))
           .filter(x => JSON.stringify([x.before.router, x.before.model, x.before.spending, x.before.blocked]) !== JSON.stringify([x.after.router, x.after.model, x.after.spending, x.after.blocked]))
-          .map(x => ({ key: x.l.key, label: `${x.l.service} › ${x.l.label}`, before: x.before, after: x.after, warmSessionsGoingCold: x.before.router !== x.after.router ? (x.l.service === 'Projects' ? 4 : 1) : 0 }));
+          .map(x => ({ key: x.l.key, label: `${x.l.service} › ${x.l.label}`, before: x.before, after: x.after, warmSessionsGoingCold: x.before.router !== x.after.router ? (x.l.service === 'Demiurge' ? 4 : 1) : 0 }));
         await fulfilJson(route, { valid: true, error: null, conflict: body.baseRevision !== state.revision, revision: state.revision, changes: changesBetween(state.document, next), lanes });
         return;
       }

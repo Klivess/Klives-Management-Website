@@ -2321,52 +2321,52 @@ export const PERMISSIONS: FixturePermission[] = [
     "sensitive": true
   },
   {
-    "key": "projects.overview.view",
-    "service": "Projects",
-    "serviceKey": "projects",
+    "key": "demiurge.overview.view",
+    "service": "Demiurge",
+    "serviceKey": "demiurge",
     "area": "Overview",
     "tier": "Glance",
     "tierValue": 1,
-    "title": "View projects overview",
-    "description": "The project list, fleet health, cache health and broadcast status.",
+    "title": "View Stewards overview",
+    "description": "The Steward list, fleet health, cache health and broadcast status.",
     "legacyRank": 5,
     "implies": [],
     "sensitive": false
   },
   {
-    "key": "projects.details.read",
-    "service": "Projects",
-    "serviceKey": "projects",
-    "area": "Projects",
+    "key": "demiurge.details.read",
+    "service": "Demiurge",
+    "serviceKey": "demiurge",
+    "area": "Stewards",
     "tier": "Read",
     "tierValue": 2,
-    "title": "Read project details",
+    "title": "Read Steward details",
     "description": "State, events, digests, ledgers, analytics, agents, plans, councils, memory, gates, hooks and artifacts.",
     "legacyRank": 5,
     "implies": [
-      "projects.overview.view"
+      "demiurge.overview.view"
     ],
     "sensitive": true
   },
   {
-    "key": "projects.events.stream",
-    "service": "Projects",
-    "serviceKey": "projects",
-    "area": "Projects",
+    "key": "demiurge.events.stream",
+    "service": "Demiurge",
+    "serviceKey": "demiurge",
+    "area": "Stewards",
     "tier": "Read",
     "tierValue": 2,
-    "title": "Stream project events",
-    "description": "The live event stream of a project.",
+    "title": "Stream Steward events",
+    "description": "The live event stream of a Steward.",
     "legacyRank": 5,
     "implies": [
-      "projects.details.read"
+      "demiurge.details.read"
     ],
     "sensitive": false
   },
   {
-    "key": "projects.screens.view",
-    "service": "Projects",
-    "serviceKey": "projects",
+    "key": "demiurge.screens.view",
+    "service": "Demiurge",
+    "serviceKey": "demiurge",
     "area": "Computers",
     "tier": "Read",
     "tierValue": 2,
@@ -2374,44 +2374,44 @@ export const PERMISSIONS: FixturePermission[] = [
     "description": "Live video of the agents' container desktops.",
     "legacyRank": 5,
     "implies": [
-      "projects.details.read"
+      "demiurge.details.read"
     ],
     "sensitive": false
   },
   {
-    "key": "projects.files.read",
-    "service": "Projects",
-    "serviceKey": "projects",
+    "key": "demiurge.files.read",
+    "service": "Demiurge",
+    "serviceKey": "demiurge",
     "area": "Files",
     "tier": "Read",
     "tierValue": 2,
-    "title": "Read project files",
-    "description": "List, inspect and download project files and their audit trail.",
+    "title": "Read Steward files",
+    "description": "List, inspect and download Steward files and their audit trail.",
     "legacyRank": 5,
     "implies": [
-      "projects.details.read"
+      "demiurge.details.read"
     ],
     "sensitive": false
   },
   {
-    "key": "projects.agents.message",
-    "service": "Projects",
-    "serviceKey": "projects",
+    "key": "demiurge.agents.message",
+    "service": "Demiurge",
+    "serviceKey": "demiurge",
     "area": "Agents",
     "tier": "Act",
     "tierValue": 3,
     "title": "Message agents",
-    "description": "Message a project's commander or agents and broadcast to every project.",
+    "description": "Message a Steward's commander or agents and broadcast to every Steward.",
     "legacyRank": 5,
     "implies": [
-      "projects.details.read"
+      "demiurge.details.read"
     ],
     "sensitive": false
   },
   {
-    "key": "projects.gates.resolve",
-    "service": "Projects",
-    "serviceKey": "projects",
+    "key": "demiurge.gates.resolve",
+    "service": "Demiurge",
+    "serviceKey": "demiurge",
     "area": "Agents",
     "tier": "Act",
     "tierValue": 3,
@@ -2419,104 +2419,104 @@ export const PERMISSIONS: FixturePermission[] = [
     "description": "Approve or reject what agents ask permission for.",
     "legacyRank": 5,
     "implies": [
-      "projects.details.read"
+      "demiurge.details.read"
     ],
     "sensitive": false
   },
   {
-    "key": "projects.plan.edit",
-    "service": "Projects",
-    "serviceKey": "projects",
+    "key": "demiurge.plan.edit",
+    "service": "Demiurge",
+    "serviceKey": "demiurge",
     "area": "Planning",
     "tier": "Act",
     "tierValue": 3,
     "title": "Edit plans and memory",
-    "description": "Add, reorder, activate and close steps, edit project memory and observables, pin results.",
+    "description": "Add, reorder, activate and close steps, edit Steward memory and observables, pin results.",
     "legacyRank": 5,
     "implies": [
-      "projects.details.read"
+      "demiurge.details.read"
     ],
     "sensitive": false
   },
   {
-    "key": "projects.files.write",
-    "service": "Projects",
-    "serviceKey": "projects",
+    "key": "demiurge.files.write",
+    "service": "Demiurge",
+    "serviceKey": "demiurge",
     "area": "Files",
     "tier": "Act",
     "tierValue": 3,
-    "title": "Write project files",
-    "description": "Upload, move, copy and organise project files.",
+    "title": "Write Steward files",
+    "description": "Upload, move, copy and organise Steward files.",
     "legacyRank": 5,
     "implies": [
-      "projects.files.read"
+      "demiurge.files.read"
     ],
     "sensitive": false
   },
   {
-    "key": "projects.files.delete",
-    "service": "Projects",
-    "serviceKey": "projects",
+    "key": "demiurge.files.delete",
+    "service": "Demiurge",
+    "serviceKey": "demiurge",
     "area": "Files",
     "tier": "Manage",
     "tierValue": 4,
-    "title": "Delete project files",
-    "description": "Delete project files.",
+    "title": "Delete Steward files",
+    "description": "Delete Steward files.",
     "legacyRank": 5,
     "implies": [
-      "projects.files.read"
+      "demiurge.files.read"
     ],
     "sensitive": false
   },
   {
-    "key": "projects.lifecycle.manage",
-    "service": "Projects",
-    "serviceKey": "projects",
-    "area": "Projects",
+    "key": "demiurge.lifecycle.manage",
+    "service": "Demiurge",
+    "serviceKey": "demiurge",
+    "area": "Stewards",
     "tier": "Manage",
     "tierValue": 4,
-    "title": "Run projects",
-    "description": "Create, pause, resume, archive and rename projects, change budgets and settings, retire agents.",
+    "title": "Run Stewards",
+    "description": "Create, pause, resume, archive and rename Stewards, change budgets and settings, retire agents.",
     "legacyRank": 5,
     "implies": [
-      "projects.details.read"
+      "demiurge.details.read"
     ],
     "sensitive": false
   },
   {
-    "key": "projects.fleet.control",
-    "service": "Projects",
-    "serviceKey": "projects",
+    "key": "demiurge.fleet.control",
+    "service": "Demiurge",
+    "serviceKey": "demiurge",
     "area": "Fleet",
     "tier": "Critical",
     "tierValue": 5,
     "title": "Control the whole fleet",
-    "description": "Halt and resume every project, change system-wide settings and reset cache health.",
+    "description": "Halt and resume every Steward, change system-wide settings and reset cache health.",
     "legacyRank": 5,
     "implies": [
-      "projects.overview.view"
+      "demiurge.overview.view"
     ],
     "sensitive": false
   },
   {
-    "key": "projects.hooks.manage",
-    "service": "Projects",
-    "serviceKey": "projects",
+    "key": "demiurge.hooks.manage",
+    "service": "Demiurge",
+    "serviceKey": "demiurge",
     "area": "Hooks",
     "tier": "Critical",
     "tierValue": 5,
     "title": "Manage hooks",
-    "description": "Create and delete project hooks and rotate their tokens.",
+    "description": "Create and delete Steward hooks and rotate their tokens.",
     "legacyRank": 5,
     "implies": [
-      "projects.details.read"
+      "demiurge.details.read"
     ],
     "sensitive": true
   },
   {
-    "key": "projects.screens.control",
-    "service": "Projects",
-    "serviceKey": "projects",
+    "key": "demiurge.screens.control",
+    "service": "Demiurge",
+    "serviceKey": "demiurge",
     "area": "Computers",
     "tier": "Critical",
     "tierValue": 5,
@@ -2524,7 +2524,7 @@ export const PERMISSIONS: FixturePermission[] = [
     "description": "Send mouse and keyboard input to agent desktops.",
     "legacyRank": 5,
     "implies": [
-      "projects.screens.view"
+      "demiurge.screens.view"
     ],
     "sensitive": true
   },

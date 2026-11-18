@@ -251,7 +251,7 @@
       </template>
     </KliveAgentDialog>
 
-    <KliveAgentDialog :open="jobOpen" title="Start a background job" sub="It runs in parallel as a Projects task force and reports back here and on Discord." icon="layers" tone="accent" testid="kax-job-dialog" @close="jobOpen = false">
+    <KliveAgentDialog :open="jobOpen" title="Start a background job" sub="It runs in parallel as a Demiurge task force and reports back here and on Discord." icon="layers" tone="accent" testid="kax-job-dialog" @close="jobOpen = false">
       <label class="kax-field">Name<input v-model="jobDraft.name" class="kax-input" placeholder="optional" /></label>
       <label class="kax-field">Goal<textarea v-model="jobDraft.goal" class="kax-input" rows="4" placeholder="What should KliveAgent accomplish?" data-autofocus data-testid="kax-job-goal"></textarea></label>
       <label class="kax-field">Token budget (USD)<input v-model.number="jobDraft.tokenBudgetUsd" class="kax-input" type="number" min="0.1" step="0.5" style="width: 140px" /></label>
@@ -457,7 +457,7 @@ function startNewChat() {
 
 async function openNote(note: AgentNote) {
   void agent.markRead(note);
-  if (note.kind === 'job-attention' && note.projectId) { await navigateTo(`/projects/${note.projectId}`); return; }
+  if (note.kind === 'job-attention' && note.stewardId) { await navigateTo(`/demiurge/${note.stewardId}`); return; }
   // A message from the server's own watch (scripts failing more, provider slow): the figures are in Insights.
   if (note.kind?.startsWith('health-')) { setView('insights'); return; }
   if (note.conversationId) await openConversation(note.conversationId);

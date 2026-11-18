@@ -29,9 +29,9 @@
         <span v-if="upload.active" class="hom-qa__progress" :style="{ transform: `scaleX(${upload.percent / 100})` }"></span>
       </button>
 
-      <NuxtLink v-if="caps.newProject" class="hom-qa" to="/projects/new" data-testid="qa-new-project">
+      <NuxtLink v-if="caps.newSteward" class="hom-qa" to="/demiurge/new" data-testid="qa-new-steward">
         <span class="hom-qa__icon"><HomeIcon name="plus" /></span>
-        <span class="hom-qa__text"><b>New project</b><small>brief a task force</small></span>
+        <span class="hom-qa__text"><b>New Steward</b><small>brief a task force</small></span>
       </NuxtLink>
 
       <button v-if="mailCode" class="hom-qa hom-qa--code" :title="`${mailCode.subject} — from ${mailCode.from}`" data-testid="qa-copy-code" @click="emit('copy-code')">
@@ -73,11 +73,11 @@ import { fmtInt, fmtRelative } from '~/scripts/adminConsole';
 import type { MailCode } from '~/scripts/home';
 
 /*
- * The things people come to Home to do: ask the agent, put a file in the cloud, start a project, grab the
+ * The things people come to Home to do: ask the agent, put a file in the cloud, start a Steward, grab the
  * sign-in code that just arrived. The stronger controls sit below, each asking before it acts.
  */
 const props = defineProps<{
-  caps: { ask: boolean; upload: boolean; newProject: boolean; restart: boolean; fleet: boolean; safeMode: boolean };
+  caps: { ask: boolean; upload: boolean; newSteward: boolean; restart: boolean; fleet: boolean; safeMode: boolean };
   upload: { active: boolean; done: number; total: number; percent: number; name: string };
   mailCode: MailCode | null;
   mailUnread: number | null;
@@ -112,8 +112,8 @@ const controls = computed(() => {
     list.push({ id: 'restart', label: props.pending.restart ? `Restarting ${props.pending.restart}` : `Restart ${name}`, icon: 'restart', tone: 'warn', title: `Start ${name} again`, disabled: !!props.pending.restart, spinning: !!props.pending.restart });
   }
   if (props.caps.fleet && props.fleet.live) {
-    if (props.fleet.halted === props.fleet.live) list.push({ id: 'resume', label: 'Resume fleet', icon: 'play', tone: 'ok', title: `Un-halt all ${props.fleet.halted} projects`, disabled: props.pending.fleet, spinning: props.pending.fleet });
-    else list.push({ id: 'halt', label: 'Halt fleet', icon: 'pause', tone: 'warn', title: `Halt the ${props.fleet.live - props.fleet.halted} running projects`, disabled: props.pending.fleet, spinning: props.pending.fleet });
+    if (props.fleet.halted === props.fleet.live) list.push({ id: 'resume', label: 'Resume fleet', icon: 'play', tone: 'ok', title: `Un-halt all ${props.fleet.halted} Stewards`, disabled: props.pending.fleet, spinning: props.pending.fleet });
+    else list.push({ id: 'halt', label: 'Halt fleet', icon: 'pause', tone: 'warn', title: `Halt the ${props.fleet.live - props.fleet.halted} running Stewards`, disabled: props.pending.fleet, spinning: props.pending.fleet });
   }
   if (props.caps.safeMode && props.safeModeOn === false) list.push({ id: 'safe-mode', label: 'Firm safe mode', icon: 'shield', tone: 'crit', title: 'Block new Firm orders', disabled: props.pending.safeMode, spinning: props.pending.safeMode });
   return list;

@@ -11,9 +11,9 @@ import { openDashboard, type DashboardRole } from './fixtures/dashboard-api';
 const SCREENS = 'test-results/home';
 
 const halted = [
-  { projectID: 'p1', name: 'Shop launch', status: 'Paused', halted: true, pendingApprovals: 0 },
-  { projectID: 'p2', name: 'Supplier research', status: 'Paused', halted: true, pendingApprovals: 0 },
-  { projectID: 'p3', name: 'Old work', status: 'Archived', halted: false, pendingApprovals: 0 },
+  { stewardID: 'p1', name: 'Shop launch', status: 'Paused', halted: true, pendingApprovals: 0 },
+  { stewardID: 'p2', name: 'Supplier research', status: 'Paused', halted: true, pendingApprovals: 0 },
+  { stewardID: 'p3', name: 'Old work', status: 'Archived', halted: false, pendingApprovals: 0 },
 ];
 
 /** The hero shows four findings; the fixture has more, so tests that want a specific one open the rest. */
@@ -36,14 +36,14 @@ for (const role of ['Guest', 'Admin', 'Klives'] as DashboardRole[]) {
 
     const owner = role === 'Klives';
     await expect(page.getByTestId('home-ask')).toHaveCount(owner ? 1 : 0);
-    await expect(page.getByTestId('qa-new-project')).toHaveCount(owner ? 1 : 0);
+    await expect(page.getByTestId('qa-new-steward')).toHaveCount(owner ? 1 : 0);
     await expect(page.getByTestId('qa-upload')).toBeVisible();
-    await expect(page.getByTestId('pulse-projects')).toHaveCount(owner ? 1 : 0);
+    await expect(page.getByTestId('pulse-stewards')).toHaveCount(owner ? 1 : 0);
     await expect(page.getByTestId('pulse-blox')).toHaveCount(role === 'Guest' ? 0 : 1);
 
     await expect.poll(() => api.batchCalls).toBeGreaterThanOrEqual(3);
     if (!owner) {
-      const forbidden = ['/projects/', '/kliveagent/', '/omnidefence/', '/omniscience/', '/klivemail/', '/klivetech/', '/klivegames/', '/klivelink/', '/KMProfiles/activity'];
+      const forbidden = ['/demiurge/', '/kliveagent/', '/omnidefence/', '/omniscience/', '/klivemail/', '/klivetech/', '/klivegames/', '/klivelink/', '/KMProfiles/activity'];
       expect(api.requestedPaths.filter(path => forbidden.some(prefix => path.startsWith(prefix))), `${role} must not probe routes it cannot read`).toEqual([]);
     }
     if (role === 'Guest') {
@@ -178,7 +178,7 @@ test('a fresh sign-in code is one click to copy and never kept in storage', asyn
 });
 
 test('upload from the button, and resume a halted fleet after confirming', async ({ page }) => {
-  const api = await openDashboard(page, 'Klives', { overrides: { '/projects/list': halted } });
+  const api = await openDashboard(page, 'Klives', { overrides: { '/demiurge/list': halted } });
 
   const chooser = page.waitForEvent('filechooser');
   await page.getByTestId('qa-upload').click();
@@ -188,15 +188,15 @@ test('upload from the button, and resume a halted fleet after confirming', async
   await expect(page.getByTestId('home-quiet')).toContainText('Fleet halted');
   await page.getByTestId('ctl-resume').click();
   const dialog = page.getByTestId('home-confirm');
-  await expect(dialog).toContainText('Resume 2 projects?');
+  await expect(dialog).toContainText('Resume 2 Stewards?');
   // Cancel has the focus: Enter by reflex does nothing.
   await page.keyboard.press('Enter');
   await expect(dialog).toHaveCount(0);
-  expect(api.mutations.some(m => m.path === '/projects/unhalt-all')).toBe(false);
+  expect(api.mutations.some(m => m.path === '/demiurge/unhalt-all')).toBe(false);
 
   await page.getByTestId('ctl-resume').click();
   await page.getByTestId('home-confirm-confirm').click();
-  await expect.poll(() => api.mutations.some(m => m.path === '/projects/unhalt-all')).toBe(true);
+  await expect.poll(() => api.mutations.some(m => m.path === '/demiurge/unhalt-all')).toBe(true);
 });
 
 test('fits a laptop above the fold without sideways scrolling', async ({ page }) => {

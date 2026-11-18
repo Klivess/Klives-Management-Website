@@ -39,7 +39,7 @@ const ICONS: Record<string, string> = {
   external: 'M14 5h5v5 M19 5l-8 8 M17 13v6H5V7h6',
   // systems
   agent: 'M12 3l1.8 4.7 4.7 1.8-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z M18.5 14.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z',
-  projects: 'M5 5h5v5H5z M14 5h5v5h-5z M14 14h5v5h-5z M10 7.5h4 M16.5 10v4 M5 14h5v5H5z M7.5 10v4',
+  stewards: 'M5 5h5v5H5z M14 5h5v5h-5z M14 14h5v5h-5z M10 7.5h4 M16.5 10v4 M5 14h5v5H5z M7.5 10v4',
   cloud: 'M7 18.5h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.1 9.6 4.5 4.5 0 0 0 7 18.5z',
   mail: 'M4 6h16v12H4z M4.5 7l7.5 6 7.5-6',
   trader: 'M3 17l6-6 4 4 8-8 M15 7h6v6',

@@ -97,10 +97,10 @@ function seed(): FakeSetting[] {
     // OmniTrader
     secret('OmniTrader', 'OmniTrader.Trading212.Live.ApiSecret', false),
     secret('OmniTrader', 'OmniTrader.FRED.ApiKey', false, { ReadThisSession: false, LastReadUtc: undefined }),
-    // Projects
-    row('Projects', 'Projects_CacheHaltWindowMinutes', Int, '30', { DefaultValue: '30' }),
-    row('Projects', 'Projects_FileMaxSizeGb', Int, '4', { DefaultValue: '4' }),
-    row('Projects', 'Projects_CacheHaltEnabled', Bool, 'true', { DefaultValue: 'True' }),
+    // Demiurge
+    row('Demiurge', 'Demiurge_CacheHaltWindowMinutes', Int, '30', { DefaultValue: '30' }),
+    row('Demiurge', 'Demiurge_FileMaxSizeGb', Int, '4', { DefaultValue: '4' }),
+    row('Demiurge', 'Demiurge_CacheHaltEnabled', Bool, 'true', { DefaultValue: 'True' }),
     // CS2ArbitrageBot
     row('CS2ArbitrageBot', 'CS2ArbitrageMinimumProfitPence', Int, '25', { DefaultValue: '25' }),
     row('CS2ArbitrageBot', 'CS2ArbitrageSteamRequestSpacingMs', Int, '2500', { DefaultValue: '2500' }),

@@ -37,7 +37,7 @@ const AUTOMATED_LABELS: Array<[RegExp, string]> = [
   [/^omnitrader-alpha-synthesis-/i, 'Alpha Lab synthesis'],
   [/^omnitrader-alpha-/i, 'Alpha Lab batch report'],
   [/^omnitrader-/i, 'OmniTrader report'],
-  [/^projects?-/i, 'Projects report'],
+  [/^(?:demiurge|stewards?|projects?)-/i, 'Demiurge report'],
 ];
 
 export function conversationOrigin(c: Pick<ConversationSummary, 'conversationId' | 'sourceChannel'>): ConversationOrigin {
@@ -178,7 +178,7 @@ export interface AgentNote {
   conversationId?: string | null;
   requestId?: string | null;
   jobId?: string | null;
-  projectId?: string | null;
+  stewardId?: string | null;
   artifactPaths?: string[];
   createdAt?: string;
   readAt?: string | null;
@@ -251,7 +251,7 @@ export interface AgentJob {
   name?: string;
   goal?: string;
   status?: string;
-  projectId?: string;
+  stewardId?: string;
   attentionRequired?: boolean;
   attentionMessage?: string;
   lastUpdated?: string;

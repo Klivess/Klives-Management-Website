@@ -92,7 +92,7 @@
 
       <section v-if="c.allowed.value.analytics && subjects.length" class="llx-card llx-card--flat">
         <header class="llx-card__head"><h3 class="llx-card__title"><LlmIcon name="list" />Top subjects</h3>
-          <span class="llx-card__meta">by day, as the service named them (a project, a game…)</span></header>
+          <span class="llx-card__meta">by day, as the service named them (a Steward, a game…)</span></header>
         <table class="llx-table">
           <thead><tr><th class="l">Subject</th><th>Calls</th><th>Tokens</th><th>Cost</th><th>Cache hit</th><th>Errors</th></tr></thead>
           <tbody>

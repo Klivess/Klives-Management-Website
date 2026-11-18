@@ -84,7 +84,7 @@
 import { GetAuthToken } from '~/scripts/APIInterface';
 import { computed, onMounted, watch } from 'vue';
 import { useScreenStream } from '~/composables/useScreenStream';
-import ContainerRemoteDesktop from '~/components/Projects/ContainerRemoteDesktop.vue';
+import ContainerRemoteDesktop from '~/components/Demiurge/ContainerRemoteDesktop.vue';
 
 const props = defineProps({
   frame: { type: String, default: null },

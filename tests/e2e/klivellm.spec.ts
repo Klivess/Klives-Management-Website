@@ -30,7 +30,7 @@ test.describe('KliveLLM console', () => {
 
     // The routing map: lanes on the left, routers in the middle, models on the right.
     const map = page.locator('.llx-flow__svg');
-    await expect(map).toContainText('Projects › Commander');
+    await expect(map).toContainText('Demiurge › Commander');
     await expect(map).toContainText('AIRouter');
     await expect(map).toContainText('Qwen3.8');
     // Stratum's own service route sends it to OpenRouter's Sonnet.
@@ -66,9 +66,9 @@ test.describe('KliveLLM console', () => {
     const api = await openLlm(page);
     await page.getByTestId('tab-routing').click();
 
-    const row = page.getByTestId('route-Projects/commander');
+    const row = page.getByTestId('route-Demiurge/commander');
     await expect(row).toContainText('AIRouter');
-    await page.getByTestId('lane-router-Projects/commander').selectOption('openrouter');
+    await page.getByTestId('lane-router-Demiurge/commander').selectOption('openrouter');
 
     const pending = page.getByTestId('routing-pending');
     await expect(pending).toContainText('1 unsaved change');
@@ -76,9 +76,9 @@ test.describe('KliveLLM console', () => {
 
     await pending.getByTestId('routing-review').click();
     const dialog = page.getByTestId('routing-preview');
-    await expect(dialog).toContainText('Projects › Commander');
+    await expect(dialog).toContainText('Demiurge › Commander');
     await expect(dialog).toContainText('OpenRouter');
-    // Projects holds warm sessions on AIRouter: the preview says they go cold once.
+    // Demiurge holds warm sessions on AIRouter: the preview says they go cold once.
     await expect(dialog).toContainText('warm session');
     expect(api.posts.some(p => p.path === '/klivellm/routing/apply')).toBe(false);
 
@@ -89,7 +89,7 @@ test.describe('KliveLLM console', () => {
 
     const apply = api.posts.find(p => p.path === '/klivellm/routing/apply')!;
     expect(apply.body.baseRevision).toBe(1);
-    expect(apply.body.document.lanes['Projects/commander'].router).toBe('openrouter');
+    expect(apply.body.document.lanes['Demiurge/commander'].router).toBe('openrouter');
     expect(apply.body.note).toBe('Commander to OpenRouter for the weekend');
 
     await expect(row).toContainText('OpenRouter');
@@ -200,7 +200,7 @@ test.describe('KliveLLM console', () => {
     await expect(page.getByTestId('tab-calls')).toHaveCount(0);
     await page.getByTestId('tab-routing').click();
     await expect(page.getByTestId('llx-routing')).toContainText('changing it needs');
-    await expect(page.getByTestId('lane-router-Projects/commander')).toBeDisabled();
+    await expect(page.getByTestId('lane-router-Demiurge/commander')).toBeDisabled();
     await expect(page.getByTestId('override-set')).toHaveCount(0);
   });
 
@@ -231,10 +231,10 @@ test.describe('KliveLLM console', () => {
     await page.setViewportSize({ width: 1600, height: 1000 });
     const api = await openLlm(page);
     await page.getByTestId('tab-services').click();
-    await page.getByTestId('lane-Projects/commander').click();
+    await page.getByTestId('lane-Demiurge/commander').click();
 
     const sheet = page.getByTestId('llx-lane-sheet');
-    await expect(sheet).toContainText('Projects › Commander');
+    await expect(sheet).toContainText('Demiurge › Commander');
     await expect(sheet.getByTestId('lane-chain')).toContainText('RemoteLLMProvider');
 
     await sheet.getByTestId('lane-pause').click();

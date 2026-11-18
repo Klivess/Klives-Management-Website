@@ -9,7 +9,7 @@
               ref="input"
               v-model="query"
               type="text"
-              placeholder="Go to a page, open a project, upload, resume the fleet…"
+              placeholder="Go to a page, open a Steward, upload, resume the fleet…"
               autocomplete="off"
               spellcheck="false"
               role="combobox"
@@ -57,11 +57,11 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { commandScore } from '~/scripts/adminConsole';
 import type { HomeCommand } from '~/scripts/home';
 
-/* Every page and action from the keyboard. Groups that would bury the rest (projects, services) appear once something is typed. */
+/* Every page and action from the keyboard. Groups that would bury the rest (Stewards, services) appear once something is typed. */
 const props = defineProps<{ open: boolean; commands: HomeCommand[] }>();
 const emit = defineEmits<{ close: [] }>();
 
-const TYPED_ONLY = new Set(['Projects', 'Services']);
+const TYPED_ONLY = new Set(['Stewards', 'Services']);
 const query = ref('');
 const selected = ref(0);
 const armed = ref<string | null>(null);
@@ -72,7 +72,7 @@ const results = computed<HomeCommand[]>(() => {
   const text = query.value.trim();
   if (!text) return props.commands.filter(command => !TYPED_ONLY.has(command.group));
   return props.commands
-    // Specific items (a project, a service) rank like Admin's per-service entries: below pages and actions.
+    // Specific items (a Steward, a service) rank like Admin's per-service entries: below pages and actions.
     .map(command => ({ command, score: commandScore(text, { title: command.title, keywords: command.keywords, group: TYPED_ONLY.has(command.group) ? 'Services' : 'Actions' }) }))
     .filter(entry => entry.score > 0)
     .sort((a, b) => b.score - a.score)

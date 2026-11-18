@@ -110,7 +110,7 @@ const ui = inject<LlmUi>('llxUi')!;
 const KINDS: Record<string, string> = { chat: 'Chat', tool: 'Tool session', warm: 'Prefix warm-up', stt: 'Speech to text', tts: 'Text to speech', local: 'Local model' };
 const FLAG_LABELS: Record<string, string> = {
   Compacted: 'compacted', ColdStart: 'cold start', Redirected: 'model redirected', Pinned: 'pinned model', Fallback: 'fallback', Truncated: 'cut off at the cap',
-  Stalled: 'stalled', ContentKept: 'text kept', Imported: 'imported from Projects', Estimated: 'tokens estimated',
+  Stalled: 'stalled', ContentKept: 'text kept', Imported: 'imported from Demiurge', Estimated: 'tokens estimated',
 };
 
 const call = ref<any | null>(null);

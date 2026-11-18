@@ -20,7 +20,7 @@
 
       <button class="hom-search" aria-label="Go to a page or run an action" aria-keyshortcuts="Control+K" data-testid="home-search" @click="paletteOpen = true">
         <HomeIcon name="search" />
-        <span class="hom-search__text">Go to a page, open a project, run an action…</span>
+        <span class="hom-search__text">Go to a page, open a Steward, run an action…</span>
         <span class="hom-kbd">Ctrl</span><span class="hom-kbd">K</span>
       </button>
 
@@ -202,7 +202,7 @@ const linkTitle = computed(() => (linkState.value === 'paused'
 // ───────────────────────────── pages ─────────────────────────────
 
 const pages = computed<HomePage[]>(() => (home.current.profile.value ? HOME_PAGES.filter(page => canOpen(page.path)) : []));
-const DEFAULT_JUMP = ['/kliveagent', '/projects', '/admin', '/omnitrader', '/schemery/omniblox', '/klivecloud', '/klivemail', '/omnidefence', '/omniscience'];
+const DEFAULT_JUMP = ['/kliveagent', '/demiurge', '/admin', '/omnitrader', '/schemery/omniblox', '/klivecloud', '/klivemail', '/omnidefence', '/omniscience'];
 const fromHistory = computed(() => home.visits.value.length > 0);
 const jumpPages = computed<HomePage[]>(() => {
   const open = new Map(pages.value.map(page => [page.path, page]));
@@ -270,15 +270,15 @@ function askControl(id: string) {
   if (id === 'restart' && stoppedNames.value[0]) return askRestart(stoppedNames.value[0]);
   if (id === 'resume') {
     confirm.value = {
-      title: `Resume ${fleet.halted} project${fleet.halted === 1 ? '' : 's'}?`, icon: 'play', tone: 'ok', label: 'Resume fleet',
-      body: 'Each project goes back to the state it had before it was halted, and its agents start waking again. Model spend starts again with them.',
+      title: `Resume ${fleet.halted} Steward${fleet.halted === 1 ? '' : 's'}?`, icon: 'play', tone: 'ok', label: 'Resume fleet',
+      body: 'Each Steward goes back to the state it had before it was halted, and its agents start waking again. Model spend starts again with them.',
       run: () => home.fleet('resume'),
     };
   } else if (id === 'halt') {
     const running = fleet.live - fleet.halted;
     confirm.value = {
-      title: `Halt ${running} project${running === 1 ? '' : 's'}?`, icon: 'pause', tone: 'warn', label: 'Halt fleet',
-      body: 'Every running project stops after its current step and remembers where it was. Resuming is one click here or on Projects.',
+      title: `Halt ${running} Steward${running === 1 ? '' : 's'}?`, icon: 'pause', tone: 'warn', label: 'Halt fleet',
+      body: 'Every running Steward stops after its current step and remembers where it was. Resuming is one click here or on Demiurge.',
       run: () => home.fleet('halt'),
     };
   } else if (id === 'safe-mode') {
@@ -305,25 +305,25 @@ const commands = computed<HomeCommand[]>(() => {
   }
   if (caps.value.ask) list.push({ id: 'ask', group: 'Actions', title: 'Ask KliveAgent…', icon: 'agent', hint: '/', keywords: 'chat question ai', run: () => nextTick(() => actions.value?.focusAsk()) });
   if (caps.value.upload) list.push({ id: 'upload', group: 'Actions', title: 'Upload files to KliveCloud…', icon: 'upload', hint: 'U', keywords: 'cloud file drive', run: pickFiles });
-  if (caps.value.newProject) list.push({ id: 'new-project', group: 'Actions', title: 'New project', icon: 'plus', keywords: 'create task force', run: () => navigateTo('/projects/new') });
+  if (caps.value.newSteward) list.push({ id: 'new-steward', group: 'Actions', title: 'New Steward', icon: 'plus', keywords: 'create task force', run: () => navigateTo('/demiurge/new') });
   if (home.mailCode.value) list.push({ id: 'copy-code', group: 'Actions', title: `Copy the code from ${home.mailCode.value.from}`, icon: 'key', keywords: 'sign in login otp verification mail', run: home.copyCode });
   list.push({ id: 'refresh', group: 'Actions', title: 'Refresh now', icon: 'refresh', hint: 'R', run: () => home.refreshAll() });
   list.push({ id: 'live', group: 'Actions', title: prefs.value.live ? 'Pause live updates' : 'Resume live updates', icon: prefs.value.live ? 'pause' : 'play', run: () => home.setLive(!prefs.value.live) });
   list.push({ id: 'pages', group: 'Actions', title: prefs.value.pagesOpen ? 'Hide every page' : 'Show every page', icon: 'schemes', run: () => { prefs.value.pagesOpen = !prefs.value.pagesOpen; } });
   const fleet = home.haltedFleet.value;
   if (caps.value.fleet && fleet.live) {
-    if (fleet.halted === fleet.live) list.push({ id: 'resume', group: 'Actions', title: `Resume the fleet (${fleet.halted} projects)`, icon: 'play', danger: true, keywords: 'unhalt projects start', run: () => home.fleet('resume') });
-    else list.push({ id: 'halt', group: 'Actions', title: `Halt the fleet (${fleet.live - fleet.halted} running)`, icon: 'pause', danger: true, keywords: 'stop projects pause', run: () => home.fleet('halt') });
+    if (fleet.halted === fleet.live) list.push({ id: 'resume', group: 'Actions', title: `Resume the fleet (${fleet.halted} Stewards)`, icon: 'play', danger: true, keywords: 'unhalt Stewards start', run: () => home.fleet('resume') });
+    else list.push({ id: 'halt', group: 'Actions', title: `Halt the fleet (${fleet.live - fleet.halted} running)`, icon: 'pause', danger: true, keywords: 'stop Stewards pause', run: () => home.fleet('halt') });
   }
   if (caps.value.safeMode && safeModeOn.value === false) list.push({ id: 'safe-mode', group: 'Actions', title: 'Enter Firm safe mode', icon: 'shield', danger: true, keywords: 'omnitrader stop trading orders', run: () => home.enterSafeMode() });
 
-  const projects = Array.isArray(home.data.projects) ? home.data.projects as any[] : [];
-  for (const project of projects) {
-    const status = String(project?.status ?? project?.Status ?? '');
+  const stewards = Array.isArray(home.data.stewards) ? home.data.stewards as any[] : [];
+  for (const steward of stewards) {
+    const status = String(steward?.status ?? steward?.Status ?? '');
     if (/^(archived|completed)$/i.test(status)) continue;
-    const id = String(project?.projectID ?? project?.ProjectID ?? '');
+    const id = String(steward?.stewardID ?? steward?.StewardID ?? '');
     if (!id) continue;
-    list.push({ id: `project:${id}`, group: 'Projects', title: String(project?.name ?? project?.Name ?? id), icon: 'projects', hint: project?.halted ? 'halted' : status.toLowerCase(), keywords: 'project', run: () => navigateTo(`/projects/${encodeURIComponent(id)}`) });
+    list.push({ id: `steward:${id}`, group: 'Stewards', title: String(steward?.name ?? steward?.Name ?? id), icon: 'stewards', hint: steward?.halted ? 'halted' : status.toLowerCase(), keywords: 'steward', run: () => navigateTo(`/demiurge/${encodeURIComponent(id)}`) });
   }
   if (caps.value.restart) {
     for (const name of stoppedNames.value) list.push({ id: `restart:${name}`, group: 'Services', title: `Restart ${name}`, icon: 'restart', danger: true, hint: 'stopped', keywords: 'service start', run: () => home.restartService(name) });

@@ -3,7 +3,7 @@ import { catalogPayload, mePayload } from './permissions';
 
 /**
  * A stateful stand-in for the routes behind the KliveAgent page. Payloads have the shapes the server
- * produces (KliveAgentRoutes, KliveAgentStats, KliveAgentScheduler, ProjectPromptCacheAnalytics), taken
+ * produces (KliveAgentRoutes, KliveAgentStats, KliveAgentScheduler, StewardPromptCacheAnalytics), taken
  * from a live capture on 2026-11-11; every value is invented. Actions change the state, so a test can
  * cancel a scheduled task or mark results read and watch the page follow.
  */
@@ -186,7 +186,7 @@ const PROMPT_CACHE = {
 const MEMORIES = [
   { id: 'mem-1', content: 'OmniTrader Alpha Lab writes a batch report three times a day.', memoryType: 'Fact', title: null, tags: ['omnitrader', 'alpha-lab'], createdAt: iso(2 * DAY), source: 'agent', importance: 1 },
   { id: 'mem-2', content: 'Tumblr edge 403s come from nginx, not the API.', memoryType: 'Lesson', title: 'Tumblr 403s', tags: ['tumblr', 'lessons-learned'], createdAt: iso(5 * DAY), source: 'agent', importance: 2 },
-  { id: 'mem-3', content: 'The SpamMe project posts reels every evening.', memoryType: 'Fact', title: null, tags: ['instagram'], createdAt: iso(8 * DAY), source: 'projects', importance: 1 },
+  { id: 'mem-3', content: 'The SpamMe Steward posts reels every evening.', memoryType: 'Fact', title: null, tags: ['instagram'], createdAt: iso(8 * DAY), source: 'demiurge', importance: 1 },
 ];
 
 async function fulfilJson(route: Route, payload: unknown, status = 200, headers: Record<string, string> = {}) {

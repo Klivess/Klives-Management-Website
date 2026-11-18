@@ -36,7 +36,7 @@ const ROUTES = {
   server: { path: '/GeneralBotStatistics/GetFrontpageStats', perm: 'system.status.view', tier: 'core' },
   agentStatus: { path: '/kliveagent/status', perm: 'kliveagent.status.view', tier: 'core' },
 
-  projects: { path: '/projects/list', perm: 'projects.overview.view', tier: 'systems' },
+  stewards: { path: '/demiurge/list', perm: 'demiurge.overview.view', tier: 'systems' },
   agentStats: { path: '/kliveagent/stats/summary', perm: 'kliveagent.status.view', tier: 'systems' },
   agentNotifications: { path: '/kliveagent/notifications?unreadOnly=true', perm: 'kliveagent.history.read', tier: 'systems' },
   agentJobs: { path: '/kliveagent/jobs?activeOnly=true', perm: 'kliveagent.history.read', tier: 'systems' },
@@ -57,7 +57,7 @@ const ROUTES = {
   memes: { path: `/memescraper/summary?tz=${encodeURIComponent(viewerZone())}`, perm: 'memescraper.health.view', tier: 'slow' },
   defence: { path: '/omnidefence/overview', perm: 'omnidefence.overview.view', tier: 'slow' },
 
-  projectsOverview: { path: '/projects/overview?range=7d', perm: 'projects.overview.view', tier: 'heavy' },
+  demiurgeOverview: { path: '/demiurge/overview?range=7d', perm: 'demiurge.overview.view', tier: 'heavy' },
   blox: { path: '/omniblox/overview', perm: 'omniblox.overview.view', tier: 'heavy' },
 } satisfies Record<string, RouteDef>;
 
@@ -109,12 +109,12 @@ export function useHome() {
     server: can('system.status.view'),
     ask: can('kliveagent.chat.use'),
     upload: can('klivecloud.files.upload'),
-    newProject: can('projects.lifecycle.manage') && canOpen('/projects/new'),
+    newSteward: can('demiurge.lifecycle.manage') && canOpen('/demiurge/new'),
     restart: can('system.services.control'),
-    fleet: can('projects.fleet.control'),
+    fleet: can('demiurge.fleet.control'),
     safeMode: can('omnitrader.risk.manage'),
     mailCodes: can('klivemail.messages.read'),
-    projectStream: can('projects.events.stream'),
+    stewardStream: can('demiurge.events.stream'),
     seedVisits: can('profiles.activity.read'),
   }));
 
@@ -324,8 +324,8 @@ export function useHome() {
   const mailCode = computed<MailCode | null>(() => latestMailCode(data.mailMessages, now.value));
 
   const sources = computed<HomeSources>(() => ({
-    projects: Array.isArray(data.projects) ? data.projects as any[] : null,
-    projectsOverview: data.projectsOverview ?? null,
+    stewards: Array.isArray(data.stewards) ? data.stewards as any[] : null,
+    demiurgeOverview: data.demiurgeOverview ?? null,
     agentStatus: data.agentStatus ?? null,
     agentStats: data.agentStats ?? null,
     agentNotifications: Array.isArray(data.agentNotifications) ? data.agentNotifications as any[] : null,
@@ -356,7 +356,7 @@ export function useHome() {
 
   const stopped = computed(() => downServices(server.value));
   const haltedFleet = computed(() => {
-    const list = Array.isArray(data.projects) ? data.projects as any[] : [];
+    const list = Array.isArray(data.stewards) ? data.stewards as any[] : [];
     const live = list.filter(p => !/^(archived|completed)$/i.test(String(p?.status ?? p?.Status ?? '')));
     return { live: live.length, halted: live.filter(p => p?.halted ?? p?.Halted).length };
   });
@@ -414,14 +414,14 @@ export function useHome() {
     if (!caps.value.fleet || pending.fleet) return;
     pending.fleet = true;
     try {
-      const response = await RequestPOSTFromKliveAPI(action === 'resume' ? '/projects/unhalt-all' : '/projects/halt-all', '', false, false);
+      const response = await RequestPOSTFromKliveAPI(action === 'resume' ? '/demiurge/unhalt-all' : '/demiurge/halt-all', '', false, false);
       const body: any = parseBody(await response.text());
       if (!response.ok || body?.ok === false) throw new Error(body?.error || `The fleet did not ${action} (${response.status})`);
       const count = Number(action === 'resume' ? body?.restored : body?.halted) || 0;
       toast(body?.pending
         ? `${action === 'resume' ? 'Resuming' : 'Halting'} the fleet: still finishing${body?.step ? ` (${body.step})` : ''}.`
-        : `${count} project${count === 1 ? '' : 's'} ${action === 'resume' ? 'resumed' : 'halted'}.`, body?.pending ? 'info' : 'ok', { href: '/projects', label: 'Projects' });
-      await refreshKeys(['projects']);
+        : `${count} Steward${count === 1 ? '' : 's'} ${action === 'resume' ? 'resumed' : 'halted'}.`, body?.pending ? 'info' : 'ok', { href: '/demiurge', label: 'Demiurge' });
+      await refreshKeys(['stewards']);
     } catch (error: any) {
       toast(error?.message || 'The fleet action failed.', 'crit');
     } finally {
@@ -508,7 +508,7 @@ export function useHome() {
   const stream = useEventStream({
     onFleet: () => {
       if (disposed || document.hidden || fleetDebounce) return;
-      fleetDebounce = setTimeout(() => { fleetDebounce = null; void refreshKeys(['projects']); }, 2_000);
+      fleetDebounce = setTimeout(() => { fleetDebounce = null; void refreshKeys(['stewards']); }, 2_000);
     },
   });
 
@@ -522,7 +522,7 @@ export function useHome() {
     void refreshTier('systems', true);
     void refreshTier('slow', true);
     void refreshTier('heavy', true);
-    if (caps.value.projectStream) stream.connect();
+    if (caps.value.stewardStream) stream.connect();
     void seedVisitsFromServer();
   }
 

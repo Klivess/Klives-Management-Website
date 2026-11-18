@@ -28,7 +28,7 @@ const services = [
   { Name: 'KliveAPI', IsActive: true, UptimeHumanized: '2d 4h', ErrorsLastHour: 0 },
   { Name: 'KliveAgent', IsActive: true, UptimeHumanized: '2d 4h', ErrorsLastHour: 3 },
   { Name: 'OmniTrader', IsActive: false, UptimeHumanized: 'offline', ErrorsLastHour: 1 },
-  { Name: 'Projects', IsActive: true, UptimeHumanized: '2d 4h', ErrorsLastHour: 0 },
+  { Name: 'Demiurge', IsActive: true, UptimeHumanized: '2d 4h', ErrorsLastHour: 0 },
 ];
 
 /** An hour of vitals in the server's columnar shape (running totals for the counters), ending now. */
@@ -54,9 +54,9 @@ function vitalsHistory() {
   };
 }
 
-const projects = [
+const stewards = [
   {
-    projectID: 'project-approval',
+    stewardID: 'steward-approval',
     name: 'Launch control centre with an intentionally very long name that must clamp',
     goal: 'Ship the new operations view',
     status: 'Active',
@@ -73,7 +73,7 @@ const projects = [
     blocker: '',
   },
   {
-    projectID: 'project-blocked',
+    stewardID: 'steward-blocked',
     name: 'Supplier research',
     goal: 'Compare component suppliers',
     status: 'Blocked',
@@ -90,7 +90,7 @@ const projects = [
     blocker: 'Waiting for owner input',
   },
   {
-    projectID: 'project-active',
+    stewardID: 'steward-active',
     name: 'Documentation refresh',
     goal: 'Refresh operating docs',
     status: 'Active',
@@ -123,7 +123,7 @@ const logs = [
     timestamp: '2026-08-11T09:52:00Z',
     type: 0,
     logType: 'Information',
-    serviceName: 'Projects',
+    serviceName: 'Demiurge',
     message: 'Commander wake completed.',
   },
 ];
@@ -287,14 +287,14 @@ function responseForPath(pathWithQuery: string, role: DashboardRole, overrides: 
       return url.searchParams.get('type') === '1' ? logs.filter((entry) => entry.type === 1) : logs;
     case '/api/logs/summary':
       return { TotalLogs: 42_500, ErrorCount: 1, WarningCount: 3, Hours: 24 };
-    case '/projects/list':
-      return projects;
-    case '/projects/overview':
-    case '/projects/analytics/all':
+    case '/demiurge/list':
+      return stewards;
+    case '/demiurge/overview':
+    case '/demiurge/analytics/all':
       return {
         range: '7d',
         summary: {
-          activeProjects: 3,
+          activeStewards: 3,
           activeAgents: 5,
           rangeSpendUsd: 22,
           wakes: 48,
@@ -306,10 +306,10 @@ function responseForPath(pathWithQuery: string, role: DashboardRole, overrides: 
           spendUsd: 2 + index * 0.35,
           events: 4 + index,
         })),
-        projects: [
-          { projectID: 'project-approval', activeAgents: 3, budgetUsedPct: 62.5, lastActivityAt: '2026-08-11T09:58:00Z' },
-          { projectID: 'project-blocked', activeAgents: 1, budgetUsedPct: 50, lastActivityAt: '2026-08-11T09:40:00Z' },
-          { projectID: 'project-active', activeAgents: 1, budgetUsedPct: 25, lastActivityAt: '2026-08-11T09:30:00Z' },
+        stewards: [
+          { stewardID: 'steward-approval', activeAgents: 3, budgetUsedPct: 62.5, lastActivityAt: '2026-08-11T09:58:00Z' },
+          { stewardID: 'steward-blocked', activeAgents: 1, budgetUsedPct: 50, lastActivityAt: '2026-08-11T09:40:00Z' },
+          { stewardID: 'steward-active', activeAgents: 1, budgetUsedPct: 25, lastActivityAt: '2026-08-11T09:30:00Z' },
         ],
       };
     case '/kliveagent/status':
@@ -491,7 +491,7 @@ async function fulfilJson(route: Route, payload: unknown, status = 200) {
 export async function installDashboardApiMock(page: Page, role: DashboardRole, overrides: ApiOverrides = {}): Promise<DashboardApiMock> {
   const state: DashboardApiMock = { requestedPaths: [], mutations: [], batchCalls: 0 };
 
-  // Keep the authentication/session and Projects event sockets connected without
+  // Keep the authentication/session and Demiurge event sockets connected without
   // allowing a test to reach the real KliveAPI host.
   await page.routeWebSocket('wss://klive.dev/**', () => {});
 
@@ -556,13 +556,13 @@ export async function installDashboardApiMock(page: Page, role: DashboardRole, o
       return;
     }
 
-    if (url.pathname === '/projects/halt-all') {
+    if (url.pathname === '/demiurge/halt-all') {
       await fulfilJson(route, { success: true, ok: true, halted: 3 });
       return;
     }
 
-    if (url.pathname === '/projects/unhalt-all') {
-      await fulfilJson(route, { ok: true, pending: false, restored: 3, projectIDs: [] });
+    if (url.pathname === '/demiurge/unhalt-all') {
+      await fulfilJson(route, { ok: true, pending: false, restored: 3, stewardIDs: [] });
       return;
     }
 

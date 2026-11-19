@@ -270,9 +270,11 @@ const chips = computed(() => {
   const list: { label: string; tone: string; title?: string }[] = [
     s.PurchasingEnabled ? { label: 'Auto-buy on', tone: 'ok' } : { label: 'Auto-buy off', tone: 'warn', title: 'PurchaseCSFloatArbitrageOpportunities is off: deals are found and logged, never bought' },
     { label: `Relist bar ${e.MinimumRelistRoiPercent ?? '—'}%`, tone: 'neutral', title: 'Minimum risk-adjusted return for the CSFloat relist exit' },
-    steamOff ? { label: `Steam exit off (bar ${e.MinimumSteamRoiPercent}%)`, tone: 'warn', title: 'The Steam exit bar is so high it never qualifies' } : { label: `Steam bar ${e.MinimumSteamRoiPercent ?? '—'}%`, tone: 'neutral' },
+    steamOff.value ? { label: `Steam exit off (bar ${e.MinimumSteamRoiPercent}%)`, tone: 'warn', title: 'The Steam exit bar is so high it never qualifies' } : { label: `Steam bar ${e.MinimumSteamRoiPercent ?? '—'}%`, tone: 'neutral' },
     { label: s.AutoManageRelists === false ? 'Relists: advice only' : 'Relists managed', tone: 'neutral' },
   ];
+  // Only said when it is off: the check is on by default, and off is the state worth noticing.
+  if (e.RejectHighFailureSellers === false) list.push({ label: 'Seller failure check off', tone: 'warn', title: "Listings are not refused for their seller's failure rate; the exit model still prices the chance the trade falls through" });
   if (!s.ScanningEnabled) list.unshift({ label: 'Scanning off', tone: 'crit' });
   return list;
 });

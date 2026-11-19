@@ -925,7 +925,7 @@ export function budgetRows(s: Cs2Status | null, nowMs: number) {
 export interface Cs2SettingMeta {
   label: string;
   help: string;
-  group: 'Engine' | 'Buying thresholds' | 'Exit model' | 'Risk limits' | 'Pacing & model';
+  group: 'Engine' | 'Buying thresholds' | 'Seller checks' | 'Exit model' | 'Risk limits' | 'Pacing & model';
   order: number;
   prefix?: string;
   suffix?: string;
@@ -943,6 +943,9 @@ export const CS2_SETTINGS: Record<string, Cs2SettingMeta> = {
   CS2ArbitrageMinimumProfitPence: { group: 'Buying thresholds', order: 3, label: 'Minimum profit per trade', suffix: 'p', min: 0, help: 'Each trade needs a manual Steam accept — skip ones not worth it.' },
   CS2ArbitrageMinimumListingPriceCents: { group: 'Buying thresholds', order: 4, label: 'Ignore listings under', suffix: '¢ (USD)', min: 3, help: 'Feed price floor. Lower = more listings but the feed may not keep up.' },
   CS2ArbitrageMaximumListingPriceDollars: { group: 'Buying thresholds', order: 5, label: 'Ignore listings over', prefix: '$', min: 0, help: '0 = no absolute cap (the per-item balance share still applies).' },
+  CS2ArbitrageRejectHighFailureSellers: { group: 'Seller checks', order: 1, label: 'Refuse sellers who fail trades', help: "Off = no listing is turned down for its seller's failure rate. The exit model still prices the chance the trade falls through (CSFloat refunds it)." },
+  CS2ArbitrageMaxSellerFailurePercent: { group: 'Seller checks', order: 2, label: 'Highest failure rate allowed', suffix: '%', min: 0, help: "Failed plus avoided trades as a share of the seller's total. Listings from sellers above this are refused while the check is on." },
+  CS2ArbitrageSellerFailureMinimumTrades: { group: 'Seller checks', order: 3, label: 'Judge sellers with at least', suffix: 'trades', min: 1, help: 'Sellers with fewer trades are not judged on their failure rate: a small sample says little.' },
   CS2ArbitrageMaxSpendPerItemPercent: { group: 'Risk limits', order: 1, label: 'Max spend per item', suffix: '% of balance', min: 1, help: 'Largest share of the CSFloat balance one listing may cost.' },
   CS2ArbitrageMaxUnitsPerItem: { group: 'Risk limits', order: 2, label: 'Max units of one item', min: 1, help: 'Held at once (bought, in trade, in protection or relisted).' },
   CS2ArbitrageDailySpendLimitPounds: { group: 'Risk limits', order: 3, label: 'Daily spend limit', prefix: '£', min: 0, help: '0 = unlimited.' },
@@ -961,7 +964,7 @@ export const CS2_SETTINGS: Record<string, Cs2SettingMeta> = {
 
 /** Credentials are managed on the admin settings page, never here. */
 export const CS2_HIDDEN_SETTINGS = new Set(['CSFloatAPIKey', 'CS2ArbitrageBotSteamLoginUsername', 'CS2ArbitrageBotSteamLoginPassword']);
-export const CS2_SETTING_GROUPS: Cs2SettingMeta['group'][] = ['Engine', 'Buying thresholds', 'Exit model', 'Risk limits', 'Pacing & model'];
+export const CS2_SETTING_GROUPS: Cs2SettingMeta['group'][] = ['Engine', 'Buying thresholds', 'Seller checks', 'Exit model', 'Risk limits', 'Pacing & model'];
 
 /** One entry in the console's command palette (Ctrl K). */
 export interface Cs2Command { id: string; title: string; group: string; icon: string; hint?: string; keywords?: string; run: () => void }

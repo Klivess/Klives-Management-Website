@@ -103,7 +103,15 @@ export async function installCs2ApiMock(page: Page, options: { scenario?: Cs2Sce
     startupMs: 49_000_000,
     settings: scenario === 'starting' ? null : {
       ScanningEnabled: true, PurchasingEnabled: false, AutoManageRelists: true,
-      Evaluation: { MinimumSteamRoiPercent: 888, MinimumRelistRoiPercent: 9, MinimumProfitPence: 10 },
+      Evaluation: {
+        MinimumSteamRoiPercent: 888, MinimumRelistRoiPercent: 9, MinimumProfitPence: 10,
+        // As the bot does: re-read from its settings, so a saved switch shows in the next status.
+        ...(legacy ? {} : {
+          RejectHighFailureSellers: settingValue('CS2ArbitrageRejectHighFailureSellers') === 'true',
+          MaximumSellerFailureRate: Number(settingValue('CS2ArbitrageMaxSellerFailurePercent')) / 100,
+          MinimumSellerTradesForFailureRate: Number(settingValue('CS2ArbitrageSellerFailureMinimumTrades')),
+        }),
+      },
       Exit: { CapitalCostPerDay: 0.002, RiskAversion: 2, RelistHorizonDays: 21, ConversionSigma: 0.04 },
     },
     exchangeRateGbpPerUsd: 0.7562,
@@ -203,7 +211,14 @@ export async function installCs2ApiMock(page: Page, options: { scenario?: Cs2Sce
     { Name: 'PurchaseCSFloatArbitrageOpportunities', Type: 1, Sensitive: false, Value: 'false', ParentServiceName: 'CS2ArbitrageBot', ParentServiceId: 'cs2' },
     { Name: 'CS2ArbitrageMinimumRelistROIPercent', Type: 2, Sensitive: false, Value: '9', ParentServiceName: 'CS2ArbitrageBot', ParentServiceId: 'cs2' },
     { Name: 'CSFloatAPIKey', Type: 0, Sensitive: true, Value: '********', ParentServiceName: 'CS2ArbitrageBot', ParentServiceId: 'cs2' },
+    // The seller failure-rate veto (a server from before it has neither the settings nor the status fields).
+    ...(legacy ? [] : [
+      { Name: 'CS2ArbitrageRejectHighFailureSellers', Type: 1, Sensitive: false, Value: 'true', ParentServiceName: 'CS2ArbitrageBot', ParentServiceId: 'cs2' },
+      { Name: 'CS2ArbitrageMaxSellerFailurePercent', Type: 2, Sensitive: false, Value: '5', ParentServiceName: 'CS2ArbitrageBot', ParentServiceId: 'cs2' },
+      { Name: 'CS2ArbitrageSellerFailureMinimumTrades', Type: 2, Sensitive: false, Value: '20', ParentServiceName: 'CS2ArbitrageBot', ParentServiceId: 'cs2' },
+    ]),
   ];
+  const settingValue = (name: string) => settingsList.find((s) => s.Name === name)?.Value;
 
   /** The answer for a GET path, as { status, body }. */
   const get = (path: string): { status: number; body: unknown } => {
@@ -248,6 +263,17 @@ export async function installCs2ApiMock(page: Page, options: { scenario?: Cs2Sce
       if (answer.status < 0) { await route.fallback(); return; }
       mock.requestedPaths.push(pathWithQuery);
       await fulfil(route, answer.body, answer.status);
+      return;
+    }
+
+    if (request.method() === 'POST' && url.pathname === '/OmniGlobalSettings/Set') {
+      let body: any = null;
+      try { body = JSON.parse(request.postData() || 'null'); } catch { body = null; }
+      mock.posts.push({ path: url.pathname, body });
+      const setting = settingsList.find((s) => s.Name === body?.name && !s.Sensitive);
+      if (!setting) { await fulfil(route, { error: 'No such setting.' }, 404); return; }
+      setting.Value = String(body.value);
+      await fulfil(route, { saved: true });
       return;
     }
 

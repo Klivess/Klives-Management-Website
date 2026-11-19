@@ -183,10 +183,50 @@ test.describe('CS2 Arbitrage console', () => {
     expect(api.requestedPaths.filter((p) => p.startsWith('/cs2arbitragebot/getscanalytics')).every((p) => p.includes('compact=1'))).toBe(true);
   });
 
+  test('the seller failure-rate check is tuned and switched off from the settings drawer', async ({ page }) => {
+    const api = await openCs2(page);
+    const verdict = page.getByTestId('cs2x-verdict');
+    await expect(verdict).not.toContainText('Seller failure check off');
+
+    await page.getByTestId('cs2x-settings-open').click();
+    const drawer = page.getByTestId('cs2x-settings');
+    await expect(drawer).toContainText('Seller checks');
+    const limit = drawer.getByTestId('setting-CS2ArbitrageMaxSellerFailurePercent');
+    await expect(limit).toContainText('Highest failure rate allowed');
+    await expect(limit.locator('input')).toHaveValue('5');
+    await expect(drawer.getByTestId('setting-CS2ArbitrageSellerFailureMinimumTrades').locator('input')).toHaveValue('20');
+
+    // A limit below zero is refused before anything is sent.
+    await limit.locator('input').fill('-1');
+    await limit.getByRole('button', { name: 'Save' }).click();
+    await expect(drawer).toContainText("Highest failure rate allowed can't be below 0.");
+    expect(api.posts.filter((p) => p.path === '/OmniGlobalSettings/Set')).toHaveLength(0);
+
+    await limit.locator('input').fill('10');
+    await limit.getByRole('button', { name: 'Save' }).click();
+    await expect(drawer).toContainText('Saved: Highest failure rate allowed.');
+    expect(api.posts.find((p) => p.path === '/OmniGlobalSettings/Set')?.body).toMatchObject({ name: 'CS2ArbitrageMaxSellerFailurePercent', value: '10' });
+
+    // Switching the check off is said on the page, since off is the unusual state.
+    const gate = drawer.getByTestId('setting-CS2ArbitrageRejectHighFailureSellers');
+    await expect(gate.locator('input')).toBeChecked();
+    await gate.locator('input').uncheck();
+    await gate.getByRole('button', { name: 'Save' }).click();
+    await expect(drawer).toContainText('Saved: Refuse sellers who fail trades.');
+    expect(api.posts.filter((p) => p.path === '/OmniGlobalSettings/Set').at(-1)?.body).toMatchObject({ name: 'CS2ArbitrageRejectHighFailureSellers', value: 'false' });
+    await drawer.getByLabel('Close settings').click();
+    await expect(verdict).toContainText('Seller failure check off', { timeout: 15_000 });
+  });
+
   test('an older bot build degrades: no funnel counts, and new actions explain themselves', async ({ page }) => {
     await openCs2(page, { scenario: 'legacy' });
     await expect(page.getByTestId('funnel-totals')).toContainText('model not counted yet');
     await page.getByTestId('need-action-steam-login').click();
     await expect(page.getByTestId('cs2x-toast')).toContainText('does not have that yet');
+    // It has no seller-check settings and says nothing about a check it does not report.
+    await expect(page.getByTestId('cs2x-verdict')).not.toContainText('Seller failure check');
+    await page.getByTestId('cs2x-settings-open').click();
+    await expect(page.getByTestId('cs2x-settings')).toContainText('Buying thresholds');
+    await expect(page.getByTestId('cs2x-settings')).not.toContainText('Seller checks');
   });
 });

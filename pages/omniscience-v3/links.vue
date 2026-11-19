@@ -28,7 +28,7 @@
                     <input v-model="filters.site" class="omni-input" type="search" placeholder="site (youtube, github…)" /></label>
                 <span class="summary"><b>{{ results.data.value?.items.length ?? 0 }}</b> shares{{ results.data.value?.truncated ? ' (more exist: narrow the search)' : '' }}</span>
             </div>
-            <OmniscienceV3Panel title="Shared links" flush :loading="results.loading.value" :error="results.error.value" :has-data="!!results.data.value"
+            <OmniscienceV3Panel title="Shared links" flush :loading="results.loading.value" :refreshing="results.refreshing.value" :error="results.error.value" :has-data="!!results.data.value"
                                 :empty="!!results.data.value && !results.data.value.items.length" :empty-kind="filtered ? 'filtered' : 'empty'"
                                 :empty-title="filtered ? 'No links match' : 'No links yet'" @retry="results.refresh()">
                 <table v-if="results.data.value" class="omni-table" data-testid="links-table">

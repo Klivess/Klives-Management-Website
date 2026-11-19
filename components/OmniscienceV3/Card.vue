@@ -1,8 +1,8 @@
 <template>
-    <section class="omni-card" :class="{ attention }">
+    <section class="omni-card" :class="{ attention, refreshing }" :aria-busy="refreshing || (loading && empty) ? 'true' : undefined">
         <header v-if="title || $slots.controls">
             <div class="titles">
-                <h2>{{ title }}</h2>
+                <h2>{{ title }}<span v-if="refreshing" class="omni-updating" role="status"><span class="omni-spinner" aria-hidden="true"></span>updating</span></h2>
                 <!-- What the card shows, stated plainly. Only worth setting when it says something the title does not. -->
                 <p v-if="subtitle" class="subtitle">{{ subtitle }}</p>
             </div>
@@ -20,7 +20,7 @@
         </div>
 
         <!-- Skeletons have the final geometry, so nothing jumps when the data lands. -->
-        <div v-else-if="loading && empty" class="omni-skelrows" aria-busy="true" aria-live="polite">
+        <div v-else-if="loading && empty" class="omni-skelrows" aria-live="polite" data-testid="omni-skeleton">
             <div v-for="n in skeletonRows" :key="n" class="omni-skel" :style="{ width: `${[100, 82, 91, 74, 96, 68][n % 6]}%` }"></div>
         </div>
 
@@ -57,6 +57,8 @@ withDefaults(defineProps<{
     staleReason?: string;
     partial?: boolean;
     partialReason?: string;
+    /** What is shown is being replaced by a newer answer. */
+    refreshing?: boolean;
     skeletonRows?: number;
 }>(), { emptyKind: 'empty', emptyTitle: 'Nothing to show', errorTitle: 'This section could not load', retryable: true, skeletonRows: 5 });
 

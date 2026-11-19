@@ -83,6 +83,10 @@ export function healthText(kind: string, detail: unknown, subject?: string | nul
             return `Background model work reused only ${omniPercent(num(d.efficiency))} of its prompts over ${omniCount(num(d.hours))} hours (floor ${omniPercent(num(d.floor))}).`;
         case 'jobs_dead':
             return `${omniCount(num(d.jobs))} ${str(d.moduleId) ?? subject ?? ''} job${num(d.jobs) === 1 ? '' : 's'} failed for good in the last day${str(d.lastError) ? `: ${str(d.lastError)}` : ''}.`;
+        case 'tail_stalled':
+            return `New messages have stopped arriving from v2: the copy that runs every two minutes has not finished for ${omniCount(num(d.minutes))} minutes. What you see here is that much out of date.`;
+        case 'module_stalled':
+            return `${str(d.moduleId) ?? subject ?? 'A module'} has ${omniCount(num(d.queued))} job${num(d.queued) === 1 ? '' : 's'} waiting and has finished none for ${round(num(d.hours))} hours.`;
         default:
             return omniHumanise(kind);
     }

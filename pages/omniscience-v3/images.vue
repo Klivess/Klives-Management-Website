@@ -27,7 +27,7 @@
         </div>
         <p v-else-if="r?.note" class="omni-muted">{{ r.note }}</p>
 
-        <OmniscienceV3Panel :title="r ? `${r.hits.length} image${r.hits.length === 1 ? '' : 's'} for “${r.query}”` : 'Results'" :loading="searching" :error="results.error.value" :has-data="!!r"
+        <OmniscienceV3Panel :title="r ? `${r.hits.length} image${r.hits.length === 1 ? '' : 's'} for “${r.query}”` : 'Results'" :loading="searching" :refreshing="searching" :error="results.error.value" :has-data="!!r"
                             :empty="!searching && (!r || !r.hits.length)" :empty-kind="r ? 'filtered' : 'empty'" :empty-title="r ? 'No image matches' : 'Describe what you are looking for'"
                             :empty-text="r ? `${omniCount(r.imagesEmbedded)} images can be searched by how they look.` : 'Words work best: what is in the picture, or what it says.'" what="Image search" @retry="search()">
             <ul v-if="r" class="grid" data-testid="image-results">

@@ -1,6 +1,6 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch, type Ref, type ShallowRef } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { OmniApiError, isOmniAbort, omniGet, omniStreamUrl, toOmniError } from '~/scripts/omniscience/api';
+import { OmniApiError, isOmniAbort, omniFlights, omniGet, omniStreamUrl, onOmniFlights, toOmniError } from '~/scripts/omniscience/api';
 import type { PersonNamesDto, Selection, StreamEventDto, V3StatusDto } from '~/scripts/omniscience/contracts';
 import { omniAge, omniInstant, omniUtcIso, type OmniLens } from '~/scripts/omniscience/format';
 
@@ -189,6 +189,40 @@ export function useOmniEngine() {
     const klivesZone = computed(() => status.value?.klivesZone || 'Europe/London');
 
     return { status, statusError, statusAt, phase, ready, klivesZone, refreshStatus };
+}
+
+// ── requests in flight ───────────────────────────────────────────────────────
+
+/** How long a request may take before the frame says it is waiting (quick answers never flash the bar). */
+export const OMNI_BUSY_AFTER_MS = 350;
+/** From here on the wait is also said in words, with its length. */
+export const OMNI_SLOW_AFTER_MS = 4000;
+
+/**
+ * Whether any Omniscience request has been waiting long enough to say so, for how long, and for what.
+ * The engine's own status poll is left out: it repeats every ten seconds and says nothing about the page.
+ */
+export function useOmniBusy() {
+    const waitingMs = ref(0);
+    const routes = ref<string[]>([]);
+    let timer: ReturnType<typeof setInterval> | null = null;
+    let stop: (() => void) | null = null;
+
+    function measure() {
+        const now = performance.now();
+        const open = omniFlights().filter(f => !/\/status(\?|$)/.test(f.route));
+        waitingMs.value = open.length ? now - Math.min(...open.map(f => f.startedAt)) : 0;
+        routes.value = open.map(f => f.route.replace(/^\/omniscience\/v3\//, '').replace(/\?.*$/, ''));
+        if (open.length && !timer) timer = setInterval(measure, 250);
+        if (!open.length && timer) { clearInterval(timer); timer = null; }
+    }
+
+    onMounted(() => { stop = onOmniFlights(measure); measure(); });
+    onBeforeUnmount(() => { stop?.(); if (timer) clearInterval(timer); });
+
+    const busy = computed(() => waitingMs.value >= OMNI_BUSY_AFTER_MS);
+    const slow = computed(() => waitingMs.value >= OMNI_SLOW_AFTER_MS);
+    return { busy, slow, waitingMs, routes };
 }
 
 // ── time lens ────────────────────────────────────────────────────────────────

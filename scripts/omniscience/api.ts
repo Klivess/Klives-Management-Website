@@ -49,6 +49,42 @@ export function toOmniError(error: unknown, route = ''): OmniApiError {
 
 type QueryValue = string | number | boolean | null | undefined | readonly (string | number)[];
 
+// ── requests in flight ───────────────────────────────────────────────────────
+
+/** One request that has been sent and not answered yet. `startedAt` is on the monotonic clock (performance.now), not the wall clock. */
+export interface OmniFlight { id: number; route: string; startedAt: number }
+
+const flights = new Map<number, OmniFlight>();
+const flightListeners = new Set<() => void>();
+let flightSeq = 0;
+
+/** The requests that are waiting for an answer right now, oldest first. */
+export function omniFlights(): OmniFlight[] {
+    return [...flights.values()];
+}
+
+/** Calls `listener` whenever a request starts or ends. Returns the function that stops it. */
+export function onOmniFlights(listener: () => void): () => void {
+    flightListeners.add(listener);
+    return () => { flightListeners.delete(listener); };
+}
+
+/**
+ * Counts a request for as long as it is in flight, so the frame can show that something is being
+ * waited for. A slow answer used to look exactly like no answer: nothing on the page moved.
+ */
+async function tracked<T>(route: string, work: () => Promise<T>): Promise<T> {
+    const id = ++flightSeq;
+    flights.set(id, { id, route, startedAt: performance.now() });
+    for (const listener of flightListeners) listener();
+    try {
+        return await work();
+    } finally {
+        flights.delete(id);
+        for (const listener of flightListeners) listener();
+    }
+}
+
 export function omniQuery(params: Record<string, QueryValue> = {}): string {
     const search = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
@@ -100,23 +136,62 @@ async function read<T>(res: Response, route: string, signal?: AbortSignal): Prom
 
 export async function omniGet<T>(path: string, params: Record<string, QueryValue> = {}, signal?: AbortSignal): Promise<T> {
     const route = `${OMNI_API}/${path}${omniQuery(params)}`;
-    const res = await RequestGETFromKliveAPI(route, false, false, {}, signal);
-    return read<T>(res, route, signal);
+    return tracked(route, async () => {
+        // The server answers every read within a few seconds: with the data, or with 202 { code: "pending" } while it
+        // goes on working (the same work, not a second run). "Pending" is asked again until the data is there, so the
+        // page waits with its loading state up and ends with the answer; nothing is left hanging until it times out.
+        for (let asked = 1; ; asked++) {
+            const res = await RequestGETFromKliveAPI(route, false, false, {}, signal);
+            const wait = await pendingWait(res);
+            if (wait === null) return read<T>(res, route, signal);
+            if (asked >= OMNI_PENDING_ASKS)
+                throw new OmniApiError('unavailable', 'The server is still working on this. It has not given up; ask again in a while.', 202, route);
+            await pause(wait, signal, route);
+        }
+    });
+}
+
+/** How often a "pending" read is asked again before the page says so (about ten minutes of asking). */
+export const OMNI_PENDING_ASKS = 300;
+
+/** The wait a "pending" answer asks for, in ms; null for any other answer. */
+async function pendingWait(res: Response): Promise<number | null> {
+    if (res.status !== 202) return null;
+    try {
+        const body = await res.clone().json();
+        if (body?.code !== 'pending') return null;
+        return Math.min(5000, Math.max(250, Number(body.retryAfterMs) || 1500));
+    } catch {
+        return null;
+    }
+}
+
+function pause(ms: number, signal: AbortSignal | undefined, route: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+        if (signal?.aborted) { reject(new OmniApiError('aborted', 'Cancelled.', 0, route)); return; }
+        const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve(); }, ms);
+        const onAbort = () => { clearTimeout(timer); reject(new OmniApiError('aborted', 'Cancelled.', 0, route)); };
+        signal?.addEventListener('abort', onAbort, { once: true });
+    });
 }
 
 export async function omniPost<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
     const route = `${OMNI_API}/${path}`;
-    const res = await RequestPOSTFromKliveAPI(route, JSON.stringify(body ?? {}), false, true, signal);
-    return read<T>(res, route, signal);
+    return tracked(route, async () => {
+        const res = await RequestPOSTFromKliveAPI(route, JSON.stringify(body ?? {}), false, true, signal);
+        return read<T>(res, route, signal);
+    });
 }
 
 /** A POST whose answer is a file (a person export): its text, for `omniDownload`. Errors are classified as for JSON. */
 export async function omniPostText(path: string, body: unknown, signal?: AbortSignal): Promise<string> {
     const route = `${OMNI_API}/${path}`;
-    const res = await RequestPOSTFromKliveAPI(route, JSON.stringify(body ?? {}), false, true, signal);
-    if (signal?.aborted) throw new OmniApiError('aborted', 'Cancelled.', 0, route);
-    if (!res.ok) return fail(res, route);
-    return res.text();
+    return tracked(route, async () => {
+        const res = await RequestPOSTFromKliveAPI(route, JSON.stringify(body ?? {}), false, true, signal);
+        if (signal?.aborted) throw new OmniApiError('aborted', 'Cancelled.', 0, route);
+        if (!res.ok) return fail(res, route);
+        return res.text();
+    });
 }
 
 /**

@@ -401,3 +401,54 @@ test('people: two picked people are compared side by side, and an untracked pair
     expect(state.unknown).toEqual([]);
     expect(state.errors).toEqual([]);
 });
+
+test('a slow answer is shown as waiting: skeleton, a bar, then the length of the wait', async ({ page }) => {
+    await mockV3(page);
+    // The link search takes six seconds, as searches did on the server before they were indexed.
+    let release: () => void = () => {};
+    const held = new Promise<void>(resolve => { release = resolve; });
+    await page.route(/\/omniscience\/v3\/links\/search/, async route => { await held; await route.fallback(); });
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await loadPage(page, `${BASE}/links`);
+
+    const links = page.locator('.omni-card').filter({ has: page.getByRole('heading', { name: 'Shared links' }) });
+    // Before the fix the card was an empty box here: loading, but not yet "empty", so neither state was drawn.
+    await expect(links.getByTestId('omni-skeleton')).toBeVisible(BOOT);
+    await expect(page.getByTestId('omni-progress')).toBeVisible();
+    await expect(page.getByTestId('omni-waiting')).toContainText('Still loading', { timeout: 15_000 });
+    await expect(page.getByTestId('omni-waiting')).toContainText('links/search');
+    await shot(page, 'waiting');
+
+    release();
+    await expect(page.getByTestId('links-table')).toBeVisible(BOOT);
+    await expect(page.getByTestId('omni-progress')).toHaveCount(0);
+    await expect(page.getByTestId('omni-waiting')).toHaveCount(0);
+});
+
+test('health names a stalled message copy and a module that finishes nothing', async ({ page }) => {
+    await mockV3(page);
+    await loadPage(page, `${BASE}/health`);
+    const open = page.getByTestId('health-open');
+    await expect(open).toContainText('New messages have stopped arriving from v2', BOOT);
+    await expect(open).toContainText('570 minutes');
+    await expect(open).toContainText('insights has 19 jobs waiting and has finished none for 9.5 hours');
+});
+
+test('a read the server is still working on is asked again until its answer is there', async ({ page }) => {
+    await mockV3(page);
+    // The server's promise: every read is answered within seconds, with the data or with "pending" while it works on.
+    let asks = 0;
+    await page.route(/\/omniscience\/v3\/links\/search/, async route => {
+        if (++asks <= 2) {
+            await route.fulfill({ status: 202, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+                body: JSON.stringify({ code: 'pending', message: 'This is taking longer than usual.', retryAfterMs: 300 }) });
+            return;
+        }
+        await route.fallback();
+    });
+    await loadPage(page, `${BASE}/links`);
+    // Never an error, never a blank: the skeleton while it is pending, then the table.
+    await expect(page.getByTestId('links-table')).toBeVisible(BOOT);
+    expect(asks).toBe(3);
+    await expect(page.getByText('could not load')).toHaveCount(0);
+});

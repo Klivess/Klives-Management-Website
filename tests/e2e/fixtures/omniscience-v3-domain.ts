@@ -451,6 +451,8 @@ export async function handleDomain(key: string, p: URLSearchParams, body: any, d
                 open: [
                     { issueId: 'source_stalled|src-wa', kind: 'source_stalled', subject: 'src-wa', severity: 'Attention', detail: { sourceId: 'src-wa', label: 'Synthetic WhatsApp', silentHours: 14.2, usualPerDay: 120 }, firstMs: NOW - 2 * HOUR, lastMs: NOW - 600_000, resolvedMs: null },
                     { issueId: 'jobs_dead|knowledge.deduction', kind: 'jobs_dead', subject: 'knowledge.deduction', severity: 'Attention', detail: { moduleId: 'knowledge.deduction', jobs: 2, lastError: 'provider answered 503 three times' }, firstMs: NOW - HOUR, lastMs: NOW - 600_000, resolvedMs: null },
+                    { issueId: 'tail_stalled', kind: 'tail_stalled', subject: 'ingest.legacy', severity: 'Urgent', detail: { moduleId: 'ingest.legacy', minutes: 570, queued: 1 }, firstMs: NOW - HOUR, lastMs: NOW - 600_000, resolvedMs: null },
+                    { issueId: 'module_stalled|insights', kind: 'module_stalled', subject: 'insights', severity: 'Attention', detail: { moduleId: 'insights', queued: 19, hours: 9.5 }, firstMs: NOW - HOUR, lastMs: NOW - 600_000, resolvedMs: null },
                 ],
                 resolved: [{ issueId: 'llm_circuit', kind: 'llm_circuit', subject: null, severity: 'Urgent', detail: { reason: 'The model refused the credentials.' }, firstMs: NOW - 3 * DAY, lastMs: NOW - 3 * DAY + HOUR, resolvedMs: NOW - 3 * DAY + HOUR }],
                 enabled: true, checkedAtMs: NOW - 300_000,

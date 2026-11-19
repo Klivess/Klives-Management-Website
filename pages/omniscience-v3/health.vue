@@ -21,6 +21,7 @@
                     <span class="text">{{ healthText(i.kind, i.detail, i.subject) }}</span>
                     <span class="omni-muted">since <OmniscienceV3Time :ms="i.firstMs" mode="age" /></span>
                     <NuxtLink v-if="i.kind === 'jobs_dead'" class="omni-muted" :to="`${OMNI_BASE}/jobs?state=dead`">jobs →</NuxtLink>
+                    <NuxtLink v-else-if="i.kind === 'tail_stalled' || i.kind === 'module_stalled'" class="omni-muted" :to="`${OMNI_BASE}/jobs?module=${encodeURIComponent(i.subject ?? '')}`">its jobs →</NuxtLink>
                     <NuxtLink v-else-if="i.kind.startsWith('llm') || i.kind === 'cache_floor'" class="omni-muted" :to="`${OMNI_BASE}/llm`">model calls →</NuxtLink>
                 </li>
             </ul>

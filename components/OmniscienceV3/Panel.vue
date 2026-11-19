@@ -1,7 +1,7 @@
 <template>
     <OmniscienceV3Card :title="title" :subtitle="subtitle" :flush="flush && !blocking" :loading="loading && !blocking"
-                    :empty="!blocking && empty" :empty-kind="emptyKind" :empty-title="emptyTitle" :empty-text="emptyText"
-                    :stale="stale" :stale-reason="staleReason" :footnote="footnote" :attention="attention">
+                    :empty="!blocking && (empty || waitingForFirst)" :empty-kind="emptyKind" :empty-title="emptyTitle" :empty-text="emptyText"
+                    :stale="stale" :stale-reason="staleReason" :footnote="footnote" :attention="attention" :refreshing="(refreshing || (loading && hasData)) && !waitingForFirst && !blocking">
         <template v-if="$slots.controls" #controls><slot name="controls" /></template>
         <OmniscienceV3ErrorBlock v-if="blocking && error" :error="error" :what="what ?? title" @retry="$emit('retry')" />
         <slot v-else />
@@ -34,11 +34,17 @@ const props = withDefaults(defineProps<{
     emptyText?: string;
     flush?: boolean;
     attention?: boolean;
+    /** A newer answer is being fetched while the last one stays on screen (a changed filter, a new search). */
+    refreshing?: boolean;
 }>(), { emptyKind: 'empty', emptyTitle: 'Nothing to show' });
 
 defineEmits<{ retry: [] }>();
 
 const blocking = computed(() => !!props.error && !props.hasData);
+// Loading with nothing on screen yet is drawn as a skeleton whatever the page said about emptiness. Most pages only
+// call a panel empty once the answer is in, so until then the card used to be a blank box: a slow request and a
+// broken page looked the same.
+const waitingForFirst = computed(() => !!props.loading && !props.hasData && !props.error);
 const stale = computed(() => !!props.error && !!props.hasData);
 const staleReason = computed(() => (props.error ? `Showing the last answer; refreshing failed: ${props.error.message}` : undefined));
 </script>

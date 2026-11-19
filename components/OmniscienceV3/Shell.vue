@@ -30,7 +30,12 @@
             <span class="omni-fresh omni-hide-sm" :class="freshTone" :title="statusAt ? utc(statusAt) : ''">
                 <span class="omni-dot" :class="freshDot"></span>{{ statusAt ? age(statusAt) : '…' }}
             </span>
+            <!-- Something has been asked and not answered yet: a bar at once, and after a few seconds how long it has been. -->
+            <div v-if="busy" class="omni-progress" role="progressbar" aria-label="Loading" data-testid="omni-progress"></div>
         </header>
+        <div v-if="slow" class="omni-waiting" role="status" data-testid="omni-waiting" :title="waitingFor">
+            <span class="omni-spinner" aria-hidden="true"></span>Still loading · {{ Math.round(waitingMs / 1000) }} s<span class="omni-muted omni-hide-sm"> · {{ waitingFor }}</span>
+        </div>
 
         <!-- Two levels: the five areas, then the pages of the one you are in (or are pointing at). Every page is two clicks away at most. -->
         <nav class="omni-nav" aria-label="Omniscience" @mouseleave="leaveNav()" @mouseenter="stayInNav()">
@@ -101,7 +106,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { OMNI_BASE, omniGet } from '~/scripts/omniscience/api';
 import type { DirectoryPageDto, TacticCatalogDto } from '~/scripts/omniscience/contracts';
 import { omniCount } from '~/scripts/omniscience/format';
-import { useOmniEngine, useOmniRecent, useOmniTime, useOmniToasts } from '~/composables/useOmniscienceV3';
+import { useOmniBusy, useOmniEngine, useOmniRecent, useOmniTime, useOmniToasts } from '~/composables/useOmniscienceV3';
 import { useAccess } from '~/composables/useAccess';
 
 /**
@@ -117,6 +122,8 @@ const { status, statusError, statusAt, klivesZone, refreshStatus } = useOmniEngi
 const { lens, setLens, age, utc, now } = useOmniTime();
 const { toasts, dismiss } = useOmniToasts();
 const { recent } = useOmniRecent();
+const { busy, slow, waitingMs, routes: waitingRoutes } = useOmniBusy();
+const waitingFor = computed(() => [...new Set(waitingRoutes.value)].slice(0, 4).join(', '));
 
 const AREAS = [
     { id: 'work', label: 'Work', hint: 'Question the messages and run tactics', items: [

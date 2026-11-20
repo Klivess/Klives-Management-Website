@@ -80,7 +80,9 @@ export function healthText(kind: string, detail: unknown, subject?: string | nul
         case 'llm_circuit':
             return str(d.reason) ?? 'The model circuit breaker is open; background model work is paused.';
         case 'cache_floor':
-            return `Background model work reused only ${omniPercent(num(d.efficiency))} of its prompts over ${omniCount(num(d.hours))} hours (floor ${omniPercent(num(d.floor))}).`;
+            // What is measured is what was sent a second time (a later question over evidence the model had already been
+            // sent), not the plain hit rate: evidence read for the first time can never come from a cache.
+            return `The model served only ${omniPercent(num(d.efficiency))} of what background work sent it a second time from cache over ${omniCount(num(d.hours))} hours (floor ${omniPercent(num(d.floor))}): later questions about the same evidence no longer match what was sent before.`;
         case 'jobs_dead':
             return `${omniCount(num(d.jobs))} ${str(d.moduleId) ?? subject ?? ''} job${num(d.jobs) === 1 ? '' : 's'} failed for good in the last day${str(d.lastError) ? `: ${str(d.lastError)}` : ''}.`;
         case 'tail_stalled':

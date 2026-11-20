@@ -134,7 +134,11 @@ const chatLine = (chatId: string, seq: number, role: string, content: string, ov
 
 const hit = (attachmentId: string, over: Partial<MediaSearchHitDto> = {}): MediaSearchHitDto => ({
     attachmentId, messageId: attachmentId.split('#')[0]!, conversationId: 'conv-general', authorPersonId: 'person-a', authorName: 'Synthetic Ada', sentAtMs: NOW - 5 * DAY, deleted: false,
-    caption: 'A screenshot of a trading app showing a price chart.', tags: ['screenshot', 'chart'], imageText: null, score: 0.031, why: ['looks like it', 'the caption says so'], ...over,
+    caption: 'A screenshot of a trading app showing a price chart.', tags: ['screenshot', 'chart'], imageText: null, score: 0.031, why: ['looks like it', 'the caption says so'],
+    platform: 'discord', conversationKind: 'text', conversationTitle: 'general', guildId: 'discord:800000000000000001', guildName: 'Synthetic server',
+    messageUrl: 'https://discord.com/channels/800000000000000001/900000000000000001/1024709476269436948', messageText: 'synthetic: look at this chart', messageTextCut: false, edited: true,
+    reactions: 3, position: 2, inMessage: 4, filename: 'chart.png', mime: 'image/png', sizeBytes: 482_113, width: 1920, height: 1080, spoiler: false, altText: null, takenAtMs: null,
+    kind: 'screenshot', nsfw: false, captionModel: 'synthetic-vision', captionedAtMs: NOW - 4 * DAY, timesPosted: 2, ...over,
 });
 
 export function knowledgeState() {
@@ -524,8 +528,10 @@ export async function handleKnowledge(key: string, p: URLSearchParams, body: any
             if (!await need('omniscience.messages.read', 'messages.read')) return true;
             const q = (p.get('q') ?? '').trim();
             if (!q) { await fail(400, 'bad_request', "Describe what to look for ('q')."); return true; }
+            // The second is a photo in a direct chat on a platform with no message links, with nothing said and only what a file always has.
             let hits = [hit('m-501#0'), hit('m-502#0', { authorPersonId: 'person-b', authorName: 'Synthetic Bo', caption: 'A cat asleep on a keyboard.', tags: ['cat'], why: ['looks like it'], score: 0.016, conversationId: 'conv-dm-a',
-                imageText: null })];
+                imageText: null, platform: 'whatsapp', conversationKind: 'dm', conversationTitle: null, guildId: null, guildName: null, messageUrl: null, messageText: null, edited: false, reactions: 0,
+                position: 1, inMessage: 1, filename: 'IMG-0042.jpg', mime: 'image/jpeg', sizeBytes: 1_530_000, width: 4032, height: 3024, takenAtMs: NOW - 9 * DAY, kind: 'photo', timesPosted: 1 })];
             if (p.get('person')) hits = hits.filter(h => h.authorPersonId === p.get('person'));
             if (p.get('conversation')) hits = hits.filter(h => h.conversationId === p.get('conversation'));
             const dto: MediaSearchDto = { query: q, hits, visualAvailable: true, imagesEmbedded: 1240, note: null };

@@ -470,17 +470,51 @@ test('images: found by description, narrowed by who posted them, and opened with
     await expect(results.first()).toContainText('A screenshot of a trading app');
     await expect(results.first()).toContainText('the caption says so');
     await expect(results.first().locator('img')).toBeVisible(); // loaded as a blob: the route needs the auth header
+    // Each result says where it was posted, what was said with it, and what kind of image it is.
+    await expect(results.first()).toContainText('#general in Synthetic server');
+    await expect(results.first()).toContainText('synthetic: look at this chart');
+    await expect(results.first()).toContainText('screenshot');
+    await expect(results.first()).toContainText('posted 2×');
+    await expect(results.nth(1)).toContainText('Direct chat');
     await expect(page).toHaveURL(/q=a\+price\+chart|q=a%20price%20chart/);
     await shot(page, 'images');
+
+    // Opened: the post, the picture and the file, with a link to the message where it was sent.
+    const drawer = page.locator('.omni-drawer');
+    await results.first().getByRole('button').click();
+    const link = 'https://discord.com/channels/800000000000000001/900000000000000001/1024709476269436948';
+    await expect(drawer.getByTestId('image-discord')).toHaveAttribute('href', link);
+    await expect(drawer.getByTestId('image-discord')).toHaveAttribute('target', '_blank');
+    await expect(drawer.getByTestId('image-discord-app')).toHaveAttribute('href', 'discord://-/channels/800000000000000001/900000000000000001/1024709476269436948');
+    await expect(drawer.getByTestId('image-post')).toContainText('#general in Synthetic server');
+    await expect(drawer.getByTestId('image-post')).toContainText('synthetic: look at this chart');
+    await expect(drawer.getByTestId('image-post')).toContainText('picture 2 of 4 attachments');
+    await expect(drawer.getByTestId('image-post')).toContainText('edited since');
+    await expect(drawer.getByTestId('image-post')).toContainText(link);
+    await expect(drawer.getByTestId('image-shows')).toContainText('by synthetic-vision');
+    await expect(drawer.getByTestId('image-file')).toContainText('chart.png');
+    await expect(drawer.getByTestId('image-file')).toContainText('1920 × 1080 px');
+    await expect(drawer.getByTestId('image-file')).toContainText('471 KB');
+    await expect(drawer.getByTestId('image-file')).toContainText('2 times, this one included');
+    await shot(page, 'images-opened');
+    await drawer.getByRole('button', { name: 'Close panel' }).click();
 
     await page.getByTestId('image-person').getByRole('searchbox').fill('bo');
     await page.getByTestId('image-person').getByRole('option', { name: /Synthetic Bo/ }).click();
     await expect(results).toHaveCount(1);
     expect(state.requests.some(r => r.startsWith(`GET ${V3}/media/search?`) && r.includes('person=person-b'))).toBe(true);
     await results.first().getByRole('button').click();
-    const drawer = page.locator('.omni-drawer');
     await expect(drawer).toContainText('A cat asleep on a keyboard.');
     await expect(drawer).toContainText('never say who anyone is');
+    // A platform without message links says so instead of offering one.
+    await expect(drawer.getByTestId('image-discord')).toHaveCount(0);
+    await expect(drawer.getByTestId('image-no-link')).toContainText('whatsapp has none to give');
+    await expect(drawer.getByTestId('image-post')).toContainText('nothing was written with it');
+    await expect(drawer.getByTestId('image-file')).toContainText('from the file itself');
+    // "Only images from here" narrows the search to that conversation.
+    await drawer.getByTestId('image-only-here').click();
+    await expect(drawer).toHaveCount(0);
+    await expect.poll(() => state.requests.some(r => r.startsWith(`GET ${V3}/media/search?`) && r.includes('conversation=conv-dm-a'))).toBe(true);
     expect(state.unknown).toEqual([]);
     expect(state.errors).toEqual([]);
 });

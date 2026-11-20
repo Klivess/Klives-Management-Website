@@ -1279,6 +1279,17 @@ export interface JobActionResultDto {
   state: string;
 }
 
+/** Retry every dead job; moduleId narrows it to one module. */
+export interface RetryDeadJobsRequest {
+  moduleId?: string | null;
+}
+
+/** How many dead jobs were queued again, and how many were closed because the same work already was. */
+export interface DeadJobsRetriedDto {
+  retried: number;
+  closed: number;
+}
+
 export interface JobPage {
   items: JobRecord[];
   nextCursor?: number | null;

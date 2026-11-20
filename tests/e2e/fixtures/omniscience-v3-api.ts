@@ -327,6 +327,11 @@ export async function mockV3(page: Page, options: V3MockOptions = {}) {
                 found.state = sub === 'jobs/retry' ? 'queued' : 'cancelled';
                 return json({ jobId: found.jobId, changed: true, state: found.state });
             }
+            case 'POST jobs/retry-dead': {
+                const dead = state.jobs.filter(j => j.state === 'dead' && (!body.moduleId || j.moduleId === body.moduleId));
+                for (const j of dead) j.state = 'queued';
+                return json({ retried: dead.length, closed: 0 });
+            }
             case 'GET llm/calls': {
                 const items = state.calls.filter(c => (!p.get('workClass') || c.workClass === p.get('workClass')) && (!p.get('outcome') || c.outcome === p.get('outcome')));
                 return json({ items, nextCursor: null });

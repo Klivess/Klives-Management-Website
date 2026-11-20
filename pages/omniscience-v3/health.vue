@@ -17,12 +17,14 @@
                             :attention="!!health.data.value?.open.some(i => i.severity.toLowerCase() === 'urgent')" @retry="health.refresh()">
             <ul v-if="health.data.value" class="issues" data-testid="health-open">
                 <li v-for="i in health.data.value.open" :key="i.issueId" :class="i.severity.toLowerCase()">
-                    <span class="omni-chip sm" :class="severityTone(i.severity)">{{ omniHumanise(i.kind) }}</span>
+                    <span class="omni-chip sm" :class="severityTone(i.severity)">{{ healthLabel(i.kind, i.detail) }}</span>
                     <span class="text">{{ healthText(i.kind, i.detail, i.subject) }}</span>
                     <span class="omni-muted">since <OmniscienceV3Time :ms="i.firstMs" mode="age" /></span>
                     <NuxtLink v-if="i.kind === 'jobs_dead'" class="omni-muted" :to="`${OMNI_BASE}/jobs?state=dead`">jobs →</NuxtLink>
                     <NuxtLink v-else-if="i.kind === 'tail_stalled' || i.kind === 'module_stalled'" class="omni-muted" :to="`${OMNI_BASE}/jobs?module=${encodeURIComponent(i.subject ?? '')}`">its jobs →</NuxtLink>
                     <NuxtLink v-else-if="i.kind.startsWith('llm') || i.kind === 'cache_floor'" class="omni-muted" :to="`${OMNI_BASE}/llm`">model calls →</NuxtLink>
+                    <NuxtLink v-else-if="i.kind === 'module_problem' && i.subject === 'datacontrols'" class="omni-muted" :to="`${OMNI_BASE}/settings`">settings →</NuxtLink>
+                    <NuxtLink v-else-if="i.kind === 'module_problem'" class="omni-muted" :to="`${OMNI_BASE}/jobs?state=leased`">running jobs →</NuxtLink>
                 </li>
             </ul>
         </OmniscienceV3Panel>
@@ -106,7 +108,7 @@ import { computed, watch } from 'vue';
 import { OMNI_BASE, omniGet, omniPost } from '~/scripts/omniscience/api';
 import type { HealthListDto, MonitorEventPageDto, MonitorRuleChangedDto, MonitorRuleDto, MonitorRuleListDto, TopicStatusDto, TranslateStatusDto } from '~/scripts/omniscience/contracts';
 import { omniCount } from '~/scripts/omniscience/format';
-import { findingText, healthText, omniHumanise } from '~/scripts/omniscience/findings';
+import { findingText, healthLabel, healthText, omniHumanise } from '~/scripts/omniscience/findings';
 import { useOmniAction, useOmniDebounced, useOmniResource } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
 import { useAccess } from '~/composables/useAccess';

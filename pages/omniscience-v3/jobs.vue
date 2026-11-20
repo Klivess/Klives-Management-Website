@@ -34,6 +34,9 @@
             <span class="summary"><b>{{ jobs.items.value.length }}</b> loaded{{ jobs.hasMore.value ? ', more available' : '' }}</span>
             <button v-if="activeCount" class="omni-filterchip" type="button" @click="clearFilters">Clear filters <span class="x" aria-hidden="true">✕</span></button>
             <div class="grow"></div>
+            <!-- Dead jobs are retried one at a time from the job's own panel; after a fix has been deployed that is one visit per job. -->
+            <button v-if="canManage && filters.state === 'dead' && jobs.items.value.length" class="omni-btn primary sm" type="button" :disabled="busy !== null"
+                    data-testid="retry-dead" @click="retryDead">{{ filters.module ? `Retry all dead ${filters.module} jobs` : 'Retry all dead jobs' }}</button>
         </div>
 
         <OmniscienceV3Panel title="Jobs" flush :loading="jobs.loading.value" :error="jobs.error.value" :has-data="jobs.items.value.length > 0"
@@ -128,7 +131,7 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue';
 import { OMNI_BASE, omniGet, omniPost } from '~/scripts/omniscience/api';
-import type { JobActionResultDto, JobPage, JobRecord, Lane } from '~/scripts/omniscience/contracts';
+import type { DeadJobsRetriedDto, JobActionResultDto, JobPage, JobRecord, Lane } from '~/scripts/omniscience/contracts';
 import { omniDuration, omniStateTone } from '~/scripts/omniscience/format';
 import { useOmniAction, useOmniDebounced, useOmniEngine, useOmniPaged, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
@@ -185,6 +188,16 @@ async function act(what: 'cancel' | 'retry') {
         r => (r.changed ? `Job #${r.jobId} is now ${r.state}.` : `Job #${r.jobId} was already ${r.state}; nothing changed.`));
     if (!result) return;
     void detail.refresh();
+    void jobs.reload(true);
+    void refreshStatus();
+}
+
+/** Every dead job (of the module chosen, when one is) goes back in the queue; one whose work is already queued again is closed. */
+async function retryDead() {
+    const result = await run('retry-dead', () => omniPost<DeadJobsRetriedDto>('jobs/retry-dead', { moduleId: filters.module || null }),
+        r => `${r.retried} job${r.retried === 1 ? '' : 's'} queued again${r.closed ? `; ${r.closed} closed, because the same work was already queued again` : ''}.`);
+    if (!result) return;
+    filters.job = '';
     void jobs.reload(true);
     void refreshStatus();
 }

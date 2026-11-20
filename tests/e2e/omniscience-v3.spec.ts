@@ -202,6 +202,16 @@ test('jobs: filters live in the URL and reach the server, pages use the cursor, 
     expect(posts(state, 'jobs/retry').at(-1)?.body).toEqual({ jobId: 1204 });
     await shot(page, 'jobs');
 
+    // Every dead job at once (after a fix is deployed), instead of one visit per job. The one retried above is queued already.
+    await go(page, `${BASE}/jobs?state=dead`);
+    await expect(page.getByTestId('retry-dead')).toHaveCount(0, BOOT);
+    state.jobs.find(j => j.jobId === 1204)!.state = 'dead';
+    await go(page, `${BASE}/jobs?state=dead`);
+    await page.getByTestId('retry-dead').click();
+    await expect(card(page, 'Jobs')).toContainText('Nothing has failed every attempt.');
+    expect(posts(state, 'jobs/retry-dead').at(-1)?.body).toEqual({ moduleId: null });
+    await expect(page.getByTestId('retry-dead')).toHaveCount(0);
+
     // A shared link reproduces the view: filter and open job.
     await go(page, `${BASE}/jobs?lane=Io&job=1206`);
     await expect(page.locator('.omni-drawer')).toContainText('worker-io-1', BOOT);

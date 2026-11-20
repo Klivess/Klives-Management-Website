@@ -439,6 +439,20 @@ test('health names a stalled message copy and a module that finishes nothing', a
     await expect(open).toContainText('insights has 19 jobs waiting and has finished none for 9.5 hours');
 });
 
+test('health says what a part of the engine reports as standing in its way', async ({ page }) => {
+    await mockV3(page);
+    await loadPage(page, `${BASE}/health`);
+    const open = page.getByTestId('health-open');
+    // A backup that has no room is not a dead job every night: it says what it needs and where to change it.
+    await expect(open).toContainText('No backup is being taken: one needs about 30.2 GB free in C:\\data\\backups and 21.7 GB are free (there is no backup yet).', BOOT);
+    await expect(open).toContainText('set datacontrols.backup.folder');
+    await expect(open.locator('li', { hasText: 'No backup is being taken' }).locator('.omni-chip')).toHaveText('Backup');
+    await expect(open.locator('li', { hasText: 'No backup is being taken' }).getByRole('link', { name: 'settings →' })).toBeVisible();
+    // Work that was told to stop and did not is named, not just counted in a log.
+    await expect(open).toContainText('2 jobs told to stop did not, and are still running on their own (media.text/extract, datacontrols/backup).');
+    await expect(open.locator('li', { hasText: 'told to stop did not' }).locator('.omni-chip')).toHaveText('Handlers left behind');
+});
+
 test('a read the server is still working on is asked again until its answer is there', async ({ page }) => {
     await mockV3(page);
     // The server's promise: every read is answered within seconds, with the data or with "pending" while it works on.

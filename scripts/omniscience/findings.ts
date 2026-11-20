@@ -1,4 +1,4 @@
-import { omniCount, omniDuration, omniPercent } from '~/scripts/omniscience/format';
+import { omniBytes, omniCount, omniDuration, omniPercent } from '~/scripts/omniscience/format';
 
 /**
  * One sentence for each kind of finding the engine hands to the notices (monitors, relationships,
@@ -89,9 +89,30 @@ export function healthText(kind: string, detail: unknown, subject?: string | nul
             return `New messages have stopped arriving from v2: the copy that runs every two minutes has not finished for ${omniCount(num(d.minutes))} minutes. What you see here is that much out of date.`;
         case 'module_stalled':
             return `${str(d.moduleId) ?? subject ?? 'A module'} has ${omniCount(num(d.queued))} job${num(d.queued) === 1 ? '' : 's'} waiting and has finished none for ${round(num(d.hours))} hours.`;
+        case 'module_problem': {
+            // What a part of the engine says stands in its own way; it stays listed until that part clears it.
+            const p = bag(d.detail);
+            const problem = str(d.problem);
+            if (problem === 'backup' && str(p.reason) === 'no_space')
+                return `No backup is being taken: one needs about ${omniBytes(num(p.neededBytes))} free in ${str(p.folder) ?? 'the backups folder'} and ${omniBytes(num(p.freeBytes))} are free${num(p.lastBackupMs) === null ? ' (there is no backup yet)' : ''}. Free space there, keep fewer backups, or set datacontrols.backup.folder to a folder on a drive with room.`;
+            if (problem === 'backup')
+                return `The last backup could not be taken: ${str(p.message) ?? 'no reason was recorded'}`;
+            if (problem === 'handlers_left_behind') {
+                const jobs = Array.isArray(p.jobs) ? p.jobs.map(bag) : [];
+                const n = num(p.count) ?? jobs.length;
+                const which = jobs.slice(0, 4).map(j => `${str(j.moduleId) ?? '?'}/${str(j.kind) ?? '?'}`).join(', ');
+                return `${omniCount(n)} job${n === 1 ? '' : 's'} told to stop did not, and ${n === 1 ? 'is' : 'are'} still running on ${n === 1 ? 'its' : 'their'} own${which ? ` (${which}${jobs.length > 4 ? ', …' : ''})` : ''}. Each holds a thread and whatever it was reading until it ends; none is started again before then.`;
+            }
+            return `${str(d.moduleId) ?? subject ?? 'The engine'}: ${str(p.message) ?? omniHumanise(problem ?? kind)}`;
+        }
         default:
             return omniHumanise(kind);
     }
+}
+
+/** The short name shown on a health problem's chip: the problem itself where a part of the engine reported one. */
+export function healthLabel(kind: string, detail: unknown): string {
+    return kind === 'module_problem' ? omniHumanise(str(bag(detail).problem) ?? kind) : omniHumanise(kind);
 }
 
 /** "3 h" style lengths for waits shown in lists. */

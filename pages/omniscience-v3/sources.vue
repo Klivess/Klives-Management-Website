@@ -34,8 +34,10 @@
                 </div>
                 <form v-if="canManage" class="backfill" data-testid="backfill-form" @submit.prevent="backfill()">
                     <label for="bf-channel">Read a channel's whole history now</label>
-                    <input id="bf-channel" v-model="channelId" class="omni-input mono" inputmode="numeric" placeholder="Discord channel id" />
-                    <button class="omni-btn" type="submit" :disabled="busy !== null || !/^\d{5,25}$/.test(channelId.trim())">Start</button>
+                    <OmniscienceV3Pick kind="conversation" label="Channel" any="Choose a channel…" :multiple="false" variant="field" input-id="bf-channel" testid="backfill-channel"
+                                       :scope="{ platforms: ['discord'], places: ['server'] }" help="A channel Omniscience has not seen yet can be added by its Discord id."
+                                       :model-value="channelId ? [channelId] : []" @update:model-value="ids => (channelId = ids[0] ?? '')" />
+                    <button class="omni-btn" type="submit" :disabled="busy !== null || !/^\d{5,25}$/.test(nativeChannel)">Start</button>
                     <span class="help">Every channel is read back by itself over time; this puts one at the front.</span>
                 </form>
             </template>
@@ -161,8 +163,10 @@ const discord = useOmniResource(signal => omniGet<DiscordBotStatusDto>('sources/
 const d = computed(() => discord.data.value);
 const sourceTone = computed(() => (d.value?.sourceStatus === 'active' ? 'ok' : d.value?.sourceStatus === 'unauthorised' ? 'bad' : 'warn'));
 const channelId = ref('');
+/** Discord's own number for the chosen channel: the corpus id without its "discord:" prefix, or a number that was typed in. */
+const nativeChannel = computed(() => channelId.value.trim().replace(/^discord:/, ''));
 async function backfill() {
-    const id = channelId.value.trim();
+    const id = nativeChannel.value;
     const result = await run('backfill', () => omniPost<ImportJobStartedDto>('sources/discord/backfill', { channelId: id }), r => `Reading that channel's history (job ${r.jobId}). Follow it under ${OMNI_BASE}/jobs.`);
     if (result) channelId.value = '';
 }
@@ -269,7 +273,7 @@ onBeforeUnmount(() => polling?.abort());
 <style scoped>
 .imports { margin-top: var(--omni-gutter); }
 .backfill { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; font-size: 13px; }
-.backfill input { width: 220px; }
+.backfill .omni-pop { flex: 0 1 340px; min-width: 220px; }
 .upload { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .warnings { margin: 8px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--omni-warning); }
 .senders { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }

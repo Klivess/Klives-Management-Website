@@ -82,6 +82,10 @@
                                 @change="patchFilter(i, { v: ($event.target as HTMLSelectElement).value })">
                             <option value="">Choose…</option><option value="true">yes</option><option value="false">no</option>
                         </select>
+                        <!-- People, servers, conversations and the values of a category are chosen by name from a list; nothing has to be typed or pasted. -->
+                        <OmniscienceV3Pick v-else-if="picks(f)" class="value" variant="field" :model-value="pickedValues(f)" :kind="pickKind(f.d)" :label="dimensionById.get(f.d)?.title ?? 'Value'"
+                                           any="Choose…" :multiple="f.o === 'In' || f.o === 'NotIn'" :load="facetLoader(f.d)" :testid="`explore-value-${i}`"
+                                           @update:model-value="ids => patchFilter(i, { v: ids.join(',') })" />
                         <input v-else class="omni-input" type="text" :value="f.v" :aria-label="`Filter ${i + 1} value`"
                                :placeholder="f.o === 'In' || f.o === 'NotIn' ? 'values, separated by commas' : f.o === 'Between' ? 'low, high' : 'value'"
                                @change="patchFilter(i, { v: ($event.target as HTMLInputElement).value })" />
@@ -162,9 +166,10 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { OMNI_BASE, OmniApiError, omniGet, omniPost } from '~/scripts/omniscience/api';
 import type {
-    DatasetCatalogDto, DimensionDefinition, DimensionKind, ExploreColumn, ExploreFilter, ExploreQuery, ExploreRecordsPage, ExploreResult,
+    DatasetCatalogDto, DimensionDefinition, DimensionKind, ExploreColumn, ExploreFacetsDto, ExploreFilter, ExploreQuery, ExploreRecordsPage, ExploreResult,
     FilterOp, TimeBucket, TimeLens,
 } from '~/scripts/omniscience/contracts';
+import type { OmniOption, OmniPickKind } from '~/scripts/omniscience/filters';
 import { omniCount, omniCsv, omniDownload, omniZonedToMs } from '~/scripts/omniscience/format';
 import { useOmniCarry, useOmniDebounced, useOmniEngine, useOmniPaged, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
@@ -262,6 +267,49 @@ function setTimeValue(i: number, end: 0 | 1, local: string) {
     patchFilter(i, { v: parts.join(',') });
 }
 function clearAll() { state.groupBy = ''; state.bucket = 'None'; state.timeDim = ''; state.filters = ''; state.asOf = ''; showAsOf.value = false; }
+
+// ── choosing a filter's value from a list ────────────────────────────────────
+
+/** "Is", "is not", "is one of" and "is none of" on a person, a place or a category are picked from a list. Everything else is typed. */
+function picks(f: FilterRow): boolean {
+    const kind = kindOf(f.d);
+    return (kind === 'Entity' || kind === 'Category') && (f.o === 'Eq' || f.o === 'NotEq' || f.o === 'In' || f.o === 'NotIn');
+}
+
+/** People, servers and conversations are found by name across everything; any other dimension offers the values this dataset holds. */
+function pickKind(dimension: string): OmniPickKind {
+    const entity = dimensionById.value.get(dimension)?.entityType;
+    return entity === 'person' || entity === 'guild' || entity === 'conversation' ? entity : 'custom';
+}
+
+function pickedValues(f: FilterRow): string[] {
+    if (!f.v) return [];
+    return f.o === 'In' || f.o === 'NotIn' ? f.v.split(',').map(x => x.trim()).filter(Boolean) : [f.v];
+}
+
+const facetValues = new Map<string, OmniOption[]>();
+const facetLoaders = new Map<string, (query: string, signal: AbortSignal) => Promise<OmniOption[]>>();
+
+/** The values a dimension takes in the chosen dataset, the most common first (asked for once), narrowed by what is typed. */
+function facetLoader(dimension: string) {
+    const key = `${state.dataset}\u0001${dimension}`;
+    let loader = facetLoaders.get(key);
+    if (!loader) {
+        loader = async (text, signal) => {
+            let values = facetValues.get(key);
+            if (!values) {
+                const found = await omniPost<ExploreFacetsDto>('explore/facets', { dataset: state.dataset, filters: [], dimensions: [dimension], limit: 200 }, signal);
+                values = (found.facets[0]?.values ?? []).filter(v => v.value !== null && v.value !== undefined && v.value !== '')
+                    .map(v => ({ id: String(v.value), label: String(v.value), count: v.count }));
+                facetValues.set(key, values);
+            }
+            const needle = text.trim().toLowerCase();
+            return needle ? values.filter(o => o.label.toLowerCase().includes(needle)) : values;
+        };
+        facetLoaders.set(key, loader);
+    }
+    return loader;
+}
 
 /** Time bounds are typed on Klives's clock unless the lens is UTC; "each person's clock" has no single zone to type in. */
 const boundsZone = computed(() => (state.lens === 'Utc' ? 'UTC' : klivesZone.value));
@@ -435,6 +483,7 @@ function recordCell(key: string, value: unknown): string {
 .omni-pick .grp { font-size: 9.5px; letter-spacing: 1px; text-transform: uppercase; color: var(--omni-muted); font-weight: 700; margin-top: 4px; }
 .omni-filters { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--omni-line); border-radius: var(--omni-radius-sm); }
 .frow .omni-input { width: auto; min-width: 180px; }
+.frow .value { flex: 0 1 320px; min-width: 220px; }
 .omni-explain { margin-top: 16px; font-size: 12.5px; }
 .omni-explain > summary { cursor: pointer; color: var(--omni-text-2); margin-bottom: 8px; }
 </style>

@@ -303,6 +303,40 @@
   .omni-filterbar .summary { display: inline-flex; align-items: center; gap: var(--omni-space-2); font-size: 12px; color: var(--omni-muted); }
   .omni-filterbar .summary b { color: var(--omni-text); font-weight: 600; }
 
+  /* ── filters: a row of dropdowns, each a panel that picks by name ────────── */
+
+  .omni-pop { position: relative; display: inline-flex; max-width: 100%; min-width: 0; }
+  .omni-pop.block { display: flex; }
+  .omni-pop-panel {
+    position: absolute; top: calc(100% + 5px); left: 0; z-index: var(--omni-z-popover); width: min(var(--omni-pop-width, 340px), calc(100vw - 24px));
+    background: var(--omni-surface-2); border: 1px solid var(--omni-line-strong); border-radius: var(--omni-radius); box-shadow: 0 18px 46px rgba(0, 0, 0, 0.55);
+    animation: omni-rise 0.12s ease-out; text-align: left;
+  }
+  .omni-pop-panel.end { left: auto; right: 0; }
+  /* A picker used as a form field drops a panel as wide as the field. */
+  .omni-pop.block > .omni-pop-panel { left: 0; right: 0; width: auto; }
+  .omni-filterset > .clear { margin-left: auto; }
+  .omni-pop-panel.up { top: auto; bottom: calc(100% + 5px); }
+  .omni-picker { display: flex; flex-direction: column; gap: var(--omni-space-2); padding: 10px; min-width: 0; }
+  .omni-picker .mode { align-self: flex-start; }
+  .omni-picker .find { width: 100%; min-width: 0; }
+  .omni-picker .options { list-style: none; margin: 0 -4px; padding: 0; max-height: min(320px, 46vh); overflow-y: auto; }
+  .omni-picker .options li { display: flex; align-items: center; gap: var(--omni-space-2); min-width: 0; padding: 6px 8px; border-radius: 7px; cursor: pointer; font-size: 12.5px; }
+  .omni-picker .options li.active, .omni-picker .options li:hover, .omni-picker .options li:focus-visible { background: var(--omni-surface-3); }
+  .omni-picker .options li.on .name { color: #dcd6ff; }
+  .omni-picker .options li.note, .omni-picker .options li.note:hover { cursor: default; background: none; color: var(--omni-muted); font-size: 12px; }
+  .omni-picker .tick { flex: 0 0 14px; text-align: center; color: var(--omni-accent); font-weight: 700; }
+  .omni-picker .what { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+  .omni-picker .name, .omni-picker .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .omni-picker .sub { font-size: 11px; color: var(--omni-muted); }
+  .omni-picker .n { flex: 0 0 auto; font: 500 11px var(--omni-mono); color: var(--omni-muted); }
+  .omni-picker .byid { display: flex; gap: 6px; }
+  .omni-picker .help { margin: 0; font-size: 11.5px; color: var(--omni-muted); }
+  .omni-picker .foot { display: flex; align-items: center; gap: 6px; padding-top: var(--omni-space-2); border-top: 1px solid var(--omni-line); font-size: 11.5px; }
+  .omni-picker .foot .grow { flex: 1 1 auto; }
+  .omni-picker .span { display: grid; grid-template-columns: 1fr 1fr; gap: var(--omni-space-2); }
+  .omni-picker .span label { display: flex; flex-direction: column; gap: 3px; min-width: 0; font: 600 10.5px var(--omni-mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--omni-muted); }
+
   /* ── tables ─────────────────────────────────────────────────────────────── */
 
   .omni-tablewrap { overflow-x: auto; overflow-y: auto; }
@@ -453,6 +487,24 @@
   .omni-filterchip:hover { border-color: var(--omni-accent); }
   .omni-filterchip .x { color: var(--omni-muted); font-weight: 700; }
 
+  /* A filter on the bar: what it is, what it is set to, and (when set) a way to clear it. */
+  .omni-pill { display: inline-flex; align-items: stretch; max-width: 100%; min-width: 0; height: var(--omni-control); overflow: hidden; border: 1px solid var(--omni-line-strong); border-radius: var(--omni-radius-sm); background: var(--omni-inset); transition: border-color var(--omni-fast), background var(--omni-fast); }
+  .omni-pill:hover { border-color: rgba(190, 198, 232, 0.3); }
+  .omni-pill.set { border-color: rgba(159, 143, 255, 0.5); background: var(--omni-accent-soft); }
+  .omni-pill.field { display: flex; width: 100%; }
+  .omni-pill.off { opacity: 0.45; }
+  .omni-pill > .main { display: inline-flex; align-items: center; cursor: pointer; gap: 6px; flex: 1 1 auto; min-width: 0; padding: 0 9px; font-size: 12.5px; }
+  .omni-pill > .main:disabled { cursor: not-allowed; }
+  .omni-pill > .main .k { color: var(--omni-muted); white-space: nowrap; }
+  .omni-pill > .main .k::after { content: ':'; }
+  .omni-pill > .main .v { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--omni-text); }
+  .omni-pill > .main .v.none { color: var(--omni-text-2); }
+  .omni-pill.field > .main .v { flex: 1 1 auto; max-width: none; text-align: left; }
+  .omni-pill > .main .caret { flex: 0 0 auto; color: var(--omni-muted); font-size: 10px; }
+  .omni-pill > .x { display: inline-flex; align-items: center; cursor: pointer; flex: 0 0 auto; padding: 0 8px; border-left: 1px solid var(--omni-line); color: var(--omni-muted); font-size: 11px; }
+  .omni-pill > .x:hover { color: var(--omni-text); background: rgba(255, 255, 255, 0.06); }
+  .omni-pill > .main:focus-visible, .omni-pill > .x:focus-visible { outline-offset: -2px; }
+
   .omni-need { display: flex; align-items: center; cursor: pointer; gap: 11px; width: 100%; padding: 9px var(--omni-card-pad); border-bottom: 1px solid var(--omni-line); text-align: left; }
   .omni-need:last-child { border-bottom: 0; }
   .omni-need:hover { background: var(--omni-surface-2); }
@@ -498,6 +550,11 @@
   .omni-v3 .omni-nav-areas { padding: 0 6px; }
   .omni-v3 .omni-nav-pages { padding: 6px 8px; }
   .omni-v3 .omni-filterbar { padding: 8px; }
+  /* A filter's panel drops as wide as the bar: there is no room to hang it from its own button. */
+  .omni-v3 .omni-filterset { position: relative; }
+  .omni-v3 .omni-filterset .omni-pop { position: static; }
+  .omni-v3 .omni-filterset .omni-pop-panel, .omni-v3 .omni-filterset .omni-pop-panel.end, .omni-v3 .omni-filterset .omni-pop-panel.up { left: 0; right: 0; top: calc(100% + 4px); bottom: auto; width: auto; }
+  .omni-v3 .omni-pill > .main .v { max-width: 150px; }
 }
 @container omni (max-width: 480px) {
   .omni-v3 .omni-brand b, .omni-v3 .omni-top .omni-top-dead { display: none; }

@@ -28,6 +28,12 @@
                 <textarea :id="`${uid}-${i}-q`" class="omni-input" rows="2" :value="sel.items[0]?.label ?? ''"
                           @input="setQuestion(i, ($event.target as HTMLTextAreaElement).value)"></textarea>
             </div>
+            <div v-else-if="PICKED[sel.kind]" class="omni-field">
+                <label :for="`${uid}-${i}-pick`">{{ KIND_LABEL[sel.kind] }}</label>
+                <OmniscienceV3Pick :kind="PICKED[sel.kind]!" :label="KIND_LABEL[sel.kind]" any="Choose…" variant="field" :input-id="`${uid}-${i}-pick`" :testid="`selection-pick-${i}`"
+                                   :model-value="sel.items.map(item => item.id)" @update:model-value="ids => setPicked(i, ids)" />
+                <span class="help">Chosen by name. Ids can still be pasted, several at once, under “Add by id…”.</span>
+            </div>
             <div v-else class="omni-field">
                 <label :for="`${uid}-${i}-ids`">{{ KIND_LABEL[sel.kind] }} ids, one per line</label>
                 <textarea :id="`${uid}-${i}-ids`" class="omni-input mono" rows="3" spellcheck="false" :placeholder="PLACEHOLDER[sel.kind] ?? ''"
@@ -51,11 +57,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, useId, watch } from 'vue';
+import { computed, onMounted, ref, useId, watch, watchEffect } from 'vue';
 import { omniGet, toOmniError } from '~/scripts/omniscience/api';
 import type { CohortDto, CohortSelectionDto, Selection, SelectionKind } from '~/scripts/omniscience/contracts';
 import { omniMsToZonedInput, omniZonedToMs } from '~/scripts/omniscience/format';
+import type { OmniPickKind } from '~/scripts/omniscience/filters';
 import { useOmniTime } from '~/composables/useOmniscienceV3';
+import { useOmniPickLabels } from '~/composables/useOmniFilters';
 
 /**
  * The input of a tactic: one or more typed sets. Sets arrive from elsewhere (another run's
@@ -107,6 +115,25 @@ function add() {
 }
 function remove(i: number) { draftRange.value = {}; emit('update:modelValue', props.modelValue.filter((_, n) => n !== i)); }
 function setKind(i: number, kind: SelectionKind) { update(i, { kind, items: [], sampled: false }); }
+
+/** The kinds of set that are chosen by name from a list instead of typed in by id. */
+const PICKED: Partial<Record<SelectionKind, OmniPickKind>> = { Person: 'person', Conversation: 'conversation', Guild: 'guild' };
+const { remember, labelOf } = useOmniPickLabels();
+// A set that arrived with names (a cohort, another run's output) is shown by those names.
+watchEffect(() => {
+    for (const sel of props.modelValue) {
+        const kind = PICKED[sel.kind];
+        if (kind) for (const item of sel.items) if (item.label) remember(kind, item.id, item.label);
+    }
+});
+
+function setPicked(i: number, ids: string[]) {
+    const current = props.modelValue[i]!;
+    const kind = PICKED[current.kind]!;
+    const known = new Map(current.items.map(item => [item.id, item]));
+    // As with typed ids: a set changed by hand is no longer "the output of run X", nor a sample.
+    update(i, { kind: current.kind, items: ids.map(id => known.get(id) ?? { id, label: labelOf(kind, id) === id ? undefined : labelOf(kind, id) }), sampled: false });
+}
 
 const idText = (sel: Selection) => sel.items.map(item => item.id).join('\n');
 function setIds(i: number, text: string) {

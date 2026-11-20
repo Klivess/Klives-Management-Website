@@ -11,8 +11,9 @@
             <!-- ── forget ───────────────────────────────────────────────── -->
             <OmniscienceV3Card title="Forget a person" subtitle="Preview first: nothing changes until you confirm.">
                 <form class="omni-form" data-testid="forget-form" @submit.prevent="preview()">
-                    <div class="omni-field"><label for="f-person">Person id</label>
-                        <input id="f-person" v-model="forget.personId" class="omni-input mono" required placeholder="p…" @input="clearPreview()" /></div>
+                    <div class="omni-field"><label for="f-person">Person</label>
+                        <OmniscienceV3Pick kind="person" label="Person" any="Choose who…" :multiple="false" variant="field" input-id="f-person" testid="forget-person"
+                                           :model-value="forget.personId ? [forget.personId] : []" @update:model-value="ids => { forget.personId = ids[0] ?? ''; clearPreview(); }" /></div>
                     <fieldset class="levels">
                         <legend class="visually-hidden">How much to forget</legend>
                         <label class="omni-check"><input v-model="forget.level" type="radio" value="derived" @change="clearPreview()" />
@@ -71,7 +72,8 @@
 
                 <OmniscienceV3Card v-if="canExport" title="Export a person" subtitle="Everything held about one person, as a file.">
                     <form class="omni-row" data-testid="export-form" @submit.prevent="exportPerson()">
-                        <input v-model="exportForm.personId" class="omni-input mono grow" required placeholder="Person id" aria-label="Person id" />
+                        <OmniscienceV3Pick class="omni-grow" kind="person" label="Person" any="Choose who…" :multiple="false" variant="field" testid="export-person"
+                                           :model-value="exportForm.personId ? [exportForm.personId] : []" @update:model-value="ids => (exportForm.personId = ids[0] ?? '')" />
                         <select v-model="exportForm.format" class="omni-select auto" aria-label="Format"><option value="json">JSON</option><option value="markdown">Markdown</option></select>
                         <button class="omni-btn" type="submit" :disabled="busy !== null || !exportForm.personId.trim()">Download</button>
                     </form>

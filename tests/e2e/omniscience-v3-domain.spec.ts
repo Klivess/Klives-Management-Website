@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { BOOT, NOW, V3, loadPage, mockV3 } from './fixtures/omniscience-v3-api';
+import { BOOT, NOW, V3, closePick, loadPage, mockV3, pickOption } from './fixtures/omniscience-v3-api';
 
 /**
  * The Omniscience v3 pages built on the WS-C contract (people, signals, digests, communities,
@@ -133,7 +133,11 @@ test('signals: verdicts and bulk state on alerts, a snoozed reply, notices in wo
     const form = page.getByTestId('watch-form');
     await form.getByLabel('Name').fill('Birthday');
     await form.getByLabel('What to watch for').fill('someone planning a surprise for me');
-    await form.getByLabel('Only in these servers (ids, optional)').fill('guild-1, guild-2');
+    // Servers are chosen by name from a dropdown; nobody types an id.
+    await pickOption(form, 'watch-guilds', /Synthetic Server/);
+    await pickOption(form, 'watch-guilds', /Second synthetic server/);
+    await closePick(form, 'watch-guilds');
+    await expect(form.getByTestId('watch-guilds')).toContainText('Synthetic Server, Second synthetic server');
     await form.getByRole('button', { name: 'Create rule' }).click();
     await expect.poll(() => posts(state, 'signals/watchlists/save').at(-1)?.body).toEqual({
         watchId: null, name: 'Birthday', text: 'someone planning a surprise for me', enabled: true, guilds: ['guild-1', 'guild-2'], conversations: null, persons: null,
@@ -162,7 +166,7 @@ test('digests: read one, write one now and see it finish, and subscribe weekly',
 
     const runForm = page.getByTestId('digest-run');
     await runForm.getByLabel('Of').selectOption('guild');
-    await runForm.getByLabel('Server id').fill('guild-1');
+    await pickOption(runForm, 'digest-scope', /Synthetic Server/, 'synth');
     await runForm.getByLabel('Covering').selectOption('24');
     await runForm.getByRole('button', { name: 'Write it' }).click();
     await expect.poll(() => posts(state, 'digests/run').at(-1)?.body).toEqual({ scopeKind: 'guild', scopeId: 'guild-1', fromMs: NOW - DAY, toMs: NOW });
@@ -173,7 +177,7 @@ test('digests: read one, write one now and see it finish, and subscribe weekly',
     const sub = page.getByTestId('sub-form');
     await sub.getByLabel('Subscription name').fill('Ada weekly');
     await sub.getByLabel('Of', { exact: true }).selectOption('person');
-    await sub.getByLabel('Scope id').fill('person-a');
+    await pickOption(sub, 'sub-scope', /Synthetic Ada/, 'ada');
     await sub.getByLabel('Cadence').selectOption('weekly');
     await sub.getByLabel('Weekday').selectOption('5');
     await sub.getByLabel('Time of day').fill('18:30');
@@ -238,7 +242,8 @@ test('data controls: analysis off with a typed confirmation, erase asks for ERAS
     await page.setViewportSize({ width: 1600, height: 1100 });
     await loadPage(page, `${BASE}/data?person=person-a`);
     const form = page.getByTestId('forget-form');
-    await expect(form.getByLabel('Person id')).toHaveValue('person-a', BOOT);
+    // The person arrives by id in the link and is shown by name.
+    await expect(form.getByTestId('forget-person')).toContainText('Synthetic Ada', BOOT);
     await form.getByRole('button', { name: 'Preview' }).click();
     const preview = page.getByTestId('forget-preview');
     await expect(preview).toContainText('This will forget what was worked out about Synthetic Ada');

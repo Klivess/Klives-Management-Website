@@ -1,4 +1,4 @@
-import { type Page, type WebSocketRoute } from '@playwright/test';
+import { type Locator, type Page, type WebSocketRoute } from '@playwright/test';
 import type {
     CohortDto, DatasetCatalogDto, ExploreQuery, ExploreRecordsRequest, ExploreResult, JobRecord, LlmCallDto, LlmSummaryRowDto, ModuleDto,
     Playbook, Selection, SettingDto, StreamEventDto, TacticDescriptor, TacticRunDto, V3Phase, V3StatusDto,
@@ -125,6 +125,32 @@ const DATASETS: DatasetCatalogDto = {
  * again after a pause, up to three times, and every wait is short enough for all three to fit in one test.
  * Anything else that keeps the app from mounting still fails the test at its first assertion.
  */
+/**
+ * Chooses an option by name in a filter's dropdown (or a picker used as a form field), found by its test id. The
+ * dropdown is opened if it is not open yet; `search` is typed into its search box first. A dropdown that takes
+ * several choices stays open: close it with `closePick`.
+ */
+export async function pickOption(scope: Page | Locator, testid: string, option: string | RegExp, search = '') {
+    const pick = scope.getByTestId(testid);
+    if (!(await pick.getByRole('searchbox').count())) await pick.locator('.omni-pill > .main').click();
+    if (search) await pick.getByRole('searchbox').fill(search);
+    await pick.getByRole('option', { name: option }).click();
+}
+
+/** Puts an open dropdown away with its Done button. */
+export async function closePick(scope: Page | Locator, testid: string) {
+    await scope.getByTestId(testid).getByRole('button', { name: 'Done' }).click();
+}
+
+/** Adds something to a picker by its id ("Add by id…"), for what cannot be chosen by name. */
+export async function pickById(scope: Page | Locator, testid: string, ids: string) {
+    const pick = scope.getByTestId(testid);
+    if (!(await pick.getByRole('searchbox').count())) await pick.locator('.omni-pill > .main').click();
+    await pick.getByRole('button', { name: 'Add by id…' }).click();
+    await pick.getByLabel('Add by id').fill(ids);
+    await pick.getByRole('button', { name: 'Add', exact: true }).click();
+}
+
 export async function loadPage(page: Page, path: string) {
     const isMounted = () => !!(document.querySelector('#__nuxt') as any)?.__vue_app__;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -366,6 +392,11 @@ export async function mockV3(page: Page, options: V3MockOptions = {}) {
             case 'GET explore/datasets': return json(DATASETS);
             case 'POST explore/query':
                 return options.exploreInstalled === false ? fail(503, 'unavailable', 'The Explore engine is not installed in this build yet.') : json(exploreResult(body as ExploreQuery));
+            case 'POST explore/facets': {
+                const dimension = String(body?.dimensions?.[0] ?? '');
+                const values = dimension === 'where.platform' ? [{ value: 'discord', count: 4200 }, { value: 'whatsapp', count: 900 }] : [{ value: 'synthetic value', count: 12 }];
+                return json({ dataset: body?.dataset ?? 'messages', facets: [{ dimension, values }], asOfMs: NOW });
+            }
             case 'POST explore/records': {
                 const req = body as ExploreRecordsRequest;
                 const platform = String(req.narrow?.[0]?.values?.[0] ?? 'discord');

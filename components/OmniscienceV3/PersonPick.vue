@@ -8,8 +8,10 @@
         </div>
         <div v-if="modelValue.length < max" class="search">
             <input :id="inputId" v-model="text" class="omni-input" type="search" autocomplete="off" :placeholder="placeholder" :aria-label="inputId ? undefined : placeholder"
-                   @keydown.down.prevent="move(1)" @keydown.up.prevent="move(-1)" @keydown.enter.prevent="choose(matches[index])" @keydown.esc="text = ''" />
-            <ul v-if="text.trim() && (matches.length || searched)" class="results" role="listbox">
+                   @focus="onFocus()" @blur="focused = false"
+                   @keydown.down.prevent="move(1)" @keydown.up.prevent="move(-1)" @keydown.enter.prevent="choose(matches[index])" @keydown.esc="text = ''; focused = false" />
+            <ul v-if="focused && (matches.length || (searched && text.trim()))" class="results" role="listbox">
+                <li v-if="!text.trim() && matches.length" class="head omni-muted" role="presentation">Most active lately. Type to find anyone.</li>
                 <li v-for="(m, i) in matches" :key="m.personId" role="option" :aria-selected="i === index" :class="{ active: i === index }"
                     @mouseenter="index = i" @mousedown.prevent="choose(m)">
                     <span>{{ m.displayName }}</span>
@@ -28,7 +30,10 @@ import type { DirectoryPageDto, PersonCardDto } from '~/scripts/omniscience/cont
 import { omniCount } from '~/scripts/omniscience/format';
 import { useOmniDebounced, useOmniNames } from '~/composables/useOmniscienceV3';
 
-/** Picks people by name from the directory (the same search the People page uses), up to `max`. */
+/**
+ * Picks people by name from the directory (the same search the People page uses), up to `max`. Clicking into the box
+ * drops a list of the people most active lately, so someone can be chosen without typing anything.
+ */
 export interface PickedPerson { id: string; label: string | null }
 
 const props = withDefaults(defineProps<{
@@ -48,17 +53,24 @@ const text = ref('');
 const matches = ref<PersonCardDto[]>([]);
 const searched = ref(false);
 const index = ref(0);
+const focused = ref(false);
 let controller: AbortController | null = null;
+
+function onFocus() {
+    focused.value = true;
+    if (!text.value.trim() && !matches.value.length) void search();
+}
 
 async function search() {
     controller?.abort();
     const q = text.value.trim();
     searched.value = false;
-    if (!q) { matches.value = []; return; }
+    // With nothing typed the box is only a dropdown while it has the keyboard.
+    if (!q && !focused.value) { matches.value = []; return; }
     const mine = new AbortController();
     controller = mine;
     try {
-        const page = await omniGet<DirectoryPageDto>('people', { q, limit: 8 }, mine.signal);
+        const page = await omniGet<DirectoryPageDto>('people', q ? { q, limit: 8 } : { sort: 'Recent', limit: 8 }, mine.signal);
         if (mine.signal.aborted) return;
         const taken = new Set(props.modelValue.map(p => p.id));
         matches.value = page.items.filter(p => !taken.has(p.personId));
@@ -100,4 +112,5 @@ function remove(id: string) {
 .results li { display: flex; justify-content: space-between; gap: 10px; padding: 6px 8px; border-radius: 3px; font-size: 13px; cursor: pointer; }
 .results li.active { background: var(--omni-surface-3, rgba(255, 255, 255, 0.08)); }
 .results li.omni-muted { cursor: default; }
+.results li.head { font-size: 11px; padding: 4px 8px 2px; }
 </style>

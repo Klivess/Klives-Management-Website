@@ -76,14 +76,17 @@
 
         <!-- ── past answers ─────────────────────────────────────────────────── -->
         <template v-else-if="view.tab === 'past'">
-            <div class="omni-filterbar">
+            <div class="omni-filterbar words">
+                <label class="omni-search grow"><span class="glyph" aria-hidden="true">⌕</span><span class="visually-hidden">Words in the question</span>
+                    <input v-model="view.words" class="omni-input" type="search" maxlength="200" placeholder="Words in the question…" data-testid="past-words" /></label>
                 <div class="omni-segment" role="group" aria-label="Outcome">
                     <button v-for="s in STATES" :key="s.value" type="button" :aria-pressed="view.state === s.value" @click="view.state = s.value">{{ s.label }}</button>
                 </div>
                 <span class="summary"><b>{{ past.items.value.length }}</b> shown</span>
             </div>
+            <OmniscienceV3FilterBar :filters="pastFilters" label="Narrow the past answers" testid="past" />
             <OmniscienceV3Panel title="Past answers" flush :loading="past.loading.value" :error="past.error.value" :has-data="past.items.value.length > 0" :empty="!past.items.value.length"
-                                empty-title="No answers here" :empty-kind="view.state ? 'filtered' : 'empty'" @retry="past.reload()">
+                                empty-title="No answers here" :empty-kind="view.state || view.words || pastFilters.activeCount.value ? 'filtered' : 'empty'" @retry="past.reload()">
                 <table class="omni-table" data-testid="inquiries-table">
                     <thead><tr><th>Asked</th><th>Question</th><th>Answer</th><th class="num">Confidence</th><th>About</th><th>Your verdict</th></tr></thead>
                     <tbody>
@@ -156,8 +159,10 @@ import type {
 } from '~/scripts/omniscience/contracts';
 import { omniDuration, omniPercent, omniZonedToMs } from '~/scripts/omniscience/format';
 import { verdictLabel, verdictTone } from '~/scripts/omniscience/knowledge';
+import { omniFilterDefaults, type OmniFilterDef } from '~/scripts/omniscience/filters';
 import { useOmniAction, useOmniCarry, useOmniDebounced, useOmniNames, useOmniPaged, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
+import { useOmniFilters } from '~/composables/useOmniFilters';
 import { useAccess } from '~/composables/useAccess';
 import type { PickedPerson } from '~/components/OmniscienceV3/PersonPick.vue';
 
@@ -181,7 +186,15 @@ const canReview = computed(() => can('omniscience.review.act'));
 const { busy, run } = useOmniAction();
 const { zone, lens } = useOmniTime();
 const zoneLabel = computed(() => (lens.value === 'Utc' ? 'UTC' : zone.value));
-const { state: view } = useOmniUrlState({ tab: 'ask' as Tab, run: '', state: '', standing: '', inquiry: '' });
+// Past answers are narrowed by who they are about, what was said about them, and when they were asked.
+const PAST: OmniFilterDef[] = [
+    { key: 'about', kind: 'person', label: 'About', any: 'anyone', primary: true, param: 'persons' },
+    { key: 'verdict', kind: 'options', label: 'Answer', any: 'any', primary: true, param: 'verdicts',
+        options: ['Yes', 'LeansYes', 'Uncertain', 'LeansNo', 'No', 'InsufficientEvidence', 'Answered'].map(v => ({ id: v, label: verdictLabel(v) })) },
+    { key: 'asked', kind: 'dates', label: 'Asked', any: 'any time', primary: true },
+];
+const { state: view } = useOmniUrlState({ tab: 'ask' as string, run: '', state: '', standing: '', inquiry: '', words: '', ...omniFilterDefaults(PAST) });
+const pastFilters = useOmniFilters(PAST, view);
 
 function personLink(id: string): string { return `${OMNI_BASE}/people/${encodeURIComponent(id)}`; }
 
@@ -258,8 +271,8 @@ function useSelection(selection: Selection) {
 
 // ── past answers ───────────────────────────────────────────────────────────
 const past = useOmniPaged<InquiryRowDto, string>((cursor, signal) =>
-    omniGet<InquiryPageDto>('knowledge/inquiries', { state: view.state, standing: view.standing, cursor, limit: 50 }, signal));
-useOmniDebounced(() => `${view.state}|${view.standing}`, () => { void past.reload(); }, 50);
+    omniGet<InquiryPageDto>('knowledge/inquiries', { state: view.state, standing: view.standing, q: view.words.trim(), ...pastFilters.params(), cursor, limit: 50 }, signal));
+useOmniDebounced(() => `${view.state}|${view.standing}|${view.words}|${pastFilters.signature.value}`, () => { void past.reload(); }, 250);
 const opened = useOmniResource<InquiryReportDto | null>(
     signal => (view.inquiry ? omniGet<InquiryReportDto>('knowledge/inquiries/get', { id: view.inquiry }, signal) : Promise.resolve(null)), { immediate: false });
 watch(() => view.inquiry, id => { opened.data.value = null; if (id) void opened.refresh(); }, { immediate: true });
@@ -297,6 +310,8 @@ function refreshTab() {
 
 <style scoped>
 .tabs { margin-bottom: var(--omni-gutter); }
+.words { margin-bottom: 8px; }
+.words .grow { flex: 1 1 260px; }
 .omni-form { display: flex; flex-direction: column; gap: 12px; }
 .plan { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--omni-line); display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .plan p { margin: 0; }

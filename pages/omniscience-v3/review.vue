@@ -23,6 +23,7 @@
                     <option value="">All kinds</option>
                     <option v-for="k in REVIEW_KINDS" :key="k.value" :value="k.value">{{ k.label }}</option>
                 </select>
+                <OmniscienceV3Pick kind="person" label="About" any="anyone" :multiple="false" :model-value="view.person ? [view.person] : []" testid="review-person" @update:model-value="ids => (view.person = ids[0] ?? '')" />
                 <div class="omni-segment" role="group" aria-label="Order">
                     <button type="button" :aria-pressed="view.sort === 'priority'" @click="view.sort = 'priority'">Most important first</button>
                     <button type="button" :aria-pressed="view.sort === 'age'" @click="view.sort = 'age'">Oldest first</button>
@@ -30,7 +31,7 @@
                 <span class="summary"><b>{{ queue.items.value.length }}</b> shown</span>
             </div>
             <OmniscienceV3Panel title="To review" flush :loading="queue.loading.value" :error="queue.error.value" :has-data="queue.items.value.length > 0" :empty="!queue.items.value.length"
-                                :empty-kind="view.state === 'open' && !view.kind ? 'ok' : 'filtered'" :empty-title="view.state === 'open' ? 'Nothing is waiting for you' : 'Nothing here'" @retry="queue.reload()">
+                                :empty-kind="view.state === 'open' && !view.kind && !view.person ? 'ok' : 'filtered'" :empty-title="view.state === 'open' ? 'Nothing is waiting for you' : 'Nothing here'" @retry="queue.reload()">
                 <ul class="items" data-testid="review-list">
                     <li v-for="item in queue.items.value" :key="item.itemId" :class="{ open: expanded === item.itemId }">
                         <div class="row">
@@ -65,6 +66,7 @@
                 <div class="omni-segment" role="group" aria-label="Decision">
                     <button v-for="v in VERDICTS" :key="v.value" type="button" :aria-pressed="view.verdict === v.value" @click="view.verdict = v.value">{{ v.label }}</button>
                 </div>
+                <OmniscienceV3Pick kind="person" label="About" any="anyone" :multiple="false" :model-value="view.person ? [view.person] : []" testid="links-person" @update:model-value="ids => (view.person = ids[0] ?? '')" />
                 <span class="summary"><b>{{ links.items.value.length }}</b> shown</span>
             </div>
             <div class="omni-grid sidebar">
@@ -137,7 +139,7 @@ const { can } = useAccess();
 const canReview = computed(() => can('omniscience.review.act'));
 const canMerge = computed(() => can('omniscience.sources.manage'));
 const { busy, run } = useOmniAction();
-const { state: view } = useOmniUrlState({ tab: 'queue' as Tab, state: 'open', kind: '', sort: 'priority', verdict: 'suggested' });
+const { state: view } = useOmniUrlState({ tab: 'queue' as Tab, state: 'open', kind: '', sort: 'priority', verdict: 'suggested', person: '' });
 const expanded = ref('');
 
 function personLink(id: string): string { return `${OMNI_BASE}/people/${encodeURIComponent(id)}`; }
@@ -158,8 +160,8 @@ function detailOf(item: KnowledgeReviewItemDto): unknown { return omniParse(item
 
 // ── the queue ──────────────────────────────────────────────────────────────
 const queue = useOmniPaged<KnowledgeReviewItemDto, string>((cursor, signal) =>
-    omniGet<KnowledgeReviewPageDto>('knowledge/review', { state: view.state, kind: view.kind, sort: view.sort, cursor, limit: 100 }, signal));
-useOmniDebounced(() => `${view.state}|${view.kind}|${view.sort}`, () => { void queue.reload(); }, 50);
+    omniGet<KnowledgeReviewPageDto>('knowledge/review', { state: view.state, kind: view.kind, sort: view.sort, person: view.person, cursor, limit: 100 }, signal));
+useOmniDebounced(() => `${view.state}|${view.kind}|${view.sort}|${view.person}`, () => { void queue.reload(); }, 50);
 
 async function resolve(item: KnowledgeReviewItemDto, state: 'resolved' | 'dismissed') {
     const note = state === 'resolved' ? window.prompt('What did you decide? (kept with the item)', '') : 'dismissed';
@@ -170,8 +172,8 @@ async function resolve(item: KnowledgeReviewItemDto, state: 'resolved' | 'dismis
 }
 
 // ── same person? ───────────────────────────────────────────────────────────
-const links = useOmniPaged<IdentityLinkDto, string>((cursor, signal) => omniGet<IdentityLinkPageDto>('knowledge/identity-links', { verdict: view.verdict, cursor, limit: 50 }, signal));
-useOmniDebounced(() => view.verdict, () => { void links.reload(); }, 50);
+const links = useOmniPaged<IdentityLinkDto, string>((cursor, signal) => omniGet<IdentityLinkPageDto>('knowledge/identity-links', { verdict: view.verdict, person: view.person, cursor, limit: 50 }, signal));
+useOmniDebounced(() => `${view.verdict}|${view.person}`, () => { void links.reload(); }, 50);
 
 async function decide(link: IdentityLinkDto, accept: boolean) {
     if (accept && !window.confirm(`Merge ${name(link.personB)} into ${name(link.personA)}? They become one person and their facts are worked out again together. It can be undone.`)) return;

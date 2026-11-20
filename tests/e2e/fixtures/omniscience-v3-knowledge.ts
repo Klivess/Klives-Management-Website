@@ -384,7 +384,7 @@ export async function handleKnowledge(key: string, p: URLSearchParams, body: any
         case 'GET knowledge/review': {
             const state = p.get('state') ?? 'open';
             const kind = p.get('kind');
-            const items = k.review.filter(r => r.state === state && (!kind || r.kind === kind));
+            const items = k.review.filter(r => r.state === state && (!kind || r.kind === kind) && (!p.get('person') || r.subjectId === p.get('person')));
             items.sort((a, b) => (p.get('sort') === 'age' ? a.createdAtMs - b.createdAtMs : b.priority - a.priority));
             await json({ asOfMs: NOW, items, nextCursor: null }); return true;
         }
@@ -445,6 +445,9 @@ export async function handleKnowledge(key: string, p: URLSearchParams, body: any
             let items = k.inquiries;
             if (p.get('state')) items = items.filter(i => i.state === p.get('state'));
             if (p.get('standing')) items = items.filter(i => i.standingId === p.get('standing'));
+            const about = (p.get('persons') ?? '').split(',').filter(Boolean), words = (p.get('q') ?? '').toLowerCase();
+            if (about.length) items = items.filter(i => !!i.primarySubjectId && about.includes(i.primarySubjectId));
+            if (words) items = items.filter(i => i.question.toLowerCase().includes(words));
             await json({ items, nextCursor: null }); return true;
         }
         case 'GET knowledge/inquiries/get': {
@@ -532,8 +535,12 @@ export async function handleKnowledge(key: string, p: URLSearchParams, body: any
             let hits = [hit('m-501#0'), hit('m-502#0', { authorPersonId: 'person-b', authorName: 'Synthetic Bo', caption: 'A cat asleep on a keyboard.', tags: ['cat'], why: ['looks like it'], score: 0.016, conversationId: 'conv-dm-a',
                 imageText: null, platform: 'whatsapp', conversationKind: 'dm', conversationTitle: null, guildId: null, guildName: null, messageUrl: null, messageText: null, edited: false, reactions: 0,
                 position: 1, inMessage: 1, filename: 'IMG-0042.jpg', mime: 'image/jpeg', sizeBytes: 1_530_000, width: 4032, height: 3024, takenAtMs: NOW - 9 * DAY, kind: 'photo', timesPosted: 1 })];
-            if (p.get('person')) hits = hits.filter(h => h.authorPersonId === p.get('person'));
-            if (p.get('conversation')) hits = hits.filter(h => h.conversationId === p.get('conversation'));
+            const asked = (name: string) => (p.get(name) ?? '').split(',').filter(Boolean);
+            const keep = (ids: string[], value: string | null | undefined) => !ids.length || (!!value && ids.includes(value));
+            hits = hits.filter(h => keep([...asked('persons'), ...asked('person')], h.authorPersonId) && keep([...asked('conversations'), ...asked('conversation')], h.conversationId)
+                // The pickers know the synthetic server as "guild-1"; the image carries the id Discord gave it.
+                && keep(asked('guilds').map(g => (g === 'guild-1' ? 'discord:800000000000000001' : g)), h.guildId) && keep(asked('kinds'), h.kind) && keep(asked('platforms'), h.platform)
+                && !asked('notPersons').includes(h.authorPersonId ?? '') && (p.get('deleted') === null || String(h.deleted) === p.get('deleted')));
             const dto: MediaSearchDto = { query: q, hits, visualAvailable: true, imagesEmbedded: 1240, note: null };
             await json(dto); return true;
         }

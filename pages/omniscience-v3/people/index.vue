@@ -11,27 +11,18 @@
             </div>
         </div>
 
-        <div class="omni-filterbar">
-            <label class="omni-search">
+        <div class="omni-filterbar words">
+            <label class="omni-search grow">
+                <span class="glyph" aria-hidden="true">⌕</span>
                 <span class="visually-hidden">Name</span>
                 <input ref="searchBox" v-model="filters.q" class="omni-input" type="search" placeholder="Name or username…" data-testid="people-search" />
             </label>
-            <select v-model="filters.tier" class="omni-select auto" aria-label="Tier">
-                <option value="">All tiers</option>
-                <option value="tracked">Tracked</option>
-                <option value="watch">Watch</option>
-                <option value="archive">Archive</option>
-            </select>
-            <select v-model="filters.platform" class="omni-select auto" aria-label="Platform">
-                <option value="">All platforms</option>
-                <option v-for="p in PLATFORMS" :key="p" :value="p">{{ p }}</option>
-            </select>
             <div class="omni-segment" role="group" aria-label="Sort by">
                 <button v-for="s in SORTS" :key="s.value" type="button" :aria-pressed="filters.sort === s.value" @click="filters.sort = s.value">{{ s.label }}</button>
             </div>
             <span class="summary"><b>{{ people.items.value.length }}</b> loaded{{ people.hasMore.value ? ', more available' : '' }}</span>
-            <div class="grow"></div>
         </div>
+        <OmniscienceV3FilterBar :filters="narrow" label="Narrow the people" testid="people" />
 
         <div v-if="picked.length" class="omni-banner ok" role="status" data-testid="people-picked">
             <div><strong>{{ picked.map(x => x.displayName).join(' and ') }}</strong>
@@ -94,25 +85,39 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { OMNI_BASE, omniGet } from '~/scripts/omniscience/api';
 import type { DirectoryPageDto, DirectorySort, PersonCardDto } from '~/scripts/omniscience/contracts';
 import { omniCount, omniPercent } from '~/scripts/omniscience/format';
+import { omniFilterDefaults, type OmniFilterDef } from '~/scripts/omniscience/filters';
 import { useOmniDebounced, useOmniPaged } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
+import { useOmniFilters } from '~/composables/useOmniFilters';
 import type { TableColumn } from '~/components/OmniscienceV3/DataTable.vue';
 
 definePageMeta({ layout: 'navbar' });
 useHead({ title: 'Omniscience v3 · People' });
 
-const PLATFORMS = ['discord', 'whatsapp', 'telegram', 'instagram', 'messenger'];
+// A person is narrowed by where they have written, where they have an account, how they are filed, and how active they are.
+const FILTERS: OmniFilterDef[] = [
+    { key: 'guild', kind: 'guild', label: 'Has written in', any: 'any server', primary: true, help: 'Everyone who has written in any of the chosen servers.' },
+    { key: 'conversation', kind: 'conversation', label: 'In conversation', any: 'any', primary: true, help: 'Everyone who has written in any of the chosen channels or chats.' },
+    { key: 'platform', kind: 'platform', label: 'Platform', any: 'any', primary: true },
+    { key: 'tier', kind: 'options', label: 'Tier', any: 'all', primary: true, param: 'tiers',
+        options: [{ id: 'tracked', label: 'Tracked' }, { id: 'watch', label: 'Watch' }, { id: 'archive', label: 'Archive' }] },
+    { key: 'seen', kind: 'dates', label: 'Last seen', any: 'any time', primary: true, fromParam: 'seenFrom', toParam: 'seenTo' },
+    { key: 'messages', kind: 'number', label: 'Messages', any: 'any number', unit: 'messages', fromParam: 'minMessages', toParam: 'maxMessages', help: 'Messages they have written, in all.' },
+    { key: 'age', kind: 'options', label: 'Age band', any: 'any', param: 'bands',
+        options: [{ id: 'Adult', label: 'Adult' }, { id: 'LikelyMinor', label: 'May be under 18' }, { id: 'Minor', label: 'Under 18' }, { id: 'Unknown', label: 'Not known' }] },
+];
 const SORTS: { value: DirectorySort; label: string }[] = [
     { value: 'LastSeen', label: 'Last seen' }, { value: 'Messages', label: 'Most messages' }, { value: 'Recent', label: 'Most recent 30d' }, { value: 'Name', label: 'Name' },
 ];
 
-const { state: filters } = useOmniUrlState({ q: '', tier: '', platform: '', sort: 'LastSeen' as DirectorySort });
-const filtered = computed(() => !!(filters.q || filters.tier || filters.platform));
+const { state: filters } = useOmniUrlState({ q: '', sort: 'LastSeen' as string, ...omniFilterDefaults(FILTERS) });
+const narrow = useOmniFilters(FILTERS, filters);
+const filtered = computed(() => !!filters.q || narrow.activeCount.value > 0);
 
 const people = useOmniPaged<PersonCardDto, string>((cursor, signal) => omniGet<DirectoryPageDto>('people', {
-    q: filters.q.trim(), tier: filters.tier, platform: filters.platform, sort: filters.sort, cursor, limit: 100,
+    q: filters.q.trim(), ...narrow.params(), sort: filters.sort, cursor, limit: 100,
 }, signal));
-useOmniDebounced(() => [filters.q, filters.tier, filters.platform, filters.sort].join('\u0001'), () => { void people.reload(); });
+useOmniDebounced(() => [filters.q, filters.sort, narrow.signature.value].join('\u0001'), () => { void people.reload(); });
 
 const personTo = (id: string) => `${OMNI_BASE}/people/${encodeURIComponent(id)}`;
 
@@ -168,6 +173,8 @@ const columns: TableColumn[] = [
 .mood .neu { background: var(--omni-muted, #8b949e); }
 .mood .neg { background: var(--omni-bad, #f85149); }
 .who { color: inherit; }
+.words { margin-bottom: 8px; }
+.words .grow { flex: 1 1 280px; }
 .who:hover strong { color: var(--omni-accent-2); }
 .omni-banner .muted { display: block; color: var(--omni-text-2); }
 </style>

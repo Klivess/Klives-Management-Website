@@ -40,6 +40,8 @@
                 <option value="">Any kind</option>
                 <option v-for="k in KINDS" :key="k" :value="k">{{ omniHumanise(k) }}</option>
             </select>
+            <OmniscienceV3Pick kind="person" label="With" any="anyone" :multiple="false" :model-value="filters.person ? [filters.person] : []" testid="agenda-person"
+                               @update:model-value="ids => (filters.person = ids[0] ?? '')" />
             <label class="omni-check"><input v-model="mine" type="checkbox" /> Only those that involve you</label>
             <span class="summary"><b>{{ all.items.value.length }}</b> shown</span>
             <div class="grow"></div>
@@ -71,7 +73,7 @@ const STATUSES = ['upcoming', 'due', 'overdue', 'recurring', 'undated', 'kept', 
 const KINDS = ['plan', 'promise', 'date', 'birthday'];
 
 const { age } = useOmniTime();
-const { state: filters, reset, activeCount } = useOmniUrlState({ status: '', kind: '', mine: '' });
+const { state: filters, reset, activeCount } = useOmniUrlState({ status: '', kind: '', mine: '', person: '' });
 const mine = computed({ get: () => filters.mine === '1', set: (on: boolean) => { filters.mine = on ? '1' : ''; } });
 
 const agenda = useOmniResource(async signal => {
@@ -81,8 +83,8 @@ const agenda = useOmniResource(async signal => {
 const a = computed(() => agenda.data.value);
 
 const all = useOmniPaged<PlanItemDto, string>((cursor, signal) =>
-    omniGet<PlanPageDto>('knowledge/plans', { status: filters.status, kind: filters.kind, klivesOnly: filters.mine === '1' ? true : null, cursor, limit: 100 }, signal));
-useOmniDebounced(() => `${filters.status}|${filters.kind}|${filters.mine}`, () => { void all.reload(); }, 50);
+    omniGet<PlanPageDto>('knowledge/plans', { status: filters.status, kind: filters.kind, person: filters.person, klivesOnly: filters.mine === '1' ? true : null, cursor, limit: 100 }, signal));
+useOmniDebounced(() => `${filters.status}|${filters.kind}|${filters.mine}|${filters.person}`, () => { void all.reload(); }, 50);
 
 function refresh() { void agenda.refresh(); void all.reload(); }
 </script>

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { BOOT, NOW, V3, loadPage, mockV3 } from './fixtures/omniscience-v3-api';
+import { BOOT, NOW, V3, closePick, loadPage, mockV3, pickById } from './fixtures/omniscience-v3-api';
 import { omniAge, omniCsv, omniDuration, omniInstant, omniMsToZonedInput, omniZonedToMs } from '../../scripts/omniscience/format';
 
 /** Omniscience v3 engine pages against a contract-typed mock; screenshots land in test-results/omniscience-v3/. */
@@ -287,8 +287,9 @@ test('tactics: a policy refusal is shown as such, and outbound tactics cannot be
     const drawer = page.locator('.omni-drawer');
     await expect(drawer).toContainText('Save as cohort', BOOT);
     await drawer.getByRole('button', { name: 'Add a selection' }).click();
-    await drawer.getByLabel('People ids, one per line').fill('person-a\nperson-a\nperson-b');
-    await drawer.getByLabel('People ids, one per line').blur();
+    // People are chosen by name; ids can still be pasted, several at once.
+    await pickById(drawer, 'selection-pick-0', 'person-a, person-a person-b');
+    await closePick(drawer, 'selection-pick-0');
     await drawer.getByLabel('name *').fill('Two people');
     await drawer.getByRole('button', { name: 'Run', exact: true }).click();
     await expect(drawer.getByTestId('omni-run-problem')).toContainText('Refused by policy');

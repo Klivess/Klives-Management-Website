@@ -18,8 +18,9 @@
                             <select id="d-scope" v-model="runForm.scopeKind" class="omni-select">
                                 <option v-for="s in SCOPES" :key="s.value" :value="s.value">{{ s.label }}</option>
                             </select></div>
-                        <div v-if="runForm.scopeKind !== 'all'" class="omni-field"><label for="d-id">{{ scopeLabel(runForm.scopeKind) }} id</label>
-                            <input id="d-id" v-model="runForm.scopeId" class="omni-input mono" required /></div>
+                        <div v-if="runForm.scopeKind !== 'all'" class="omni-field"><label for="d-id">{{ scopeLabel(runForm.scopeKind) }}</label>
+                            <OmniscienceV3Pick :key="runForm.scopeKind" :kind="pickKind(runForm.scopeKind)" :label="scopeLabel(runForm.scopeKind)" any="Choose…" :multiple="false" variant="field" input-id="d-id"
+                                               testid="digest-scope" :model-value="runForm.scopeId ? [runForm.scopeId] : []" @update:model-value="ids => (runForm.scopeId = ids[0] ?? '')" /></div>
                         <div class="omni-field"><label for="d-range">Covering</label>
                             <select id="d-range" v-model="runForm.range" class="omni-select">
                                 <option value="seen">Since I last read one</option>
@@ -103,7 +104,7 @@
                         <tbody>
                             <tr v-for="s in subs.data.value.subscriptions" :key="s.subscriptionId">
                                 <td>{{ s.name }} <span v-if="!s.enabled" class="omni-chip sm">off</span></td>
-                                <td>{{ scopeLabel(s.scopeKind) }}<span v-if="s.scopeId" class="sub omni-mono">{{ s.scopeId }}</span></td>
+                                <td>{{ scopeLabel(s.scopeKind) }}<span v-if="s.scopeId" class="sub" :title="s.scopeId">{{ labelOf(pickKind(s.scopeKind), s.scopeId) }}</span></td>
                                 <td>{{ s.cadence === 'weekly' ? `${WEEKDAYS[s.weekday ?? 0]} ` : 'daily ' }}{{ s.at }}</td>
                                 <td class="num"><OmniscienceV3Time :ms="s.lastRunMs" mode="age" /></td>
                                 <td v-if="canManage" class="actions">
@@ -116,10 +117,11 @@
                     <template v-if="canManage" #footer>
                         <form class="subform" data-testid="sub-form" @submit.prevent="saveSub()">
                             <input v-model="sub.name" class="omni-input" placeholder="Name" maxlength="80" aria-label="Subscription name" required />
-                            <select v-model="sub.scopeKind" class="omni-select auto" aria-label="Of">
+                            <select v-model="sub.scopeKind" class="omni-select auto" aria-label="Of" @change="sub.scopeId = ''">
                                 <option v-for="s in SCOPES" :key="s.value" :value="s.value">{{ s.label }}</option>
                             </select>
-                            <input v-if="sub.scopeKind !== 'all'" v-model="sub.scopeId" class="omni-input mono" :placeholder="`${scopeLabel(sub.scopeKind)} id`" aria-label="Scope id" required />
+                            <OmniscienceV3Pick v-if="sub.scopeKind !== 'all'" :key="sub.scopeKind" :kind="pickKind(sub.scopeKind)" :label="scopeLabel(sub.scopeKind)" any="choose…" :multiple="false"
+                                               testid="sub-scope" :model-value="sub.scopeId ? [sub.scopeId] : []" @update:model-value="ids => (sub.scopeId = ids[0] ?? '')" />
                             <select v-model="sub.cadence" class="omni-select auto" aria-label="Cadence"><option value="daily">Daily</option><option value="weekly">Weekly</option></select>
                             <select v-if="sub.cadence === 'weekly'" v-model.number="sub.weekday" class="omni-select auto" aria-label="Weekday">
                                 <option v-for="(w, i) in WEEKDAYS" :key="w" :value="i">{{ w }}</option>
@@ -137,12 +139,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, watch } from 'vue';
+import { computed, onBeforeUnmount, reactive, watch, watchEffect } from 'vue';
 import { OMNI_BASE, omniGet, omniPost } from '~/scripts/omniscience/api';
 import type { DigestDto, DigestPageDto, DigestSeenDto, DigestSubscriptionDeletedDto, DigestSubscriptionDto, DigestSubscriptionListDto } from '~/scripts/omniscience/contracts';
 import { omniCount, omniStateTone } from '~/scripts/omniscience/format';
+import type { OmniPickKind } from '~/scripts/omniscience/filters';
 import { useOmniAction, useOmniDebounced, useOmniPaged, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
+import { useOmniPickLabels } from '~/composables/useOmniFilters';
 import { useAccess } from '~/composables/useAccess';
 
 definePageMeta({ layout: 'navbar' });
@@ -160,6 +164,12 @@ const canManage = computed(() => can('omniscience.alerts.manage'));
 const { busy, run } = useOmniAction();
 const { at } = useOmniTime();
 const { state: filters } = useOmniUrlState({ scopeKind: '', digest: '' });
+
+/** What a server, chat or person is picked from. */
+function pickKind(scopeKind: string): OmniPickKind {
+    return scopeKind === 'guild' || scopeKind === 'person' ? scopeKind : 'conversation';
+}
+const { want, labelOf } = useOmniPickLabels();
 
 function scopeLabel(kind: string): string {
     return kind === 'all' ? 'Everything' : kind === 'guild' ? 'Server' : kind === 'conversation' ? 'Chat' : kind === 'person' ? 'Person' : kind;
@@ -183,6 +193,8 @@ watch(() => digest.value?.state, (state, previous) => {
 onBeforeUnmount(stopPoll);
 
 const runForm = reactive({ scopeKind: 'all', scopeId: '', range: 'seen' });
+// A server's id is not a chat's: choosing another kind of thing starts the choice again.
+watch(() => runForm.scopeKind, () => { runForm.scopeId = ''; });
 async function runDigest() {
     const now = Date.now();
     const fromMs = runForm.range === 'seen' ? null : now - Number(runForm.range) * HOUR;
@@ -196,6 +208,10 @@ async function markSeen(d: DigestDto) {
 
 // ── subscriptions ──────────────────────────────────────────────────────────
 const subs = useOmniResource(signal => omniGet<DigestSubscriptionListDto>('digests/subscriptions', {}, signal));
+// A subscription holds an id: it is shown by the name the id has now.
+watchEffect(() => {
+    for (const s of subs.data.value?.subscriptions ?? []) if (s.scopeId) want(pickKind(s.scopeKind), [s.scopeId]);
+});
 const sub = reactive({ subscriptionId: '', name: '', scopeKind: 'all', scopeId: '', cadence: 'daily', at: '08:00', weekday: 1, enabled: true });
 function resetSub() { Object.assign(sub, { subscriptionId: '', name: '', scopeKind: 'all', scopeId: '', cadence: 'daily', at: '08:00', weekday: 1, enabled: true }); }
 function editSub(s: DigestSubscriptionDto) {

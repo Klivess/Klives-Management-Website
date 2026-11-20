@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { BOOT, V3, loadPage, mockV3 } from './fixtures/omniscience-v3-api';
+import { BOOT, V3, closePick, loadPage, mockV3, pickById, pickOption } from './fixtures/omniscience-v3-api';
 
 /**
  * The Omniscience v3 pages built on the merged contract: what is known about a person, the review
@@ -423,9 +423,11 @@ test('sources: the Discord connection, and an export looked inside before it is 
     await expect(page.getByTestId('discord-chips')).toContainText('listening', BOOT);
     await expect(card(page, 'Discord (through KliveBot)')).toContainText('48,210');
     const backfill = page.getByTestId('backfill-form');
-    await backfill.getByLabel(/whole history/).fill('abc');
     await expect(backfill.getByRole('button', { name: 'Start' })).toBeDisabled();
-    await backfill.getByLabel(/whole history/).fill('123456789012345678');
+    // The channel is chosen by name. One Omniscience has not seen yet is added by its Discord id; anything that is not one keeps Start disabled.
+    await pickById(backfill, 'backfill-channel', 'abc');
+    await expect(backfill.getByRole('button', { name: 'Start' })).toBeDisabled();
+    await pickById(backfill, 'backfill-channel', '123456789012345678');
     await backfill.getByRole('button', { name: 'Start' }).click();
     await expect.poll(() => state.knowledge.backfills).toEqual(['123456789012345678']);
 
@@ -499,10 +501,10 @@ test('images: found by description, narrowed by who posted them, and opened with
     await shot(page, 'images-opened');
     await drawer.getByRole('button', { name: 'Close panel' }).click();
 
-    await page.getByTestId('image-person').getByRole('searchbox').fill('bo');
-    await page.getByTestId('image-person').getByRole('option', { name: /Synthetic Bo/ }).click();
+    await pickOption(page, 'image-person', /Synthetic Bo/, 'bo');
+    await closePick(page, 'image-person');
     await expect(results).toHaveCount(1);
-    expect(state.requests.some(r => r.startsWith(`GET ${V3}/media/search?`) && r.includes('person=person-b'))).toBe(true);
+    expect(state.requests.some(r => r.startsWith(`GET ${V3}/media/search?`) && r.includes('persons=person-b'))).toBe(true);
     await results.first().getByRole('button').click();
     await expect(drawer).toContainText('A cat asleep on a keyboard.');
     await expect(drawer).toContainText('never say who anyone is');
@@ -514,7 +516,7 @@ test('images: found by description, narrowed by who posted them, and opened with
     // "Only images from here" narrows the search to that conversation.
     await drawer.getByTestId('image-only-here').click();
     await expect(drawer).toHaveCount(0);
-    await expect.poll(() => state.requests.some(r => r.startsWith(`GET ${V3}/media/search?`) && r.includes('conversation=conv-dm-a'))).toBe(true);
+    await expect.poll(() => state.requests.some(r => r.startsWith(`GET ${V3}/media/search?`) && r.includes('conversations=conv-dm-a'))).toBe(true);
     expect(state.unknown).toEqual([]);
     expect(state.errors).toEqual([]);
 });

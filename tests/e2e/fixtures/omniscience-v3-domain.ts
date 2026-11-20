@@ -1,6 +1,6 @@
 import type {
     AlertDto, AnalysisOffPersonDto, BackupDto, CommunitiesDto, DigestDto, DigestSubscriptionDto, DossierDto, ForgetPreviewDto, ForgetRunDto, HealthListDto,
-    InboxItemDto, LinkDto, LinkShareDto, LinkTrackDto, MonitorEventDto, MonitorRuleDto, NoticeDto, PairDetailDto, PeopleMapDto, PersonBriefDto, PersonCardDto, PersonLinksDto,
+    InboxItemDto, LinkDto, LinkShareDto, LinkTrackDto, LookupLabelsDto, LookupOptionDto, LookupPageDto, MonitorEventDto, MonitorRuleDto, NoticeDto, PairDetailDto, PeopleMapDto, PersonBriefDto, PersonCardDto, PersonLinksDto,
     PersonRelationshipsDto, ReadModelDto, RetentionDto, SimilarPeopleDto, SpaceCardDto, SpacePageDto, TopicStatusDto, TranslateStatusDto, WatchRuleDto,
     WellbeingSuggestionDto,
 } from '../../../scripts/omniscience/contracts';
@@ -164,6 +164,24 @@ type Fail = (status: number, code: string, message: string) => Promise<void>;
 type Text = (body: string, contentType: string) => Promise<void>;
 
 const lower = (value: string | null) => (value ?? '').toLowerCase();
+/** A comma-separated list parameter, as the shared filters send them (`persons=a,b`). */
+const list = (p: URLSearchParams, name: string) => (p.get(name) ?? '').split(',').map(s => s.trim()).filter(Boolean);
+/** True when nothing is asked for, or the value is one of those asked for. */
+const among = (asked: string[], value: string | null | undefined) => !asked.length || (!!value && asked.includes(value));
+
+/** What the filter pickers offer: servers and conversations by name, as the lookup routes answer. */
+const option = (id: string, label: string, over: Partial<LookupOptionDto> = {}): LookupOptionDto => ({ id, label, detail: null, platform: 'discord', kind: null, groupId: null, groupLabel: null, count: null, lastMs: NOW - HOUR, ...over });
+export const LOOKUP_GUILDS: LookupOptionDto[] = [
+    option('guild-1', 'Synthetic Server', { detail: 'Discord', kind: 'server', count: 12 }),
+    option('guild-2', 'Second synthetic server', { detail: 'Discord', kind: 'server', count: 3, lastMs: NOW - 40 * DAY }),
+];
+export const LOOKUP_CONVERSATIONS: LookupOptionDto[] = [
+    option('conv-general', 'general', { detail: 'Synthetic Server', kind: 'server', groupId: 'guild-1', groupLabel: 'Synthetic Server' }),
+    option('conv-lobby', 'lobby', { detail: 'Second synthetic server', kind: 'server', groupId: 'guild-2', groupLabel: 'Second synthetic server', lastMs: NOW - 40 * DAY }),
+    option('conv-dm-a', 'Synthetic Ada', { detail: 'Direct chat', kind: 'dm', lastMs: NOW - 2 * HOUR }),
+    option('conv-group', 'The synthetic group', { detail: 'Group chat', kind: 'group', lastMs: NOW - 3 * DAY }),
+];
+const page = (items: LookupOptionDto[], limit: number): LookupPageDto => ({ items: items.slice(0, limit), truncated: items.length > limit });
 
 /** Answers one domain route; false when the route is not one of these. */
 export async function handleDomain(key: string, p: URLSearchParams, body: any, d: DomainState, json: Reply, fail: Fail, can: (k: string) => boolean, text: Text): Promise<boolean> {
@@ -172,8 +190,42 @@ export async function handleDomain(key: string, p: URLSearchParams, body: any, d
         // ── people ─────────────────────────────────────────────────────
         case 'GET people': {
             const q = lower(p.get('q'));
-            const items = PEOPLE.filter(x => (!q || x.displayName.toLowerCase().includes(q)) && (!p.get('tier') || x.tier === p.get('tier')));
-            await json({ items, nextCursor: null, asOfMs: NOW - 60_000 }); return true;
+            const tiers = [...list(p, 'tiers'), ...list(p, 'tier')], platforms = list(p, 'platforms');
+            // Who has written in a server or conversation: in this mock, everyone but Cy has written in the first server and its channel.
+            const there = [...list(p, 'guilds'), ...list(p, 'conversations')];
+            const wroteThere = (x: PersonCardDto) => !there.length || (there.some(id => id === 'guild-1' || id === 'conv-general') && x.personId !== 'person-c');
+            const min = Number(p.get('minMessages') ?? 0);
+            let items = PEOPLE.filter(x => (!q || x.displayName.toLowerCase().includes(q)) && among(tiers, x.tier) && (!platforms.length || platforms.some(pl => x.platforms.includes(pl)))
+                && wroteThere(x) && x.msgs >= min);
+            if (p.get('sort') === 'Recent') items = [...items].sort((a, b) => b.msgs30 - a.msgs30);
+            await json({ items: items.slice(0, Number(p.get('limit') ?? 100)), nextCursor: null, asOfMs: NOW - 60_000 }); return true;
+        }
+
+        // ── what the filter pickers offer ──────────────────────────────
+        case 'GET lookup/guilds': {
+            const q = lower(p.get('q')), ids = list(p, 'ids');
+            await json(page(LOOKUP_GUILDS.filter(g => among(ids, g.id) && (!q || g.label.toLowerCase().includes(q) || g.id === q)), Number(p.get('limit') ?? 30))); return true;
+        }
+        case 'GET lookup/conversations': {
+            const q = lower(p.get('q')), ids = list(p, 'ids'), guilds = list(p, 'guilds'), places = list(p, 'places');
+            await json(page(LOOKUP_CONVERSATIONS.filter(c => among(ids, c.id) && among(guilds, c.groupId) && among(places, c.kind)
+                && (!q || c.label.toLowerCase().includes(q) || c.id === q)), Number(p.get('limit') ?? 30))); return true;
+        }
+        case 'GET lookup/platforms':
+            await json(page([option('discord', 'Discord', { count: 14, lastMs: null }), option('whatsapp', 'Whatsapp', { platform: 'whatsapp', count: 2, lastMs: null })], 30)); return true;
+        case 'GET lookup/sites': {
+            const q = lower(p.get('q'));
+            const sites = [...new Set(SHARES.map(s => s.link.site))].filter(s => !q || s.includes(q));
+            await json(page(sites.map(s => option(s, s, { platform: null, count: SHARES.filter(x => x.link.site === s).length, lastMs: null })), Number(p.get('limit') ?? 30))); return true;
+        }
+        case 'GET lookup/labels': {
+            const named = (ids: string[], name: (id: string) => string | null | undefined) => Object.fromEntries(ids.map(id => [id, name(id)]).filter(([, n]) => !!n)) as Record<string, string>;
+            const conversation = (id: string) => { const c = LOOKUP_CONVERSATIONS.find(x => x.id === id); return c ? (c.kind === 'server' ? `${c.label} · ${c.groupLabel}` : c.label) : null; };
+            const dto: LookupLabelsDto = {
+                persons: named(list(p, 'persons'), id => person(id)?.displayName), guilds: named(list(p, 'guilds'), id => LOOKUP_GUILDS.find(g => g.id === id)?.label),
+                conversations: named(list(p, 'conversations'), conversation),
+            };
+            await json(dto); return true;
         }
         case 'GET rm': {
             const c = person(p.get('key'));
@@ -238,7 +290,8 @@ export async function handleDomain(key: string, p: URLSearchParams, body: any, d
 
         // ── signals ────────────────────────────────────────────────────
         case 'GET signals/alerts': {
-            const items = d.alerts.filter(a => (!p.get('state') || a.state === lower(p.get('state'))) && (!p.get('kind') || a.kind === p.get('kind')));
+            const items = d.alerts.filter(a => (!p.get('state') || a.state === lower(p.get('state'))) && (!p.get('kind') || a.kind === p.get('kind'))
+                && among(list(p, 'persons'), a.personId) && among(list(p, 'guilds'), a.guildId) && among(list(p, 'conversations'), a.conversationId));
             await json({ items, nextCursor: null, unseen: d.alerts.filter(a => a.state === 'new').length }); return true;
         }
         case 'POST signals/alerts/state': {
@@ -254,7 +307,8 @@ export async function handleDomain(key: string, p: URLSearchParams, body: any, d
             await json({ feedback: { alertId: a.alertId, kind: a.kind, reason: a.reason, messageId: a.messageId, verdict: body.verdict }, classifierCorrected: a.kind === 'radar' }); return true;
         }
         case 'GET signals/notices': {
-            const items = d.notices.filter(n => (!p.get('state') || n.state === lower(p.get('state'))) && (!p.get('kind') || n.kind === p.get('kind')));
+            const items = d.notices.filter(n => (!p.get('state') || n.state === lower(p.get('state'))) && (!p.get('kind') || n.kind === p.get('kind'))
+                && among(list(p, 'persons'), n.personId) && among(list(p, 'guilds'), n.guildId));
             await json({ items, nextCursor: null, unseen: d.notices.filter(n => n.state === 'new').length }); return true;
         }
         case 'POST signals/notices/state': {
@@ -372,12 +426,15 @@ export async function handleDomain(key: string, p: URLSearchParams, body: any, d
         // ── links ──────────────────────────────────────────────────────
         case 'GET links/search': {
             const q = lower(p.get('q'));
-            const items = SHARES.filter(s => (!q || (s.link.title ?? s.link.url).toLowerCase().includes(q) || s.link.site.includes(q)) && (!p.get('kind') || s.link.kind === p.get('kind')));
+            const kinds = [...list(p, 'kinds'), ...list(p, 'kind')], notPersons = list(p, 'notPersons');
+            const items = SHARES.filter(s => (!q || (s.link.title ?? s.link.url).toLowerCase().includes(q) || s.link.site.includes(q)) && among(kinds, s.link.kind)
+                && among(list(p, 'sites'), s.link.site) && among(list(p, 'topics'), s.link.topic) && among(list(p, 'persons'), s.personId) && !(s.personId && notPersons.includes(s.personId))
+                && among(list(p, 'guilds'), s.guildId) && among(list(p, 'conversations'), s.conversationId));
             await json({ items, truncated: false }); return true;
         }
         case 'GET links/track': {
             const url = p.get('url'), site = p.get('site');
-            const items = SHARES.filter(s => (url ? s.link.url === url : s.link.site === site));
+            const items = SHARES.filter(s => (url ? s.link.url === url : s.link.site === site) && among(list(p, 'persons'), s.personId) && among(list(p, 'guilds'), s.guildId));
             const dto: LinkTrackDto = {
                 target: url ?? site ?? '', targetKind: url ? 'url' : 'site', link: url ? items[0]?.link ?? null : null, shares: items.length, sharers: new Set(items.map(s => s.personId)).size,
                 reactions: items.reduce((n, s) => n + s.reactions, 0), firstAtMs: items.length ? Math.min(...items.map(s => s.atMs)) : null, lastAtMs: items.length ? Math.max(...items.map(s => s.atMs)) : null,

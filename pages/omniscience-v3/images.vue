@@ -11,14 +11,7 @@
             <input v-model="filters.q" class="omni-input grow" type="search" maxlength="300" placeholder="e.g. a screenshot of a price chart, a cat on a keyboard" aria-label="Describe the image" data-testid="image-query" />
             <button class="omni-btn primary" type="submit" :disabled="!filters.q.trim()">Search</button>
         </form>
-        <div class="omni-filterbar">
-            <div class="who"><OmniscienceV3PersonPick v-model="person" :max="1" placeholder="Posted by anyone…" testid="image-person" /></div>
-            <input v-model="filters.conversation" class="omni-input mono auto" placeholder="conversation id (optional)" aria-label="Conversation id" />
-            <label class="range">From <input v-model="filters.from" class="omni-input" type="date" /></label>
-            <label class="range">To <input v-model="filters.to" class="omni-input" type="date" /></label>
-            <div class="grow"></div>
-            <button v-if="activeCount > 1" class="omni-btn ghost sm" type="button" @click="clear()">Clear filters</button>
-        </div>
+        <OmniscienceV3FilterBar :filters="narrow" label="Narrow the images" testid="image" />
 
         <div v-if="r && !r.visualAvailable" class="omni-banner warn" role="status" data-testid="image-no-visual">
             <span class="glyph" aria-hidden="true">⚠</span>
@@ -63,7 +56,9 @@
                         <a class="omni-btn" :href="appLink(opened.messageUrl)" data-testid="image-discord-app" title="Opens the Discord app on this device, at the message">Open in the app</a>
                         <button class="omni-btn" type="button" data-testid="image-copy-link" @click="copyLink(opened.messageUrl)">{{ copied ? 'Link copied' : 'Copy message link' }}</button>
                     </template>
-                    <button v-if="filters.conversation !== opened.conversationId" class="omni-btn ghost" type="button" data-testid="image-only-here" @click="onlyHere(opened.conversationId)">Only images from here</button>
+                    <button v-if="narrow.values.conversation !== opened.conversationId" class="omni-btn ghost" type="button" data-testid="image-only-here" @click="onlyHere(opened.conversationId)">Only images from here</button>
+                    <button v-if="opened.guildId && narrow.values.guild !== opened.guildId" class="omni-btn ghost" type="button" data-testid="image-only-server" @click="onlyServer(opened)">Only this server</button>
+                    <button v-if="opened.authorPersonId && narrow.values.person !== opened.authorPersonId" class="omni-btn ghost" type="button" data-testid="image-only-them" @click="onlyThem(opened)">Only their images</button>
                 </div>
                 <p v-if="opened.messageUrl && opened.deleted" class="omni-muted note">The message was deleted at the source: the link opens where it was, and Discord will not find it there.</p>
                 <p v-else-if="!opened.messageUrl && noLink(opened)" class="omni-muted note" data-testid="image-no-link">{{ noLink(opened) }}</p>
@@ -140,28 +135,33 @@
 import { computed, ref, watch } from 'vue';
 import { OMNI_BASE, omniGet } from '~/scripts/omniscience/api';
 import type { MediaSearchDto, MediaSearchHitDto } from '~/scripts/omniscience/contracts';
-import { omniBytes, omniCount, omniZonedToMs } from '~/scripts/omniscience/format';
-import { useOmniDebounced, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
+import { omniBytes, omniCount } from '~/scripts/omniscience/format';
+import { omniFilterDefaults, omniScopeFilters, type OmniFilterDef } from '~/scripts/omniscience/filters';
+import { useOmniDebounced, useOmniResource } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
-import type { PickedPerson } from '~/components/OmniscienceV3/PersonPick.vue';
+import { useOmniFilters, useOmniPickLabels } from '~/composables/useOmniFilters';
 
 definePageMeta({ layout: 'navbar' });
 useHead({ title: 'Omniscience v3 · Images' });
 
-const { zone } = useOmniTime();
-const { state: filters, reset, activeCount } = useOmniUrlState({ q: '', person: '', conversation: '', from: '', to: '', open: '' });
-const person = ref<PickedPerson[]>(filters.person ? [{ id: filters.person, label: null }] : []);
-watch(person, list => { filters.person = list[0]?.id ?? ''; });
+// Who posted it, where and when (the filters every search shares), then what the image itself is.
+const ABOUT: OmniFilterDef[] = [
+    { key: 'kind', kind: 'options', label: 'Kind of image', any: 'any', param: 'kinds', help: 'What the caption model took it to be. An image with no caption yet has no kind.',
+        options: ['photo', 'screenshot', 'meme', 'drawing', 'chart', 'document', 'other'].map(k => ({ id: k, label: k[0]!.toUpperCase() + k.slice(1) })) },
+    { key: 'format', kind: 'options', label: 'Format', any: 'any', param: 'formats', options: [{ id: 'png', label: 'PNG' }, { id: 'jpeg', label: 'JPEG' }, { id: 'gif', label: 'GIF' }, { id: 'webp', label: 'WebP' }] },
+    { key: 'text', kind: 'flag', label: 'Text in it', any: 'With or without', yes: 'With text in it', no: 'Without text', param: 'hasText' },
+    { key: 'deleted', kind: 'flag', label: 'Deleted', any: 'Shown either way', yes: 'Only deleted at the source', no: 'Hide deleted ones', param: 'deleted' },
+    { key: 'sensitive', kind: 'flag', label: 'Sensitive', any: 'Shown either way', yes: 'Only marked sensitive', no: 'Hide marked sensitive', param: 'nsfw',
+        help: 'The caption model’s reading of the picture, not a platform label.' },
+];
+const FILTERS = [...omniScopeFilters('Posted by'), ...ABOUT];
 
-/** A day typed in the time lens's zone, as the instant it starts (or, for "to", the instant after it ends). */
-function day(text: string, end: boolean): number | null {
-    if (!text) return null;
-    const start = omniZonedToMs(`${text}T00:00`, zone.value);
-    return start === null ? null : end ? start + 86_400_000 : start;
-}
+const { state: filters } = useOmniUrlState({ q: '', open: '', ...omniFilterDefaults(FILTERS) });
+const narrow = useOmniFilters(FILTERS, filters);
+const { remember } = useOmniPickLabels();
 
 const results = useOmniResource<MediaSearchDto | null>(signal => (filters.q.trim()
-    ? omniGet<MediaSearchDto>('media/search', { q: filters.q.trim(), person: filters.person, conversation: filters.conversation.trim(), from: day(filters.from, false), to: day(filters.to, true), limit: 60 }, signal)
+    ? omniGet<MediaSearchDto>('media/search', { q: filters.q.trim(), ...narrow.params(), limit: 60 }, signal)
     : Promise.resolve(null)), { immediate: false });
 const r = computed(() => results.data.value);
 const searching = computed(() => results.refreshing.value);
@@ -201,28 +201,39 @@ async function copyLink(url: string) {
 
 /** Narrows the search to the conversation the opened image is from. The filters search again by themselves. */
 function onlyHere(conversationId: string) {
-    filters.conversation = conversationId;
+    const from = r.value?.hits.find(h => h.conversationId === conversationId);
+    const title = from?.conversationTitle?.trim();
+    // The filter shows the conversation by name straight away, without asking the server what the id is called.
+    if (title) remember('conversation', conversationId, from?.guildName ? `#${title} · ${from.guildName}` : title);
+    narrow.pick('conversation', [conversationId]);
+    filters.open = '';
+}
+
+/** Narrows the search to the server the opened image was posted in. */
+function onlyServer(h: MediaSearchHitDto) {
+    if (!h.guildId) return;
+    if (h.guildName) remember('guild', h.guildId, h.guildName);
+    narrow.pick('guild', [h.guildId]);
+    filters.open = '';
+}
+
+/** Narrows the search to whoever posted the opened image. */
+function onlyThem(h: MediaSearchHitDto) {
+    if (!h.authorPersonId) return;
+    if (h.authorName) remember('person', h.authorPersonId, h.authorName);
+    narrow.pick('person', [h.authorPersonId]);
     filters.open = '';
 }
 
 function search() { if (filters.q.trim()) void results.refresh(); }
-// A link with a query in it searches on arrival. The filters search again once they stop changing: the conversation id is typed, and a search per keystroke would each embed the query again.
-useOmniDebounced(() => [filters.person, filters.conversation, filters.from, filters.to].join('\u0001'), () => search());
+// A link with a query in it searches on arrival. The filters search again once they stop changing: a search per change would each embed the query again.
+useOmniDebounced(() => narrow.signature.value, () => search());
 if (filters.q.trim()) search();
-
-function clear() {
-    const q = filters.q;
-    reset();
-    filters.q = q;
-    person.value = [];
-}
 </script>
 
 <style scoped>
 .search { margin-bottom: 8px; }
 .search .grow { flex: 1 1 320px; }
-.who { min-width: 240px; }
-.range { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--omni-muted); }
 .grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
 .grid li { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; min-width: 0; }
 .grid li.gone { opacity: 0.6; }

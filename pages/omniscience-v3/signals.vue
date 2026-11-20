@@ -32,6 +32,7 @@
                 <div class="grow"></div>
                 <button v-if="canManage && unseenAlerts" class="omni-btn sm" type="button" :disabled="busy !== null" data-testid="alerts-all-seen" @click="allAlertsSeen()">Mark all as seen</button>
             </div>
+            <OmniscienceV3FilterBar :filters="alertFilters" label="Narrow the alerts" testid="alerts" />
             <OmniscienceV3Panel title="Alerts" flush :loading="alerts.loading.value" :error="alerts.error.value" :has-data="alerts.items.value.length > 0"
                                 :empty="!alerts.items.value.length" :empty-kind="filters.state === 'New' ? 'ok' : 'empty'"
                                 :empty-title="filters.state === 'New' ? 'Nothing new' : 'No alerts here'" @retry="alerts.reload()">
@@ -130,6 +131,7 @@
                 <div class="grow"></div>
                 <button v-if="canManage && unseenNotices" class="omni-btn sm" type="button" :disabled="busy !== null" @click="allNoticesSeen()">Mark all as seen</button>
             </div>
+            <OmniscienceV3FilterBar :filters="noticeFilters" label="Narrow the notices" testid="notices" />
             <OmniscienceV3Panel title="Notices" flush :loading="notices.loading.value" :error="notices.error.value" :has-data="notices.items.value.length > 0"
                                 :empty="!notices.items.value.length" empty-title="Nothing noticed" @retry="notices.reload()">
                 <ul class="notices" data-testid="notices-list">
@@ -178,8 +180,13 @@
                         <div class="omni-field"><label for="w-text">What to watch for</label>
                             <textarea id="w-text" v-model="draft.text" class="omni-input" rows="4" maxlength="2000" required placeholder="e.g. someone asking where I am going to be this weekend"></textarea>
                             <span class="help">In plain words. It is never about people under 18, and never about a person's private traits.</span></div>
-                        <div class="omni-field"><label for="w-guilds">Only in these servers (ids, optional)</label><input id="w-guilds" v-model="draft.guilds" class="omni-input mono" placeholder="comma separated" /></div>
-                        <div class="omni-field"><label for="w-conv">Only in these conversations (ids, optional)</label><input id="w-conv" v-model="draft.conversations" class="omni-input mono" placeholder="comma separated" /></div>
+                        <div class="omni-field"><label for="w-guilds">Only in these servers (optional)</label>
+                            <OmniscienceV3Pick v-model="draft.guilds" kind="guild" label="Servers" any="Any server" variant="field" input-id="w-guilds" testid="watch-guilds" /></div>
+                        <div class="omni-field"><label for="w-conv">Only in these conversations (optional)</label>
+                            <OmniscienceV3Pick v-model="draft.conversations" kind="conversation" label="Conversations" any="Any conversation" variant="field" input-id="w-conv" testid="watch-conversations"
+                                               :scope="{ guilds: draft.guilds }" /></div>
+                        <div class="omni-field"><label for="w-people">Only from these people (optional)</label>
+                            <OmniscienceV3Pick v-model="draft.persons" kind="person" label="People" any="Anyone" variant="field" input-id="w-people" testid="watch-people" /></div>
                         <label class="omni-check"><input v-model="draft.enabled" type="checkbox" /> On</label>
                         <div class="omni-row">
                             <button class="omni-btn primary" type="submit" :disabled="busy !== null || !draft.name.trim() || !draft.text.trim()">{{ draft.watchId ? 'Save changes' : 'Create rule' }}</button>
@@ -222,8 +229,10 @@ import type {
 } from '~/scripts/omniscience/contracts';
 import { omniCount, omniPercent, omniStateTone } from '~/scripts/omniscience/format';
 import { findingText, omniHumanise, waitText } from '~/scripts/omniscience/findings';
+import { omniFilterDefaults, omniScopeFilters } from '~/scripts/omniscience/filters';
 import { useOmniAction, useOmniDebounced, useOmniPaged, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
+import { useOmniFilters } from '~/composables/useOmniFilters';
 import { useAccess } from '~/composables/useAccess';
 
 definePageMeta({ layout: 'navbar' });
@@ -245,7 +254,15 @@ const { can } = useAccess();
 const canManage = computed(() => can('omniscience.alerts.manage'));
 const { busy, run } = useOmniAction();
 const { at } = useOmniTime();
-const { state: filters } = useOmniUrlState({ tab: 'alerts' as Tab, state: 'New' as AlertState | '', kind: '', alert: '', inbox: 'open', nstate: 'New' as AlertState | '', nkind: '' });
+// Alerts and notices are narrowed by who they are about, where it was said and when. The same choices hold on both tabs.
+const SCOPE = omniScopeFilters('About');
+// A notice is not tied to a platform, so that filter is left off there.
+const NOTICE_SCOPE = SCOPE.filter(d => d.key !== 'platform');
+const { state: filters } = useOmniUrlState({
+    tab: 'alerts' as string, state: 'New' as string, kind: '', alert: '', inbox: 'open', nstate: 'New' as string, nkind: '', ...omniFilterDefaults(SCOPE),
+});
+const alertFilters = useOmniFilters(SCOPE, filters);
+const noticeFilters = useOmniFilters(NOTICE_SCOPE, filters);
 
 function personLink(id: string): string { return `${OMNI_BASE}/people/${encodeURIComponent(id)}`; }
 function severityTone(severity: string): string {
@@ -256,11 +273,11 @@ function severityTone(severity: string): string {
 // ── alerts ─────────────────────────────────────────────────────────────────
 const unseenAlerts = ref<number | null>(null);
 const alerts = useOmniPaged<AlertDto, string>(async (cursor, signal) => {
-    const page = await omniGet<AlertPageDto>('signals/alerts', { state: filters.state, kind: filters.kind, cursor, limit: 50 }, signal);
+    const page = await omniGet<AlertPageDto>('signals/alerts', { state: filters.state, kind: filters.kind, ...alertFilters.params(), cursor, limit: 50 }, signal);
     unseenAlerts.value = page.unseen;
     return page;
 });
-useOmniDebounced(() => `${filters.state}|${filters.kind}`, () => { void alerts.reload(); }, 50);
+useOmniDebounced(() => `${filters.state}|${filters.kind}|${alertFilters.signature.value}`, () => { void alerts.reload(); }, 50);
 const selectedAlert = computed(() => alerts.items.value.find(a => a.alertId === filters.alert) ?? null);
 
 async function setAlertState(ids: string[], state: AlertState) {
@@ -290,11 +307,11 @@ async function resolve(ids: string[], action: InboxAction, forMs?: number) {
 // ── notices ────────────────────────────────────────────────────────────────
 const unseenNotices = ref<number | null>(null);
 const notices = useOmniPaged<NoticeDto, string>(async (cursor, signal) => {
-    const page = await omniGet<NoticePageDto>('signals/notices', { state: filters.nstate, kind: filters.nkind, cursor, limit: 50 }, signal);
+    const page = await omniGet<NoticePageDto>('signals/notices', { state: filters.nstate, kind: filters.nkind, ...noticeFilters.params(), cursor, limit: 50 }, signal);
     unseenNotices.value = page.unseen;
     return page;
 });
-useOmniDebounced(() => `${filters.nstate}|${filters.nkind}`, () => { void notices.reload(); }, 50);
+useOmniDebounced(() => `${filters.nstate}|${filters.nkind}|${noticeFilters.signature.value}`, () => { void notices.reload(); }, 50);
 async function setNoticeState(ids: string[], state: AlertState) {
     const result = await run('notice-state', () => omniPost<NoticeStateResultDto>('signals/notices/state', { state, noticeIds: ids, all: false }));
     if (result) { unseenNotices.value = result.unseen; void notices.reload(true); }
@@ -307,22 +324,19 @@ async function allNoticesSeen() {
 
 // ── watch rules ────────────────────────────────────────────────────────────
 const watches = useOmniResource(signal => omniGet<WatchListDto>('signals/watchlists', {}, signal));
-const draft = reactive({ watchId: '', name: '', text: '', guilds: '', conversations: '', persons: [] as string[], enabled: true });
-function resetDraft() { Object.assign(draft, { watchId: '', name: '', text: '', guilds: '', conversations: '', persons: [], enabled: true }); }
+const draft = reactive({ watchId: '', name: '', text: '', guilds: [] as string[], conversations: [] as string[], persons: [] as string[], enabled: true });
+function resetDraft() { Object.assign(draft, { watchId: '', name: '', text: '', guilds: [], conversations: [], persons: [], enabled: true }); }
 function editWatch(w: WatchRuleDto) {
     Object.assign(draft, {
-        watchId: w.watchId, name: w.name, text: w.definition.text, guilds: (w.definition.guilds ?? []).join(', '),
-        conversations: (w.definition.conversations ?? []).join(', '), persons: w.definition.persons ?? [], enabled: w.enabled,
+        watchId: w.watchId, name: w.name, text: w.definition.text, guilds: [...(w.definition.guilds ?? [])],
+        conversations: [...(w.definition.conversations ?? [])], persons: [...(w.definition.persons ?? [])], enabled: w.enabled,
     });
 }
-function ids(text: string): string[] | null {
-    const list = text.split(',').map(s => s.trim()).filter(Boolean);
-    return list.length ? list : null;
-}
+function ids(list: string[]): string[] | null { return list.length ? list : null; }
 async function saveWatch() {
     const body = {
         watchId: draft.watchId || null, name: draft.name.trim(), text: draft.text.trim(), enabled: draft.enabled,
-        guilds: ids(draft.guilds), conversations: ids(draft.conversations), persons: draft.persons.length ? draft.persons : null,
+        guilds: ids(draft.guilds), conversations: ids(draft.conversations), persons: ids(draft.persons),
     };
     const result = await run('watch-save', () => omniPost<WatchRuleDto>('signals/watchlists/save', body), r => `Watch rule “${r.name}” saved.`);
     if (result) { resetDraft(); void watches.refresh(); }

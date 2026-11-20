@@ -75,5 +75,8 @@ export default defineNuxtConfig({
   modules: [],
   // Playwright writes videos, traces and screenshots into the project while tests run; without
   // this, every new artifact makes the dev server regenerate its templates mid-test.
-  ignore: ['test-results/**', 'playwright-report/**'],
+  // .claude holds whole checkouts of this site (worktrees, with their own test results): watching
+  // them put a file watcher on some 11,000 more files, and the dev server sat at "Starting Nuxt"
+  // for over ten minutes before it answered anything.
+  ignore: ['test-results/**', 'playwright-report/**', '.claude/**'],
 })

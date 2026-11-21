@@ -1,443 +1,681 @@
 <template>
-  <div class="tw-page">
-    <header class="tw-topbar">
-      <div>
-        <div class="tw-eyebrow"><span class="tw-live-dot"></span> Tracked redirects</div>
-        <h1>Tripwires</h1>
-        <p>Create clean redirect links and see the moment they are opened.</p>
+  <div class="twx" data-testid="twx-root">
+    <!-- ── bar ── -->
+    <header class="twx-bar">
+      <div class="twx-bar__id">
+        <span class="twx-mark" :data-tone="barTone"><TripwiresIcon name="bolt" /></span>
+        <h1 class="twx-bar__title">Tripwires</h1>
+        <span class="twx-bar__sub" data-testid="twx-subline">{{ subline }}</span>
       </div>
-      <div class="tw-top-actions">
-        <button class="tw-button tw-button--ghost" type="button" :disabled="loading" @click="() => loadTripwires()">
-          <span :class="{ spin: loading }">↻</span> Refresh
+
+      <form v-if="allowed.manage" class="twx-quick" data-testid="twx-quick" @submit.prevent="quickCreate">
+        <TripwiresIcon name="link" />
+        <input ref="quickInput" v-model="quickUrl" class="twx-quick__input" placeholder="Paste a link to make a tripwire for it" aria-label="Paste a link to make a tripwire for it" aria-keyshortcuts="/" data-testid="twx-quick-input" />
+        <button v-if="quickUrl" type="button" class="twx-quick__more" title="More options (Shift+Enter)" @click="openComposer(quickUrl)">Options</button>
+        <button type="submit" class="twx-quick__go" :disabled="!quickClean || quickBusy" data-testid="twx-quick-go">{{ quickBusy ? 'Making…' : 'Make link' }}</button>
+      </form>
+
+      <span class="twx-bar__spacer"></span>
+
+      <div class="twx-bar__actions">
+        <button class="twx-iconbtn twx-iconbtn--box" title="Find (Ctrl+K)" aria-label="Find a tripwire or an action" aria-keyshortcuts="Control+K" data-testid="twx-find" @click="paletteOpen = true"><TripwiresIcon name="search" /></button>
+        <button class="twx-live" :data-state="con.linkState.value" :title="liveTitle" :aria-label="liveTitle" data-testid="twx-live" @click="con.setLive(!con.prefs.value.live)">
+          <span class="twx-live__dot"></span><span>{{ liveWord }}</span>
         </button>
-        <button class="tw-button tw-button--primary" type="button" data-testid="new-tripwire" @click="openCreate">＋ New tripwire</button>
+        <button class="twx-iconbtn twx-iconbtn--box" title="Refresh now (R)" aria-label="Refresh now" @click="con.refresh()"><TripwiresIcon name="refresh" :class="{ 'twx-spin': con.busy.value }" /></button>
       </div>
     </header>
 
-    <div v-if="error && !tripwires.length" class="tw-error-state">
-      <span>!</span><h2>Tripwires could not be loaded</h2><p>{{ error }}</p>
-      <button class="tw-button tw-button--primary" type="button" @click="() => loadTripwires()">Try again</button>
-    </div>
+    <!-- The layout already provides the page's <main>. -->
+    <div class="twx-main">
+      <div v-if="profileReady && !allowed.read" class="twx-card twx-empty"><TripwiresIcon name="lock" />Tripwires are not part of your access.</div>
 
-    <div v-else class="tw-workspace">
-      <aside class="tw-sidebar">
-        <div class="tw-search-wrap">
-          <span>⌕</span>
-          <input v-model="search" class="tw-search" type="search" placeholder="Find a tripwire…" aria-label="Find a tripwire" />
+      <template v-else>
+        <div v-if="!con.ready.value && con.loadError.value" class="twx-card twx-empty" data-testid="twx-error">
+          <TripwiresIcon name="alert" />
+          <div><b>Tripwires could not be loaded</b><p class="twx-faint">{{ con.loadError.value }}</p></div>
+          <button class="twx-btn" @click="con.refresh()">Try again</button>
         </div>
-        <div v-if="loading && !tripwires.length" class="tw-skeleton-list">
-          <div v-for="i in 4" :key="i" class="tw-skeleton-card"></div>
-        </div>
-        <button
-          v-for="tripwire in filteredTripwires"
-          :key="tripwire.id"
-          class="tw-list-card"
-          :class="{ active: tripwire.id === selectedId }"
-          type="button"
-          @click="selectTripwire(tripwire.id)"
-        >
-          <span class="tw-list-bolt">⚡</span>
-          <span class="tw-list-copy">
-            <strong>{{ tripwire.name }}</strong>
-            <small>{{ tripwire.targets.length }} {{ tripwire.targets.length === 1 ? 'link' : 'links' }} · {{ tripwire.totalTrips.toLocaleString() }} trips</small>
-          </span>
-          <span class="tw-status-dot" :class="statusClass(tripwire.status)" :title="tripwire.status"></span>
-        </button>
-        <div v-if="!loading && !filteredTripwires.length" class="tw-empty-list">
-          <span>⚡</span>
-          <p>{{ search ? 'No matching tripwires.' : 'No tripwires yet.' }}</p>
-          <button v-if="!search" type="button" @click="openCreate">Create the first one</button>
-        </div>
-      </aside>
 
-      <main v-if="selected" class="tw-main">
-        <section class="tw-hero">
-          <div class="tw-hero-title">
-            <span class="tw-bolt-tile">⚡</span>
-            <div>
-              <div class="tw-title-line">
-                <h2>{{ selected.name }}</h2>
-                <span class="tw-status-pill" :class="statusClass(selected.status)">{{ selected.status }}</span>
-              </div>
-              <p>Created by {{ selected.createdBy }} · {{ formatDate(selected.createdUtc) }}</p>
-            </div>
-          </div>
-          <div class="tw-hero-actions">
-            <button class="tw-icon-button" type="button" title="Edit settings" aria-label="Edit settings" @click="activeTab = 'settings'">⚙</button>
-            <button class="tw-icon-button tw-icon-button--danger" type="button" title="Delete tripwire" aria-label="Delete tripwire" @click="deleteTripwire">⌫</button>
-          </div>
-        </section>
+        <!-- ── what needs attention ── -->
+        <ul v-if="issues.length" class="twx-issues" data-testid="twx-issues">
+          <li v-for="issue in issues" :key="issue.id" class="twx-issue" :data-tone="issue.tone" :data-testid="`issue-${issue.id}`">
+            <TripwiresIcon :name="issue.tone === 'crit' ? 'octagon-x' : issue.tone === 'warn' ? 'alert' : 'info'" />
+            <span class="twx-issue__text"><b>{{ issue.title }}</b><span v-if="issue.detail">{{ issue.detail }}</span></span>
+            <button v-if="issue.tripwireId" class="twx-btn twx-btn--xs twx-btn--ghost" @click="openIssue(issue)">{{ issue.action === 'settings' ? 'Settings' : 'Open' }}</button>
+          </li>
+        </ul>
 
-        <section class="tw-metrics">
-          <article><small>Total trips</small><strong>{{ (summary?.totalTrips ?? selected.totalTrips).toLocaleString() }}</strong><span>all time</span></article>
-          <article><small>Unique visitors</small><strong>{{ (summary?.uniqueTrips ?? 0).toLocaleString() }}</strong><span>deduplicated</span></article>
-          <article><small>Last 24 hours</small><strong>{{ (summary?.tripsLast24Hours ?? 0).toLocaleString() }}</strong><span>{{ last24Trend }}</span></article>
-          <article><small>Last tripped</small><strong class="tw-metric-time">{{ relativeTime(summary?.lastTrippedUtc ?? selected.lastTrippedUtc) }}</strong><span>{{ selected.lastTrippedUtc ? formatTime(selected.lastTrippedUtc) : 'waiting for first trip' }}</span></article>
-        </section>
+        <div class="twx-layout">
+          <!-- ── rail ── -->
+          <aside class="twx-rail" aria-label="Tripwires">
+            <button class="twx-railitem twx-railitem--all" :aria-current="!selected ? 'page' : undefined" data-testid="rail-all" @click="open('')">
+              <span class="twx-railitem__icon"><TripwiresIcon name="activity" /></span>
+              <span class="twx-railitem__text"><b>All activity</b><small>{{ allSub }}</small></span>
+              <span class="twx-railitem__count twx-num">{{ fmtInt(totals.trips24h) }}</span>
+            </button>
 
-        <section class="tw-panel tw-links-panel">
-          <div class="tw-panel-head">
-            <div><h3>Live links</h3><p>Share these URLs. Each one redirects straight to its destination.</p></div>
-            <button class="tw-small-button" type="button" @click="copyAllLinks">Copy all</button>
-          </div>
-          <div class="tw-link-list">
-            <article v-for="target in selected.targets" :key="target.id" class="tw-link-row" :class="{ muted: !target.enabled }">
-              <div class="tw-link-state"><span :class="target.enabled ? 'active' : ''"></span></div>
-              <div class="tw-link-detail">
-                <strong>{{ target.label }}</strong>
-                <a :href="target.destinationUrl" target="_blank" rel="noopener noreferrer" :title="target.destinationUrl">{{ target.destinationUrl }}</a>
-              </div>
-              <code>{{ target.trackingUrl }}</code>
-              <span class="tw-link-count">{{ target.tripCount.toLocaleString() }} trips</span>
-              <button class="tw-copy" type="button" :aria-label="`Copy ${target.label} link`" @click="copyLink(target.trackingUrl, target.id)">
-                {{ copiedId === target.id ? '✓ Copied' : 'Copy' }}
+            <label v-if="tripwires.length > 5" class="twx-rail__filter">
+              <TripwiresIcon name="filter" /><input v-model="railQuery" placeholder="Filter tripwires" aria-label="Filter tripwires" />
+            </label>
+
+            <div class="twx-rail__list" role="list">
+              <div v-if="!con.ready.value && !con.loadError.value" class="twx-skel-list"><i v-for="n in 4" :key="n"></i></div>
+              <button
+                v-for="t in railItems" :key="t.id" role="listitem" class="twx-railitem"
+                :aria-current="selected?.id === t.id ? 'page' : undefined" :data-testid="`rail-${t.id}`" @click="open(t.id)"
+              >
+                <span class="twx-dot" :data-tone="statusTone(t.status)" :title="t.status"></span>
+                <span class="twx-railitem__text">
+                  <b class="twx-truncate">{{ t.name }}</b>
+                  <small class="twx-truncate">{{ railSub(t) }}</small>
+                </span>
+                <TripwiresBars class="twx-railitem__spark" :bins="dayBins(t.summary, 14, con.now.value)" mini :label="`${t.name}, trips a day for 14 days`" />
+                <span class="twx-railitem__count twx-num" :title="`${t.totalTrips} trips in all`">{{ fmtCompact(t.totalTrips) }}</span>
               </button>
-            </article>
-          </div>
-        </section>
+              <p v-if="con.ready.value && !tripwires.length" class="twx-rail__empty">No tripwires yet. Paste a link above to make the first.</p>
+              <p v-else-if="railQuery && !railItems.length" class="twx-rail__empty">Nothing matches.</p>
+            </div>
 
-        <div class="tw-tabs" role="tablist">
-          <button type="button" :class="{ active: activeTab === 'activity' }" @click="activeTab = 'activity'">Activity <span>{{ eventsPage.total }}</span></button>
-          <button type="button" :class="{ active: activeTab === 'settings' }" @click="activeTab = 'settings'">Settings</button>
+            <button v-if="allowed.manage" class="twx-btn twx-btn--ghost twx-rail__new" data-testid="rail-new" @click="openComposer()"><TripwiresIcon name="plus" />New tripwire<span class="twx-kbd">N</span></button>
+          </aside>
+
+          <!-- ── all activity ── -->
+          <section v-if="!selected" class="twx-content" aria-label="All activity">
+            <div class="twx-figs">
+              <div class="twx-fig" data-testid="fig-today">
+                <span class="twx-fig__label">Trips today</span>
+                <b class="twx-fig__value twx-num">{{ con.ready.value ? fmtInt(totals.trips24h) : '—' }}</b>
+                <small>{{ fmtInt(totals.trips7d) }} this week · last {{ ago(totals.lastTrippedUtc, con.now.value) }}</small>
+                <TripwiresBars :bins="allBins" mini label="Trips a day across every tripwire" />
+              </div>
+              <div class="twx-fig" data-testid="fig-live">
+                <span class="twx-fig__label">Live</span>
+                <b class="twx-fig__value twx-num">{{ con.ready.value ? `${totals.active}/${totals.tripwires}` : '—' }}</b>
+                <small>{{ fmtInt(totals.links) }} live link{{ totals.links === 1 ? '' : 's' }}</small>
+              </div>
+              <div class="twx-fig" data-testid="fig-known" :title="intel ? 'Trips from addresses that have signed in to KM' : 'Needs OmniDefence access'">
+                <span class="twx-fig__label">From KM accounts</span>
+                <b class="twx-fig__value twx-num">{{ intel && totals.knownTrips != null ? fmtInt(totals.knownTrips) : '—' }}</b>
+                <small>{{ intel && totals.knownTrips != null && totals.retained ? `${Math.round((totals.knownTrips / totals.retained) * 100)}% of kept trips · your tests` : intel ? 'none' : 'needs OmniDefence access' }}</small>
+              </div>
+              <div class="twx-fig" data-testid="fig-closed" :data-tone="(totals.closedVisits ?? 0) > 0 ? 'warn' : undefined">
+                <span class="twx-fig__label">Turned away</span>
+                <b class="twx-fig__value twx-num">{{ totals.closedVisits != null ? fmtInt(totals.closedVisits) : '—' }}</b>
+                <small>visits to closed tripwires</small>
+              </div>
+              <div class="twx-fig" data-testid="fig-previews">
+                <span class="twx-fig__label">Previews</span>
+                <b class="twx-fig__value twx-num">{{ totals.previews != null ? fmtInt(totals.previews) : '—' }}</b>
+                <small>bots and link unfurls, not counted</small>
+              </div>
+              <div class="twx-fig" data-testid="fig-speed" :data-tone="speedTone">
+                <span class="twx-fig__label">Redirect</span>
+                <b class="twx-fig__value twx-num">{{ health?.answerP50Ms != null ? fmtMsShort(health.answerP50Ms) : '—' }}</b>
+                <small>{{ health?.answers ? `typical · ${fmtInt(health.answers)} since ${ago(health.startedUtc, con.now.value)}` : 'no visits since the server started' }}</small>
+              </div>
+            </div>
+
+            <div class="twx-card">
+              <header class="twx-card__head">
+                <h2><TripwiresIcon name="activity" />Latest trips</h2>
+                <span class="twx-faint twx-num">{{ allNote }}</span>
+                <div class="twx-card__tools">
+                  <label class="twx-searchbox"><TripwiresIcon name="search" /><input v-model="tripQuery" placeholder="Place, network, device…" aria-label="Filter trips" /></label>
+                  <button v-if="intel" class="twx-btn twx-btn--sm" :aria-pressed="con.prefs.value.hideKnown" data-testid="toggle-known" @click="toggleKnown"><TripwiresIcon :name="con.prefs.value.hideKnown ? 'eye-off' : 'eye'" />{{ con.prefs.value.hideKnown ? 'KM accounts hidden' : 'KM accounts shown' }}</button>
+                </div>
+              </header>
+              <div v-if="!con.overview.value?.native && con.ready.value" class="twx-empty twx-empty--slim">This server does not send trips across tripwires yet. Open a tripwire to see its trips.</div>
+              <div v-else-if="!allTrips.length" class="twx-empty twx-empty--slim" data-testid="all-empty">
+                <TripwiresIcon name="history" />{{ con.ready.value ? (recentRaw.length ? 'Every recent trip came from a KM account.' : 'No trips yet. Share a link and they appear here.') : 'Reading…' }}
+              </div>
+              <div v-else class="twx-trips" data-testid="all-trips">
+                <TripwiresTripRow v-for="e in allTrips" :key="e.id" :event="e" :now="con.now.value" show-tripwire :intel="intel"
+                  :open="openTrip === e.id" @toggle="toggleTrip(e.id)" @copy="text => con.copy(text, 'Address copied')" @tripwire="open" @visitor="hash => openVisitor(e.tripwireId, hash)" />
+              </div>
+            </div>
+          </section>
+
+          <!-- ── one tripwire ── -->
+          <section v-else class="twx-content" :aria-label="selected.name" data-testid="twx-detail">
+            <div class="twx-head">
+              <div class="twx-head__title">
+                <h2 data-testid="detail-name">{{ selected.name }}</h2>
+                <span class="twx-status" :data-tone="statusTone(selected.status)" data-testid="detail-status">{{ selected.status }}</span>
+              </div>
+              <p class="twx-faint">Made by {{ selected.createdBy || 'Klives' }} {{ ago(selected.createdUtc, con.now.value) }} · last trip {{ ago(selected.lastTrippedUtc, con.now.value) }}</p>
+              <div class="twx-head__actions">
+                <button v-if="selected.targets.length" class="twx-btn twx-btn--primary" data-testid="detail-copy" title="Copy the tracking link (C)" @click="copyLinks(selected)"><TripwiresIcon name="copy" />{{ selected.targets.filter(t => t.enabled).length > 1 ? 'Copy links' : 'Copy link' }}</button>
+                <button v-if="allowed.manage" class="twx-btn" data-testid="detail-pause" :title="`${selected.settings.enabled ? 'Pause' : 'Resume'} (P)`" @click="con.setEnabled(selected, !selected.settings.enabled)">
+                  <TripwiresIcon :name="selected.settings.enabled ? 'pause' : 'play'" />{{ selected.settings.enabled ? 'Pause' : 'Resume' }}
+                </button>
+                <button v-if="allowed.manage" class="twx-btn" data-testid="detail-settings" title="Settings (S)" @click="settingsOpen = true"><TripwiresIcon name="settings" />Settings</button>
+                <div class="twx-menu" @keydown.esc="menuOpen = false">
+                  <button class="twx-iconbtn twx-iconbtn--box" aria-label="More actions" :aria-expanded="menuOpen" data-testid="detail-more" @click="menuOpen = !menuOpen"><TripwiresIcon name="more" /></button>
+                  <div v-if="menuOpen" class="twx-menu__pop" role="menu" @click="menuOpen = false">
+                    <button v-if="allowed.manage" role="menuitem" @click="con.duplicate(selected)"><TripwiresIcon name="duplicate" />Duplicate with new links</button>
+                    <button v-if="allowed.test && selected.settings.discordNotifications" role="menuitem" @click="con.testAlert(selected)"><TripwiresIcon name="bell" />Send a test alert</button>
+                    <button role="menuitem" :disabled="!con.events.value.length" @click="exportTrips"><TripwiresIcon name="download" />Export trips (CSV)</button>
+                    <button v-if="allowed.manage" role="menuitem" @click="askClear(selected)"><TripwiresIcon name="history" />Clear history</button>
+                    <button v-if="allowed.manage" role="menuitem" class="twx-menu__danger" @click="askDelete(selected)"><TripwiresIcon name="trash" />Delete</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="selected.status !== 'Active'" class="twx-banner" :data-tone="statusTone(selected.status)" data-testid="detail-closed">
+              <TripwiresIcon :name="selected.status === 'Disabled' ? 'pause' : 'door'" />
+              <span><b>{{ closedHeadline(selected) }}</b>&nbsp;{{ closedDetail(selected) }}</span>
+              <button v-if="allowed.manage && selected.status === 'Limit reached'" class="twx-btn twx-btn--xs" @click="raiseLimit(selected)">Raise the limit</button>
+              <button v-if="allowed.manage && selected.status === 'Disabled'" class="twx-btn twx-btn--xs" @click="con.setEnabled(selected, true)">Resume</button>
+            </div>
+
+            <!-- links -->
+            <div class="twx-links">
+              <div v-for="target in selected.targets" :key="target.id" class="twx-linkcard" :class="{ 'twx-linkcard--off': !target.enabled }" :data-testid="`link-${target.id}`">
+                <div class="twx-linkcard__top">
+                  <b class="twx-truncate">{{ target.label }}</b>
+                  <span class="twx-faint twx-num">{{ fmtInt(target.tripCount) }} trip{{ target.tripCount === 1 ? '' : 's' }}</span>
+                  <label v-if="allowed.manage" class="twx-pill-toggle" :title="target.enabled ? 'This link is live' : 'This link is off'">
+                    <input type="checkbox" :checked="target.enabled" @change="con.setTargetEnabled(selected, target, ($event.target as HTMLInputElement).checked)" /><span>{{ target.enabled ? 'Live' : 'Off' }}</span>
+                  </label>
+                </div>
+                <div class="twx-linkcard__url">
+                  <code class="twx-truncate" :title="target.trackingUrl" @click="selectText">{{ target.trackingUrl }}</code>
+                  <button class="twx-btn twx-btn--sm" :data-testid="`copy-${target.id}`" @click="con.copy(target.trackingUrl)"><TripwiresIcon name="copy" />Copy</button>
+                </div>
+                <a class="twx-linkcard__dest twx-truncate" :href="target.destinationUrl" target="_blank" rel="noopener noreferrer" :title="target.destinationUrl"><TripwiresIcon name="arrow" />{{ hostOf(target.destinationUrl) }}<span class="twx-faint">{{ pathOf(target.destinationUrl) }}</span></a>
+              </div>
+            </div>
+
+            <!-- figures -->
+            <div class="twx-figs twx-figs--detail">
+              <div class="twx-fig" data-testid="fig-trips">
+                <span class="twx-fig__label">Trips</span>
+                <b class="twx-fig__value twx-num">{{ fmtInt(selected.totalTrips) }}</b>
+                <small>{{ s ? `${fmtInt(s.tripsLast24Hours)} today · ${fmtInt(s.tripsLast7Days)} this week` : '—' }}</small>
+              </div>
+              <div class="twx-fig" data-testid="fig-visitors">
+                <span class="twx-fig__label">People</span>
+                <b class="twx-fig__value twx-num">{{ s?.visitors != null ? fmtInt(peopleCount) : s ? fmtInt(s.uniqueTrips) : '—' }}</b>
+                <small>{{ peopleSub }}</small>
+              </div>
+              <div class="twx-fig" data-testid="fig-detail-known" :title="intel ? 'Trips from addresses that have signed in to KM' : 'Needs OmniDefence access'">
+                <span class="twx-fig__label">From KM accounts</span>
+                <b class="twx-fig__value twx-num">{{ intel && selected.knownTrips != null ? fmtInt(selected.knownTrips) : '—' }}</b>
+                <small>{{ intel ? (selected.knownTrips ? 'probably your own tests' : 'none') : 'needs OmniDefence access' }}</small>
+              </div>
+              <div class="twx-fig" data-testid="fig-vpn" :data-tone="(selected.proxyTrips ?? 0) > 0 ? 'warn' : undefined">
+                <span class="twx-fig__label">VPN or proxy</span>
+                <b class="twx-fig__value twx-num">{{ intel && selected.proxyTrips != null ? fmtInt(selected.proxyTrips) : '—' }}</b>
+                <small>{{ intel ? 'their location is the exit' : 'needs OmniDefence access' }}</small>
+              </div>
+              <div class="twx-fig" data-testid="fig-turned">
+                <span class="twx-fig__label">Turned away</span>
+                <b class="twx-fig__value twx-num">{{ selected.closedVisits != null ? fmtInt(selected.closedVisits) : '—' }}</b>
+                <small>{{ selected.closedVisits ? `last ${ago(selected.lastClosedUtc, con.now.value)}` : 'while closed' }}</small>
+              </div>
+              <div class="twx-fig" data-testid="fig-preview">
+                <span class="twx-fig__label">Previews</span>
+                <b class="twx-fig__value twx-num">{{ selected.previewVisits != null ? fmtInt(selected.previewVisits) : '—' }}</b>
+                <small class="twx-truncate">{{ selected.previewVisits ? `${selected.lastPreviewAgent ?? 'bot'} ${ago(selected.lastPreviewUtc, con.now.value)}` : selected.settings.ignoreBots ? 'bots are not counted as trips' : 'bots are counted as trips' }}</small>
+              </div>
+            </div>
+
+            <!-- activity -->
+            <div class="twx-card twx-activity">
+              <div class="twx-activity__chart">
+                <header class="twx-card__head"><h2><TripwiresIcon name="history" />Last 30 days</h2><span class="twx-faint">{{ busiestHour }}</span></header>
+                <TripwiresBars :bins="detailBins" :label="`${selected.name}: trips a day for 30 days`" />
+              </div>
+              <div class="twx-activity__side">
+                <div v-if="s?.countries?.length" class="twx-breakdown">
+                  <h3>Where</h3>
+                  <div v-for="c in s.countries.slice(0, 4)" :key="c.value" class="twx-breakdown__row"><span class="twx-truncate">{{ c.value }}</span><i><b :style="{ width: `${share(c.count, s.retainedTrips ?? s.totalTrips)}%` }"></b></i><span class="twx-num">{{ c.count }}</span></div>
+                </div>
+                <div v-if="s?.devices?.length" class="twx-breakdown">
+                  <h3>On what</h3>
+                  <div v-for="d in s.devices.slice(0, 3)" :key="d.value" class="twx-breakdown__row"><span class="twx-truncate">{{ d.value }}</span><i><b :style="{ width: `${share(d.count, s.retainedTrips ?? s.totalTrips)}%` }"></b></i><span class="twx-num">{{ d.count }}</span></div>
+                </div>
+                <p v-if="!s?.countries?.length" class="twx-faint">Places and devices appear after the first trip.</p>
+              </div>
+            </div>
+
+            <!-- trips / visitors -->
+            <div class="twx-card">
+              <header class="twx-card__head">
+                <div class="twx-seg" role="tablist" aria-label="Show">
+                  <button role="tab" class="twx-seg__opt" :aria-selected="tab === 'trips'" data-testid="tab-trips" @click="con.setTab('trips')">Trips <span class="twx-num">{{ fmtInt(con.eventsFor.value === selected.id ? con.eventsTotal.value : selected.summary?.retainedTrips ?? 0) }}</span></button>
+                  <button role="tab" class="twx-seg__opt" :aria-selected="tab === 'visitors'" data-testid="tab-visitors" :disabled="!con.overview.value?.native" @click="con.setTab('visitors')">People <span v-if="con.visitorsFor.value === selected.id" class="twx-num">{{ fmtInt(con.visitors.value.length) }}</span></button>
+                </div>
+                <span v-if="con.visitorFilter.value && tab === 'trips'" class="twx-chip twx-chip--filter" data-testid="visitor-filter">
+                  <i :style="{ background: `hsl(${visitorHue(con.visitorFilter.value)} 70% 62%)` }"></i>Only visitor {{ visitorShort(con.visitorFilter.value) }}
+                  <button aria-label="Show every visitor" @click="clearVisitor"><TripwiresIcon name="x" /></button>
+                </span>
+                <div class="twx-card__tools">
+                  <label class="twx-searchbox"><TripwiresIcon name="search" /><input v-model="tripQuery" placeholder="Place, network, device…" aria-label="Filter trips" /></label>
+                  <button v-if="intel" class="twx-btn twx-btn--sm" :aria-pressed="con.prefs.value.hideKnown" data-testid="toggle-known" @click="toggleKnown"><TripwiresIcon :name="con.prefs.value.hideKnown ? 'eye-off' : 'eye'" />{{ con.prefs.value.hideKnown ? 'KM accounts hidden' : 'KM accounts shown' }}</button>
+                </div>
+              </header>
+
+              <template v-if="tab === 'trips'">
+                <div v-if="con.eventsLoading.value && con.eventsFor.value !== selected.id" class="twx-skel-rows"><i v-for="n in 4" :key="n"></i></div>
+                <div v-else-if="!detailTrips.length" class="twx-empty twx-empty--slim" data-testid="detail-empty">
+                  <TripwiresIcon name="history" />
+                  {{ con.events.value.length ? (hiddenKnown ? `All ${hiddenKnown} trips came from KM accounts.` : 'No trip matches.') : 'No trips yet. Copy the link above and share it.' }}
+                </div>
+                <div v-else class="twx-trips" data-testid="detail-trips">
+                  <TripwiresTripRow v-for="e in detailTrips" :key="e.id" :event="e" :now="con.now.value" :intel="intel" :open="openTrip === e.id"
+                    @toggle="toggleTrip(e.id)" @copy="text => con.copy(text, 'Address copied')" @visitor="con.filterVisitor" />
+                </div>
+                <p v-if="hiddenKnown && detailTrips.length" class="twx-foot" data-testid="known-hidden">{{ hiddenKnown }} trip{{ hiddenKnown === 1 ? '' : 's' }} from KM accounts hidden · <button class="twx-linkbtn" @click="toggleKnown">show</button></p>
+                <p v-if="con.eventsTotal.value > con.events.value.length" class="twx-foot">Showing the newest {{ fmtInt(con.events.value.length) }} of {{ fmtInt(con.eventsTotal.value) }}. Export has the same {{ fmtInt(con.events.value.length) }}.</p>
+              </template>
+
+              <template v-else>
+                <div v-if="con.visitorsFor.value !== selected.id" class="twx-skel-rows"><i v-for="n in 3" :key="n"></i></div>
+                <div v-else-if="!visibleVisitors.length" class="twx-empty twx-empty--slim">{{ con.visitors.value.length ? 'Every visitor here is a KM account.' : 'No identified visitors yet.' }}</div>
+                <div v-else class="twx-people" data-testid="visitors">
+                  <button v-for="v in visibleVisitors" :key="v.visitorHash" class="twx-person" :data-testid="`visitor-${v.visitorHash}`" @click="con.filterVisitor(v.visitorHash)">
+                    <span class="twx-visitor"><i :style="{ background: `hsl(${visitorHue(v.visitorHash)} 70% 62%)` }"></i>{{ visitorShort(v.visitorHash) }}</span>
+                    <span class="twx-person__main">
+                      <b class="twx-truncate">{{ place(v.latest) || 'No location' }}<span v-if="networkKind(v.latest.network)" class="twx-tag" :data-tone="NETWORK_TONE[networkKind(v.latest.network)!]">{{ NETWORK_LABEL[networkKind(v.latest.network)!] }}</span><span v-if="knownProfile(v.latest)" class="twx-chip twx-chip--you"><TripwiresIcon name="user" />{{ knownProfile(v.latest) }}</span></b>
+                      <small class="twx-truncate">{{ [carrier(v.latest.network), device(v.latest)].filter(Boolean).join(' · ') || '—' }}</small>
+                    </span>
+                    <span class="twx-person__count"><b class="twx-num">{{ v.trips }}</b><small>trip{{ v.trips === 1 ? '' : 's' }}</small></span>
+                    <span class="twx-person__when"><b>{{ ago(v.lastUtc, con.now.value) }}</b><small>{{ v.trips > 1 ? `first ${ago(v.firstUtc, con.now.value)}` : 'once' }}</small></span>
+                    <span class="twx-person__also">
+                      <template v-if="v.also.length"><small>also tripped</small><b class="twx-truncate">{{ v.also.map(a => `${a.name}${a.match === 'address' ? ' (same address)' : ''}`).join(', ') }}</b></template>
+                    </span>
+                  </button>
+                </div>
+              </template>
+            </div>
+          </section>
         </div>
-
-        <template v-if="activeTab === 'activity'">
-          <section class="tw-activity-grid">
-            <article class="tw-panel tw-chart-panel">
-              <div class="tw-panel-head"><div><h3>Trips over time</h3><p>Last 14 days</p></div><strong>{{ summary?.tripsLast7Days ?? 0 }} <small>this week</small></strong></div>
-              <div class="tw-chart" aria-label="Trips during the last 14 days">
-                <div v-for="point in chartPoints" :key="point.date" class="tw-bar-slot" :title="`${point.date}: ${point.count}`">
-                  <span class="tw-bar-value">{{ point.count || '' }}</span>
-                  <i :style="{ height: `${point.height}%` }"></i>
-                  <small>{{ point.label }}</small>
-                </div>
-              </div>
-            </article>
-            <article class="tw-panel tw-breakdown">
-              <div class="tw-panel-head"><div><h3>Top locations</h3><p>All recorded trips</p></div></div>
-              <div v-if="summary?.countries?.length" class="tw-breakdown-list">
-                <div v-for="country in summary.countries.slice(0, 5)" :key="country.value">
-                  <span>{{ country.value }}</span><i><b :style="{ width: `${percentOf(country.count, summary.totalTrips)}%` }"></b></i><strong>{{ country.count }}</strong>
-                </div>
-              </div>
-              <div v-else class="tw-no-data">Location data will appear after a trip.</div>
-            </article>
-          </section>
-
-          <section class="tw-panel tw-events-panel">
-            <div class="tw-panel-head tw-events-head">
-              <div><h3>Event stream</h3><p>Newest trips first. Updates automatically.</p></div>
-              <div class="tw-event-actions">
-                <select v-model="targetFilter" class="tw-select" aria-label="Filter by link" @change="loadEvents">
-                  <option value="">All links</option>
-                  <option v-for="target in selected.targets" :key="target.id" :value="target.id">{{ target.label }}</option>
-                </select>
-                <details class="tw-columns">
-                  <summary>Columns</summary>
-                  <label v-for="column in optionalColumns" :key="column.key"><input v-model="visibleColumns" type="checkbox" :value="column.key" /> {{ column.label }}</label>
-                </details>
-                <button class="tw-small-button" type="button" :disabled="!eventsPage.items.length" @click="exportEvents">Export CSV</button>
-              </div>
-            </div>
-            <div v-if="eventsLoading" class="tw-table-loading"><span></span> Loading events…</div>
-            <div v-else-if="!eventsPage.items.length" class="tw-event-empty">
-              <span>◎</span><h4>Listening for the first trip</h4><p>Copy one of the live links above and share it. New events will appear here.</p>
-            </div>
-            <div v-else class="tw-table-wrap">
-              <table>
-                <thead><tr><th>Time</th><th>Link</th><th v-if="hasColumn('location')">Location</th><th v-if="hasColumn('ip')">IP address</th><th v-if="hasColumn('device')">Device</th><th v-if="hasColumn('referrer')">Referrer</th><th>Flags</th></tr></thead>
-                <tbody>
-                  <template v-for="event in eventsPage.items" :key="event.id">
-                  <tr>
-                    <td><strong>{{ relativeTime(event.trippedUtc) }}</strong><small>{{ formatTime(event.trippedUtc) }}</small></td>
-                    <td><strong>{{ event.targetLabel || 'Deleted link' }}</strong><small class="tw-truncate">{{ event.destinationUrl }}</small></td>
-                    <td v-if="hasColumn('location')"><strong>{{ eventLocation(event) }}</strong><small v-if="event.latitude != null && event.longitude != null">{{ event.latitude.toFixed(2) }}, {{ event.longitude.toFixed(2) }}</small></td>
-                    <td v-if="hasColumn('ip')"><code>{{ event.ipAddress || privacyLabel(event) }}</code></td>
-                    <td v-if="hasColumn('device')"><strong>{{ event.deviceType || 'Unknown' }}</strong><small>{{ [event.operatingSystem, event.browser].filter(Boolean).join(' · ') || event.userAgent || 'Not collected' }}</small></td>
-                    <td v-if="hasColumn('referrer')"><span class="tw-truncate">{{ event.referrer || 'Direct / not collected' }}</span></td>
-                    <td><div class="tw-flags"><span v-if="event.isUnique" class="unique">Unique</span><span v-else>Repeat</span><span v-if="event.discordNotified" class="discord">Discord</span><span v-if="event.isBot">Bot</span><span v-if="event.doNotTrack">DNT</span><button type="button" @click="expandedEventId = expandedEventId === event.id ? '' : event.id">{{ expandedEventId === event.id ? 'Hide' : 'Details' }}</button></div></td>
-                  </tr>
-                  <tr v-if="expandedEventId === event.id" class="tw-detail-row">
-                    <td :colspan="3 + visibleColumns.length">
-                      <div class="tw-event-detail">
-                        <div><small>Exact time</small><strong>{{ new Date(event.trippedUtc).toISOString() }}</strong></div>
-                        <div><small>Visitor ID</small><strong>{{ event.visitorHash || privacyLabel(event) }}</strong></div>
-                        <div><small>Language</small><strong>{{ event.language || 'Not collected' }}</strong></div>
-                        <div><small>Timezone</small><strong>{{ event.timezone || 'Unknown' }}</strong></div>
-                        <div class="wide"><small>Full user agent</small><code>{{ event.userAgent || 'Not collected' }}</code></div>
-                        <div class="wide"><small>Query parameters</small><code>{{ prettyQuery(event.queryParametersJson) }}</code></div>
-                        <div v-if="event.notificationError" class="wide error"><small>Discord delivery error</small><strong>{{ event.notificationError }}</strong></div>
-                      </div>
-                    </td>
-                  </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-            <div v-if="eventsPage.total > eventsPage.limit" class="tw-pagination">
-              <button type="button" :disabled="eventsPage.offset === 0" @click="changePage(-1)">Previous</button>
-              <span>{{ eventsPage.offset + 1 }}–{{ Math.min(eventsPage.offset + eventsPage.limit, eventsPage.total) }} of {{ eventsPage.total }}</span>
-              <button type="button" :disabled="eventsPage.offset + eventsPage.limit >= eventsPage.total" @click="changePage(1)">Next</button>
-            </div>
-          </section>
-        </template>
-
-        <template v-else>
-          <section class="tw-settings-grid">
-            <div class="tw-panel tw-settings-main">
-              <div class="tw-panel-head"><div><h3>Tripwire settings</h3><p>Changes apply to every live link in this tripwire.</p></div><span v-if="dirty" class="tw-unsaved">Unsaved changes</span></div>
-              <div class="tw-form-section">
-                <label class="tw-field"><span>Name</span><input v-model.trim="settingsName" maxlength="120" type="text" /></label>
-                <ToggleRow v-model="settingsDraft.enabled" title="Tripwire active" description="Disable every link without deleting their history." />
-                <div class="tw-field-row">
-                  <label class="tw-field"><span>Expiry (optional)</span><input v-model="expiresLocal" type="datetime-local" /></label>
-                  <label class="tw-field"><span>Maximum trips (optional)</span><input v-model.number="settingsDraft.maxTrips" min="1" type="number" placeholder="Unlimited" /></label>
-                  <label class="tw-field"><span>Redirect type</span><select v-model.number="settingsDraft.redirectStatusCode"><option :value="302">302 · Temporary</option><option :value="307">307 · Preserve method</option><option :value="301">301 · Permanent</option><option :value="308">308 · Permanent + preserve</option></select></label>
-                </div>
-              </div>
-
-              <div class="tw-form-section">
-                <div class="tw-section-title"><span>Capture</span><small>Time and clicked link are always recorded</small></div>
-                <div class="tw-toggle-grid">
-                  <ToggleRow v-model="settingsDraft.captureIpAddress" title="IP address" description="Store the visitor's public IP." />
-                  <ToggleRow v-model="settingsDraft.captureLocation" title="Approximate location" description="Resolve country, region and city from IP." />
-                  <ToggleRow v-model="settingsDraft.captureUserAgent" title="Full user agent" description="Keep the raw browser user-agent string." />
-                  <ToggleRow v-model="settingsDraft.captureDeviceDetails" title="Device details" description="Parse browser, OS and device type." />
-                  <ToggleRow v-model="settingsDraft.captureReferrer" title="Referrer" description="Record the page that sent the visitor." />
-                  <ToggleRow v-model="settingsDraft.captureLanguage" title="Language" description="Capture browser language preferences." />
-                  <ToggleRow v-model="settingsDraft.captureQueryParameters" title="Extra query parameters" description="Keep campaign tags added to the tripwire URL." />
-                  <ToggleRow v-model="settingsDraft.honourDoNotTrack" title="Honour DNT / GPC" description="Record only time and link when privacy signals are set." />
-                </div>
-                <p v-if="settingsDraft.captureLocation" class="tw-privacy-note">Approximate IP location is enriched through the configured geolocation provider. Disable this if the link's audience has not been informed.</p>
-              </div>
-
-              <div class="tw-form-section">
-                <div class="tw-section-title"><span>Filtering & retention</span></div>
-                <ToggleRow v-model="settingsDraft.ignoreBots" title="Ignore bots and link previews" description="Redirect them normally without counting an event." />
-                <div class="tw-field-row">
-                  <label class="tw-field"><span>Unique visitor window</span><select v-model.number="settingsDraft.deduplicateWindowMinutes"><option :value="0">Every trip is unique</option><option :value="15">15 minutes</option><option :value="60">1 hour</option><option :value="1440">24 hours</option><option :value="10080">7 days</option></select></label>
-                  <label class="tw-field"><span>Keep events for</span><select v-model.number="settingsDraft.retentionDays"><option :value="7">7 days</option><option :value="30">30 days</option><option :value="90">90 days</option><option :value="365">1 year</option><option :value="3650">10 years</option></select></label>
-                </div>
-              </div>
-
-              <div class="tw-form-section">
-                <div class="tw-section-title"><span>Links</span><small>Existing tracking URLs stay stable</small></div>
-                <div v-for="(target, index) in targetDraft" :key="target.id || `new-${index}`" class="tw-target-editor">
-                  <span>{{ index + 1 }}</span>
-                  <input v-model.trim="target.label" maxlength="120" type="text" placeholder="Label" />
-                  <input v-model.trim="target.destinationUrl" type="url" placeholder="https://destination.example" />
-                  <label class="tw-mini-switch"><input v-model="target.enabled" type="checkbox" /><i></i><span>{{ target.enabled ? 'Live' : 'Off' }}</span></label>
-                  <button type="button" aria-label="Remove link" @click="removeTarget(index)">×</button>
-                </div>
-                <button class="tw-add-link" type="button" @click="addTarget">＋ Add another link</button>
-              </div>
-
-              <div class="tw-savebar">
-                <span>{{ dirty ? 'Review and save your changes.' : 'Everything is up to date.' }}</span>
-                <button class="tw-button tw-button--primary" type="button" :disabled="saving || !dirty" @click="saveSettings">{{ saving ? 'Saving…' : 'Save changes' }}</button>
-              </div>
-            </div>
-
-            <aside class="tw-settings-side">
-              <section class="tw-panel tw-discord-card">
-                <span class="tw-discord-icon">◉</span><div><h3>Discord alerts</h3><p>Have KliveBot DM you when this tripwire is opened.</p></div>
-                <ToggleRow v-model="settingsDraft.discordNotifications" title="Send notifications" description="One direct message per eligible trip." />
-                <ToggleRow v-model="settingsDraft.discordIncludeSensitiveDetails" title="Include visitor details" description="Add IP, location, device and referrer to the DM." :disabled="!settingsDraft.discordNotifications" />
-                <label class="tw-field"><span>Notification cooldown</span><select v-model.number="settingsDraft.notificationCooldownSeconds" :disabled="!settingsDraft.discordNotifications"><option :value="0">Every trip</option><option :value="60">At most once a minute</option><option :value="300">At most every 5 minutes</option><option :value="3600">At most hourly</option></select></label>
-                <button class="tw-button tw-button--discord" type="button" :disabled="testingNotification" @click="testNotification">{{ testingNotification ? 'Sending…' : 'Send test notification' }}</button>
-              </section>
-              <section class="tw-panel tw-danger-card">
-                <h3>Data controls</h3><p>Clear captured events but keep this tripwire and its links.</p>
-                <button class="tw-button tw-button--danger" type="button" @click="clearEvents">Clear event history</button>
-              </section>
-            </aside>
-          </section>
-        </template>
-      </main>
-
-      <main v-else class="tw-welcome">
-        <div class="tw-welcome-art"><span>⚡</span><i></i><i></i><i></i></div>
-        <div class="tw-eyebrow">Redirect intelligence</div>
-        <h2>Know when your link lands.</h2>
-        <p>Name a tripwire, add one or more destinations, and get shareable URLs that record an event before redirecting the visitor.</p>
-        <button class="tw-button tw-button--primary" type="button" @click="openCreate">Create a tripwire</button>
-      </main>
+      </template>
     </div>
+
+    <TripwiresComposer :open="composerOpen" :tripwires="tripwires" :busy="composerBusy" :initial-url="composerUrl" :privacy="privacyAll" @close="composerOpen = false" @create="createFromComposer" />
+    <TripwiresSettingsSheet v-if="settingsOpen && selected" ref="sheet" :tripwire="selected" :can-test="allowed.test" :privacy="privacyOf(selected)"
+      @close="settingsOpen = false" @save="saveSettings" @test="selected && con.testAlert(selected)" @clear="selected && askClear(selected)" @delete="selected && askDelete(selected)" />
+    <TripwiresPalette :open="paletteOpen" :commands="commands" @close="paletteOpen = false" />
+    <TripwiresConfirm :request="confirmRequest" @done="confirmRequest = null" />
 
     <Teleport to="body">
-      <div v-if="createOpen" class="tw-modal-backdrop" @mousedown.self="closeCreate">
-        <form class="tw-modal" data-testid="create-tripwire-modal" @submit.prevent="createTripwire">
-          <div class="tw-modal-head"><div><span class="tw-bolt-tile">⚡</span><div><h2>New tripwire</h2><p>Every destination becomes a separate tracked link.</p></div></div><button type="button" aria-label="Close" @click="closeCreate">×</button></div>
-          <div class="tw-modal-body">
-            <label class="tw-field"><span>Tripwire name</span><input ref="nameInput" v-model.trim="createForm.name" maxlength="120" type="text" placeholder="e.g. Proposal sent to Acme" required /></label>
-            <div class="tw-section-title"><span>Destinations</span><small>{{ createForm.targets.length }}/100</small></div>
-            <div v-for="(target, index) in createForm.targets" :key="index" class="tw-create-target">
-              <span>{{ index + 1 }}</span>
-              <div><input v-model.trim="target.label" maxlength="120" type="text" placeholder="Label (optional)" /><input v-model.trim="target.destinationUrl" type="url" placeholder="https://example.com/your-page" required /></div>
-              <button v-if="createForm.targets.length > 1" type="button" aria-label="Remove destination" @click="createForm.targets.splice(index, 1)">×</button>
-            </div>
-            <button class="tw-add-link" type="button" @click="createForm.targets.push(blankTarget())">＋ Add another destination</button>
-            <div class="tw-quick-settings">
-              <ToggleRow v-model="createForm.settings.discordNotifications" title="Discord alerts" description="KliveBot DMs you when a link trips." />
-              <ToggleRow v-model="createForm.settings.captureLocation" title="Approximate location" description="Resolve country, region and city." />
-              <ToggleRow v-model="createForm.settings.ignoreBots" title="Ignore previews and bots" description="Recommended for clean results." />
-            </div>
-            <p class="tw-consent-note">Use tracking links only where you have a lawful basis and give visitors any notice required for IP and device analytics.</p>
-          </div>
-          <div class="tw-modal-foot"><button class="tw-button tw-button--ghost" type="button" @click="closeCreate">Cancel</button><button class="tw-button tw-button--primary" data-testid="create-submit" type="submit" :disabled="creating">{{ creating ? 'Creating…' : `Create ${createForm.targets.length} ${createForm.targets.length === 1 ? 'link' : 'links'}` }}</button></div>
-        </form>
+      <div class="twx-layer twx-toasts" aria-live="polite">
+        <div v-for="t in con.toasts.value" :key="t.id" class="twx-toast" :data-tone="t.tone" data-testid="twx-toast">
+          <TripwiresIcon :name="t.tone === 'ok' ? 'check' : t.tone === 'crit' ? 'octagon-x' : 'info'" />
+          <span>{{ t.text }}</span>
+          <button v-if="t.action" class="twx-linkbtn" @click="t.action.run(); con.dismissToast(t.id)">{{ t.action.label }}</button>
+        </div>
       </div>
     </Teleport>
-
-    <Transition name="toast"><div v-if="toast" class="tw-toast"><span>✓</span>{{ toast }}</div></Transition>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import Swal from 'sweetalert2';
-import { RequestGETFromKliveAPI, RequestPOSTFromKliveAPI } from '~/scripts/APIInterface';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useTripwires } from '~/composables/useTripwires';
+import { useCurrentProfile } from '~/composables/useCurrentProfile';
+import { fmtCompact, fmtInt } from '~/scripts/adminConsole';
+import {
+  NETWORK_LABEL, NETWORK_TONE, ago, carrier, cleanUrl, closedOutcome, closedWords, dayBins, device, eventsCsv, hostOf, hourOfDay,
+  knownProfile, lastEdited, matchesEvent, nameFromUrl, networkKind, place, statusTone, visitorHue, visitorShort,
+  type ConfirmRequest, type DayBin, type TwCommand, type TwEvent, type TwIssue, type TwSettings, type TwTarget, type TwTotals, type TwTripwire,
+} from '~/scripts/tripwires';
 
 definePageMeta({ layout: 'navbar' });
+useHead({ title: 'Tripwires' });
 
-interface Settings { enabled: boolean; captureIpAddress: boolean; captureLocation: boolean; captureUserAgent: boolean; captureDeviceDetails: boolean; captureReferrer: boolean; captureLanguage: boolean; captureQueryParameters: boolean; honourDoNotTrack: boolean; ignoreBots: boolean; discordNotifications: boolean; discordIncludeSensitiveDetails: boolean; notificationCooldownSeconds: number; deduplicateWindowMinutes: number; retentionDays: number; expiresUtc: string | null; maxTrips: number | null; redirectStatusCode: number }
-interface Target { id: string; label: string; destinationUrl: string; enabled: boolean; tripCount: number; trackingUrl: string }
-interface Tripwire { id: string; name: string; createdBy: string; createdUtc: string; updatedUtc: string; lastTrippedUtc: string | null; totalTrips: number; status: string; settings: Settings; targets: Target[] }
-interface TripEvent { id: string; targetLabel: string; destinationUrl: string; trippedUtc: string; ipAddress: string | null; visitorHash: string | null; countryCode: string | null; country: string | null; region: string | null; city: string | null; latitude: number | null; longitude: number | null; timezone: string | null; userAgent: string | null; browser: string | null; operatingSystem: string | null; deviceType: string | null; referrer: string | null; language: string | null; queryParametersJson: string | null; doNotTrack: boolean; isBot: boolean; isUnique: boolean; discordNotified: boolean; notificationError: string | null }
-interface Summary { totalTrips: number; uniqueTrips: number; tripsLast24Hours: number; tripsLast7Days: number; lastTrippedUtc: string | null; daily: { date: string; count: number }[]; countries: { value: string; count: number }[] }
+const route = useRoute();
+const router = useRouter();
+const profileState = useCurrentProfile();
+const con = useTripwires();
+const allowed = computed(() => con.allowed.value);
+const profileReady = computed(() => profileState.ready.value);
 
-const ToggleRow = defineComponent({
-  name: 'ToggleRow', inheritAttrs: false,
-  props: { modelValue: Boolean, title: String, description: String, disabled: Boolean },
-  emits: ['update:modelValue'],
-  setup(props, { emit }) {
-    return () => h('label', { class: ['tw-toggle-row', props.disabled && 'disabled'] }, [
-      h('span', { class: 'tw-toggle-copy' }, [h('strong', props.title), h('small', props.description)]),
-      h('input', { type: 'checkbox', checked: props.modelValue, disabled: props.disabled, onChange: (e: Event) => emit('update:modelValue', (e.target as HTMLInputElement).checked) }),
-      h('i', { class: 'tw-toggle-ui' }),
-    ]);
-  },
+const quickUrl = ref('');
+const quickBusy = ref(false);
+const quickInput = ref<HTMLInputElement | null>(null);
+const composerOpen = ref(false);
+const composerBusy = ref(false);
+const composerUrl = ref('');
+const settingsOpen = ref(false);
+const paletteOpen = ref(false);
+const menuOpen = ref(false);
+const confirmRequest = ref<ConfirmRequest | null>(null);
+const sheet = ref<{ close: () => void } | null>(null);
+const railQuery = ref('');
+const tripQuery = ref('');
+const openTrip = ref('');
+
+const tripwires = computed(() => con.tripwires.value);
+const selected = computed(() => con.selected.value);
+const totals = computed<TwTotals>(() => con.overview.value?.totals ?? { tripwires: 0, active: 0, links: 0, trips24h: 0, trips7d: 0 });
+const health = computed(() => con.overview.value?.health ?? null);
+const intel = computed(() => Boolean(con.overview.value?.intel));
+const issues = computed(() => con.issues.value);
+const tab = computed(() => con.prefs.value.tab);
+const s = computed(() => selected.value?.summary ?? null);
+const quickClean = computed(() => cleanUrl(quickUrl.value));
+
+// ───────────────────────────── bar ─────────────────────────────
+
+const barTone = computed(() => (issues.value.some(i => i.tone === 'crit') ? 'crit' : issues.value.some(i => i.tone === 'warn') ? 'warn' : 'ok'));
+const subline = computed(() => {
+  if (!con.ready.value) return con.loadError.value ? 'not answering' : 'reading…';
+  const t = totals.value;
+  return `${t.active} of ${t.tripwires} live · ${fmtInt(t.trips24h)} trip${t.trips24h === 1 ? '' : 's'} today · last ${ago(t.lastTrippedUtc, con.now.value)}`;
+});
+const liveWord = computed(() => ({ live: 'Live', paused: 'Paused', stale: 'Stale', offline: 'Offline', connecting: 'Connecting' })[con.linkState.value]);
+const liveTitle = computed(() => {
+  const at = con.lastOkAt.value;
+  const read = at ? `read ${ago(at, con.now.value)}` : 'not read yet';
+  return con.prefs.value.live ? `Updates every 15 s (${read}). Click to pause.` : `Paused (${read}). Click to resume.`;
 });
 
-const defaultSettings = (): Settings => ({ enabled: true, captureIpAddress: true, captureLocation: true, captureUserAgent: true, captureDeviceDetails: true, captureReferrer: true, captureLanguage: true, captureQueryParameters: true, honourDoNotTrack: true, ignoreBots: true, discordNotifications: false, discordIncludeSensitiveDetails: true, notificationCooldownSeconds: 0, deduplicateWindowMinutes: 60, retentionDays: 90, expiresUtc: null, maxTrips: null, redirectStatusCode: 302 });
-const blankTarget = () => ({ id: '', label: '', destinationUrl: '', enabled: true, tripCount: 0, trackingUrl: '' });
-const tripwires = ref<Tripwire[]>([]);
-const selectedId = ref('');
-const selected = computed(() => tripwires.value.find(item => item.id === selectedId.value) ?? null);
-const loading = ref(false); const eventsLoading = ref(false); const saving = ref(false); const creating = ref(false); const testingNotification = ref(false);
-const error = ref(''); const search = ref(''); const activeTab = ref<'activity' | 'settings'>('activity'); const targetFilter = ref('');
-const eventsPage = reactive<{ items: TripEvent[]; total: number; limit: number; offset: number }>({ items: [], total: 0, limit: 100, offset: 0 });
-const expandedEventId = ref('');
-const summary = ref<Summary | null>(null); const createOpen = ref(false); const nameInput = ref<HTMLInputElement | null>(null);
-const copiedId = ref(''); const toast = ref(''); let toastTimer: ReturnType<typeof setTimeout> | null = null; let pollTimer: ReturnType<typeof setInterval> | null = null;
-const settingsName = ref(''); const settingsDraft = reactive<Settings>(defaultSettings()); const targetDraft = ref<Target[]>([]); const baseline = ref(''); const expiresLocal = ref('');
-const createForm = reactive({ name: '', targets: [blankTarget()], settings: defaultSettings() });
-const optionalColumns = [{ key: 'location', label: 'Location' }, { key: 'ip', label: 'IP address' }, { key: 'device', label: 'Device' }, { key: 'referrer', label: 'Referrer' }];
-const visibleColumns = ref(['location', 'ip', 'device', 'referrer']);
+// ───────────────────────────── rail ─────────────────────────────
 
-const filteredTripwires = computed(() => { const q = search.value.trim().toLowerCase(); return q ? tripwires.value.filter(item => item.name.toLowerCase().includes(q) || item.targets.some(target => target.label.toLowerCase().includes(q))) : tripwires.value; });
-const draftSnapshot = computed(() => JSON.stringify({ name: settingsName.value, settings: { ...settingsDraft, expiresUtc: expiresLocal.value ? new Date(expiresLocal.value).toISOString() : null }, targets: targetDraft.value.map(({ id, label, destinationUrl, enabled }) => ({ id, label, destinationUrl, enabled })) }));
-const dirty = computed(() => Boolean(selected.value) && draftSnapshot.value !== baseline.value);
-const last24Trend = computed(() => summary.value?.tripsLast24Hours ? `${summary.value.tripsLast24Hours} recent events` : 'quiet right now');
-const chartPoints = computed(() => { const counts = new Map((summary.value?.daily ?? []).map(x => [x.date, x.count])); const days = Array.from({ length: 14 }, (_, i) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (13 - i)); const date = localDateKey(d); return { date, count: counts.get(date) ?? 0, label: i % 2 === 0 ? d.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2) : '' }; }); const max = Math.max(1, ...days.map(d => d.count)); return days.map(day => ({ ...day, height: day.count ? Math.max(8, (day.count / max) * 100) : 2 })); });
+const railItems = computed(() => {
+  const q = railQuery.value.trim().toLowerCase();
+  const list = q ? tripwires.value.filter(t => t.name.toLowerCase().includes(q) || t.targets.some(x => x.label.toLowerCase().includes(q) || x.destinationUrl.toLowerCase().includes(q))) : tripwires.value;
+  // Most recently tripped first, never-tripped last (newest made first among those).
+  return [...list].sort((a, b) => (Date.parse(b.lastTrippedUtc ?? '') || 0) - (Date.parse(a.lastTrippedUtc ?? '') || 0)
+    || (Date.parse(b.createdUtc) || 0) - (Date.parse(a.createdUtc) || 0));
+});
 
-async function apiJson(response: Response) { const text = await response.text(); if (!response.ok) { let message = text; try { message = JSON.parse(text); } catch {} throw new Error(String(message || `Request failed (${response.status})`)); } return text ? JSON.parse(text) : null; }
-async function loadTripwires(preserveSelection = true) { loading.value = true; error.value = ''; try { const data = await apiJson(await RequestGETFromKliveAPI('/tripwires/list', false, false, { 'Cache-Control': 'no-cache' })); tripwires.value = Array.isArray(data) ? data : []; const stillExists = tripwires.value.some(item => item.id === selectedId.value); if (!preserveSelection || !stillExists) selectedId.value = tripwires.value[0]?.id ?? ''; if (selectedId.value) await loadSelectedData(); } catch (e: any) { error.value = e?.message ?? 'Unknown error'; } finally { loading.value = false; } }
-async function loadSelectedData() { if (!selectedId.value) return; eventsPage.offset = 0; targetFilter.value = ''; syncDraft(); await Promise.all([loadEvents(), loadSummary()]); }
-async function loadEvents() { if (!selectedId.value) return; eventsLoading.value = true; try { const query = new URLSearchParams({ id: selectedId.value, limit: String(eventsPage.limit), offset: String(eventsPage.offset) }); if (targetFilter.value) query.set('targetId', targetFilter.value); const data = await apiJson(await RequestGETFromKliveAPI(`/tripwires/events?${query}`, false, false, { 'Cache-Control': 'no-cache' })); Object.assign(eventsPage, data); } catch (e: any) { showToast(e?.message ?? 'Could not load events', false); } finally { eventsLoading.value = false; } }
-async function loadSummary() { if (!selectedId.value) return; try { summary.value = await apiJson(await RequestGETFromKliveAPI(`/tripwires/summary?id=${encodeURIComponent(selectedId.value)}`, false, false, { 'Cache-Control': 'no-cache' })); } catch {} }
-async function refreshSelectedRecord() { if (!selectedId.value || (activeTab.value === 'settings' && dirty.value)) return; try { const latest = await apiJson(await RequestGETFromKliveAPI(`/tripwires/get?id=${encodeURIComponent(selectedId.value)}`, false, false, { 'Cache-Control': 'no-cache' })); const index = tripwires.value.findIndex(item => item.id === selectedId.value); if (index >= 0) { tripwires.value[index] = latest; if (activeTab.value !== 'settings') syncDraft(); } } catch {} }
-async function selectTripwire(id: string) { if (id === selectedId.value) return; selectedId.value = id; activeTab.value = 'activity'; await loadSelectedData(); }
-function syncDraft() { if (!selected.value) return; settingsName.value = selected.value.name; Object.assign(settingsDraft, defaultSettings(), JSON.parse(JSON.stringify(selected.value.settings))); targetDraft.value = selected.value.targets.map(target => ({ ...target })); expiresLocal.value = selected.value.settings.expiresUtc ? toLocalInput(selected.value.settings.expiresUtc) : ''; nextTick(() => { baseline.value = draftSnapshot.value; }); }
+function railSub(t: TwTripwire): string {
+  if (t.status === 'Limit reached' && t.closedVisits) return `Limit reached · ${fmtInt(t.closedVisits)} turned away`;
+  if (t.status !== 'Active') return t.status;
+  const today = t.summary?.tripsLast24Hours ?? 0;
+  if (!t.lastTrippedUtc) return `${t.targets.length} link${t.targets.length === 1 ? '' : 's'} · not tripped yet`;
+  return `${today ? `${today} today · ` : ''}last ${ago(t.lastTrippedUtc, con.now.value)}`;
+}
 
-function openCreate() { createForm.name = ''; createForm.targets.splice(0, createForm.targets.length, blankTarget()); Object.assign(createForm.settings, defaultSettings()); createOpen.value = true; nextTick(() => nameInput.value?.focus()); }
-function closeCreate() { if (!creating.value) createOpen.value = false; }
-async function createTripwire() { if (!createForm.name || createForm.targets.some(target => !target.destinationUrl)) return; creating.value = true; try { const created = await apiJson(await RequestPOSTFromKliveAPI('/tripwires/create', JSON.stringify(createForm), false, true)); tripwires.value.unshift(created); selectedId.value = created.id; createOpen.value = false; activeTab.value = 'activity'; syncDraft(); await Promise.all([loadEvents(), loadSummary()]); showToast(`${created.targets.length} live ${created.targets.length === 1 ? 'link' : 'links'} created`); } catch (e: any) { await alertError('Could not create tripwire', e?.message); } finally { creating.value = false; } }
-async function saveSettings() { if (!selected.value || !settingsName.value || !targetDraft.value.length) return; saving.value = true; try { const payload = JSON.parse(draftSnapshot.value); payload.id = selected.value.id; payload.settings.maxTrips = Number(payload.settings.maxTrips) > 0 ? Number(payload.settings.maxTrips) : null; const updated = await apiJson(await RequestPOSTFromKliveAPI('/tripwires/update', JSON.stringify(payload), false, true)); const index = tripwires.value.findIndex(item => item.id === updated.id); if (index >= 0) tripwires.value[index] = updated; syncDraft(); showToast('Tripwire settings saved'); } catch (e: any) { await alertError('Could not save changes', e?.message); } finally { saving.value = false; } }
-function addTarget() { if (targetDraft.value.length < 100) targetDraft.value.push(blankTarget() as Target); }
-function removeTarget(index: number) { if (targetDraft.value.length > 1) targetDraft.value.splice(index, 1); }
-async function deleteTripwire() { if (!selected.value) return; const answer = await confirmDialog('Delete this tripwire?', `“${selected.value.name}” and all captured events will be permanently deleted.`, 'Delete tripwire'); if (!answer) return; try { await apiJson(await RequestPOSTFromKliveAPI('/tripwires/delete', JSON.stringify({ id: selected.value.id }), false, true)); tripwires.value = tripwires.value.filter(item => item.id !== selectedId.value); selectedId.value = tripwires.value[0]?.id ?? ''; if (selectedId.value) await loadSelectedData(); showToast('Tripwire deleted'); } catch (e: any) { await alertError('Could not delete tripwire', e?.message); } }
-async function clearEvents() { if (!selected.value) return; const answer = await confirmDialog('Clear event history?', 'The links will remain active, but all existing trip records and counters will be permanently removed.', 'Clear history'); if (!answer) return; try { await apiJson(await RequestPOSTFromKliveAPI('/tripwires/events/clear', JSON.stringify({ id: selected.value.id }), false, true)); selected.value.totalTrips = 0; selected.value.lastTrippedUtc = null; selected.value.targets.forEach(target => target.tripCount = 0); await Promise.all([loadEvents(), loadSummary()]); showToast('Event history cleared'); } catch (e: any) { await alertError('Could not clear events', e?.message); } }
-async function testNotification() { if (!selected.value) return; testingNotification.value = true; try { await apiJson(await RequestPOSTFromKliveAPI('/tripwires/notification/test', JSON.stringify({ id: selected.value.id }), false, true)); showToast('Test notification sent to Discord'); } catch (e: any) { await alertError('Discord test failed', e?.message); } finally { testingNotification.value = false; } }
+const allSub = computed(() => `${fmtInt(totals.value.trips7d)} this week`);
 
-async function copyLink(value: string, id: string) { try { await navigator.clipboard.writeText(value); copiedId.value = id; showToast('Tracking link copied'); setTimeout(() => { if (copiedId.value === id) copiedId.value = ''; }, 1600); } catch { await alertError('Copy failed', 'Your browser did not allow clipboard access.'); } }
-async function copyAllLinks() { if (!selected.value) return; await copyLink(selected.value.targets.filter(target => target.enabled).map(target => `${target.label}: ${target.trackingUrl}`).join('\n'), '__all'); }
-function changePage(direction: number) { eventsPage.offset = Math.max(0, eventsPage.offset + direction * eventsPage.limit); loadEvents(); }
-function hasColumn(key: string) { return visibleColumns.value.includes(key); }
-function statusClass(status: string) { return status.toLowerCase().replace(/\s+/g, '-'); }
-function percentOf(value: number, total: number) { return total ? Math.max(4, Math.round(value / total * 100)) : 0; }
-function eventLocation(event: TripEvent) { return [event.city, event.region, event.country || event.countryCode].filter(Boolean).join(', ') || 'Unknown / not collected'; }
-function privacyLabel(event: TripEvent) { return event.doNotTrack ? 'DNT honoured' : 'Not collected'; }
-function prettyQuery(value: string | null) { if (!value) return 'None / not collected'; try { return JSON.stringify(JSON.parse(value), null, 2); } catch { return value; } }
-function formatDate(value: string) { return new Date(value).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); }
-function formatTime(value: string) { return new Date(value).toLocaleString(undefined, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
-function relativeTime(value: string | null | undefined) { if (!value) return 'Never'; const seconds = Math.floor((Date.now() - new Date(value).getTime()) / 1000); if (seconds < 10) return 'Just now'; if (seconds < 60) return `${seconds}s ago`; if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`; if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`; return `${Math.floor(seconds / 86400)}d ago`; }
-function toLocalInput(value: string) { const date = new Date(value); const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000); return local.toISOString().slice(0, 16); }
-function localDateKey(date: Date) { const y = date.getFullYear(); const m = String(date.getMonth() + 1).padStart(2, '0'); const d = String(date.getDate()).padStart(2, '0'); return `${y}-${m}-${d}`; }
-function showToast(message: string, success = true) { toast.value = message; if (toastTimer) clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.value = '', success ? 2600 : 4200); }
-async function alertError(title: string, text = 'Please try again.') { await Swal.fire({ icon: 'error', title, text, confirmButtonColor: '#62ce47', background: '#161616', color: '#fff' }); }
-async function confirmDialog(title: string, text: string, confirmButtonText: string) { const result = await Swal.fire({ icon: 'warning', title, text, showCancelButton: true, confirmButtonText, confirmButtonColor: '#b94b55', cancelButtonColor: '#343434', background: '#161616', color: '#fff' }); return result.isConfirmed; }
-function exportEvents() { const headers = ['Time', 'Link', 'Destination', 'IP', 'Country', 'Region', 'City', 'Device', 'OS', 'Browser', 'Referrer', 'Unique', 'Discord notified']; const cell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`; const rows = eventsPage.items.map(event => [event.trippedUtc, event.targetLabel, event.destinationUrl, event.ipAddress, event.country, event.region, event.city, event.deviceType, event.operatingSystem, event.browser, event.referrer, event.isUnique, event.discordNotified].map(cell).join(',')); const blob = new Blob([[headers.map(cell).join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8' }); const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${selected.value?.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'tripwire'}-events.csv`; anchor.click(); URL.revokeObjectURL(url); }
+const allBins = computed<DayBin[]>(() => {
+  const sums = new Map<string, DayBin>();
+  for (const t of tripwires.value) {
+    for (const bin of dayBins(t.summary, 14, con.now.value)) {
+      const at = sums.get(bin.key);
+      if (at) at.count += bin.count; else sums.set(bin.key, { ...bin });
+    }
+  }
+  return sums.size ? [...sums.values()] : dayBins(null, 14, con.now.value);
+});
 
-watch(selectedId, () => { if (selected.value) syncDraft(); });
-watch(activeTab, tab => { if (tab === 'activity') void Promise.all([loadEvents(), loadSummary()]); });
-onMounted(() => { const stored = localStorage.getItem('tripwireColumns'); if (stored) { try { visibleColumns.value = JSON.parse(stored); } catch {} } loadTripwires(false); pollTimer = setInterval(async () => { if (!selectedId.value || document.hidden) return; await Promise.all([loadEvents(), loadSummary(), refreshSelectedRecord()]); }, 15000); });
-watch(visibleColumns, value => localStorage.setItem('tripwireColumns', JSON.stringify(value)), { deep: true });
-onBeforeUnmount(() => { if (pollTimer) clearInterval(pollTimer); if (toastTimer) clearTimeout(toastTimer); });
+// ───────────────────────────── trips ─────────────────────────────
+
+const hideKnown = computed(() => intel.value && con.prefs.value.hideKnown);
+const recentRaw = computed(() => con.overview.value?.recent ?? []);
+const allTrips = computed(() => recentRaw.value.filter(e => (!hideKnown.value || !knownProfile(e)) && matchesEvent(e, tripQuery.value)));
+const allNote = computed(() => {
+  const hidden = hideKnown.value ? recentRaw.value.filter(e => knownProfile(e)).length : 0;
+  return `newest ${recentRaw.value.length}${hidden ? ` · ${hidden} from KM accounts hidden` : ''}`;
+});
+
+const detailEvents = computed<TwEvent[]>(() => (selected.value && con.eventsFor.value === selected.value.id ? con.events.value : []));
+const detailTrips = computed(() => detailEvents.value.filter(e => (!hideKnown.value || !knownProfile(e)) && matchesEvent(e, tripQuery.value)));
+const hiddenKnown = computed(() => (hideKnown.value ? detailEvents.value.filter(e => knownProfile(e)).length : 0));
+const visibleVisitors = computed(() => con.visitors.value.filter(v => !hideKnown.value || !knownProfile(v.latest)));
+
+const peopleCount = computed(() => {
+  const all = s.value?.visitors ?? 0;
+  // People who are not KM accounts, when the visitor list is loaded and says who is who.
+  if (intel.value && hideKnown.value && selected.value && con.visitorsFor.value === selected.value.id)
+    return con.visitors.value.filter(v => !knownProfile(v.latest)).length;
+  return all;
+});
+const peopleSub = computed(() => {
+  if (!s.value) return '—';
+  const privateTrips = s.value.privacySignalTrips ?? 0;
+  const parts = [`${fmtInt(s.value.uniqueTrips)} unique trips`];
+  if (privateTrips && selected.value?.settings.honourDoNotTrack) parts.push(`${fmtInt(privateTrips)} private`);
+  return parts.join(' · ');
+});
+
+const detailBins = computed(() => dayBins(s.value, 30, con.now.value));
+const busiestHour = computed(() => {
+  const hours = hourOfDay(s.value);
+  const max = Math.max(...hours);
+  if (!max) return '';
+  const h = hours.indexOf(max);
+  return `busiest around ${String(h).padStart(2, '0')}:00`;
+});
+
+function share(count: number, total: number) { return total ? Math.max(4, Math.round((count / total) * 100)) : 0; }
+function toggleTrip(id: string) { openTrip.value = openTrip.value === id ? '' : id; }
+function toggleKnown() { con.prefs.value = { ...con.prefs.value, hideKnown: !con.prefs.value.hideKnown }; }
+function clearVisitor() { con.visitorFilter.value = ''; void con.loadEvents(); }
+async function openVisitor(tripwireId: string | undefined, hash: string) {
+  if (!tripwireId) return;
+  await open(tripwireId);
+  con.filterVisitor(hash);
+}
+
+function privacyOf(t: TwTripwire) { return { signalled: t.summary?.privacySignalTrips ?? 0, total: t.summary?.retainedTrips ?? 0 }; }
+const privacyAll = computed(() => tripwires.value.reduce((acc, t) => ({ signalled: acc.signalled + (t.summary?.privacySignalTrips ?? 0), total: acc.total + (t.summary?.retainedTrips ?? 0) }), { signalled: 0, total: 0 }));
+
+const speedTone = computed(() => {
+  const p95 = health.value?.answerP95Ms;
+  return p95 != null && p95 > 1000 ? 'warn' : undefined;
+});
+function fmtMsShort(ms: number) { return ms < 1 ? '<1 ms' : ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`; }
+function pathOf(url: string) { try { const u = new URL(url); const p = `${u.pathname}${u.search}`; return p === '/' ? '' : p; } catch { return ''; } }
+function selectText(event: MouseEvent) {
+  const range = document.createRange();
+  range.selectNodeContents(event.currentTarget as Node);
+  const sel = window.getSelection();
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+}
+
+function closedDetail(t: TwTripwire) {
+  const visits = t.closedVisits ?? 0;
+  const since = visits > 0 ? ` ${fmtInt(visits)} visit${visits === 1 ? '' : 's'} arrived since, the last ${ago(t.lastClosedUtc, con.now.value)}.` : '';
+  return `${closedOutcome(t)}${since}`;
+}
+
+function closedHeadline(t: TwTripwire) {
+  if (t.status === 'Disabled') return 'Paused.';
+  if (t.status === 'Limit reached') return `Reached its limit of ${fmtInt(t.settings.maxTrips)} trips.`;
+  if (t.status === 'Expired') return `Expired ${ago(t.settings.expiresUtc, con.now.value)}.`;
+  if (t.status === 'No active links') return 'Every link is off.';
+  return `It ${closedWords(t.closedReason)}.`;
+}
+
+// ───────────────────────────── actions ─────────────────────────────
+
+async function open(id: string) {
+  menuOpen.value = false;
+  openTrip.value = '';
+  await con.select(id);
+  const query = { ...route.query } as Record<string, string>;
+  if (id) query.id = id; else delete query.id;
+  if (query.id !== route.query.id) void router.replace({ query });
+}
+
+async function quickCreate() {
+  const url = quickClean.value;
+  if (!url || quickBusy.value) return;
+  quickBusy.value = true;
+  try {
+    const created = await con.quickCreate(url, nameFromUrl(url), lastEdited(tripwires.value));
+    if (created) {
+      quickUrl.value = '';
+      const link = created.targets[0]?.trackingUrl;
+      if (link) {
+        const copied = await navigator.clipboard.writeText(link).then(() => true, () => false);
+        con.toast('ok', copied ? `Made ${created.name}. Its link is on your clipboard.` : `Made ${created.name}.`, { label: 'Settings', run: () => { settingsOpen.value = true; } });
+      }
+      await open(created.id);
+    }
+  } finally { quickBusy.value = false; }
+}
+
+function openComposer(url = '') {
+  composerUrl.value = cleanUrl(url) ?? url;
+  composerOpen.value = true;
+}
+
+async function createFromComposer(payload: { name: string; targets: { label: string; destinationUrl: string }[]; settings: TwSettings }) {
+  composerBusy.value = true;
+  try {
+    const created = await con.create(payload);
+    if (created) {
+      composerOpen.value = false;
+      quickUrl.value = '';
+      con.toast('ok', `${created.targets.length} link${created.targets.length === 1 ? '' : 's'} made for ${created.name}`);
+      await open(created.id);
+    }
+  } finally { composerBusy.value = false; }
+}
+
+async function saveSettings(patch: { name: string; settings: TwSettings; targets: Partial<TwTarget>[] }, done: (ok: boolean) => void) {
+  if (!selected.value) return done(false);
+  done(await con.update(selected.value.id, patch));
+}
+
+async function copyLinks(t: TwTripwire) {
+  const live = t.targets.filter(x => x.enabled);
+  const list = live.length ? live : t.targets;
+  await con.copy(list.length === 1 ? list[0].trackingUrl : list.map(x => `${x.label}: ${x.trackingUrl}`).join('\n'), list.length === 1 ? 'Link copied' : `${list.length} links copied`);
+}
+
+function ask(title: string, text: string, confirm: string): Promise<boolean> {
+  return new Promise(resolve => { confirmRequest.value = { title, text, confirm, resolve }; });
+}
+
+async function askClear(t: TwTripwire) {
+  if (await ask(`Clear the history of ${t.name}?`, `Every kept trip (${fmtInt(t.summary?.retainedTrips ?? t.totalTrips)}) and the counters go. The links keep working. This cannot be undone.`, 'Clear history'))
+    await con.clearHistory(t);
+}
+
+async function askDelete(t: TwTripwire) {
+  if (await ask(`Delete ${t.name}?`, `Its ${t.targets.length} link${t.targets.length === 1 ? ' stops' : 's stop'} working at once and every trip it kept is deleted. This cannot be undone.`, 'Delete tripwire')) {
+    settingsOpen.value = false;
+    await con.remove(t);
+  }
+}
+
+async function raiseLimit(t: TwTripwire) {
+  const next = Math.max((t.settings.maxTrips ?? 0) * 2, t.totalTrips + 10);
+  const ok = await con.update(t.id, { settings: { maxTrips: next } }, true);
+  if (ok) con.toast('ok', `${t.name} takes trips again, up to ${fmtInt(next)}`, { label: 'Settings', run: () => { settingsOpen.value = true; } });
+}
+
+function openIssue(issue: TwIssue) {
+  if (!issue.tripwireId) return;
+  void open(issue.tripwireId).then(() => { if (issue.action === 'settings' && allowed.value.manage) settingsOpen.value = true; });
+}
+
+function exportTrips() {
+  const t = selected.value;
+  const rows = detailEvents.value.map(e => ({ ...e, tripwireName: e.tripwireName ?? t?.name }));
+  const blob = new Blob([`﻿${eventsCsv(rows)}`], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${(t?.name ?? 'tripwire').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-trips.csv`;
+  a.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 2_000);
+}
+
+// ───────────────────────────── palette + keys ─────────────────────────────
+
+const commands = computed<TwCommand[]>(() => {
+  const list: TwCommand[] = [];
+  if (allowed.value.manage) list.push({ id: 'new', title: 'New tripwire', group: 'Actions', hint: 'N', keywords: 'create make add', run: () => openComposer(quickUrl.value) });
+  list.push({ id: 'all', title: 'All activity', group: 'Actions', keywords: 'overview latest trips feed', run: () => open('') });
+  list.push({ id: 'known', title: con.prefs.value.hideKnown ? 'Show trips from KM accounts' : 'Hide trips from KM accounts', group: 'Actions', keywords: 'me mine tests own', run: toggleKnown });
+  list.push({ id: 'refresh', title: 'Refresh now', group: 'Actions', hint: 'R', keywords: 'reload', run: () => con.refresh() });
+  const t = selected.value;
+  if (t) {
+    list.push({ id: 'copy', title: `Copy ${t.name}'s link`, group: 'Actions', hint: 'C', keywords: 'clipboard share', run: () => copyLinks(t) });
+    if (allowed.value.manage) {
+      list.push({ id: 'pause', title: `${t.settings.enabled ? 'Pause' : 'Resume'} ${t.name}`, group: 'Actions', hint: 'P', keywords: 'disable enable stop start', run: () => con.setEnabled(t, !t.settings.enabled) });
+      list.push({ id: 'settings', title: `Settings of ${t.name}`, group: 'Actions', hint: 'S', keywords: 'edit configure', run: () => { settingsOpen.value = true; } });
+      list.push({ id: 'dup', title: `Duplicate ${t.name}`, group: 'Actions', keywords: 'copy clone', run: () => con.duplicate(t) });
+    }
+    list.push({ id: 'export', title: `Export ${t.name}'s trips`, group: 'Actions', keywords: 'csv download', run: exportTrips });
+  }
+  for (const w of tripwires.value) {
+    list.push({ id: `open-${w.id}`, title: w.name, group: 'Tripwires', keywords: `${w.status} ${w.targets.map(x => `${x.label} ${x.destinationUrl}`).join(' ')}`, run: () => open(w.id) });
+    for (const target of w.targets) list.push({ id: `link-${target.id}`, title: `Copy ${w.name}: ${target.label}`, group: 'Links', keywords: target.destinationUrl, run: () => con.copy(target.trackingUrl) });
+  }
+  return list;
+});
+
+function typing(target: EventTarget | null) {
+  const el = target as HTMLElement | null;
+  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+}
+
+function onKey(event: KeyboardEvent) {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); paletteOpen.value = !paletteOpen.value; return; }
+  if (event.target === quickInput.value && event.key === 'Enter' && event.shiftKey) { event.preventDefault(); openComposer(quickUrl.value); return; }
+  // Esc closes the open layer wherever the focus is (the layer's own handler covers focus inside it).
+  if (event.key === 'Escape' && !paletteOpen.value && !confirmRequest.value) {
+    if (settingsOpen.value && !(event.target as HTMLElement | null)?.closest?.('.twx-sheet')) { sheet.value?.close(); return; }
+    if (composerOpen.value && !(event.target as HTMLElement | null)?.closest?.('.twx-composer')) { composerOpen.value = false; return; }
+  }
+  if (event.ctrlKey || event.metaKey || event.altKey || typing(event.target) || paletteOpen.value || composerOpen.value || settingsOpen.value || confirmRequest.value) return;
+  const t = selected.value;
+  switch (event.key) {
+    case '/': event.preventDefault(); quickInput.value?.focus(); break;
+    case 'n': case 'N': if (allowed.value.manage) { event.preventDefault(); openComposer(); } break;
+    case 'r': case 'R': void con.refresh(); break;
+    case 'c': case 'C': if (t) { event.preventDefault(); void copyLinks(t); } break;
+    case 's': case 'S': if (t && allowed.value.manage) { event.preventDefault(); settingsOpen.value = true; } break;
+    case 'p': case 'P': if (t && allowed.value.manage) { event.preventDefault(); void con.setEnabled(t, !t.settings.enabled); } break;
+    case 'j': case 'k': case 'J': case 'K': {
+      const ids = ['', ...railItems.value.map(x => x.id)];
+      const at = ids.indexOf(t?.id ?? '');
+      const next = ids[Math.min(ids.length - 1, Math.max(0, at + (event.key.toLowerCase() === 'j' ? 1 : -1)))];
+      if (next !== (t?.id ?? '')) void open(next);
+      break;
+    }
+    case 'Escape': menuOpen.value = false; openTrip.value = ''; break;
+  }
+}
+
+function onDocClick(event: MouseEvent) {
+  if (menuOpen.value && !(event.target as HTMLElement | null)?.closest('.twx-menu')) menuOpen.value = false;
+}
+
+// A pasted link anywhere on the page (not into a field) goes into the quick bar.
+function onPaste(event: ClipboardEvent) {
+  if (typing(event.target) || !allowed.value.manage || composerOpen.value || settingsOpen.value) return;
+  const text = event.clipboardData?.getData('text') ?? '';
+  if (!cleanUrl(text)) return;
+  event.preventDefault();
+  quickUrl.value = text.trim();
+  void nextTick(() => quickInput.value?.focus());
+}
+
+watch(() => route.query.id, id => {
+  const want = typeof id === 'string' ? id : '';
+  if (want !== con.selectedId.value) void con.select(want);
+});
+
+// The selected tripwire was deleted elsewhere: back to everything.
+watch(() => con.selectedId.value, id => { if (!id && route.query.id) void router.replace({ query: { ...route.query, id: undefined } }); });
+
+onMounted(() => {
+  const id = typeof route.query.id === 'string' ? route.query.id : '';
+  if (id) void con.select(id);
+  window.addEventListener('keydown', onKey);
+  document.addEventListener('click', onDocClick);
+  document.addEventListener('paste', onPaste);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKey);
+  document.removeEventListener('click', onDocClick);
+  document.removeEventListener('paste', onPaste);
+});
 </script>
 
-<style scoped lang="scss">
-@use '~/assets/scss/colors' as c;
-
-* { box-sizing: border-box; }
-.tw-page { min-height: 100vh; background: #111211; color: #f5f7f4; font-family: inherit; }
-.tw-topbar { min-height: 128px; padding: 26px 32px 22px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; border-bottom: 1px solid rgba(255,255,255,.07); background: radial-gradient(circle at 15% -60%, rgba(98,206,71,.14), transparent 42%), #151615; }
-.tw-topbar h1 { margin: 4px 0 3px; font-size: clamp(25px, 3vw, 34px); letter-spacing: -.04em; }
-.tw-topbar p, .tw-panel-head p, .tw-hero p { margin: 0; color: #7f877f; font-size: 12px; }
-.tw-eyebrow { color: #72d85a; font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
-.tw-live-dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: #72d85a; box-shadow: 0 0 10px #72d85a; }
-.tw-top-actions, .tw-hero-actions, .tw-event-actions { display: flex; align-items: center; gap: 8px; }
-.tw-button, .tw-small-button, .tw-icon-button { border: 1px solid rgba(255,255,255,.1); border-radius: 6px; background: #202220; color: #dce1db; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; transition: .16s ease; }
-.tw-button { min-height: 38px; padding: 0 15px; }
-.tw-small-button { min-height: 30px; padding: 0 10px; }
-.tw-button:hover, .tw-small-button:hover, .tw-icon-button:hover { border-color: rgba(98,206,71,.55); color: #fff; transform: translateY(-1px); }
-.tw-button:disabled, .tw-small-button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
-.tw-button--primary { background: #62ce47; border-color: #62ce47; color: #091007; box-shadow: 0 6px 18px rgba(70,170,48,.14); }
-.tw-button--primary:hover { background: #71db59; color: #091007; }
-.tw-button--ghost { background: transparent; }
-.tw-button--danger { color: #ff8d95; border-color: rgba(220,80,90,.3); background: rgba(160,48,58,.09); }
-.tw-button--discord { width: 100%; margin-top: 12px; color: #daddff; border-color: rgba(114,127,255,.35); background: rgba(88,101,242,.13); }
-.tw-workspace { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: calc(100vh - 128px); }
-.tw-sidebar { border-right: 1px solid rgba(255,255,255,.07); padding: 16px 12px; background: #141514; }
-.tw-search-wrap { height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 10px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 6px; background: rgba(255,255,255,.025); color: #747a74; }
-.tw-search { width: 100%; border: 0; outline: 0; background: transparent; color: #fff; font: inherit; font-size: 12px; }
-.tw-list-card { width: 100%; min-height: 65px; display: flex; align-items: center; gap: 10px; padding: 10px; margin-bottom: 5px; text-align: left; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #dde1dc; cursor: pointer; }
-.tw-list-card:hover { background: rgba(255,255,255,.035); }.tw-list-card.active { border-color: rgba(98,206,71,.25); background: linear-gradient(90deg, rgba(98,206,71,.13), rgba(98,206,71,.035)); }
-.tw-list-bolt { width: 29px; height: 29px; display: grid; place-items: center; border-radius: 6px; background: #222622; color: #6ed054; font-size: 13px; }
-.tw-list-copy { min-width: 0; flex: 1; display: grid; gap: 5px; }.tw-list-copy strong { overflow: hidden; color: #edf1ec; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }.tw-list-copy small { color: #717871; font-size: 10px; }
-.tw-status-dot { width: 7px; height: 7px; border-radius: 50%; background: #666; }.tw-status-dot.active { background: #62ce47; box-shadow: 0 0 8px rgba(98,206,71,.7); }.tw-status-dot.expired,.tw-status-dot.limit-reached,.tw-status-dot.disabled { background: #e2964b; }
-.tw-main { min-width: 0; padding: 24px 28px 50px; overflow: hidden; }
-.tw-hero { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 19px; }.tw-hero-title { display: flex; align-items: center; gap: 13px; }.tw-bolt-tile { width: 39px; height: 39px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid rgba(98,206,71,.25); border-radius: 8px; background: rgba(98,206,71,.1); color: #70d657; }.tw-title-line { display: flex; align-items: center; gap: 10px; }.tw-title-line h2 { margin: 0 0 3px; font-size: 21px; letter-spacing: -.02em; }
-.tw-status-pill { padding: 3px 7px; border-radius: 10px; background: rgba(120,120,120,.12); color: #a5aaa5; font-size: 9px; font-weight: 700; text-transform: uppercase; }.tw-status-pill.active { background: rgba(98,206,71,.13); color: #78da61; }.tw-status-pill.disabled,.tw-status-pill.expired,.tw-status-pill.limit-reached { background: rgba(226,150,75,.12); color: #efa556; }
-.tw-icon-button { width: 34px; height: 34px; }.tw-icon-button--danger:hover { border-color: rgba(255,100,110,.5); color: #ff8e96; }
-.tw-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 9px; margin-bottom: 12px; }.tw-metrics article { min-width: 0; padding: 15px 16px; border: 1px solid rgba(255,255,255,.07); border-radius: 7px; background: #181a18; }.tw-metrics small { display: block; color: #7d837d; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }.tw-metrics strong { display: block; margin: 7px 0 4px; color: #f5f7f4; font-size: 24px; line-height: 1; letter-spacing: -.04em; }.tw-metrics span { color: #626862; font-size: 10px; }.tw-metrics .tw-metric-time { font-size: 17px; margin-top: 10px; }
-.tw-panel { border: 1px solid rgba(255,255,255,.075); border-radius: 8px; background: #181a18; }.tw-panel-head { min-height: 60px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 15px; border-bottom: 1px solid rgba(255,255,255,.06); }.tw-panel-head h3 { margin: 0 0 4px; font-size: 13px; }.tw-panel-head > strong { font-size: 20px; }.tw-panel-head > strong small { color: #6e756e; font-size: 9px; font-weight: 500; }
-.tw-links-panel { margin-bottom: 18px; }.tw-link-row { min-height: 56px; display: grid; grid-template-columns: 14px minmax(140px,1.1fr) minmax(210px,1.5fr) 72px 68px; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,.045); }.tw-link-row:last-child { border-bottom: 0; }.tw-link-row.muted { opacity: .55; }.tw-link-state span { display: block; width: 6px; height: 6px; border-radius: 50%; background: #555; }.tw-link-state span.active { background: #62ce47; }.tw-link-detail { display: grid; min-width: 0; gap: 4px; }.tw-link-detail strong { font-size: 11px; }.tw-link-detail a { color: #6f766f; overflow: hidden; font-size: 10px; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }.tw-link-detail a:hover { color: #8edc7b; }.tw-link-row code { overflow: hidden; padding: 6px 8px; border: 1px solid rgba(98,206,71,.12); border-radius: 4px; background: #121412; color: #82c873; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }.tw-link-count { color: #777e77; font-size: 10px; text-align: right; }.tw-copy { padding: 6px; border: 0; background: transparent; color: #8fd37f; font: inherit; font-size: 10px; cursor: pointer; }
-.tw-tabs { display: flex; gap: 4px; margin: 0 0 10px; border-bottom: 1px solid rgba(255,255,255,.07); }.tw-tabs button { padding: 10px 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #707770; font: inherit; font-size: 11px; font-weight: 650; cursor: pointer; }.tw-tabs button.active { border-bottom-color: #62ce47; color: #fff; }.tw-tabs span { margin-left: 4px; padding: 1px 5px; border-radius: 8px; background: rgba(255,255,255,.06); font-size: 9px; }
-.tw-activity-grid { display: grid; grid-template-columns: 1.7fr 1fr; gap: 10px; margin-bottom: 10px; }.tw-chart { height: 155px; display: flex; align-items: flex-end; gap: 5px; padding: 24px 16px 13px; }.tw-bar-slot { position: relative; height: 100%; flex: 1; display: flex; align-items: flex-end; justify-content: center; }.tw-bar-slot i { width: 70%; min-height: 2px; border-radius: 3px 3px 1px 1px; background: linear-gradient(#70d257,#3d862f); opacity: .8; transition: height .3s ease; }.tw-bar-slot small { position: absolute; bottom: -13px; color: #535953; font-size: 8px; }.tw-bar-value { position: absolute; bottom: calc(var(--height) + 4px); color: #8b928b; font-size: 8px; transform: translateY(-4px); }.tw-breakdown-list { display: grid; gap: 13px; padding: 18px 15px; }.tw-breakdown-list > div { display: grid; grid-template-columns: 90px 1fr 28px; align-items: center; gap: 8px; font-size: 10px; }.tw-breakdown-list i { height: 4px; overflow: hidden; border-radius: 2px; background: rgba(255,255,255,.05); }.tw-breakdown-list b { display: block; height: 100%; border-radius: 2px; background: #5cbd46; }.tw-breakdown-list strong { text-align: right; }.tw-no-data { padding: 30px 15px; color: #686f68; font-size: 11px; text-align: center; }
-.tw-events-head { align-items: flex-start; }.tw-select, .tw-field input, .tw-field select { height: 34px; border: 1px solid rgba(255,255,255,.09); border-radius: 5px; outline: 0; background: #111311; color: #dce1db; font: inherit; font-size: 11px; }.tw-select { padding: 0 8px; }.tw-columns { position: relative; }.tw-columns summary { min-height: 30px; display: grid; place-items: center; padding: 0 10px; border: 1px solid rgba(255,255,255,.1); border-radius: 5px; color: #dce1db; font-size: 10px; cursor: pointer; list-style: none; }.tw-columns[open] { z-index: 5; }.tw-columns[open] summary { border-color: rgba(98,206,71,.4); }.tw-columns label { width: 150px; display: block; padding: 6px 10px; background: #202220; color: #b7bdb7; font-size: 10px; }.tw-columns label:first-of-type { position: absolute; top: 34px; right: 0; padding-top: 10px; border-radius: 6px 6px 0 0; }.tw-columns label:nth-of-type(2) { position: absolute; top: 62px; right: 0; }.tw-columns label:nth-of-type(3) { position: absolute; top: 86px; right: 0; }.tw-columns label:nth-of-type(4) { position: absolute; top: 110px; right: 0; padding-bottom: 10px; border-radius: 0 0 6px 6px; }
-.tw-table-wrap { overflow-x: auto; }table { width: 100%; border-collapse: collapse; table-layout: fixed; }th { padding: 9px 12px; color: #616861; font-size: 8px; letter-spacing: .1em; text-align: left; text-transform: uppercase; }td { padding: 11px 12px; border-top: 1px solid rgba(255,255,255,.045); color: #bfc5bf; font-size: 10px; vertical-align: middle; }td strong,td small { display: block; }td strong { margin-bottom: 4px; color: #e0e4df; font-size: 10px; }td small { color: #666d66; font-size: 9px; }td code { color: #a6cfa0; font-size: 9px; }.tw-truncate { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.tw-flags { display: flex; flex-wrap: wrap; gap: 3px; }.tw-flags span { padding: 2px 5px; border-radius: 7px; background: rgba(255,255,255,.06); color: #8b928b; font-size: 8px; }.tw-flags .unique { background: rgba(98,206,71,.12); color: #79d864; }.tw-flags .discord { background: rgba(88,101,242,.15); color: #aeb5ff; }.tw-event-empty { padding: 44px 20px; text-align: center; }.tw-event-empty > span { color: #4c9f3a; font-size: 26px; }.tw-event-empty h4 { margin: 8px 0 5px; }.tw-event-empty p { margin: 0; color: #697069; font-size: 11px; }.tw-table-loading { padding: 38px; color: #7d847d; font-size: 11px; text-align: center; }.tw-pagination { display: flex; justify-content: flex-end; align-items: center; gap: 12px; padding: 10px 14px; border-top: 1px solid rgba(255,255,255,.05); color: #6f766f; font-size: 9px; }.tw-pagination button { border: 0; background: none; color: #8ed67c; cursor: pointer; }.tw-pagination button:disabled { color: #4b504b; cursor: not-allowed; }
-.tw-flags button { padding: 1px 3px; border: 0; background: none; color: #79c96a; font: inherit; font-size: 8px; cursor: pointer; }
-.tw-detail-row td { padding: 0 12px 12px; background: rgba(0,0,0,.12); }
-.tw-event-detail { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; padding: 12px; border: 1px solid rgba(98,206,71,.1); border-radius: 6px; background: #121412; }
-.tw-event-detail > div { min-width: 0; }.tw-event-detail .wide { grid-column: span 2; }.tw-event-detail small { display: block; margin-bottom: 5px; color: #5f675f; font-size: 8px; letter-spacing: .08em; text-transform: uppercase; }.tw-event-detail strong,.tw-event-detail code { display: block; overflow: auto; color: #cbd1ca; font-size: 9px; white-space: pre-wrap; word-break: break-word; }.tw-event-detail .error strong { color: #ef8d95; }
-.tw-settings-grid { display: grid; grid-template-columns: minmax(0,1fr) 280px; align-items: start; gap: 10px; }.tw-settings-main { overflow: hidden; }.tw-form-section { padding: 16px; border-bottom: 1px solid rgba(255,255,255,.055); }.tw-section-title { display: flex; justify-content: space-between; margin-bottom: 12px; color: #dfe4de; font-size: 11px; font-weight: 700; }.tw-section-title small { color: #676e67; font-size: 9px; font-weight: 400; }.tw-field { display: grid; gap: 6px; color: #858c85; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }.tw-field input,.tw-field select { width: 100%; padding: 0 10px; text-transform: none; letter-spacing: normal; }.tw-field input:focus,.tw-field select:focus { border-color: rgba(98,206,71,.5); }.tw-field-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-top: 14px; }.tw-toggle-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 7px; }.tw-toggle-row { min-height: 52px; display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid rgba(255,255,255,.06); border-radius: 6px; background: rgba(255,255,255,.018); cursor: pointer; }.tw-toggle-row.disabled { opacity: .42; cursor: not-allowed; }.tw-toggle-copy { min-width: 0; flex: 1; display: grid; gap: 3px; }.tw-toggle-copy strong { color: #d8ddd8; font-size: 10px; }.tw-toggle-copy small { color: #686f68; font-size: 9px; line-height: 1.35; }.tw-toggle-row input { position: absolute; opacity: 0; pointer-events: none; }.tw-toggle-ui { width: 29px; height: 16px; flex: 0 0 auto; position: relative; border-radius: 10px; background: #373a37; transition: .15s; }.tw-toggle-ui::after { content: ''; position: absolute; top: 3px; left: 3px; width: 10px; height: 10px; border-radius: 50%; background: #8d938d; transition: .15s; }.tw-toggle-row input:checked + .tw-toggle-ui { background: #4ea33b; }.tw-toggle-row input:checked + .tw-toggle-ui::after { left: 16px; background: #fff; }.tw-privacy-note,.tw-consent-note { margin: 10px 0 0; padding: 8px 10px; border-left: 2px solid #ad803a; background: rgba(173,128,58,.07); color: #8d8170; font-size: 9px; line-height: 1.45; }
-.tw-target-editor { display: grid; grid-template-columns: 20px 150px minmax(180px,1fr) 62px 24px; gap: 7px; align-items: center; margin-bottom: 7px; }.tw-target-editor > span,.tw-create-target > span { color: #5e655e; font-size: 9px; text-align: center; }.tw-target-editor > input,.tw-create-target input { height: 34px; min-width: 0; padding: 0 9px; border: 1px solid rgba(255,255,255,.08); border-radius: 5px; outline: none; background: #111311; color: #dce1dc; font: inherit; font-size: 10px; }.tw-target-editor > input:focus,.tw-create-target input:focus { border-color: rgba(98,206,71,.5); }.tw-target-editor > button,.tw-create-target > button { border: 0; background: none; color: #a05c63; cursor: pointer; font-size: 17px; }.tw-mini-switch { display: flex; align-items: center; gap: 4px; color: #777e77; font-size: 8px; cursor: pointer; }.tw-mini-switch input { display: none; }.tw-mini-switch i { width: 22px; height: 12px; position: relative; border-radius: 8px; background: #353835; }.tw-mini-switch i::after { content:''; position:absolute; width:8px;height:8px;left:2px;top:2px;border-radius:50%;background:#8a908a; }.tw-mini-switch input:checked + i { background:#438c34; }.tw-mini-switch input:checked + i::after { left:12px;background:#fff; }.tw-add-link { padding: 4px 0; border: 0; background: transparent; color: #7dcf69; font: inherit; font-size: 10px; cursor: pointer; }.tw-savebar { position: sticky; bottom: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; background: rgba(20,22,20,.96); color: #747b74; font-size: 10px; backdrop-filter: blur(8px); }.tw-unsaved { color: #e8ac5d; font-size: 9px; }
-.tw-settings-side { display: grid; gap: 10px; }.tw-discord-card,.tw-danger-card { padding: 15px; }.tw-discord-card > div { margin: -31px 0 14px 42px; }.tw-discord-icon { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 8px; background: rgba(88,101,242,.16); color: #aab1ff; }.tw-discord-card h3,.tw-danger-card h3 { margin: 0 0 4px; font-size: 12px; }.tw-discord-card p,.tw-danger-card p { margin: 0; color: #707770; font-size: 9px; line-height: 1.45; }.tw-discord-card .tw-toggle-row { margin-bottom: 7px; }.tw-discord-card .tw-field { margin-top: 10px; }.tw-danger-card { border-color: rgba(180,65,75,.18); }.tw-danger-card .tw-button { width: 100%; margin-top: 13px; }
-.tw-welcome,.tw-error-state { display: grid; place-items: center; align-content: center; padding: 40px; text-align: center; }.tw-welcome h2 { margin: 9px 0 8px; font-size: 28px; letter-spacing: -.04em; }.tw-welcome > p { max-width: 500px; margin: 0 0 20px; color: #747b74; font-size: 12px; line-height: 1.7; }.tw-welcome-art { width: 150px; height: 100px; position: relative; display: grid; place-items: center; margin-bottom: 20px; }.tw-welcome-art span { width: 55px;height:55px;display:grid;place-items:center;border:1px solid rgba(98,206,71,.35);border-radius:50%;background:rgba(98,206,71,.09);color:#6bd252;font-size:22px;box-shadow:0 0 40px rgba(98,206,71,.12); }.tw-welcome-art i { position:absolute;width:5px;height:5px;border-radius:50%;background:#508d44; }.tw-welcome-art i:nth-of-type(1){left:10px;top:24px}.tw-welcome-art i:nth-of-type(2){right:6px;top:42px}.tw-welcome-art i:nth-of-type(3){left:35px;bottom:2px}.tw-empty-list { padding: 32px 10px; color: #666d66; font-size: 11px; text-align: center; }.tw-empty-list > span { color: #4c8840; font-size: 20px; }.tw-empty-list button { border: 0; background: none; color: #72cc5d; cursor: pointer; }.tw-error-state { min-height: calc(100vh - 128px); }.tw-error-state > span { width: 38px;height:38px;display:grid;place-items:center;border-radius:50%;background:rgba(210,80,90,.12);color:#ff8d95 }.tw-error-state h2 { margin: 12px 0 4px; }.tw-error-state p { color:#858b85;font-size:11px; }
-.tw-modal-backdrop { position: fixed; inset: 0; z-index: 3000; display: grid; place-items: center; padding: 20px; background: rgba(0,0,0,.72); backdrop-filter: blur(5px); }.tw-modal { width: min(620px,100%); max-height: calc(100vh - 40px); overflow: auto; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; background: #181a18; color: #f4f6f3; box-shadow: 0 25px 80px rgba(0,0,0,.6); }.tw-modal-head,.tw-modal-foot { display:flex;align-items:center;justify-content:space-between;padding:15px 17px;border-bottom:1px solid rgba(255,255,255,.065); }.tw-modal-head > div { display:flex;align-items:center;gap:11px; }.tw-modal-head h2 { margin:0 0 3px;font-size:17px }.tw-modal-head p { margin:0;color:#707770;font-size:10px }.tw-modal-head > button { border:0;background:none;color:#777;font-size:21px;cursor:pointer }.tw-modal-body { display:grid;gap:15px;padding:18px }.tw-create-target { display:grid;grid-template-columns:20px 1fr 22px;gap:7px;align-items:center }.tw-create-target > div { display:grid;grid-template-columns:150px minmax(0,1fr);gap:7px }.tw-quick-settings { display:grid;grid-template-columns:repeat(3,1fr);gap:7px;padding-top:3px }.tw-modal-foot { justify-content:flex-end;gap:8px;border-top:1px solid rgba(255,255,255,.065);border-bottom:0 }.tw-consent-note { margin:0; }
-.tw-toast { position:fixed;right:22px;bottom:22px;z-index:4000;display:flex;align-items:center;gap:9px;padding:10px 14px;border:1px solid rgba(98,206,71,.25);border-radius:7px;background:#202420;color:#e5ebe3;font-size:11px;box-shadow:0 12px 35px rgba(0,0,0,.45) }.tw-toast span { color:#6ed055 }.toast-enter-active,.toast-leave-active{transition:.2s}.toast-enter-from,.toast-leave-to{opacity:0;transform:translateY(8px)}.spin{display:inline-block;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
-.tw-skeleton-card { height:65px;margin-bottom:5px;border-radius:7px;background:linear-gradient(90deg,#1a1c1a,#202320,#1a1c1a);background-size:200% 100%;animation:shimmer 1.3s infinite}@keyframes shimmer{to{background-position:-200% 0}}
-@media(max-width:1100px){.tw-workspace{grid-template-columns:210px minmax(0,1fr)}.tw-metrics{grid-template-columns:repeat(2,1fr)}.tw-link-row{grid-template-columns:14px minmax(120px,1fr) minmax(170px,1.2fr) 60px}.tw-link-count{display:none}.tw-settings-grid{grid-template-columns:1fr}.tw-settings-side{grid-template-columns:1fr 1fr}.tw-activity-grid{grid-template-columns:1fr}.tw-field-row{grid-template-columns:1fr 1fr}.tw-target-editor{grid-template-columns:20px 120px minmax(150px,1fr) 62px 24px}}
-@media(max-width:760px){.tw-topbar{padding:20px;align-items:flex-start;flex-direction:column}.tw-workspace{display:block}.tw-sidebar{border-right:0;border-bottom:1px solid rgba(255,255,255,.07);max-height:250px;overflow:auto}.tw-main{padding:18px 14px 40px}.tw-link-row{grid-template-columns:12px 1fr 58px}.tw-link-row code{grid-column:2/4}.tw-metrics{grid-template-columns:1fr 1fr}.tw-event-actions{align-items:stretch;flex-wrap:wrap}.tw-toggle-grid,.tw-quick-settings{grid-template-columns:1fr}.tw-field-row{grid-template-columns:1fr}.tw-settings-side{grid-template-columns:1fr}.tw-target-editor{grid-template-columns:20px 1fr 55px 22px}.tw-target-editor>input:nth-of-type(2){grid-column:2/5}.tw-create-target>div{grid-template-columns:1fr}.tw-top-actions{width:100%}.tw-top-actions .tw-button{flex:1}}
-</style>
+<style lang="scss" src="~/assets/scss/tripwires.scss"></style>

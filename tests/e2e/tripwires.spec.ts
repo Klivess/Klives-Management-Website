@@ -1,97 +1,221 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openTripwires, type TripwiresApiMock } from './fixtures/tripwires-api';
 
-const apiOrigin = 'https://klive.dev';
+/**
+ * The Tripwires console against a fake server shaped like production (fixtures/tripwires-api.ts).
+ * What it must do: show at a glance who tripped what (and which trips were Klives testing), make a
+ * link from a pasted URL in one step, say when a closed link is still being visited, and ask the
+ * server for little.
+ */
 
-function settings(overrides: Record<string, unknown> = {}) {
-  return {
-    enabled: true, captureIpAddress: true, captureLocation: true, captureUserAgent: true,
-    captureDeviceDetails: true, captureReferrer: true, captureLanguage: true,
-    captureQueryParameters: true, honourDoNotTrack: true, ignoreBots: true,
-    discordNotifications: true, discordIncludeSensitiveDetails: true,
-    notificationCooldownSeconds: 0, deduplicateWindowMinutes: 60, retentionDays: 90,
-    expiresUtc: null, maxTrips: null, redirectStatusCode: 302, ...overrides,
-  };
+const posts = (api: TripwiresApiMock, path: string) => api.posts.filter(p => p.path === path);
+
+async function hide(page: Page, hidden: boolean) {
+  await page.evaluate(value => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (value ? 'hidden' : 'visible') });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, hidden);
 }
 
-function tripwire(id = 'tw-1', name = 'Acme proposal') {
-  return {
-    id, name, createdBy: 'Klives', createdUtc: '2026-09-01T10:00:00Z', updatedUtc: '2026-09-01T10:00:00Z',
-    lastTrippedUtc: '2026-09-07T09:59:30Z', totalTrips: 7, status: 'Active', settings: settings(),
-    targets: [
-      { id: `${id}-target`, label: 'Proposal', destinationUrl: 'https://example.com/proposal', enabled: true, sortOrder: 0, tripCount: 7, createdUtc: '2026-09-01T10:00:00Z', trackingUrl: `https://klive.dev/t?key=token-${id}` },
-    ],
-  };
-}
+test.describe('Tripwires console', () => {
+  test('all activity: figures, what needs attention, and the latest trips without KM accounts', async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    await openTripwires(page);
 
-async function mockApi(page: Page) {
-  let items = [tripwire()];
-  const mutations: { path: string; body: any }[] = [];
-  await page.routeWebSocket('wss://klive.dev/**', () => {});
-  await page.route(`${apiOrigin}/**`, async route => {
-    const request = route.request();
-    const url = new URL(request.url());
-    const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'Authorization, Content-Type, X-Klive-Client, X-Klive-Page, Cache-Control' };
-    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors, body: '' });
-    const json = async (body: unknown, status = 200) => route.fulfill({ status, headers: cors, contentType: 'application/json', body: JSON.stringify(body) });
-    if (url.pathname === '/KMProfiles/LoginStatus') return route.fulfill({ status: 200, headers: cors, body: 'SessionActive' });
-    if (url.pathname === '/KMProfiles/GetCurrentProfile') return json({ Name: 'Klives', KlivesManagementRank: 5 });
-    if (url.pathname === '/tripwires/list') return json(items);
-    if (url.pathname === '/tripwires/events') return json({ items: [{ id: 'event-1', targetLabel: 'Proposal', destinationUrl: 'https://example.com/proposal', trippedUtc: '2026-09-07T09:59:30Z', ipAddress: '203.0.113.10', countryCode: 'GB', country: 'United Kingdom', region: 'England', city: 'London', latitude: 51.5, longitude: -0.12, userAgent: 'Mozilla/5.0', browser: 'Chrome 140', operatingSystem: 'Windows', deviceType: 'Desktop', referrer: 'https://discord.com/', doNotTrack: false, isBot: false, isUnique: true, discordNotified: true }], total: 1, limit: 100, offset: 0 });
-    if (url.pathname === '/tripwires/summary') return json({ totalTrips: 7, uniqueTrips: 5, tripsLast24Hours: 2, tripsLast7Days: 6, lastTrippedUtc: '2026-09-07T09:59:30Z', daily: [{ date: '2026-09-07', count: 2 }], countries: [{ value: 'United Kingdom', count: 7 }] });
-    const body = request.postDataJSON?.() ?? {};
-    mutations.push({ path: url.pathname, body });
-    if (url.pathname === '/tripwires/create') {
-      const created: any = tripwire('tw-new', body.name);
-      created.targets = body.targets.map((target: any, index: number) => ({ id: `new-target-${index}`, label: target.label || new URL(target.destinationUrl).hostname, destinationUrl: target.destinationUrl, enabled: true, sortOrder: index, tripCount: 0, createdUtc: '2026-09-07T10:00:00Z', trackingUrl: `https://klive.dev/t?key=new-token-${index}` }));
-      created.totalTrips = 0; created.lastTrippedUtc = null;
-      items = [created, ...items];
-      return json(created, 201);
-    }
-    if (url.pathname === '/tripwires/update') {
-      const index = items.findIndex(item => item.id === body.id);
-      items[index] = { ...items[index], name: body.name, settings: body.settings, targets: body.targets.map((target: any) => ({ ...items[index].targets.find(t => t.id === target.id), ...target })) };
-      return json(items[index]);
-    }
-    if (url.pathname === '/tripwires/notification/test') return json({ sent: true });
-    if (url.pathname === '/tripwires/events/clear') return json({ cleared: true });
-    if (url.pathname === '/tripwires/delete') return json({ deleted: true });
-    return json({});
+    await expect(page.getByTestId('twx-subline')).toContainText('2 of 3 live');
+    // The capped link that kept being opened after it closed.
+    await expect(page.getByTestId('issue-closed-tw2capped')).toContainText('Forum post turned away 53 visits');
+    await expect(page.getByTestId('issue-closed-tw2capped')).toContainText('no longer available');
+
+    await expect(page.getByTestId('fig-known')).toContainText('3');
+    await expect(page.getByTestId('fig-closed')).toContainText('53');
+    await expect(page.getByTestId('fig-previews')).toContainText('3');
+
+    const feed = page.getByTestId('all-trips');
+    // The VPN exit is flagged, the private trip says so, Klives's own trips are hidden by default.
+    await expect(feed.getByText('VPN / proxy').first()).toBeVisible();
+    await expect(feed.getByText('Private').first()).toBeVisible();
+    await expect(feed.getByText('Klives')).toHaveCount(0);
+    await page.getByTestId('toggle-known').click();
+    await expect(feed.getByText('Klives').first()).toBeVisible();
+
+    // A row opens to everything kept, with the address linked to OmniDefence.
+    await feed.getByText('Example VPN Ltd').first().click();
+    await expect(feed.getByText('203.0.113.77')).toBeVisible();
+    await expect(feed.getByText("(the VPN's exit, not the person)")).toBeVisible();
+    await expect(feed.locator('a[href="/omnidefence?ip=203.0.113.77"]')).toBeVisible();
   });
-  return mutations;
-}
 
-test.beforeEach(async ({ context }) => {
-  const origin = new URL(process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? '4173'}`).origin;
-  await context.addCookies([{ name: 'password', value: 'test-password', url: origin }]);
-});
+  test('one tripwire: links, figures, trips, people', async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 1000 });
+    const api = await openTripwires(page);
+    await page.getByTestId('rail-tw1scammer').click();
 
-test('shows links, telemetry, settings, and creates multiple tracking URLs', async ({ page }) => {
-  const mutations = await mockApi(page);
-  await page.goto('/tripwires');
+    await expect(page.getByTestId('detail-name')).toHaveText('Scammer');
+    await expect(page).toHaveURL(/id=tw1scammer/);
+    await expect(page.getByTestId('link-tw1scammer-t0')).toContainText('https://klive.dev/t?key=token-tw1scammer');
+    await expect(page.getByTestId('fig-detail-known')).toContainText('3');
+    await expect(page.getByTestId('fig-vpn')).toContainText('1');
+    await expect(page.getByTestId('fig-preview')).toContainText('Discord');
 
-  await expect(page.getByRole('heading', { name: 'Acme proposal' })).toBeVisible();
-  await expect(page.getByText('https://klive.dev/t?key=token-tw-1')).toBeVisible();
-  await expect(page.getByText('United Kingdom').first()).toBeVisible();
-  await expect(page.getByText('203.0.113.10')).toBeVisible();
-  await expect(page.getByText('Discord').last()).toBeVisible();
+    const trips = page.getByTestId('detail-trips');
+    await expect(trips.locator('.twx-trip')).toHaveCount(2);
+    await expect(page.getByTestId('known-hidden')).toContainText('3 trips from KM accounts hidden');
 
-  await page.getByTestId('new-tripwire').click();
-  await page.getByPlaceholder('e.g. Proposal sent to Acme').fill('Partner launch');
-  await page.getByPlaceholder('Label (optional)').fill('Homepage');
-  await page.getByPlaceholder('https://example.com/your-page').fill('https://partner.example/start');
-  await page.getByRole('button', { name: 'Add another destination' }).click();
-  await page.getByPlaceholder('Label (optional)').nth(1).fill('Docs');
-  await page.getByPlaceholder('https://example.com/your-page').nth(1).fill('https://partner.example/docs');
-  await page.getByTestId('create-submit').click();
+    await page.getByTestId('tab-visitors').click();
+    const people = page.getByTestId('visitors');
+    await expect(people.locator('.twx-person')).toHaveCount(1);
+    await people.locator('.twx-person').first().click();
+    await expect(page.getByTestId('visitor-filter')).toContainText('Only visitor aa11');
+    await expect(trips.locator('.twx-trip')).toHaveCount(1);
+    expect(api.requestedPaths.some(p => p.startsWith('/tripwires/events?') && p.includes('visitor=aa11bb22cc33dd44ee55ff66'))).toBeTruthy();
 
-  await expect(page.getByRole('heading', { name: 'Partner launch' })).toBeVisible();
-  await expect(page.getByText('https://klive.dev/t?key=new-token-0')).toBeVisible();
-  await expect(page.getByText('https://klive.dev/t?key=new-token-1')).toBeVisible();
-  expect(mutations.find(item => item.path === '/tripwires/create')?.body.targets).toHaveLength(2);
+    // Copy puts the tracking link on the clipboard.
+    await page.getByTestId('detail-copy').click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('https://klive.dev/t?key=token-tw1scammer-0000000000');
+  });
 
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  const discordToggle = page.locator('.tw-discord-card .tw-toggle-row').first();
-  await discordToggle.click();
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect.poll(() => mutations.some(item => item.path === '/tripwires/update')).toBeTruthy();
+  test('a pasted link becomes a tripwire in one step, with the settings used last', async ({ page }) => {
+    await page.setViewportSize({ width: 1500, height: 950 });
+    const api = await openTripwires(page);
+
+    await page.getByTestId('twx-quick-input').fill('shop.example/offer/spring-sale');
+    await page.getByTestId('twx-quick-input').press('Enter');
+
+    await expect(page.getByTestId('detail-name')).toHaveText('shop.example spring sale');
+    const create = posts(api, '/tripwires/create')[0];
+    expect(create.body.targets).toEqual([{ label: '', destinationUrl: 'https://shop.example/offer/spring-sale' }]);
+    // Scammer was edited last, and it does not honour Do Not Track: the new one starts the same way.
+    expect(create.body.settings.honourDoNotTrack).toBe(false);
+    expect(create.body.settings.maxTrips).toBeNull();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/^https:\/\/klive\.dev\/t\?key=new-/);
+    await expect(page.getByTestId('twx-toast').first()).toContainText('on your clipboard');
+  });
+
+  test('the full form takes several pasted links and shows the cost of honouring Do Not Track', async ({ page }) => {
+    await page.setViewportSize({ width: 1500, height: 950 });
+    const api = await openTripwires(page);
+
+    await page.keyboard.press('n');
+    const composer = page.getByTestId('twx-composer');
+    await expect(composer).toBeVisible();
+    await expect(page.getByTestId('composer-source')).toHaveValue('tw1scammer');
+    await expect(page.getByTestId('composer-dnt')).toContainText('of your last 15 trips sent it');
+
+    await page.getByTestId('composer-url').first().focus();
+    await page.evaluate(() => {
+      const data = new DataTransfer();
+      data.setData('text', 'https://a.example/one\nhttps://b.example/two');
+      document.activeElement!.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+    });
+    await expect(page.getByTestId('composer-url')).toHaveCount(2);
+    await page.getByTestId('composer-name').fill('Two places');
+    await page.getByTestId('composer-submit').click();
+
+    await expect(page.getByTestId('detail-name')).toHaveText('Two places');
+    expect(posts(api, '/tripwires/create')[0].body.targets.map((t: any) => t.destinationUrl)).toEqual(['https://a.example/one', 'https://b.example/two']);
+  });
+
+  test('a closed tripwire says what visitors get, and can take trips again', async ({ page }) => {
+    await page.setViewportSize({ width: 1500, height: 950 });
+    const api = await openTripwires(page, { path: '/tripwires?id=tw2capped' });
+
+    await expect(page.getByTestId('detail-status')).toHaveText('Limit reached');
+    const banner = page.getByTestId('detail-closed');
+    await expect(banner).toContainText('Reached its limit of 10 trips');
+    await expect(banner).toContainText('This link is no longer available');
+    await expect(banner).toContainText('53 visits arrived since');
+
+    await banner.getByRole('button', { name: 'Raise the limit' }).click();
+    await expect(page.getByTestId('detail-status')).toHaveText('Active');
+    expect(posts(api, '/tripwires/update')[0].body).toEqual({ id: 'tw2capped', settings: { maxTrips: 20 } });
+  });
+
+  test('settings: keyboard, privacy, closed behaviour, Discord, and pause with undo', async ({ page }) => {
+    await page.setViewportSize({ width: 1500, height: 950 });
+    const api = await openTripwires(page, { path: '/tripwires?id=tw3quiet' });
+    await expect(page.getByTestId('detail-name')).toHaveText('Two links');
+
+    await page.keyboard.press('s');
+    const sheet = page.getByTestId('twx-settings');
+    await expect(sheet).toBeVisible();
+    await page.getByTestId('settings-dnt').click();
+    await page.getByTestId('settings-closed').selectOption('redirect');
+    await page.getByTestId('settings-max').fill('5');
+    await page.getByTestId('settings-save').click();
+    await expect.poll(() => posts(api, '/tripwires/update').length).toBe(1);
+    const saved = posts(api, '/tripwires/update')[0].body;
+    expect(saved.settings.honourDoNotTrack).toBe(false);
+    expect(saved.settings.closedBehaviour).toBe('redirect');
+    expect(saved.settings.maxTrips).toBe(5);
+    expect(saved.targets.map((t: any) => t.id)).toEqual(['tw3quiet-t0', 'tw3quiet-t1']);
+    await expect(sheet).toContainText('Everything is saved');
+    await sheet.getByRole('button', { name: 'Close', exact: true }).click();
+
+    await page.getByTestId('detail-pause').click();
+    await expect(page.getByTestId('detail-status')).toHaveText('Disabled');
+    expect(posts(api, '/tripwires/update')[1].body).toEqual({ id: 'tw3quiet', settings: { enabled: false } });
+    await page.getByTestId('twx-toast').getByRole('button', { name: 'Undo' }).click();
+    await expect(page.getByTestId('detail-status')).toHaveText('Active');
+  });
+
+  test('delete asks first, then the tripwire is gone', async ({ page }) => {
+    await page.setViewportSize({ width: 1500, height: 950 });
+    const api = await openTripwires(page, { path: '/tripwires?id=tw3quiet' });
+    await page.getByTestId('detail-more').click();
+    await page.getByRole('menuitem', { name: 'Delete' }).click();
+    await expect(page.getByTestId('twx-confirm')).toContainText('Delete Two links?');
+    await page.getByTestId('confirm-yes').click();
+    await expect(page.getByTestId('rail-tw3quiet')).toHaveCount(0);
+    expect(posts(api, '/tripwires/delete')[0].body).toEqual({ id: 'tw3quiet' });
+    await expect(page).not.toHaveURL(/id=tw3quiet/);
+  });
+
+  test('asks for little: one batch per poll, nothing while hidden', async ({ page }) => {
+    await page.clock.install({ time: Date.now() });
+    await page.setViewportSize({ width: 1500, height: 950 });
+    const api = await openTripwires(page);
+    await expect.poll(() => api.batchCalls.length).toBeGreaterThan(0);
+    expect(api.batchCalls[0]).toEqual(['/tripwires/overview']);
+    expect(api.directGets.filter(p => p.startsWith('/tripwires/'))).toEqual([]);
+
+    await page.clock.runFor(15_500);
+    await expect.poll(() => api.batchCalls.length).toBe(2);
+
+    await hide(page, true);
+    const before = api.batchCalls.length;
+    await page.clock.runFor(60_000);
+    expect(api.batchCalls.length).toBe(before);
+    await hide(page, false);
+    await expect.poll(() => api.batchCalls.length).toBeGreaterThan(before);
+  });
+
+  test('an older server without the overview still lists and opens tripwires', async ({ page }) => {
+    await page.setViewportSize({ width: 1500, height: 950 });
+    const api = await openTripwires(page, { legacy: true });
+    await expect(page.getByTestId('rail-tw2capped')).toBeVisible();
+    await expect(page.getByText('does not send trips across tripwires yet')).toBeVisible();
+    expect(api.requestedPaths).toContain('/tripwires/list');
+    expect(api.requestedPaths.some(p => p.startsWith('/tripwires/summary?id='))).toBeTruthy();
+
+    await page.getByTestId('rail-tw2capped').click();
+    await expect(page.getByTestId('detail-trips').locator('.twx-trip')).toHaveCount(10);
+    // No OmniDefence intel from an older server: the figures say so instead of showing zero.
+    await expect(page.getByTestId('fig-vpn')).toContainText('—');
+  });
+
+  test('a stopped Discord bot is said at the top', async ({ page }) => {
+    await page.setViewportSize({ width: 1500, height: 950 });
+    await openTripwires(page, { discordDown: true });
+    await expect(page.getByTestId('issue-discord-down')).toContainText('KliveBot is not running');
+    await expect(page.getByTestId('issue-discord-down')).toContainText('2 tripwires cannot send Discord alerts');
+  });
+
+  test('phone width: no sideways scroll, rail above the content', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openTripwires(page, { path: '/tripwires?id=tw1scammer' });
+    await expect(page.getByTestId('detail-name')).toHaveText('Scammer');
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
 });

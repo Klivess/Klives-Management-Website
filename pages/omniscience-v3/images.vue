@@ -30,7 +30,7 @@
                     </button>
                     <span class="caption">{{ h.caption ?? (h.imageText ? `“${h.imageText}”` : 'No caption yet') }}</span>
                     <span class="meta omni-muted">
-                        <NuxtLink v-if="h.authorPersonId" :to="`${OMNI_BASE}/people/${encodeURIComponent(h.authorPersonId)}`">{{ h.authorName ?? h.authorPersonId }}</NuxtLink>
+                        <NuxtLink v-if="h.authorPersonId" :to="`${OMNI_BASE}/people/${encodeURIComponent(h.authorPersonId)}`">{{ omniPersonLabel(h.authorName) }}</NuxtLink>
                         <template v-else>unknown</template> · <OmniscienceV3Time :ms="h.sentAtMs" mode="age" />
                     </span>
                     <span v-if="place(h)" class="place omni-muted" :title="place(h) ?? undefined">{{ place(h) }}</span>
@@ -70,9 +70,9 @@
                         <dd><OmniscienceV3Time :ms="opened.sentAtMs" />
                             <span v-if="opened.edited" class="omni-chip sm gap">edited since</span>
                             <span v-if="opened.deleted" class="omni-chip sm warn gap">deleted at the source</span></dd>
-                        <dt>By</dt><dd><NuxtLink v-if="opened.authorPersonId" :to="`${OMNI_BASE}/people/${encodeURIComponent(opened.authorPersonId)}`">{{ opened.authorName ?? opened.authorPersonId }}</NuxtLink><template v-else>unknown</template></dd>
+                        <dt>By</dt><dd><NuxtLink v-if="opened.authorPersonId" :to="`${OMNI_BASE}/people/${encodeURIComponent(opened.authorPersonId)}`">{{ omniPersonLabel(opened.authorName) }}</NuxtLink><template v-else>unknown</template></dd>
                         <template v-if="place(opened)">
-                            <dt>Where</dt><dd>{{ place(opened) }}<span v-if="opened.platform" class="omni-chip sm gap">{{ opened.platform }}</span></dd>
+                            <dt>Where</dt><dd><NuxtLink v-if="placeTo(opened)" :to="placeTo(opened)!" data-testid="image-place">{{ place(opened) }}</NuxtLink><template v-else>{{ place(opened) }}</template><span v-if="opened.platform" class="omni-chip sm gap">{{ omniPlatformLabel(opened.platform) }}</span></dd>
                         </template>
                         <template v-if="opened.platform">
                             <dt>Said with it</dt>
@@ -120,9 +120,6 @@
                         <template v-if="opened.sizeBytes"><dt>Weight</dt><dd>{{ omniBytes(opened.sizeBytes) }}</dd></template>
                         <template v-if="opened.takenAtMs"><dt>Taken</dt><dd><OmniscienceV3Time :ms="opened.takenAtMs" /> <span class="omni-muted">· from the file itself</span></dd></template>
                         <template v-if="opened.timesPosted > 1"><dt>Posted</dt><dd>{{ omniCount(opened.timesPosted) }} times, this one included <span class="omni-muted">· the exact same file</span></dd></template>
-                        <dt>Attachment</dt><dd>{{ opened.attachmentId }}</dd>
-                        <dt>Message</dt><dd>{{ opened.messageId }}</dd>
-                        <dt>Conversation</dt><dd>{{ opened.conversationId }}</dd>
                     </dl>
                 </section>
                 <p class="omni-muted note">Captions are written by a model. They describe what is in the picture and never say who anyone is.</p>
@@ -137,7 +134,7 @@ import { OMNI_BASE, omniGet } from '~/scripts/omniscience/api';
 import type { MediaSearchDto, MediaSearchHitDto } from '~/scripts/omniscience/contracts';
 import { omniBytes, omniCount } from '~/scripts/omniscience/format';
 import { omniFilterDefaults, omniScopeFilters, type OmniFilterDef } from '~/scripts/omniscience/filters';
-import { useOmniDebounced, useOmniResource } from '~/composables/useOmniscienceV3';
+import { omniPersonLabel, omniPlaceLink, omniPlatformLabel, useOmniDebounced, useOmniResource } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
 import { useOmniFilters, useOmniPickLabels } from '~/composables/useOmniFilters';
 
@@ -171,6 +168,11 @@ const opened = computed(() => r.value?.hits.find(h => h.attachmentId === filters
  * Where an image was posted, in words: "#general in Some server", "Direct chat", "Group chat: the lads".
  * Null when the server said nothing about the place (an engine older than this page).
  */
+/** Where a picture was posted, as a link to that server's (or group chat's) page; a direct chat has none. */
+function placeTo(h: MediaSearchHitDto): string | null {
+    if (h.guildId) return omniPlaceLink('guild', h.guildId);
+    return omniPlaceLink('conversation', h.conversationId, h.conversationKind === 'dm' ? 'dm' : null);
+}
 function place(h: MediaSearchHitDto): string | null {
     const title = h.conversationTitle?.trim() || null;
     if (h.conversationKind === 'dm') return title ? `Direct chat: ${title}` : 'Direct chat';

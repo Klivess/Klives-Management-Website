@@ -992,6 +992,8 @@ export interface IdentityLinkDto {
   updatedAtMs: number;
   decidedAtMs?: number | null;
   mergeId?: number | null;
+  accountA?: ReviewAccountDto | null;
+  accountB?: ReviewAccountDto | null;
 }
 
 export interface IdentityLinkPageDto {
@@ -1390,6 +1392,7 @@ export interface KnowledgeReviewItemDto {
   resolvedAtMs?: number | null;
   resolution?: string | null;
   actor?: string | null;
+  context?: ReviewContextDto | null;
 }
 
 export interface KnowledgeReviewPageDto {
@@ -1676,6 +1679,8 @@ export interface MergeRowDto {
   actor: string;
   reason?: string | null;
   undoneAtMs?: number | null;
+  fromName?: string | null;
+  intoName?: string | null;
 }
 
 export interface MessageLabelsDto {
@@ -2646,6 +2651,60 @@ export interface RetentionDto {
 
 export interface RetentionListDto {
   streams: RetentionDto[];
+}
+
+export interface ReviewAccountDto {
+  platform: string;
+  name?: string | null;
+  handle?: string | null;
+  personId: string;
+}
+
+export interface ReviewAliasDto {
+  aliasId: string;
+  alias: string;
+  nameKind: string;
+  status: string;
+  scopeKind: string;
+  scopeId?: string | null;
+  placeName?: string | null;
+  placeKind?: string | null;
+  usages: number;
+  speakers: number;
+  selfClaims: number;
+  commonWord: boolean;
+  firstSeenMs: number;
+  lastSeenMs: number;
+}
+
+export interface ReviewContextDto {
+  people: Record<string, string>;
+  messages: EvidenceContextDto[];
+  alias?: ReviewAliasDto | null;
+  fact?: ReviewFactDto | null;
+  age?: AgeStatementDto[] | null;
+  link?: ReviewLinkDto | null;
+}
+
+export interface ReviewFactDto {
+  attribute: string;
+  attributeTitle: string;
+  assertionId?: string | null;
+  value?: string | null;
+  status?: string | null;
+  objectPersonId?: string | null;
+  values: string[];
+}
+
+export interface ReviewLinkDto {
+  linkId: string;
+  verdict: string;
+  a: ReviewAccountDto;
+  b: ReviewAccountDto;
+  probability: number;
+  independentSignals: number;
+  signals: LinkSignalDto[];
+  mergeId?: number | null;
 }
 
 export interface ReviewResolveRequest {

@@ -1,4 +1,5 @@
 import { omniBytes, omniCount, omniDuration, omniPercent } from '~/scripts/omniscience/format';
+import { omniLooksLikeId } from '~/scripts/omniscience/ids';
 
 /**
  * One sentence for each kind of finding the engine hands to the notices (monitors, relationships,
@@ -67,7 +68,9 @@ export function findingText(kind: string, data: unknown, who?: string | null, ot
 
 export function healthText(kind: string, detail: unknown, subject?: string | null): string {
     const d = bag(detail);
-    const source = str(d.label) ?? str(d.sourceId) ?? subject ?? 'A source';
+    // A source by its label; its id or the subject only when they are words ("legacy_v2"), never an id nobody can read.
+    const readable = (text: string | null | undefined) => (text && !omniLooksLikeId(text) ? text : null);
+    const source = str(d.label) ?? readable(str(d.sourceId)) ?? readable(subject) ?? 'A source';
     switch (kind) {
         case 'source_down':
             return `${source} is ${str(d.status) ?? 'down'}${str(d.detail) ? `: ${str(d.detail)}` : ''}.`;

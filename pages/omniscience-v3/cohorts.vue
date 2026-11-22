@@ -22,7 +22,7 @@
             </OmniscienceV3DataTable>
         </OmniscienceV3Panel>
 
-        <OmniscienceV3Drawer :open="!!filters.cohort" :title="detail.data.value?.cohort.name ?? 'Cohort'" :subtitle="filters.cohort" @close="filters.cohort = ''">
+        <OmniscienceV3Drawer :open="!!filters.cohort" :title="detail.data.value?.cohort.name ?? 'Cohort'" subtitle="A saved set of people" @close="filters.cohort = ''">
             <OmniscienceV3ErrorBlock v-if="detail.error.value && !detail.data.value" :error="detail.error.value" what="This cohort" @retry="detail.refresh()" />
             <div v-else-if="!detail.data.value" class="omni-skelrows" aria-busy="true"><div v-for="n in 5" :key="n" class="omni-skel"></div></div>
             <template v-else>
@@ -34,7 +34,7 @@
                 </div>
                 <p v-if="!members.length" class="omni-muted omni-section">This cohort is empty.</p>
                 <ol v-else class="members omni-section">
-                    <li v-for="m in members" :key="m.id"><span>{{ m.label ?? m.id }}</span><span v-if="m.label" class="omni-muted omni-mono id">{{ m.id }}</span></li>
+                    <li v-for="m in members" :key="m.id"><OmniscienceV3SelectionItem :kind="memberKind" :item="m" /></li>
                 </ol>
             </template>
         </OmniscienceV3Drawer>
@@ -65,6 +65,8 @@ const detail = useOmniResource<CohortSelectionDto | null>(
     signal => (filters.cohort ? omniGet<CohortSelectionDto>('cohorts/get', { id: filters.cohort }, signal) : Promise.resolve(null)),
     { immediate: false });
 const members = computed(() => detail.data.value?.selection.items ?? []);
+/** Cohorts are sets of people; a cohort saved from another kind of set keeps that kind. */
+const memberKind = computed(() => detail.data.value?.selection.kind ?? 'Person');
 watch(() => filters.cohort, id => {
     detail.data.value = null;
     detail.error.value = null;

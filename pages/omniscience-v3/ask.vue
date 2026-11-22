@@ -67,7 +67,7 @@
                             <OmniscienceV3InquiryReport :report="answer" @pick="(id, label) => askAbout(answer, id, label)" />
                         </OmniscienceV3Card>
                         <OmniscienceV3Card :title="answer ? 'How it ran' : 'Working on it'">
-                            <OmniscienceV3TacticRunView :run-id="view.run" @changed="onRunChanged()" @open="id => (view.run = id)" @use="useSelection" />
+                            <OmniscienceV3TacticRunView :run-id="view.run" :tactics="catalog" @changed="onRunChanged()" @open="id => (view.run = id)" @use="useSelection" />
                         </OmniscienceV3Card>
                     </template>
                 </div>

@@ -41,12 +41,11 @@
                                  max-height="none" :selected-key="peekId" :row-class="r => (r.isSelf ? 'self' : '')" @select="peekId = $event.personId">
                 <template #cell-displayName="{ row }">
                     <span class="cellstack">
-                        <span><NuxtLink class="who" :to="personTo(row.personId)" @click.stop><strong>{{ row.displayName }}</strong></NuxtLink>
+                        <span><NuxtLink class="who" :to="personTo(row.personId)" @click.stop><strong>{{ omniPersonLabel(row.displayName) }}</strong></NuxtLink>
                             <span v-if="row.isSelf" class="omni-chip sm">you</span>
                             <span v-if="row.pinned" class="omni-chip sm" title="Pinned">★</span>
                             <span v-if="restricted(row.ageBand)" class="omni-chip sm warn" title="Under 18, or may be: routine and identity details are not shown">minor</span>
                         </span>
-                        <span class="sub omni-mono">{{ row.personId }}</span>
                     </span>
                 </template>
                 <template #cell-tier="{ row }"><span class="omni-chip" :class="row.tier === 'tracked' ? 'ok' : row.tier === 'watch' ? 'warn' : ''">{{ row.tier }}</span></template>
@@ -86,7 +85,7 @@ import { OMNI_BASE, omniGet } from '~/scripts/omniscience/api';
 import type { DirectoryPageDto, DirectorySort, PersonCardDto } from '~/scripts/omniscience/contracts';
 import { omniCount, omniPercent } from '~/scripts/omniscience/format';
 import { omniFilterDefaults, type OmniFilterDef } from '~/scripts/omniscience/filters';
-import { useOmniDebounced, useOmniPaged } from '~/composables/useOmniscienceV3';
+import { omniPersonLabel, useOmniDebounced, useOmniPaged } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
 import { useOmniFilters } from '~/composables/useOmniFilters';
 import type { TableColumn } from '~/components/OmniscienceV3/DataTable.vue';

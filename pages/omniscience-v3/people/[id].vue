@@ -3,8 +3,8 @@
         <div class="omni-pagehead">
             <div>
                 <p class="omni-muted crumbs"><NuxtLink :to="`${OMNI_BASE}/people`">People</NuxtLink> ›</p>
-                <h1 data-testid="person-name">{{ d?.displayName ?? personId }}</h1>
-                <p class="subtitle omni-mono">{{ personId }}</p>
+                <h1 data-testid="person-name">{{ d ? omniPersonLabel(d.displayName) : dossier.error.value ? OMNI_UNNAMED : OMNI_NAMING }}</h1>
+                <p v-if="alsoKnownAs.length" class="subtitle" data-testid="person-aka">Also goes by {{ alsoKnownAs.join(' · ') }}</p>
             </div>
             <div class="omni-actions">
                 <button class="omni-btn ghost" type="button" :disabled="dossier.refreshing.value" @click="refreshAll()">Refresh</button>
@@ -81,9 +81,9 @@
             <OmniscienceV3Panel title="Where" :loading="dossier.loading.value" :error="dossier.error.value" :has-data="!!d" :empty="!!d && !d.conversations.length && !d.guilds.length">
                 <template v-if="d">
                     <h4 class="omni-h4">Servers</h4>
-                    <ol class="ranked"><li v-for="g in d.guilds" :key="g.id">{{ g.name }} <span class="omni-muted">{{ omniCount(g.count) }}</span></li></ol>
+                    <ol class="ranked"><li v-for="g in d.guilds" :key="g.id"><NuxtLink :to="omniPlaceLink('guild', g.id)!">{{ g.name || 'A server with no name' }}</NuxtLink> <span class="omni-muted">{{ omniCount(g.count) }}</span></li></ol>
                     <h4 class="omni-h4">Conversations</h4>
-                    <ol class="ranked"><li v-for="c in d.conversations" :key="c.id">{{ c.name }} <span class="omni-muted">{{ omniCount(c.count) }}</span></li></ol>
+                    <ol class="ranked"><li v-for="c in d.conversations" :key="c.id"><NuxtLink :to="omniPlaceLink('conversation', c.id)!">{{ c.name || 'A chat with no name' }}</NuxtLink> <span class="omni-muted">{{ omniCount(c.count) }}</span></li></ol>
                 </template>
             </OmniscienceV3Panel>
         </div>
@@ -138,7 +138,7 @@
                                 :empty-text="similar.data.value?.note ?? undefined" @retry="similar.refresh()">
                 <ul v-if="similar.data.value" class="similar">
                     <li v-for="p in similar.data.value.people" :key="p.personId">
-                        <NuxtLink :to="`${OMNI_BASE}/people/${encodeURIComponent(p.personId)}`">{{ p.name ?? p.personId }}</NuxtLink>
+                        <NuxtLink :to="`${OMNI_BASE}/people/${encodeURIComponent(p.personId)}`">{{ omniPersonLabel(p.name) }}</NuxtLink>
                         <span class="omni-muted">{{ omniPercent(p.similarity) }}</span>
                         <span class="why omni-muted">{{ p.shared.map(s => s.text).join(', ') || 'similar overall' }}</span>
                     </li>
@@ -175,7 +175,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { OMNI_BASE, omniGet, omniPost } from '~/scripts/omniscience/api';
 import type { DossierDto, PairSummaryDto, PersonBriefDto, PersonLinksDto, PersonRelationshipsDto, ReadModelDto, SimilarPeopleDto } from '~/scripts/omniscience/contracts';
 import { omniCount, omniPercent } from '~/scripts/omniscience/format';
-import { useOmniAction, useOmniCarry, useOmniRecent, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
+import { OMNI_NAMING, OMNI_UNNAMED, omniPersonLabel, omniPlaceLink, omniPlatformLabel, useOmniAction, useOmniCarry, useOmniRecent, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
 import { useAccess } from '~/composables/useAccess';
 
@@ -233,7 +233,7 @@ async function requestBrief() {
 }
 
 function useInTactic() {
-    carry.value = { kind: 'Person', items: [{ id: personId.value, label: d.value?.displayName ?? null }], origin: `person ${d.value?.displayName ?? personId.value}`, sampled: false };
+    carry.value = { kind: 'Person', items: [{ id: personId.value, label: d.value?.displayName ?? null }], origin: `person ${omniPersonLabel(d.value?.displayName)}`, sampled: false };
     void router.push(`${OMNI_BASE}/tactics`);
 }
 
@@ -243,7 +243,21 @@ const maxHour = computed(() => Math.max(1, ...(d.value?.hours ?? [0])));
 function hourOpacity(n: number): number { return 0.12 + 0.88 * (n / maxHour.value); }
 
 function other(a: string, b: string): string { return a === personId.value ? b : a; }
-function otherName(r: PairSummaryDto): string { return (r.a === personId.value ? r.bName : r.aName) ?? other(r.a, r.b); }
+function otherName(r: PairSummaryDto): string { return omniPersonLabel(r.a === personId.value ? r.bName : r.aName); }
+/** The other names they go by now (handles, nicknames on other platforms): what someone might know them as. Never their id. */
+const alsoKnownAs = computed(() => {
+    const own = d.value?.displayName?.trim().toLowerCase();
+    const seen = new Set<string>(own ? [own] : []);
+    const out: string[] = [];
+    for (const n of d.value?.names ?? []) {
+        const key = n.value.trim().toLowerCase();
+        if (!key || n.toMs != null || seen.has(key)) continue;
+        seen.add(key);
+        out.push(n.platform ? `${n.value} (${omniPlatformLabel(n.platform)})` : n.value);
+        if (out.length === 4) break;
+    }
+    return out;
+});
 function trendTone(trend: string): string { return trend === 'closer' || trend === 'new' ? 'ok' : trend === 'drifting' ? 'warn' : ''; }
 </script>
 

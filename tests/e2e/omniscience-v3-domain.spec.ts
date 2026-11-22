@@ -206,8 +206,13 @@ test('communities: a place page, a place without one yet, circles and the people
     await expect.poll(() => posts(state, 'insights/space/refresh').at(-1)?.body).toEqual({ scopeKind: 'guild', scopeId: 'guild-1' });
     await shot(page, 'communities-place');
 
+    // A place whose page is not built says so under its own name, never its id, and offers to build it.
     await places.nth(1).getByRole('button').click();
-    await expect(page.getByText('There is no community page for this server or chat yet.')).toBeVisible();
+    const opened = page.getByTestId('space-page');
+    await expect(opened).toContainText('Synthetic group chat');
+    await expect(opened).toContainText('No page for this place yet');
+    await expect(opened).not.toContainText('conv-group');
+    await expect(page.getByTestId('space-refresh')).toHaveText('Build this page now');
 
     await page.getByTestId('communities-tab-circles').click();
     await expect(page.getByTestId('circles')).toContainText('Synthetic Cy');

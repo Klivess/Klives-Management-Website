@@ -66,7 +66,7 @@
                     <tbody>
                         <tr v-for="a in aliases.data.value" :key="a.aliasId">
                             <td><strong>{{ a.alias }}</strong><span v-if="a.commonWord" class="omni-chip sm warn" title="Also an ordinary word, so it never triggers an alert on its own">common word</span></td>
-                            <td class="omni-muted">{{ omniHumanise(a.nameKind) }} · {{ a.scopeKind }}</td>
+                            <td class="omni-muted">{{ omniHumanise(a.nameKind) }}<template v-if="a.scopeId"> · in <OmniscienceV3SelectionItem :kind="a.scopeKind === 'guild' ? 'Guild' : 'Conversation'" :item="{ id: a.scopeId! }" /></template></td>
                             <td class="num">{{ a.usages }} by {{ a.speakers }}</td>
                             <td><span class="omni-chip sm" :class="factTone(a.status)">{{ a.status }}</span></td>
                             <td v-if="canReview" class="actions">

@@ -27,7 +27,7 @@
                 </form>
 
                 <div v-if="pv" class="preview" data-testid="forget-preview">
-                    <h4 class="omni-h4">{{ pv.level === 'erase' ? 'This will erase' : 'This will forget what was worked out about' }} {{ pv.name ?? pv.personId }}</h4>
+                    <h4 class="omni-h4">{{ pv.level === 'erase' ? 'This will erase' : 'This will forget what was worked out about' }} {{ omniPersonLabel(pv.name) }}</h4>
                     <dl class="omni-kv">
                         <dt>Merged people</dt><dd>{{ omniCount(pv.persons) }}</dd>
                         <dt>Accounts</dt><dd>{{ omniCount(pv.identities) }}</dd>
@@ -63,7 +63,7 @@
                                     empty-text="Everyone's messages are analysed." @retry="analysisOff.refresh()">
                     <table v-if="analysisOff.data.value" class="omni-table" data-testid="analysis-off-table">
                         <tbody><tr v-for="p in analysisOff.data.value.people" :key="p.personId">
-                            <td><NuxtLink :to="`${OMNI_BASE}/people/${encodeURIComponent(p.personId)}`">{{ p.name ?? p.personId }}</NuxtLink></td>
+                            <td><NuxtLink :to="`${OMNI_BASE}/people/${encodeURIComponent(p.personId)}`">{{ omniPersonLabel(p.name) }}</NuxtLink></td>
                             <td class="num">since <OmniscienceV3Time :ms="p.sinceMs" mode="age" /></td>
                             <td class="actions"><button class="omni-btn ghost sm" type="button" :disabled="busy !== null" @click="analysisOn(p.personId)">Switch back on</button></td>
                         </tr></tbody>
@@ -145,7 +145,7 @@ import type {
 } from '~/scripts/omniscience/contracts';
 import { omniCount, omniDownload } from '~/scripts/omniscience/format';
 import { omniHumanise } from '~/scripts/omniscience/findings';
-import { useOmniAction, useOmniResource } from '~/composables/useOmniscienceV3';
+import { omniPersonLabel, useOmniAction, useOmniResource } from '~/composables/useOmniscienceV3';
 import { useAccess } from '~/composables/useAccess';
 
 definePageMeta({ layout: 'navbar' });

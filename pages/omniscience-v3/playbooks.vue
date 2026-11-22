@@ -24,7 +24,7 @@
             </OmniscienceV3DataTable>
         </OmniscienceV3Panel>
 
-        <OmniscienceV3Drawer :open="!!draft" :title="draft?.id ? draft.name || 'Playbook' : 'New playbook'" :subtitle="draft?.id ?? ''" wide @close="closeEditor">
+        <OmniscienceV3Drawer :open="!!draft" :title="draft?.id ? draft.name || 'Playbook' : 'New playbook'" :subtitle="draft?.id ? 'Editing a saved playbook' : 'Not saved yet'" wide @close="closeEditor">
             <form v-if="draft" class="omni-pb" @submit.prevent="save">
                 <div class="omni-formgrid">
                     <div class="omni-field" style="grid-column: span 2">

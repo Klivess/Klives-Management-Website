@@ -113,6 +113,9 @@ test('a person: what is known, with evidence, and a decision about a fact takes 
     await back.getByRole('button', { name: 'Clear' }).click();
 
     // A name is confirmed; an age statement can be thrown out; their messages can be read again on request.
+    // Where a name is used is the server by name, a link to its page: never its id.
+    await expect(page.getByTestId('aliases-table').getByRole('link', { name: 'Synthetic Server' })).toHaveAttribute('href', /communities\?scopeKind=guild&scopeId=guild-1$/);
+    await expect(page.getByTestId('aliases-table')).not.toContainText('guild-1');
     await page.getByTestId('aliases-table').getByTitle('Yes, that is them').click();
     await expect(page.getByTestId('aliases-table')).toContainText('confirmed');
     expect(posts(state, 'knowledge/aliases/review').at(-1)?.body).toEqual({ aliasId: 'al-1', verdict: 'confirm' });
@@ -139,6 +142,9 @@ test('a person: what is known, with evidence, and a decision about a fact takes 
     await page.getByRole('group', { name: 'Claim verdict' }).getByRole('button', { name: 'Rejected' }).click();
     await expect(page.getByTestId('claims-table').locator('tbody tr')).toHaveCount(1);
     await expect(page.getByTestId('claims-table')).toContainText('Quote not found');
+    // A merge names both people, each a link, and never by id.
+    await expect(page.getByTestId('merges-table').getByRole('link', { name: 'Ada (old account)' })).toHaveAttribute('href', `${BASE}/people/person-a-old`);
+    await expect(page.getByTestId('merges-table')).not.toContainText('person-a-old');
     await page.getByTestId('merges-table').getByRole('button', { name: 'Undo' }).click();
     await expect.poll(() => posts(state, 'knowledge/persons/unmerge').at(-1)?.body).toEqual({ mergeId: 7 });
     await expect(page.getByTestId('merges-table')).toContainText('undone');
@@ -172,20 +178,65 @@ test('review: the queue is settled item by item, and two accounts become one per
     await expect(items).toHaveCount(3, BOOT);
     await expect(items.first()).toContainText('Age statements disagree'); // most important first
     await expect(items.first()).toContainText('Synthetic Bo');            // by name, not by id
+    // Age statements are quoted with who said them, each with its own decision.
+    await items.first().getByRole('button', { name: 'Age statements disagree for Synthetic Bo' }).click();
+    const ages = page.getByTestId('review-detail-rv-3');
+    await expect(ages).toContainText("synthetic: I'm 31 next week");
+    await expect(ages).toContainText('Synthetic server');
+    await expect(ages.getByTestId('age-reject-age-b2')).toBeVisible();
+
     await page.getByLabel('Kind').selectOption('contradiction');
     await expect(items).toHaveCount(1);
     await items.first().getByRole('button', { name: 'City: Leeds or Bristol?' }).click();
-    await expect(items.first()).toContainText('Two facts that cannot both be true.');
-    await expect(items.first()).toContainText('"Bristol"');
+    const fact = page.getByTestId('review-detail-rv-1');
+    await expect(fact).toContainText('Two facts that cannot both be true.');
+    await expect(fact).toContainText('“Leeds” or “Bristol”');
+    await expect(fact).toContainText('synthetic: I moved to Leeds last month');
     await shot(page, 'review');
+    // The fact opens where it can be confirmed, rejected or corrected, with its evidence.
+    await page.getByTestId('review-open-fact-rv-1').click();
+    await expect(page.getByTestId('fact-drawer')).toContainText('synthetic: Leeds');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('fact-drawer')).toHaveCount(0);
     await page.getByTestId('review-resolve-rv-1').click();
     await expect.poll(() => posts(state, 'knowledge/review/resolve').at(-1)?.body).toEqual({ itemId: 'rv-1', state: 'resolved', resolution: 'Leeds: she moved in April' });
     await expect(page.getByTestId('review-list')).toHaveCount(0);
+
+    // A name: what it is, whose, where it is used (the server by name, a link), who used it, and the decision right there.
+    await page.getByLabel('Kind').selectOption('alias');
+    await items.first().getByRole('button', { name: /Confirm alias "Ads"/ }).click();
+    const alias = page.getByTestId('review-detail-rv-2');
+    await expect(alias).toContainText('“Ads”');
+    await expect(alias).toContainText('Used 14 times by 4 people');
+    await expect(alias.getByTestId('review-place')).toHaveText('Synthetic server');
+    await expect(alias.getByTestId('review-place')).toHaveAttribute('href', /\/omniscience-v3\/communities\?scopeKind=guild&scopeId=discord(:|%3A)800000000000000001$/);
+    await expect(alias.getByRole('link', { name: 'Synthetic Bo' })).toHaveAttribute('href', `${BASE}/people/person-b`);
+    await expect(alias).toContainText('Ads are you climbing tonight?');
+    // Never an id: not the alias's, not the server's.
+    for (const id of ['al-1', '800000000000000001', 'discord:', 'person-a']) await expect(alias).not.toContainText(id);
+    await shot(page, 'review-alias');
+    await alias.getByTestId('alias-confirm').click();
+    await expect.poll(() => posts(state, 'knowledge/aliases/review').at(-1)?.body).toEqual({ aliasId: 'al-1', verdict: 'confirm' });
+    await expect(page.getByText('“Ads” is one of Synthetic Ada’s names.')).toBeVisible();
+    await expect(page.getByTestId('review-list')).toHaveCount(0);
+
+    // An item from a server that named nothing is read out in words, and its ids are left out.
+    await page.getByLabel('Kind').selectOption('');
+    await page.getByRole('group', { name: 'State' }).getByRole('button', { name: 'Resolved' }).click();
+    await items.filter({ hasText: 'These two accounts may be the same person' }).getByRole('button', { name: 'These two accounts may be the same person' }).click();
+    const old = page.getByTestId('review-detail-rv-4');
+    await expect(old).toContainText('78%');
+    for (const id of ['discord:ada', 'whatsapp:ada']) await expect(old).not.toContainText(id);
+    await page.getByRole('group', { name: 'State' }).getByRole('button', { name: 'Open' }).click();
 
     await page.getByTestId('review-tab-links').click();
     const link = page.getByTestId('links-list').locator('> li').first();
     await expect(link).toContainText('Synthetic Ada', BOOT);
     await expect(link).toContainText('Synthetic Eli');
+    // Each account by what it is called, never by its id.
+    await expect(link).toContainText('Discord · @ada');
+    await expect(link).toContainText('WhatsApp · Ada W');
+    for (const id of ['discord:ada', 'whatsapp:ada']) await expect(link).not.toContainText(id);
     await expect(link).toContainText('2 independent signs');
     await expect(link).toContainText('They talk to the same three people.');
     await shot(page, 'review-links');

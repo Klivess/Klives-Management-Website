@@ -78,8 +78,8 @@
             <OmniscienceV3TacticRunForm v-if="selectedTactic" :key="selectedTactic.key" :tactic="selectedTactic" :initial-selections="carry ? [carry] : []" @started="onStarted" />
         </OmniscienceV3Drawer>
 
-        <OmniscienceV3Drawer :open="!!filters.run && !selectedTactic" :title="runTitle" :subtitle="filters.run" wide @close="filters.run = ''">
-            <OmniscienceV3TacticRunView v-if="filters.run" :run-id="filters.run" @use="onUse" @open="filters.run = $event" @changed="runs.reload(true)" />
+        <OmniscienceV3Drawer :open="!!filters.run && !selectedTactic" :title="runTitle" :subtitle="runSubtitle" wide @close="filters.run = ''">
+            <OmniscienceV3TacticRunView v-if="filters.run" :run-id="filters.run" :tactics="allTactics" @use="onUse" @open="filters.run = $event" @changed="runs.reload(true)" />
         </OmniscienceV3Drawer>
     </OmniscienceV3Shell>
 </template>
@@ -89,7 +89,7 @@ import { computed } from 'vue';
 import { omniGet } from '~/scripts/omniscience/api';
 import type { Selection, TacticCatalogDto, TacticDescriptor, TacticRunDto, TacticRunPageDto } from '~/scripts/omniscience/contracts';
 import { omniStateTone } from '~/scripts/omniscience/format';
-import { useOmniCarry, useOmniDebounced, useOmniPaged, useOmniResource, useOmniStream } from '~/composables/useOmniscienceV3';
+import { useOmniCarry, useOmniDebounced, useOmniPaged, useOmniResource, useOmniStream, useOmniTime } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
 import type { TableColumn } from '~/components/OmniscienceV3/DataTable.vue';
 
@@ -123,6 +123,12 @@ useOmniDebounced(() => filters.runState, () => { void runs.reload(); }, 0);
 const runTitle = computed(() => {
     const run = runs.items.value.find(r => r.runId === filters.run);
     return run ? titleOf(run.tactic) : 'Tactic run';
+});
+/** When the run started and who started it: what tells one run from another (its id would not). */
+const { at: atTime } = useOmniTime();
+const runSubtitle = computed(() => {
+    const run = runs.items.value.find(r => r.runId === filters.run);
+    return run ? `Started ${atTime(run.createdAtMs)}${run.actor ? ` by ${run.actor}` : ''}` : undefined;
 });
 
 // The list follows the engine instead of polling it: any run starting or finishing refreshes it.

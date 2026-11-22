@@ -43,7 +43,7 @@
                         <li v-for="item in inbox.data.value.items.slice(0, 6)" :key="item.itemId">
                             <span class="omni-avatar" aria-hidden="true">{{ initials(item.personName) }}</span>
                             <span class="main">
-                                <strong><NuxtLink :to="personTo(item.personId)">{{ item.personName ?? item.personId }}</NuxtLink>
+                                <strong><NuxtLink :to="personTo(item.personId)">{{ omniPersonLabel(item.personName) }}</NuxtLink>
                                     <span class="omni-muted"> · {{ item.conversationTitle ?? item.conversationKind ?? item.platform }}</span></strong>
                                 <small>{{ item.excerpt ?? item.reason }}</small>
                             </span>
@@ -116,7 +116,7 @@ import type {
 import { omniCount, omniInstantParts } from '~/scripts/omniscience/format';
 import { healthText, waitText } from '~/scripts/omniscience/findings';
 import { planTone } from '~/scripts/omniscience/knowledge';
-import { useOmniEngine, useOmniRecent, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
+import { omniPersonLabel, useOmniEngine, useOmniRecent, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
 import { useAccess } from '~/composables/useAccess';
 
 definePageMeta({ layout: 'navbar' });
@@ -193,7 +193,7 @@ const needs = computed<Need[]>(() => {
         out.push({ id: 'overdue', tone: 'warn', title: `${plural(overdue.length, 'plan')} overdue`, detail: overdue.slice(0, 3).map(p => p.title).join(' · '), to: `${OMNI_BASE}/agenda` });
     const open = inbox.data.value?.open ?? 0;
     if (open)
-        out.push({ id: 'inbox', tone: 'info', title: `${plural(open, 'message')} waiting on your reply`, detail: (inbox.data.value?.items ?? []).slice(0, 3).map(i => i.personName ?? i.personId).join(', '), to: `${OMNI_BASE}/signals?tab=inbox` });
+        out.push({ id: 'inbox', tone: 'info', title: `${plural(open, 'message')} waiting on your reply`, detail: (inbox.data.value?.items ?? []).slice(0, 3).map(i => omniPersonLabel(i.personName)).join(', '), to: `${OMNI_BASE}/signals?tab=inbox` });
     const unseenAlerts = alerts.data.value?.unseen ?? 0;
     if (unseenAlerts)
         out.push({ id: 'alerts', tone: 'info', title: `${plural(unseenAlerts, 'new alert')}`, detail: 'A watch rule matched, or someone mentioned you.', to: `${OMNI_BASE}/signals` });

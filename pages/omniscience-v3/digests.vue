@@ -91,7 +91,7 @@
                         <section v-if="digest.newFacts.length" class="omni-section">
                             <h4>New facts</h4>
                             <ul><li v-for="f in digest.newFacts" :key="f.assertionId">
-                                <NuxtLink :to="`${OMNI_BASE}/people/${encodeURIComponent(f.personId)}`">{{ f.personName ?? f.personId }}</NuxtLink>: {{ f.attribute }} = {{ f.value ?? '—' }}</li></ul>
+                                <NuxtLink :to="`${OMNI_BASE}/people/${encodeURIComponent(f.personId)}`">{{ omniPersonLabel(f.personName) }}</NuxtLink>: {{ f.attribute }} = {{ f.value ?? '—' }}</li></ul>
                         </section>
                     </template>
                 </OmniscienceV3Panel>
@@ -104,7 +104,7 @@
                         <tbody>
                             <tr v-for="s in subs.data.value.subscriptions" :key="s.subscriptionId">
                                 <td>{{ s.name }} <span v-if="!s.enabled" class="omni-chip sm">off</span></td>
-                                <td>{{ scopeLabel(s.scopeKind) }}<span v-if="s.scopeId" class="sub" :title="s.scopeId">{{ labelOf(pickKind(s.scopeKind), s.scopeId) }}</span></td>
+                                <td>{{ scopeLabel(s.scopeKind) }}<span v-if="s.scopeId" class="sub">{{ labelOf(pickKind(s.scopeKind), s.scopeId) }}</span></td>
                                 <td>{{ s.cadence === 'weekly' ? `${WEEKDAYS[s.weekday ?? 0]} ` : 'daily ' }}{{ s.at }}</td>
                                 <td class="num"><OmniscienceV3Time :ms="s.lastRunMs" mode="age" /></td>
                                 <td v-if="canManage" class="actions">
@@ -144,7 +144,7 @@ import { OMNI_BASE, omniGet, omniPost } from '~/scripts/omniscience/api';
 import type { DigestDto, DigestPageDto, DigestSeenDto, DigestSubscriptionDeletedDto, DigestSubscriptionDto, DigestSubscriptionListDto } from '~/scripts/omniscience/contracts';
 import { omniCount, omniStateTone } from '~/scripts/omniscience/format';
 import type { OmniPickKind } from '~/scripts/omniscience/filters';
-import { useOmniAction, useOmniDebounced, useOmniPaged, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
+import { omniPersonLabel, useOmniAction, useOmniDebounced, useOmniPaged, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
 import { useOmniPickLabels } from '~/composables/useOmniFilters';
 import { useAccess } from '~/composables/useAccess';
@@ -169,7 +169,12 @@ const { state: filters } = useOmniUrlState({ scopeKind: '', digest: '' });
 function pickKind(scopeKind: string): OmniPickKind {
     return scopeKind === 'guild' || scopeKind === 'person' ? scopeKind : 'conversation';
 }
-const { want, labelOf } = useOmniPickLabels();
+const { want, labelOf: pickLabel, labels: pickLabels } = useOmniPickLabels();
+/** A subscription's server, chat or person by name: "…" until its name is known, never the id. */
+function labelOf(kind: OmniPickKind, id: string): string {
+    const named = pickLabels.value[`${kind}:${id}`] ? pickLabel(kind, id) : null;
+    return named ?? '…';
+}
 
 function scopeLabel(kind: string): string {
     return kind === 'all' ? 'Everything' : kind === 'guild' ? 'Server' : kind === 'conversation' ? 'Chat' : kind === 'person' ? 'Person' : kind;

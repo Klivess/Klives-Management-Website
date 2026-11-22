@@ -58,8 +58,8 @@
                 <tbody>
                     <tr v-for="m in merges.data.value" :key="m.mergeId" :class="{ undone: m.undoneAtMs }">
                         <td><OmniscienceV3Time :ms="m.mergedAtMs" mode="absolute" /></td>
-                        <td class="omni-mono">{{ m.fromPersonId }}</td>
-                        <td class="omni-mono">{{ m.intoPersonId }}</td>
+                        <td><NuxtLink :to="omniPersonLink(m.fromPersonId)">{{ m.fromName || name(m.fromPersonId) }}</NuxtLink></td>
+                        <td><NuxtLink :to="omniPersonLink(m.intoPersonId)">{{ m.intoName || name(m.intoPersonId) }}</NuxtLink></td>
                         <td>{{ m.actor }}</td>
                         <td class="omni-muted">{{ m.reason ?? '—' }}<span v-if="m.undoneAtMs"> · undone <OmniscienceV3Time :ms="m.undoneAtMs" mode="age" /></span></td>
                         <td v-if="canMerge" class="actions">
@@ -77,8 +77,9 @@ import { omniGet, omniPost } from '~/scripts/omniscience/api';
 import type { ClaimDto, ClaimPageDto, ExtractionRunDto, ExtractionRunPageDto, MergeRowDto } from '~/scripts/omniscience/contracts';
 import { omniCount, omniPercent } from '~/scripts/omniscience/format';
 import { omniHumanise } from '~/scripts/omniscience/findings';
-import { useOmniAction, useOmniDebounced, useOmniPaged, useOmniResource } from '~/composables/useOmniscienceV3';
+import { omniPersonLink, useOmniAction, useOmniDebounced, useOmniNames, useOmniPaged, useOmniResource } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
+import { watchEffect } from 'vue';
 
 /**
  * How a person's facts came to be: every reading run with what it found and threw away, the
@@ -96,6 +97,9 @@ const claims = useOmniPaged<ClaimDto, string>((cursor, signal) =>
     omniGet<ClaimPageDto>('knowledge/claims', { person: props.personId, verdict: filters.verdict, run: filters.run, cursor, limit: 50 }, signal));
 useOmniDebounced(() => `${filters.verdict}|${filters.run}`, () => { void claims.reload(); }, 50);
 const merges = useOmniResource(signal => omniGet<MergeRowDto[]>('knowledge/persons/merges', { person: props.personId }, signal));
+// The two sides of a merge by name: each person's own, sent with the row (an older server sends none, and the names are asked for).
+const { name, want } = useOmniNames();
+watchEffect(() => want((merges.data.value ?? []).flatMap(m => [m.fromName ? null : m.fromPersonId, m.intoName ? null : m.intoPersonId])));
 
 function refresh() { void runs.reload(); void claims.reload(); void merges.refresh(); }
 defineExpose({ refresh });

@@ -30,7 +30,7 @@
                                 <span class="sub">{{ s.link.site }}{{ s.link.sensitive ? ' · private link (never looked up)' : '' }}{{ s.link.summary ? ` · ${s.link.summary}` : '' }}</span></span></td>
                             <td><span class="omni-chip sm">{{ s.link.kind }}</span></td>
                             <td>{{ s.link.topic?.replace('_', ' / ') ?? '—' }}</td>
-                            <td><NuxtLink v-if="s.personId" :to="personLink(s.personId)">{{ s.personName ?? s.personId }}</NuxtLink><span v-else class="omni-muted">—</span></td>
+                            <td><NuxtLink v-if="s.personId" :to="personLink(s.personId)">{{ omniPersonLabel(s.personName) }}</NuxtLink><span v-else class="omni-muted">—</span></td>
                             <td><button class="where" type="button" :title="`Only links shared in ${s.conversationTitle ?? 'this conversation'}`" @click="onlyIn(s.conversationId, s.conversationTitle)">{{ s.conversationTitle ?? 'a conversation' }}</button></td>
                             <td class="num"><OmniscienceV3Time :ms="s.atMs" mode="age" /></td>
                             <td><button class="omni-btn ghost sm" type="button" @click="follow(s.link.url)">Follow</button></td>
@@ -74,7 +74,7 @@
                         <table class="omni-table" data-testid="track-table">
                             <tbody><tr v-for="s in t.items" :key="s.messageId + s.link.urlId">
                                 <td class="num"><OmniscienceV3Time :ms="s.atMs" /></td>
-                                <td><NuxtLink v-if="s.personId" :to="personLink(s.personId)">{{ s.personName ?? s.personId }}</NuxtLink></td>
+                                <td><NuxtLink v-if="s.personId" :to="personLink(s.personId)">{{ omniPersonLabel(s.personName) }}</NuxtLink></td>
                                 <td>{{ s.conversationTitle ?? '—' }}</td>
                                 <td class="num">{{ s.reactions }} reactions</td>
                             </tr></tbody>
@@ -92,7 +92,7 @@ import { OMNI_BASE, omniGet } from '~/scripts/omniscience/api';
 import type { LinkSearchDto, LinkTrackDto } from '~/scripts/omniscience/contracts';
 import { omniCount } from '~/scripts/omniscience/format';
 import { omniFilterDefaults, omniScopeFilters, type OmniFilterDef } from '~/scripts/omniscience/filters';
-import { useOmniDebounced, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
+import { omniPersonLabel, useOmniDebounced, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
 import { useOmniFilters, useOmniPickLabels } from '~/composables/useOmniFilters';
 

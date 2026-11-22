@@ -37,7 +37,7 @@
                         <div class="row">
                             <span class="omni-chip sm" :title="kindHelp(item.kind)">{{ reviewKindLabel(item.kind) }}</span>
                             <button class="title" type="button" :aria-expanded="expanded === item.itemId" @click="expanded = expanded === item.itemId ? '' : item.itemId">{{ item.title }}</button>
-                            <NuxtLink v-if="item.subjectId" class="omni-muted" :to="subjectLink(item)">{{ name(item.subjectId) }}</NuxtLink>
+                            <NuxtLink v-if="item.subjectId" class="omni-muted" :to="subjectLink(item)">{{ subjectName(item) }}</NuxtLink>
                             <span class="omni-muted"><OmniscienceV3Time :ms="item.createdAtMs" mode="age" /></span>
                             <template v-if="item.state === 'open'">
                                 <template v-if="canReview">
@@ -48,8 +48,7 @@
                             <span v-else class="omni-chip sm" :class="item.state === 'resolved' ? 'ok' : ''">{{ item.state }}{{ item.resolution ? `: ${item.resolution}` : '' }}</span>
                         </div>
                         <div v-if="expanded === item.itemId" class="detail">
-                            <p class="omni-muted">{{ kindHelp(item.kind) }} {{ whereToDecide(item.kind) }}</p>
-                            <OmniscienceV3Json v-if="detailOf(item) != null" :value="detailOf(item)" max-height="260px" />
+                            <OmniscienceV3ReviewDetail :item="item" :can-review="canReview && item.state === 'open'" :can-merge="canMerge" @changed="queue.reload(true)" @open-fact="id => (openFact = id)" />
                             <p v-if="item.resolvedAtMs" class="omni-muted">{{ omniHumanise(item.state) }} by {{ item.actor ?? 'someone' }} <OmniscienceV3Time :ms="item.resolvedAtMs" mode="age" />.</p>
                         </div>
                     </li>
@@ -58,6 +57,7 @@
                     <button class="omni-btn sm" type="button" :disabled="queue.loadingMore.value" @click="queue.loadMore()">{{ queue.loadingMore.value ? 'Loading…' : 'Load more' }}</button>
                 </template>
             </OmniscienceV3Panel>
+            <OmniscienceV3FactDrawer :assertion-id="openFact" :can-review="canReview" @close="openFact = null" @changed="queue.reload(true)" />
         </template>
 
         <!-- ── same person? ─────────────────────────────────────────────────── -->
@@ -77,9 +77,9 @@
                     <ul class="links" data-testid="links-list">
                         <li v-for="l in links.items.value" :key="l.linkId">
                             <div class="pair">
-                                <NuxtLink :to="personLink(l.personA)">{{ name(l.personA) }}</NuxtLink><span class="omni-mono omni-muted">{{ l.identityA }}</span>
+                                <NuxtLink :to="personLink(l.personA)">{{ name(l.personA) }}</NuxtLink><span class="omni-muted account">{{ accountLabel(l.accountA, l.identityA, l.personA) }}</span>
                                 <span class="eq" aria-hidden="true">=</span>
-                                <NuxtLink :to="personLink(l.personB)">{{ name(l.personB) }}</NuxtLink><span class="omni-mono omni-muted">{{ l.identityB }}</span>
+                                <NuxtLink :to="personLink(l.personB)">{{ name(l.personB) }}</NuxtLink><span class="omni-muted account">{{ accountLabel(l.accountB, l.identityB, l.personB) }}</span>
                                 <span class="omni-chip" :class="l.verdict === 'accepted' ? 'ok' : l.verdict === 'rejected' ? '' : 'info'">{{ l.verdict }}</span>
                                 <span class="omni-muted">{{ omniPercent(l.probability) }} · {{ l.independentSignals }} independent sign{{ l.independentSignals === 1 ? '' : 's' }}</span>
                             </div>
@@ -117,12 +117,12 @@
 
 <script setup lang="ts">
 import { computed, ref, watchEffect } from 'vue';
-import { OMNI_BASE, omniGet, omniParse, omniPost } from '~/scripts/omniscience/api';
-import type { IdentityLinkDecisionDto, IdentityLinkDto, IdentityLinkPageDto, KnowledgeReviewItemDto, KnowledgeReviewPageDto, MergeResultDto } from '~/scripts/omniscience/contracts';
+import { omniGet, omniPost } from '~/scripts/omniscience/api';
+import type { IdentityLinkDecisionDto, IdentityLinkDto, IdentityLinkPageDto, KnowledgeReviewItemDto, KnowledgeReviewPageDto, MergeResultDto, ReviewAccountDto } from '~/scripts/omniscience/contracts';
 import { omniPercent } from '~/scripts/omniscience/format';
 import { omniHumanise } from '~/scripts/omniscience/findings';
 import { REVIEW_KINDS, reviewKindLabel } from '~/scripts/omniscience/knowledge';
-import { useOmniAction, useOmniDebounced, useOmniNames, useOmniPaged } from '~/composables/useOmniscienceV3';
+import { omniPersonLink, omniPlatformLabel, useOmniAction, useOmniDebounced, useOmniNames, useOmniPaged } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
 import { useAccess } from '~/composables/useAccess';
 import type { PickedPerson } from '~/components/OmniscienceV3/PersonPick.vue';
@@ -142,21 +142,21 @@ const { busy, run } = useOmniAction();
 const { state: view } = useOmniUrlState({ tab: 'queue' as Tab, state: 'open', kind: '', sort: 'priority', verdict: 'suggested', person: '' });
 const expanded = ref('');
 
-function personLink(id: string): string { return `${OMNI_BASE}/people/${encodeURIComponent(id)}`; }
-function subjectLink(item: KnowledgeReviewItemDto): string { return `${personLink(item.subjectId ?? '')}?tab=knowledge`; }
+function personLink(id: string): string { return omniPersonLink(id); }
+function subjectLink(item: KnowledgeReviewItemDto): string { return omniPersonLink(item.subjectId ?? '', 'knowledge'); }
 function kindHelp(kind: string): string { return REVIEW_KINDS.find(k => k.value === kind)?.help ?? ''; }
-/** Kinds with their own decision screen say where it is, so "Settled" is not the only thing on offer. */
-function whereToDecide(kind: string): string {
-    switch (kind) {
-        case 'alias': return 'Confirm or reject the name on the person’s “What is known” tab.';
-        case 'age_conflict': case 'age_evidence': return 'Confirm or reject each statement under “Age” on the person’s “What is known” tab.';
-        case 'identity_link': return 'Decide it under “Same person?”.';
-        case 'contradiction': case 'possible_change': case 'flapping': case 'rejected_resurfaced': case 'unproven':
-            return 'Open the fact on the person’s “What is known” tab to confirm, reject or correct it.';
-        default: return '';
+/** Who an item is about: the name the server sent with it, else the name asked for (never the id). */
+function subjectName(item: KnowledgeReviewItemDto): string { return (item.subjectId && item.context?.people[item.subjectId]) || name(item.subjectId); }
+/** An account by what it is called ("Discord · @deemarsh"); an older server sends only the account's id, of which the platform is all that is readable. */
+function accountLabel(account: ReviewAccountDto | null | undefined, identityId: string, personId: string): string {
+    if (account) {
+        const called = account.name && account.name !== name(personId) ? account.name : null;
+        return [omniPlatformLabel(account.platform), called, account.handle ? `@${account.handle}` : null].filter(Boolean).join(' · ');
     }
+    const platform = identityId.includes(':') ? identityId.slice(0, identityId.indexOf(':')) : null;
+    return `${omniPlatformLabel(platform)} account`;
 }
-function detailOf(item: KnowledgeReviewItemDto): unknown { return omniParse(item.detailJson); }
+const openFact = ref<string | null>(null);
 
 // ── the queue ──────────────────────────────────────────────────────────────
 const queue = useOmniPaged<KnowledgeReviewItemDto, string>((cursor, signal) =>
@@ -188,8 +188,11 @@ async function undo(link: IdentityLinkDto) {
     if (result) void links.reload(true);
 }
 
-const { want, name } = useOmniNames();
-watchEffect(() => want([...queue.items.value.map(i => i.subjectId), ...links.items.value.flatMap(l => [l.personA, l.personB])]));
+const { want, name, remember } = useOmniNames();
+watchEffect(() => {
+    for (const item of queue.items.value) remember(item.context?.people);
+    want([...queue.items.value.map(i => i.subjectId), ...links.items.value.flatMap(l => [l.personA, l.personB])]);
+});
 
 const mergeA = ref<PickedPerson[]>([]);
 const mergeB = ref<PickedPerson[]>([]);
@@ -197,9 +200,10 @@ const mergeReason = ref('');
 async function merge() {
     const a = mergeA.value[0], b = mergeB.value[0];
     if (!a || !b) return;
-    if (!window.confirm(`Merge ${b.label ?? b.id} into ${a.label ?? a.id}? They become one person. It can be undone.`)) return;
+    const named = (p: PickedPerson) => p.label || name(p.id);
+    if (!window.confirm(`Merge ${named(b)} into ${named(a)}? They become one person. It can be undone.`)) return;
     const result = await run('merge', () => omniPost<MergeResultDto>('knowledge/persons/merge', { personA: a.id, personB: b.id, confirm: true, reason: mergeReason.value.trim() || null }),
-        r => (r.changed ? `Merged: ${r.absorbed} is now part of ${r.survivor}.` : 'They were already one person.'));
+        r => (r.changed ? `Merged: ${named(b)} is now part of ${named(a)}.` : 'They were already one person.'));
     if (!result) return;
     mergeA.value = []; mergeB.value = []; mergeReason.value = '';
 }
@@ -221,6 +225,7 @@ function refreshTab() {
 .links > li { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-bottom: 1px solid var(--omni-line); font-size: 13px; }
 .pair { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .pair .eq { color: var(--omni-muted); font-weight: 600; }
+.pair .account { font-size: 12px; }
 .signals { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .omni-form { display: flex; flex-direction: column; gap: 12px; }
 </style>

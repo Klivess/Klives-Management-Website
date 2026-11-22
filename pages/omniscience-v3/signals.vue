@@ -41,9 +41,9 @@
                     <tbody>
                         <tr v-for="a in alerts.items.value" :key="a.alertId" class="clickable" :class="{ selected: filters.alert === a.alertId }" @click="filters.alert = a.alertId">
                             <td class="num"><OmniscienceV3Time :ms="a.lastHitMs" mode="age" /></td>
-                            <td><span class="cellstack"><span>{{ a.kind === 'radar' ? omniHumanise(a.reason) : `Watch “${a.ruleName ?? a.ruleId}”` }}</span>
+                            <td><span class="cellstack"><span>{{ a.kind === 'radar' ? omniHumanise(a.reason) : (a.ruleName ? `Watch “${a.ruleName}”` : 'A watch rule since deleted') }}</span>
                                 <span class="sub">{{ a.hits[0]?.excerpt ?? '' }}</span></span></td>
-                            <td><NuxtLink v-if="a.personId" :to="personLink(a.personId)" @click.stop>{{ a.personName ?? a.personId }}</NuxtLink><span v-else class="omni-muted">—</span></td>
+                            <td><NuxtLink v-if="a.personId" :to="personLink(a.personId)" @click.stop>{{ omniPersonLabel(a.personName) }}</NuxtLink><span v-else class="omni-muted">—</span></td>
                             <td>{{ a.conversationTitle ?? a.platform }}</td>
                             <td class="num">{{ a.hitCount }}</td>
                             <td><span class="omni-chip" :class="a.state === 'new' ? 'info' : ''">{{ a.state }}</span>
@@ -99,7 +99,7 @@
                     <thead><tr><th>Who</th><th>Message</th><th>Where</th><th class="num">Waiting</th><th v-if="canManage"></th></tr></thead>
                     <tbody>
                         <tr v-for="i in inbox.data.value.items" :key="i.itemId">
-                            <td><NuxtLink :to="personLink(i.personId)">{{ i.personName ?? i.personId }}</NuxtLink>
+                            <td><NuxtLink :to="personLink(i.personId)">{{ omniPersonLabel(i.personName) }}</NuxtLink>
                                 <span v-if="i.live" class="omni-chip sm info">live</span></td>
                             <td><span class="cellstack"><span>{{ i.excerpt ?? '…' }}</span><span class="sub">{{ omniHumanise(i.kind) }} · {{ omniHumanise(i.reason) }}</span></span></td>
                             <td>{{ i.conversationTitle ?? i.platform }}</td>
@@ -206,7 +206,7 @@
                 <ul v-if="wellbeing.data.value" class="notices" data-testid="checkins-list">
                     <li v-for="s in wellbeing.data.value.suggestions" :key="s.suggestionId">
                         <span class="omni-chip sm info">{{ omniHumanise(s.kind) }}</span>
-                        <span class="text"><NuxtLink :to="personLink(s.personId)">{{ s.personName ?? s.personId }}</NuxtLink> · week {{ s.week }}
+                        <span class="text"><NuxtLink :to="personLink(s.personId)">{{ omniPersonLabel(s.personName) }}</NuxtLink> · week {{ s.week }}
                             <span v-if="s.resourceText" class="sub">{{ s.resourceText }}</span></span>
                         <span class="omni-chip sm">{{ s.state }}</span>
                         <template v-if="canManage && s.state === 'new'">
@@ -230,7 +230,7 @@ import type {
 import { omniCount, omniPercent, omniStateTone } from '~/scripts/omniscience/format';
 import { findingText, omniHumanise, waitText } from '~/scripts/omniscience/findings';
 import { omniFilterDefaults, omniScopeFilters } from '~/scripts/omniscience/filters';
-import { useOmniAction, useOmniDebounced, useOmniPaged, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
+import { omniPersonLabel, useOmniAction, useOmniDebounced, useOmniPaged, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
 import { useOmniFilters } from '~/composables/useOmniFilters';
 import { useAccess } from '~/composables/useAccess';

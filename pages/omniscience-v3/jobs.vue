@@ -50,7 +50,7 @@
                 <template #cell-kind="{ row }">
                     <span class="cellstack">
                         <span>{{ row.kind }}</span>
-                        <span class="sub omni-mono">{{ row.moduleId }}<template v-if="row.subjectId"> · {{ row.subjectKind }} {{ row.subjectId }}</template></span>
+                        <span class="sub"><span class="omni-mono">{{ row.moduleId }}</span><template v-if="row.subjectId"> · <OmniscienceV3SelectionItem v-if="omniSubjectKind(row.subjectKind)" :kind="omniSubjectKind(row.subjectKind)!" :item="{ id: row.subjectId! }" @click.stop /><template v-else>{{ subjectText(row) }}</template></template></span>
                     </span>
                 </template>
                 <template #cell-state="{ row }"><span class="omni-chip" :class="omniStateTone(row.state)">{{ row.state }}</span></template>
@@ -107,12 +107,13 @@
                 <section class="omni-section">
                     <h4>Identity</h4>
                     <dl class="omni-kv">
-                        <dt>Subject</dt><dd>{{ job!.subjectId ? `${job!.subjectKind} ${job!.subjectId}` : '—' }}</dd>
-                        <dt>Dedupe key</dt><dd>{{ job!.dedupeKey ?? '—' }}</dd>
+                        <dt>About</dt>
+                        <dd v-if="job!.subjectId && omniSubjectKind(job!.subjectKind)"><span class="omni-muted">{{ omniHumanise(job!.subjectKind ?? '') }}</span> <OmniscienceV3SelectionItem :kind="omniSubjectKind(job!.subjectKind)!" :item="{ id: job!.subjectId! }" /></dd>
+                        <dd v-else>{{ job!.subjectId ? subjectText(job!) : '—' }}</dd>
                         <dt>Parent job</dt>
                         <dd><a v-if="job!.parentJobId" href="#" @click.prevent="filters.job = String(job!.parentJobId)">#{{ job!.parentJobId }}</a><template v-else>—</template></dd>
                         <dt>Tactic run</dt>
-                        <dd><NuxtLink v-if="job!.runId" :to="`${OMNI_BASE}/tactics?run=${encodeURIComponent(job!.runId)}`">{{ job!.runId }}</NuxtLink><template v-else>—</template></dd>
+                        <dd><NuxtLink v-if="job!.runId" :to="`${OMNI_BASE}/tactics?run=${encodeURIComponent(job!.runId)}`">open the run</NuxtLink><template v-else>—</template></dd>
                     </dl>
                     <div class="omni-row" style="margin-top:8px">
                         <NuxtLink class="omni-btn ghost sm" :to="`${OMNI_BASE}/jobs?parentJobId=${job!.jobId}`">Child jobs</NuxtLink>
@@ -133,6 +134,8 @@ import { computed, watch } from 'vue';
 import { OMNI_BASE, omniGet, omniPost } from '~/scripts/omniscience/api';
 import type { DeadJobsRetriedDto, JobActionResultDto, JobPage, JobRecord, Lane } from '~/scripts/omniscience/contracts';
 import { omniDuration, omniStateTone } from '~/scripts/omniscience/format';
+import { omniHumanise } from '~/scripts/omniscience/findings';
+import { omniLooksLikeId, omniSubjectKind } from '~/scripts/omniscience/ids';
 import { useOmniAction, useOmniDebounced, useOmniEngine, useOmniPaged, useOmniResource, useOmniTime } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
 import { useAccess } from '~/composables/useAccess';
@@ -175,6 +178,12 @@ watch(() => filters.job, id => {
     detail.error.value = null;
     if (id) void detail.refresh();
 }, { immediate: true });
+
+/** What a job is about, in words, when it is not a person, server or chat ("Stream: messages"); an id is left out. */
+function subjectText(j: JobRecord): string {
+    const kind = omniHumanise(j.subjectKind || 'subject');
+    return j.subjectId && !omniLooksLikeId(j.subjectId) ? `${kind}: ${j.subjectId}` : kind;
+}
 
 function took(j: JobRecord): string {
     if (!j.startedAtMs) return '—';

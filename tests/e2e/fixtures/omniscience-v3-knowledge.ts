@@ -1,5 +1,5 @@
 import type {
-    AgeBandDto, AgendaDto, AliasDto, AskPlanDto, AssertionDetailDto, ClaimDto, DiscordBotStatusDto, EntityDto, ExtractionRunDto, HypothesisDto, IdentityLinkDecisionDto, IdentityLinkDto,
+    AgeBandDto, AgendaDto, AliasDto, AskPlanDto, AssertionDetailDto, ClaimDto, DiscordBotStatusDto, EntityDto, EvidenceContextDto, ExtractionRunDto, HypothesisDto, IdentityLinkDecisionDto, IdentityLinkDto,
     ImportListDto, ImportPreview, ImportResult, ImportUploadedDto, InquiryReportDto, InquiryRowDto, JobRecord, KnowledgeFactDto, KnowledgeFactsPageDto, KnowledgeProfileDto, KnowledgeReviewItemDto,
     LifeTimelineDto, MediaSearchDto, MediaSearchHitDto, MergeRowDto, PersonNamesDto, PlanItemDto, QualityLabDto, ReplicaBlindSessionDto, ReplicaChatDto, ReplicaChatMessageDto,
     ReplicaEvalItemDto, ReplicaModuleStatusDto, ReplicaPersonDto, ReplicaReadinessDto, ReplicaStreamEventDto, ReplicaVersionDto, ReplicaVersionSummaryDto, StandingQuestionDto, TacticRunDto,
@@ -82,6 +82,51 @@ const review = (itemId: string, kind: string, title: string, over: Partial<Knowl
     resolution: null, actor: null, ...over,
 });
 
+/** A message in context as the server sends it with a review item: who said it, where, when. */
+const said = (messageId: string, author: string, text: string, over: Partial<EvidenceContextDto> = {}): EvidenceContextDto => ({
+    messageId, version: 1, role: 'support', quote: null, weight: 1, sentAtMs: NOW - 2 * DAY, authorPersonId: author, authorName: NAMES[author] ?? null,
+    conversationId: 'discord:900000000000000001', conversationKind: 'text', conversationTitle: 'general', guildId: 'discord:800000000000000001', guildName: 'Synthetic server',
+    platform: 'discord', deleted: false, edited: false, text, ...over,
+});
+
+/** The review queue as the server sends it: each item's detail (with the ids it was raised with) and its context, named. */
+function reviewItems(): KnowledgeReviewItemDto[] {
+    return [
+        review('rv-1', 'contradiction', 'City: Leeds or Bristol?', {
+            priority: 80, detailJson: JSON.stringify({ attribute: 'city', value: 'Leeds', claims: ['cl-1', 'cl-2'] }),
+            context: {
+                people: { 'person-a': 'Synthetic Ada' },
+                messages: [said('m-301', 'person-a', 'synthetic: I moved to Leeds last month', { conversationId: 'conv-dm-a', conversationKind: 'dm', conversationTitle: null, guildId: null, guildName: null })],
+                fact: { attribute: 'city', attributeTitle: 'City', assertionId: 'as-city', value: 'Leeds', status: 'contested', objectPersonId: null, values: ['Leeds', 'Bristol'] },
+            },
+        }),
+        review('rv-2', 'alias', 'Confirm alias "Ads" (nickname) before it is used for alerts', {
+            priority: 40, detailJson: JSON.stringify({ aliasId: 'al-1', alias: 'Ads', scope: 'guild:discord:800000000000000001', usages: 14, speakers: 4 }),
+            context: {
+                people: { 'person-a': 'Synthetic Ada', 'person-b': 'Synthetic Bo' },
+                messages: [said('m-310', 'person-b', 'synthetic: Ads are you climbing tonight?')],
+                alias: { aliasId: 'al-1', alias: 'Ads', nameKind: 'nickname', status: 'accepted', scopeKind: 'guild', scopeId: 'discord:800000000000000001', placeName: 'Synthetic server',
+                    placeKind: 'server', usages: 14, speakers: 4, selfClaims: 0, commonWord: false, firstSeenMs: NOW - 100 * DAY, lastSeenMs: NOW - 2 * DAY },
+            },
+        }),
+        review('rv-3', 'age_conflict', 'Age statements disagree for Synthetic Bo', {
+            subjectId: 'person-b', priority: 90,
+            detailJson: JSON.stringify({ band: 'Unknown', inconsistent: [{ evidenceId: 'age-b1', kind: 'age_now', messageId: 'm-320', assertedAtMs: NOW - 9 * DAY }, { evidenceId: 'age-b2', kind: 'age_now', messageId: 'm-321', assertedAtMs: NOW - 8 * DAY }] }),
+            context: {
+                people: { 'person-b': 'Synthetic Bo' },
+                messages: [said('m-320', 'person-b', "synthetic: I'm 31 next week"), said('m-321', 'person-b', "synthetic: when I was 12 I'm 12 lol")],
+                age: [{ evidenceId: 'age-b1', kind: 'age_now', status: 'accepted', sourceKind: 'self_disclosure', assertedAtMs: NOW - 9 * DAY, messageId: 'm-320', probability: 0.9, quote: "synthetic: I'm 31 next week" },
+                    { evidenceId: 'age-b2', kind: 'age_now', status: 'accepted', sourceKind: 'self_disclosure', assertedAtMs: NOW - 8 * DAY, messageId: 'm-321', probability: 0.6, quote: "synthetic: when I was 12 I'm 12 lol" }],
+            },
+        }),
+        // Settled long ago, by a server that sent no context: its detail is read out in words, and its ids are left out.
+        review('rv-4', 'identity_link', 'These two accounts may be the same person', {
+            state: 'resolved', resolution: 'rejected', resolvedAtMs: NOW - 3 * DAY, actor: 'Klives (e2e)',
+            detailJson: JSON.stringify({ identityA: 'discord:ada', identityB: 'whatsapp:ada', probability: 0.78, signals: ['same_name'] }),
+        }),
+    ];
+}
+
 const inquiryRow = (inquiryId: string, question: string, over: Partial<InquiryRowDto> = {}): InquiryRowDto => ({
     inquiryId, runId: `run-${inquiryId}`, tacticKey: 'x01.ask_yes_no', question, restatement: question, answerType: 'Binary', primarySubjectId: 'person-a', asOfMs: NOW - DAY,
     verdict: 'Yes', probability: 0.82, state: 'answered', feedback: null, standingId: null, createdAtMs: NOW - DAY, ...over,
@@ -152,17 +197,16 @@ export function knowledgeState() {
         aliases: [{ aliasId: 'al-1', personId: 'person-a', alias: 'Ads', nameKind: 'nickname', scopeKind: 'guild', scopeId: 'guild-1', validFromMs: NOW - 100 * DAY, validToMs: null,
             usages: 14, speakers: 4, selfClaims: 0, probability: 0.8, status: 'candidate', commonWord: false, alertEligible: false }] as AliasDto[],
         ageStatements: [{ evidenceId: 'age-1', kind: 'age_now', status: 'accepted', sourceKind: 'self_disclosure', assertedAtMs: NOW - 300 * DAY, messageId: 'm-401', probability: 0.9, quote: "synthetic: I'm 27 now" }] as AgeBandDto['statements'],
-        review: [
-            review('rv-1', 'contradiction', 'City: Leeds or Bristol?', { priority: 80, detailJson: JSON.stringify({ attribute: 'city', values: ['Leeds', 'Bristol'] }) }),
-            review('rv-2', 'alias', 'Is "Ads" a name for Synthetic Ada?', { priority: 40 }),
-            review('rv-3', 'age_conflict', 'Age statements disagree for Synthetic Bo', { subjectId: 'person-b', priority: 90 }),
-        ] as KnowledgeReviewItemDto[],
+        review: reviewItems(),
         links: [{
             linkId: 'lk-1', identityA: 'discord:ada', identityB: 'whatsapp:ada', personA: 'person-a', personB: 'person-e',
             signals: [{ kind: 'same_name', strength: 0.7, detail: 'Both call themselves "Synthetic Ada".' }, { kind: 'shared_contact', strength: 0.5, detail: 'They talk to the same three people.' }],
             independentSignals: 2, probability: 0.78, verdict: 'suggested', judgeJson: null, createdAtMs: NOW - 2 * DAY, updatedAtMs: NOW - 2 * DAY, decidedAtMs: null, mergeId: null,
+            accountA: { platform: 'discord', name: 'Synthetic Ada', handle: 'ada', personId: 'person-a' },
+            accountB: { platform: 'whatsapp', name: 'Ada W', handle: null, personId: 'person-e' },
         }] as IdentityLinkDto[],
-        merges: [{ mergeId: 7, fromPersonId: 'person-a-old', intoPersonId: 'person-a', mergedAtMs: NOW - 50 * DAY, actor: 'Klives', reason: 'same account, renamed', undoneAtMs: null }] as MergeRowDto[],
+        merges: [{ mergeId: 7, fromPersonId: 'person-a-old', intoPersonId: 'person-a', mergedAtMs: NOW - 50 * DAY, actor: 'Klives', reason: 'same account, renamed', undoneAtMs: null,
+            fromName: 'Ada (old account)', intoName: 'Synthetic Ada' }] as MergeRowDto[],
         inquiries: [
             inquiryRow('iq-1', 'Does Synthetic Ada live in Leeds?'),
             inquiryRow('iq-2', 'Is Synthetic Bo still at the bakery?', { primarySubjectId: 'person-b', verdict: 'Uncertain', probability: 0.5, standingId: 'sq-1' }),
@@ -318,6 +362,11 @@ export async function handleKnowledge(key: string, p: URLSearchParams, body: any
             const a = k.aliases.find(x => x.aliasId === body.aliasId);
             if (!a) { await fail(404, 'not_found', 'No such alias.'); return true; }
             a.status = body.verdict === 'confirm' ? 'confirmed' : 'rejected';
+            // As on the server, the decision settles the review item that asked for it.
+            for (const item of k.review.filter(r => r.state === 'open' && r.context?.alias?.aliasId === a.aliasId)) {
+                item.state = 'resolved'; item.resolution = body.verdict; item.resolvedAtMs = NOW; item.actor = 'Klives (e2e)';
+                item.context = { ...item.context!, alias: { ...item.context!.alias!, status: a.status } };
+            }
             await json({ aliasId: a.aliasId, status: a.status }); return true;
         }
         case 'GET knowledge/entities': {

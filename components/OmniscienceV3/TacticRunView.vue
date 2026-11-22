@@ -26,15 +26,15 @@
         </div>
 
         <dl class="omni-kv omni-section">
-            <dt>Tactic</dt><dd>{{ run.tactic }} · v{{ run.tacticVersion }}</dd>
+            <dt>Tactic</dt><dd>{{ tacticTitle }}<span class="omni-muted"> · {{ tacticCode }}v{{ run.tacticVersion }}</span></dd>
             <dt>Started by</dt><dd>{{ run.actor }}</dd>
             <dt>Created</dt><dd><OmniscienceV3Time :ms="run.createdAtMs" seconds /></dd>
             <dt>Finished</dt><dd><OmniscienceV3Time :ms="run.finishedAtMs" seconds /></dd>
             <dt>Took</dt><dd>{{ run.startedAtMs ? omniDuration((run.finishedAtMs ?? now) - run.startedAtMs) : '—' }}</dd>
             <dt>As of</dt><dd><OmniscienceV3Time v-if="run.asOfMs" :ms="run.asOfMs" mode="absolute" /><template v-else>now (when it ran)</template></dd>
             <dt v-if="run.parentRunId">Re-run of</dt>
-            <dd v-if="run.parentRunId"><a href="#" @click.prevent="$emit('open', run.parentRunId!)">{{ run.parentRunId }}</a></dd>
-            <dt v-if="run.playbookRunId">Playbook run</dt><dd v-if="run.playbookRunId">{{ run.playbookRunId }}</dd>
+            <dd v-if="run.parentRunId"><a href="#" @click.prevent="$emit('open', run.parentRunId!)">the run it repeats</a></dd>
+            <dt v-if="run.playbookRunId">Part of</dt><dd v-if="run.playbookRunId"><NuxtLink :to="`${OMNI_BASE}/playbooks`">a playbook run</NuxtLink></dd>
         </dl>
 
         <section class="omni-section">
@@ -49,12 +49,11 @@
                     <div class="omni-row">
                         <span>{{ omniCount(out.selection.items.length) }} {{ out.selection.kind }} item{{ out.selection.items.length === 1 ? '' : 's' }}</span>
                         <span v-if="out.selection.sampled" class="omni-chip warn">sampled from {{ omniCount(out.selection.totalBeforeSampling) }}</span>
-                        <button class="omni-btn sm" type="button" @click="$emit('use', { ...out.selection, origin: `run ${run.runId}` })">Use as input for another tactic</button>
+                        <button class="omni-btn sm" type="button" @click="$emit('use', { ...out.selection, origin: `the “${tacticTitle}” run of ${at(run.createdAtMs)}` })">Use as input for another tactic</button>
                     </div>
                     <ol class="items">
                         <li v-for="item in out.selection.items.slice(0, shown[i] ?? 20)" :key="item.id">
-                            <span class="omni-mono">{{ item.label ?? item.id }}</span>
-                            <span v-if="item.label" class="omni-muted omni-mono id">{{ item.id }}</span>
+                            <OmniscienceV3SelectionItem :kind="out.selection.kind" :item="item" />
                             <span v-if="item.score != null" class="omni-muted"> · {{ item.score.toFixed(3) }}</span>
                         </li>
                     </ol>
@@ -83,8 +82,8 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue';
-import { OmniApiError, omniPost, omniStream, toOmniError } from '~/scripts/omniscience/api';
-import type { RunActionResultDto, Selection, TacticOutput, TacticRunDto, TacticRunStartedDto } from '~/scripts/omniscience/contracts';
+import { OMNI_BASE, OmniApiError, omniPost, omniStream, toOmniError } from '~/scripts/omniscience/api';
+import type { RunActionResultDto, Selection, TacticDescriptor, TacticOutput, TacticRunDto, TacticRunStartedDto } from '~/scripts/omniscience/contracts';
 import { omniCount, omniDuration, omniStateTone } from '~/scripts/omniscience/format';
 import { useOmniAction, useOmniTime } from '~/composables/useOmniscienceV3';
 import { useAccess } from '~/composables/useAccess';
@@ -93,12 +92,16 @@ import { useAccess } from '~/composables/useAccess';
  * One tactic run, followed live: the server streams the run as it stands, each progress event,
  * then the finished run. Results are typed sets, so any of them can be handed to another tactic.
  */
-const props = defineProps<{ runId: string }>();
+const props = defineProps<{
+    runId: string;
+    /** The catalogue, so the run's tactic is called by its title ("Set algebra") rather than its key. */
+    tactics?: readonly TacticDescriptor[];
+}>();
 const emit = defineEmits<{ use: [selection: Selection]; open: [runId: string]; changed: [] }>();
 
 const { can } = useAccess();
 const canRun = computed(() => can('omniscience.tactics.run'));
-const { now } = useOmniTime();
+const { now, at } = useOmniTime();
 const { busy, run: perform } = useOmniAction();
 
 const run = shallowRef<TacticRunDto | null>(null);
@@ -109,6 +112,9 @@ const shown = reactive<Record<number, number>>({});
 let controller: AbortController | null = null;
 
 const terminal = computed(() => ['succeeded', 'failed', 'cancelled'].includes(run.value?.state ?? ''));
+const descriptor = computed(() => props.tactics?.find(t => t.key === run.value?.tactic) ?? null);
+const tacticTitle = computed(() => descriptor.value?.title ?? run.value?.tactic ?? 'tactic');
+const tacticCode = computed(() => (descriptor.value?.code ? `${descriptor.value.code} ` : ''));
 const outputs = computed<TacticOutput[]>(() => (Array.isArray(run.value?.outputs) ? run.value!.outputs as TacticOutput[] : []));
 
 function describe(detail: any): string {

@@ -260,6 +260,7 @@ test('tactics: a schema-generated form, an estimate, a streamed run, and its out
     await expect(drawer.getByTestId('omni-estimate')).toContainText('3 items');
 
     await drawer.getByRole('button', { name: 'Run', exact: true }).click();
+    await expect.poll(() => posts(state, 'tactics/run').length).toBe(1);
     const run = posts(state, 'tactics/run').at(-1)?.body;
     expect(run.tactic).toBe('x27.setalgebra');
     expect(run.parameters).toEqual({ op: 'sort', order: 'Label' });
@@ -273,19 +274,25 @@ test('tactics: a schema-generated form, an estimate, a streamed run, and its out
     await expect(page.getByTestId('omni-output')).toContainText('Synthetic Ada');
     await expect(page.getByTestId('omni-run')).toContainText('Stage: combine — 3 people');
     await expect(page).toHaveURL(/run=run-1/);
+    // The run reads in words: the tactic by its title, its people by name as links, and no id anywhere.
+    await expect(page.getByTestId('omni-run')).toContainText('Set algebra');
+    await expect(page.getByTestId('omni-output').getByRole('link', { name: 'Synthetic Ada' }).first()).toHaveAttribute('href', `${BASE}/people/person-a`);
+    for (const id of ['person-a', 'person-b', 'run-1']) await expect(page.getByTestId('omni-run')).not.toContainText(id);
     await shot(page, 'tactic-run');
 
     // Outputs are inputs: only tactics that take people are offered, and the set arrives pre-filled.
     await page.getByRole('button', { name: 'Use as input for another tactic' }).click();
-    await expect(page.getByTestId('omni-carry')).toContainText('3 Person items from run run-1');
+    // The set says where it came from by the tactic's name and when it ran, never by the run's id.
+    await expect(page.getByTestId('omni-carry')).toContainText('3 Person items from the “Set algebra” run of');
+    await expect(page.getByTestId('omni-carry')).not.toContainText('run-1');
     await expect(catalogue).toHaveCount(2);
     await catalogue.filter({ hasText: 'Save as cohort' }).click();
-    await expect(page.locator('.omni-drawer')).toContainText('from run run-1');
+    await expect(page.locator('.omni-drawer')).toContainText('from the “Set algebra” run of');
     await page.locator('.omni-drawer').getByLabel('name *').fill('Sorted friends');
     await page.locator('.omni-drawer').getByRole('button', { name: 'Run', exact: true }).click();
     await expect.poll(() => posts(state, 'tactics/run').length).toBe(2);
     expect(posts(state, 'tactics/run')[1]!.body.parameters).toEqual({ name: 'Sorted friends' });
-    expect(posts(state, 'tactics/run')[1]!.body.selections[0].origin).toBe('run run-1');
+    expect(posts(state, 'tactics/run')[1]!.body.selections[0].origin).toMatch(/^the “Set algebra” run of 2026-07-01/);
     expect(state.unknown).toEqual([]);
     expect(state.errors).toEqual([]);
 });

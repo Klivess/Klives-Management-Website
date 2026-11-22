@@ -24,7 +24,7 @@
                 <ul v-if="spaces.data.value" class="places" data-testid="spaces-list">
                     <li v-for="s in spaces.data.value.spaces" :key="s.scopeKind + s.scopeId" :class="{ active: isOpen(s.scopeKind, s.scopeId) }">
                         <button type="button" @click="open(s.scopeKind, s.scopeId)">
-                            <span class="title">{{ s.title ?? s.scopeId }}</span>
+                            <span class="title">{{ s.title ?? unnamedPlace(s.scopeKind) }}</span>
                             <span class="omni-muted">{{ s.scopeKind === 'guild' ? 'server' : 'group chat' }}{{ s.platform ? ` · ${s.platform}` : '' }}</span>
                             <span class="omni-muted">{{ omniCount(s.messages) }} messages <span :class="trend(s.messages, s.previousMessages)">{{ change(s.messages, s.previousMessages) }}</span>
                                 · {{ omniCount(s.people) }} people<template v-if="s.aboutKlives"> · {{ omniCount(s.aboutKlives) }} about you</template></span>
@@ -34,12 +34,14 @@
             </OmniscienceV3Panel>
 
             <div class="stack">
-                <OmniscienceV3Panel :title="page.data.value?.title ?? (filters.scopeId ? filters.scopeId : 'A place')"
+                <OmniscienceV3Panel :title="page.data.value?.title ?? openedName" data-testid="space-page"
                                     :subtitle="page.data.value ? `${page.data.value.fromDay} → ${page.data.value.toDay}` : undefined"
-                                    :loading="page.loading.value && !!filters.scopeId" :error="page.error.value" :has-data="!!page.data.value"
-                                    :empty="!filters.scopeId" empty-title="Pick a place" empty-text="Open a server or group chat from the list." @retry="page.refresh()">
+                                    :loading="page.loading.value && !!filters.scopeId" :error="notBuilt ? null : page.error.value" :has-data="!!page.data.value"
+                                    :empty="!filters.scopeId || notBuilt" :empty-title="notBuilt ? 'No page for this place yet' : 'Pick a place'"
+                                    :empty-text="notBuilt ? `Pages are built each night for the busiest servers and group chats.${canManage ? ' Build this one now with the button above.' : ''}` : 'Open a server or group chat from the list.'"
+                                    @retry="page.refresh()">
                     <template v-if="canManage && filters.scopeId" #controls>
-                        <button class="omni-btn sm" type="button" :disabled="busy !== null" data-testid="space-refresh" @click="rebuild()">Rebuild this page</button>
+                        <button class="omni-btn sm" type="button" :disabled="busy !== null" data-testid="space-refresh" @click="rebuild()">{{ notBuilt ? 'Build this page now' : 'Rebuild this page' }}</button>
                     </template>
                     <template v-if="p">
                         <div class="omni-kpis tight">
@@ -61,7 +63,7 @@
                         <table class="omni-table" data-testid="space-core">
                             <thead><tr><th>Person</th><th class="num">Messages</th><th class="num">Share</th><th class="num">Days</th></tr></thead>
                             <tbody><tr v-for="m in p.core" :key="m.personId">
-                                <td><NuxtLink :to="personLink(m.personId)">{{ m.name ?? m.personId }}</NuxtLink></td>
+                                <td><NuxtLink :to="personLink(m.personId)">{{ omniPersonLabel(m.name) }}</NuxtLink></td>
                                 <td class="num">{{ omniCount(m.messages) }}</td><td class="num">{{ omniPercent(m.share) }}</td><td class="num">{{ m.activeDays }}</td>
                             </tr></tbody>
                         </table>
@@ -70,7 +72,7 @@
                         <table class="omni-table">
                             <thead><tr><th>Person</th><th class="num">Recent</th><th class="num">Earlier</th><th></th></tr></thead>
                             <tbody><tr v-for="r in p.rising" :key="r.personId">
-                                <td><NuxtLink :to="personLink(r.personId)">{{ r.name ?? r.personId }}</NuxtLink></td>
+                                <td><NuxtLink :to="personLink(r.personId)">{{ omniPersonLabel(r.name) }}</NuxtLink></td>
                                 <td class="num">{{ omniCount(r.recent) }}</td><td class="num">{{ omniCount(r.earlier) }}</td>
                                 <td><span v-if="r.isNew" class="omni-chip sm info">new</span><span v-if="r.everywhere" class="omni-chip sm" title="As busy everywhere, not just here">everywhere</span></td>
                             </tr></tbody>
@@ -91,7 +93,7 @@
                             <span class="omni-muted">{{ share(p.aboutKlives.sentiment, label) }}</span>
                         </div>
                         <p class="omni-muted">Mostly from: <template v-for="(t, i) in p.aboutKlives.people" :key="t.personId"><template v-if="i">, </template>
-                            <NuxtLink :to="personLink(t.personId)">{{ t.name ?? t.personId }}</NuxtLink> ({{ t.messages }})</template></p>
+                            <NuxtLink :to="personLink(t.personId)">{{ omniPersonLabel(t.name) }}</NuxtLink> ({{ t.messages }})</template></p>
                     </OmniscienceV3Card>
                 </div>
 
@@ -103,12 +105,12 @@
                         <div v-for="f in p.factions" :key="f.factionId" class="faction">
                             <strong>{{ f.size }} people</strong>
                             <span class="omni-muted"><template v-for="(m, i) in f.members" :key="m.personId"><template v-if="i">, </template>
-                                <NuxtLink :to="personLink(m.personId)">{{ m.name ?? m.personId }}</NuxtLink></template></span>
+                                <NuxtLink :to="personLink(m.personId)">{{ omniPersonLabel(m.name) }}</NuxtLink></template></span>
                         </div>
                     </OmniscienceV3Card>
                     <OmniscienceV3Card title="Channels" flush :empty="!p.channels.length">
                         <table class="omni-table"><tbody>
-                            <tr v-for="c in p.channels" :key="c.conversationId"><td>{{ c.title ?? c.conversationId }}</td><td class="num">{{ omniCount(c.messages) }}</td><td class="num">{{ c.people }} people</td></tr>
+                            <tr v-for="c in p.channels" :key="c.conversationId"><td><NuxtLink :to="omniPlaceLink('conversation', c.conversationId)!">{{ c.title ? `#${c.title}` : 'A channel with no name' }}</NuxtLink></td><td class="num">{{ omniCount(c.messages) }}</td><td class="num">{{ c.people }} people</td></tr>
                         </tbody></table>
                     </OmniscienceV3Card>
                 </div>
@@ -127,13 +129,13 @@
                         <div v-for="c in circles.data.value.communities" :key="c.communityId" class="circle">
                             <strong>{{ c.size }} people</strong>
                             <span class="omni-muted"><template v-for="(m, i) in c.top" :key="m.personId"><template v-if="i">, </template>
-                                <NuxtLink :to="personLink(m.personId)">{{ m.name ?? m.personId }}</NuxtLink></template></span>
+                                <NuxtLink :to="personLink(m.personId)">{{ omniPersonLabel(m.name) }}</NuxtLink></template></span>
                         </div>
                     </div>
                     <section v-if="circles.data.value.bridges.length" class="omni-section">
                         <h4>Bridges between circles</h4>
                         <ul><li v-for="b in circles.data.value.bridges" :key="b.personId">
-                            <NuxtLink :to="personLink(b.personId)">{{ b.name ?? b.personId }}</NuxtLink> · {{ omniPercent(b.outsideShare) }} of their ties reach another circle</li></ul>
+                            <NuxtLink :to="personLink(b.personId)">{{ omniPersonLabel(b.name) }}</NuxtLink> · {{ omniPercent(b.outsideShare) }} of their ties reach another circle</li></ul>
                     </section>
                 </template>
             </OmniscienceV3Panel>
@@ -148,7 +150,7 @@
                 <template v-if="map.data.value && map.data.value.points.length">
                     <svg class="map" :viewBox="`${box.x0} ${box.y0} ${box.w} ${box.h}`" role="img" aria-label="People placed by similarity" data-testid="people-map">
                         <a v-for="pt in map.data.value.points" :key="pt.personId" :href="personLink(pt.personId)" @click.prevent="router.push(personLink(pt.personId))">
-                            <circle :cx="pt.x" :cy="pt.y" :r="radius(pt.messages)" :fill="colour(pt.communityId)"><title>{{ pt.name ?? pt.personId }} · {{ omniCount(pt.messages) }} messages</title></circle>
+                            <circle :cx="pt.x" :cy="pt.y" :r="radius(pt.messages)" :fill="colour(pt.communityId)"><title>{{ omniPersonLabel(pt.name) }} · {{ omniCount(pt.messages) }} messages</title></circle>
                         </a>
                     </svg>
                     <p class="omni-muted">Colour is the circle a person belongs to; size is how much they write. Positions carry over between rebuilds, so a person who moves really changed.</p>
@@ -165,8 +167,9 @@ import { OMNI_BASE, omniGet, omniPost } from '~/scripts/omniscience/api';
 import type { CommunitiesDto, InsightsRefreshDto, PeopleMapDto, SpaceListDto, SpacePageDto } from '~/scripts/omniscience/contracts';
 import { omniCount, omniPercent } from '~/scripts/omniscience/format';
 import { omniHumanise } from '~/scripts/omniscience/findings';
-import { useOmniAction, useOmniResource } from '~/composables/useOmniscienceV3';
+import { OMNI_NAMING, omniPersonLabel, omniPlaceLink, useOmniAction, useOmniResource } from '~/composables/useOmniscienceV3';
 import { useOmniUrlState } from '~/composables/useOmniscienceV3';
+import { useOmniPickLabels } from '~/composables/useOmniFilters';
 import { useAccess } from '~/composables/useAccess';
 
 definePageMeta({ layout: 'navbar' });
@@ -193,6 +196,23 @@ const page = useOmniResource(signal => (filters.scopeId
     : Promise.resolve(null as SpacePageDto | null)));
 watch(() => `${filters.scopeKind}|${filters.scopeId}`, () => { page.data.value = null; void page.refresh(); });
 const p = computed(() => page.data.value);
+/** A place opened by a link (a name on the Review page, a person's servers) whose page is not built: said so, with its name. */
+const notBuilt = computed(() => !!filters.scopeId && !page.data.value && (page.error.value?.kind === 'not_found' || page.error.value?.kind === 'not_built'));
+
+// The opened place's name before (or without) its page: from the list, else asked for. Never its id.
+const { labels: placeLabels, want: wantPlace } = useOmniPickLabels();
+watch(() => `${filters.scopeKind}|${filters.scopeId}`, () => {
+    if (filters.scopeId) wantPlace(filters.scopeKind === 'guild' ? 'guild' : 'conversation', [filters.scopeId]);
+}, { immediate: true });
+const openedName = computed(() => {
+    if (!filters.scopeId) return 'A place';
+    const listed = spaces.data.value?.spaces.find(s => s.scopeKind === filters.scopeKind && s.scopeId === filters.scopeId);
+    if (listed?.title) return listed.title;
+    const known = placeLabels.value[`${filters.scopeKind === 'guild' ? 'guild' : 'conversation'}:${filters.scopeId}`];
+    if (known) return known;
+    return spaces.loading.value || page.loading.value ? OMNI_NAMING : unnamedPlace(filters.scopeKind);
+});
+function unnamedPlace(kind: string): string { return kind === 'guild' ? 'A server with no name' : 'A chat with no name'; }
 const maxDay = computed(() => Math.max(1, ...(p.value?.days ?? []).map(d => d.messages)));
 
 const circles = useOmniResource(signal => omniGet<CommunitiesDto>('insights/communities', {}, signal));

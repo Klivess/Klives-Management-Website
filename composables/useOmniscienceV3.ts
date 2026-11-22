@@ -1,6 +1,6 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch, type Ref, type ShallowRef } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { OmniApiError, isOmniAbort, omniFlights, omniGet, omniStreamUrl, onOmniFlights, toOmniError } from '~/scripts/omniscience/api';
+import { OMNI_BASE, OmniApiError, isOmniAbort, omniFlights, omniGet, omniStreamUrl, onOmniFlights, toOmniError } from '~/scripts/omniscience/api';
 import type { PersonNamesDto, Selection, StreamEventDto, V3StatusDto } from '~/scripts/omniscience/contracts';
 import { omniAge, omniInstant, omniUtcIso, type OmniLens } from '~/scripts/omniscience/format';
 
@@ -347,17 +347,25 @@ export function useOmniStream(options: {
 
 // ── people's names ───────────────────────────────────────────────────────────
 
+/** What a person is called on screen when nobody knows a name for them. An id is never shown in its place: nobody can recognise one. */
+export const OMNI_UNNAMED = 'Unnamed person';
+/** What stands in for a name that is still being asked for. */
+export const OMNI_NAMING = '…';
+
 const wantedNames = new Set<string>();
 let namesTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * Names for person ids, for pages whose rows carry only an id (plans, review items, links, past
  * answers). Ids are asked for in one batch a moment after they are wanted, and remembered for the
- * visit. Until a name arrives, and for someone no longer known, the id itself is shown.
+ * visit. Until a name arrives "…" is shown, and "Unnamed person" for someone with no name (or no
+ * longer known): never the id.
  */
 export function useOmniNames() {
     const names = useState<Record<string, string>>('omni-v3:names', () => ({}));
     const asked = useState<Record<string, true>>('omni-v3:names-asked', () => ({}));
+    /** Asked for and answered without a name. */
+    const nameless = useState<Record<string, true>>('omni-v3:names-none', () => ({}));
 
     async function flush() {
         namesTimer = null;
@@ -367,13 +375,24 @@ export function useOmniNames() {
         try {
             const found = await omniGet<PersonNamesDto>('people/names', { ids });
             names.value = { ...names.value, ...found.names };
+            const none = ids.filter(id => !found.names[id]);
+            if (none.length) nameless.value = { ...nameless.value, ...Object.fromEntries(none.map(id => [id, true as const])) };
         } catch {
-            // Without names the ids stay on screen; they can be asked for again on the next visit.
+            // Without names "…" stays on screen; they can be asked for again on the next visit.
             const next = { ...asked.value };
             for (const id of ids) delete next[id];
             asked.value = next;
         }
         if (wantedNames.size) namesTimer = setTimeout(() => { void flush(); }, 30);
+    }
+
+    /** Names a page already has (rows that carry them): nothing needs to be asked for these. */
+    function remember(known: Record<string, string> | null | undefined) {
+        if (!known) return;
+        const fresh = Object.entries(known).filter(([id, value]) => id && value && names.value[id] !== value);
+        if (!fresh.length) return;
+        names.value = { ...names.value, ...Object.fromEntries(fresh) };
+        asked.value = { ...asked.value, ...Object.fromEntries(fresh.map(([id]) => [id, true as const])) };
     }
 
     /** Asks for the names of these ids (those not asked for yet). Safe to call on every render. */
@@ -391,9 +410,36 @@ export function useOmniNames() {
         if (!namesTimer && typeof window !== 'undefined') namesTimer = setTimeout(() => { void flush(); }, 30);
     }
 
-    const name = (id: string | null | undefined): string => (id ? names.value[id] ?? id : '—');
+    const name = (id: string | null | undefined): string => (id ? names.value[id] ?? (nameless.value[id] ? OMNI_UNNAMED : OMNI_NAMING) : '—');
 
-    return { names, want, name };
+    return { names, want, name, remember };
+}
+
+/** A person's name as a row carries it, or "Unnamed person": the id is never shown in its place. */
+export function omniPersonLabel(name: string | null | undefined): string {
+    return name && name.trim() ? name : OMNI_UNNAMED;
+}
+
+/** The link to a person's page (optionally a tab of it). */
+export function omniPersonLink(id: string, tab?: string): string {
+    return `${OMNI_BASE}/people/${encodeURIComponent(id)}${tab ? `?tab=${encodeURIComponent(tab)}` : ''}`;
+}
+
+/** The link to a server's or chat's community page; a direct chat has none. */
+export function omniPlaceLink(scopeKind: 'guild' | 'conversation', id: string | null | undefined, place?: string | null): string | null {
+    if (!id || place === 'dm') return null;
+    return `${OMNI_BASE}/communities?scopeKind=${scopeKind}&scopeId=${encodeURIComponent(id)}`;
+}
+
+/** A platform's name as people write it ("discord" → "Discord"). */
+export function omniPlatformLabel(platform: string | null | undefined): string {
+    if (!platform) return 'An account';
+    switch (platform.toLowerCase()) {
+        case 'whatsapp': return 'WhatsApp';
+        case 'tiktok': return 'TikTok';
+        case 'youtube': return 'YouTube';
+        default: return platform[0]!.toUpperCase() + platform.slice(1);
+    }
 }
 
 // ── handing a set to a tactic ────────────────────────────────────────────────

@@ -454,7 +454,7 @@ const tokenArea = computed(() => {
 // ── runs ──
 const recentRuns = computed<any[]>(() => (Array.isArray(perf.value?.recent) ? perf.value.recent.slice(0, 12) : []));
 // The parts of a model call and of a script have their own cards: listed here beside "Model" and
-// "C# scripts" they would count the same time twice.
+// "Scripts" they would count the same time twice.
 const stages = computed<any[]>(() => (Array.isArray(perf.value?.stages) ? [...perf.value.stages] : [])
   .filter(s => (s.totalMs ?? 0) > 0 && !String(s.name).startsWith('talk.') && !isSubStage(String(s.name)))
   .sort((a, b) => b.totalMs - a.totalMs)

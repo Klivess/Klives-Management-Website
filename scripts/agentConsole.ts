@@ -464,7 +464,7 @@ export function scriptTone(pct: number | null): AgentTone {
 export const STAGE_LABELS: Record<string, string> = {
   preparation: 'Preparation', systemPrompt: 'System prompt', conversationPrompt: 'History', toolDefinitions: 'Tool definitions',
   attachments: 'Attachments', model: 'Model', firstToken: 'First token', modelError: 'Model errors', modelRetry: 'Model retries',
-  retryBackoff: 'Retry wait', firstVisibleText: 'Start → first text', script: 'C# scripts', nativeTool: 'Native tools',
+  retryBackoff: 'Retry wait', firstVisibleText: 'Start → first text', script: 'Scripts', nativeTool: 'Native tools',
   computerTool: 'Computer', waitTool: 'Explicit waits',
   'script.coldCompile': 'First compile of a conversation', 'script.compile': 'Later compiles', 'script.run': 'Script run time',
   'model.queued': 'Queued on this server', 'model.awaiting': 'Waiting for the provider', 'model.reasoning': 'Reasoning',

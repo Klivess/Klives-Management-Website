@@ -4,29 +4,20 @@
 export interface TalkPrefs {
     /** Which composer the KliveAgent page opens with. */
     mode: 'type' | 'talk';
-    /** Hands-free (the mic decides when a turn starts and ends) or hold-to-talk. */
-    handsFree: boolean;
-    /** Multiplies how long a pause ends a turn: lower is snappier, higher is more patient. */
-    sensitivity: number;
     micId: string | null;
-    /** Barge-in can be more eager when the agent's voice cannot leak into the mic. */
-    headphones: boolean;
-    /** null = the server's default voice / speed. */
+    /** A GPT-Live voice; null = the server's default (KliveAgent_LiveVoice). */
     voice: string | null;
-    speed: number | null;
     showLatency: boolean;
 }
 
+// The same key as before GPT-Live, so the page still opens in the mode it was left in; preferences
+// the old talk mode had (hands-free, speed, sensitivity, headphones) are simply dropped.
 const PREFS_KEY = 'kliveagent.talk:v1';
 
 export const DEFAULT_TALK_PREFS: TalkPrefs = {
     mode: 'type',
-    handsFree: true,
-    sensitivity: 1,
     micId: null,
-    headphones: false,
     voice: null,
-    speed: null,
     showLatency: false,
 };
 
@@ -35,7 +26,14 @@ export function loadTalkPrefs(): TalkPrefs {
         const raw = localStorage.getItem(PREFS_KEY);
         if (!raw) return { ...DEFAULT_TALK_PREFS };
         const parsed = JSON.parse(raw);
-        return { ...DEFAULT_TALK_PREFS, ...(parsed && typeof parsed === 'object' ? parsed : {}) };
+        if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_TALK_PREFS };
+        return {
+            mode: parsed.mode === 'talk' ? 'talk' : 'type',
+            micId: typeof parsed.micId === 'string' ? parsed.micId : null,
+            // A Kokoro voice from the old talk mode means nothing to GPT-Live.
+            voice: typeof parsed.voice === 'string' && !/^[a-z]{2}_/.test(parsed.voice) ? parsed.voice : null,
+            showLatency: parsed.showLatency === true,
+        };
     } catch {
         return { ...DEFAULT_TALK_PREFS };
     }

@@ -7,9 +7,6 @@
       :aria-label="orbTitle"
       data-testid="talk-orb"
       @click="onOrbClick"
-      @pointerdown="onOrbDown"
-      @pointerup="onOrbUp"
-      @pointerleave="onOrbUp"
     >
       <span class="tb-orb-glow" :style="{ transform: `scale(${orbScale})` }"></span>
       <KliveChatIcon :name="talk.muted ? 'mic-off' : talk.state === 'speaking' ? 'volume' : 'mic'" :size="20" />
@@ -18,11 +15,11 @@
     <div class="tb-main">
       <div class="tb-state" data-testid="talk-state">
         <span class="tb-dot"></span>{{ stateLabel }}<span v-if="toolDetail" class="tb-detail"> · {{ toolDetail }}</span>
+        <span v-if="usageText" class="tb-usage" data-testid="talk-usage" :title="usageTitle">{{ usageText }}</span>
       </div>
       <div class="tb-caption" :class="{ 'is-final': talk.captionFinal }" data-testid="talk-caption">{{ captionText }}</div>
       <div v-if="talk.prefs.showLatency && talk.timing" class="tb-latency" data-testid="talk-latency">
-        end of speech {{ ms(talk.timing.endpointMs) }} · transcript {{ talk.timing.sttReused ? 'ready at the pause' : ms(talk.timing.sttMs) }}
-        · first audio {{ ms(talk.timing.firstAudioMs) }}
+        voice answered after {{ ms(talk.timing.voiceMs) }} · KliveAgent's first words after {{ ms(talk.timing.agentMs) }}
       </div>
       <div v-if="talk.error" class="tb-error" role="alert">{{ talk.error }}</div>
     </div>
@@ -46,40 +43,19 @@
 
     <div v-if="settingsOpen" class="tb-settings" data-testid="talk-settings-panel">
       <label class="tb-row">
-        <span>Voice</span>
-        <select :value="talk.prefs.voice ?? ''" @change="setVoice($event.target.value)">
+        <span>Voice <small>(a new voice starts a new call)</small></span>
+        <select :value="talk.prefs.voice ?? ''" data-testid="talk-voice" @change="setVoice($event.target.value)">
           <option value="">Default ({{ defaultVoice }})</option>
           <option v-for="v in talk.voices" :key="v.id" :value="v.id">{{ v.name && v.name !== v.id ? `${v.name} (${v.id})` : v.id }}</option>
         </select>
-      </label>
-      <label class="tb-row">
-        <span>Speed <small>{{ (talk.prefs.speed ?? 1).toFixed(2) }}×</small></span>
-        <input type="range" min="0.8" max="1.4" step="0.05" :value="talk.prefs.speed ?? 1"
-          @change="talk.updatePrefs({ speed: Number($event.target.value) })">
-      </label>
-      <div class="tb-row">
-        <span>Turns</span>
-        <div class="tb-seg">
-          <button type="button" class="tb-seg-btn" :class="{ 'is-on': talk.prefs.handsFree }" @click="talk.updatePrefs({ handsFree: true })">Hands-free</button>
-          <button type="button" class="tb-seg-btn" :class="{ 'is-on': !talk.prefs.handsFree }" @click="talk.updatePrefs({ handsFree: false })">Hold to talk</button>
-        </div>
-      </div>
-      <label class="tb-row">
-        <span>Pause before replying <small>{{ talk.prefs.sensitivity < 0.9 ? 'snappy' : talk.prefs.sensitivity > 1.2 ? 'patient' : 'normal' }}</small></span>
-        <input type="range" min="0.6" max="1.6" step="0.1" :value="talk.prefs.sensitivity"
-          @change="talk.updatePrefs({ sensitivity: Number($event.target.value) })">
-      </label>
-      <label class="tb-row tb-check">
-        <input type="checkbox" :checked="talk.prefs.headphones" @change="talk.updatePrefs({ headphones: $event.target.checked })">
-        <span>I'm on headphones <small>(interrupting reacts faster)</small></span>
       </label>
       <label class="tb-row tb-check">
         <input type="checkbox" :checked="talk.prefs.showLatency" @change="talk.updatePrefs({ showLatency: $event.target.checked })">
         <span>Show latency</span>
       </label>
       <p class="tb-note">
-        {{ talk.detectorKind === 'energy' ? 'Speech detection: loudness (the Silero model did not load).' : talk.detectorKind ? 'Speech detection: Silero VAD.' : '' }}
-        Ctrl+. switches modes. In hold-to-talk, hold Space or the mic.
+        Voice: {{ talk.model || 'GPT-Live' }} (OpenAI). It listens while it speaks, so just talk over it to interrupt.
+        Esc stops it talking; Ctrl+. switches modes.
       </p>
     </div>
   </div>
@@ -103,16 +79,24 @@ const stateLabel = computed(() => {
   switch (props.talk.state) {
     case 'starting': return 'Starting…';
     case 'connecting': return 'Connecting…';
-    case 'listening': return props.talk.muted ? 'Muted' : props.talk.prefs.handsFree ? 'Listening' : 'Hold Space or the mic to talk';
+    case 'listening': return props.talk.muted ? 'Muted' : 'Listening';
     case 'hearing': return 'Hearing you…';
-    case 'transcribing': return 'Got it…';
-    case 'thinking': return 'Thinking…';
+    case 'thinking': return 'KliveAgent is thinking…';
     case 'tool': return 'Working';
     case 'speaking': return 'Speaking · talk or press Esc to interrupt';
+    case 'standby': return props.talk.muted ? 'Muted' : 'Standing by · just talk';
     case 'error': return 'Talk mode stopped';
     default: return 'Talk mode is off';
   }
 });
+
+const usageText = computed(() => {
+  const u = props.talk.usage;
+  if (!u || !(u.seconds > 0)) return '';
+  const minutes = u.seconds / 60;
+  return `${minutes < 10 ? minutes.toFixed(1) : Math.round(minutes)} min · $${u.costUsd.toFixed(2)}`;
+});
+const usageTitle = computed(() => 'GPT-Live time on this call and what it cost (standby is billed lower)');
 
 const toolDetail = computed(() => props.talk.state === 'tool' && props.talk.detail
   ? String(props.talk.detail).replace(/^running\s+/i, '').replace(/_/g, ' ')
@@ -125,19 +109,10 @@ const orbScale = computed(() => {
   return 1 + Math.min(1, level || 0) * 0.55;
 });
 
-const orbTitle = computed(() => props.talk.state === 'speaking' ? 'Interrupt'
-  : props.talk.prefs.handsFree ? 'Listening hands-free' : 'Hold to talk');
+const orbTitle = computed(() => props.talk.state === 'speaking' ? 'Stop talking' : 'Listening hands-free');
 
 function onOrbClick() {
   if (props.talk.state === 'speaking') props.talk.interrupt();
-}
-function onOrbDown(event) {
-  if (props.talk.prefs.handsFree) return;
-  event.currentTarget?.setPointerCapture?.(event.pointerId);
-  props.talk.pttDown();
-}
-function onOrbUp() {
-  if (!props.talk.prefs.handsFree) props.talk.pttUp();
 }
 function setVoice(value) {
   props.talk.updatePrefs({ voice: value || null });
@@ -240,6 +215,8 @@ function ms(value) {
 .is-error .tb-dot { background: #c96464; }
 
 .tb-detail { color: #aeb2c6; font-weight: 500; }
+.tb-usage { margin-left: auto; color: #7c8196; font-weight: 500; font-size: 11px; font-variant-numeric: tabular-nums; }
+.is-standby .tb-dot { background: #6f6a8f; }
 
 .tb-caption {
   color: #8e8e8e;

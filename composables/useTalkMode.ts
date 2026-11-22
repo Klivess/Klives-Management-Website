@@ -1,23 +1,24 @@
-/* Talk mode: a hands-free spoken conversation with KliveAgent over one WebSocket.
+/* Talk mode: a hands-free spoken conversation with KliveAgent, voiced by OpenAI's GPT-Live.
 
-   Mic → voice-activity detector → turn-taking (endpointer) → 16 kHz PCM streamed while Klives speaks.
-   Server → transcripts, state, and the reply as synthesised segments, played back to back.
+   Browser ⇄ OpenAI (WebRTC): the microphone goes up and the voice comes down directly; transcripts
+   arrive on the "oai-events" data channel. GPT-Live hears, takes turns and handles interruptions.
+   Browser ⇄ KliveAgent (/kliveagent/voice): the page sends its WebRTC offer and gets OpenAI's answer
+   back (the server holds the key and the session's configuration), then hears what KliveAgent is
+   doing: each spoken request as a turn, tools, state, minutes used.
+   KliveAgent ⇄ OpenAI (the server's sideband): GPT-Live delegates every real request to KliveAgent,
+   which answers through it.
 
    Browser APIs are only touched inside start() and the handlers it installs, so this is SSR-safe. */
 
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { BuildKliveWsUrl } from '~/scripts/APIInterface';
 import { describeMediaError } from '~/scripts/klivechat/call';
-import { DEFAULT_ENDPOINTER, Endpointer, HEADPHONE_BARGE_IN, toPcm16, type EndpointerEvent } from '~/scripts/talk/endpointer';
-import { startDetector, type Detector } from '~/scripts/talk/detector';
-import { TalkPlayer } from '~/scripts/talk/player';
 import { DEFAULT_TALK_PREFS, loadTalkPrefs, saveTalkPrefs, type TalkPrefs } from '~/scripts/talk/prefs';
 
-export type TalkState = 'off' | 'starting' | 'connecting' | 'listening' | 'hearing' | 'transcribing'
-    | 'thinking' | 'tool' | 'speaking' | 'error';
+export type TalkState = 'off' | 'starting' | 'connecting' | 'listening' | 'hearing' | 'thinking' | 'tool' | 'speaking'
+    | 'standby' | 'error';
 
 export interface TalkTurnEvent {
-    utt: number;
     text: string;
     clientMessageId: string;
     requestId: string | null;
@@ -28,21 +29,29 @@ export interface TalkTurnEvent {
 }
 
 export interface TalkTiming {
-    endpointMs?: number;
-    sttMs?: number;
-    sttReused?: boolean;
-    firstAudioMs?: number;
+    /** From the end of his words to the voice starting to answer. */
+    voiceMs?: number;
+    /** From the voice handing the request over to KliveAgent's first words reaching it. */
+    agentMs?: number;
+}
+
+export interface TalkUsage {
+    seconds: number;
+    costUsd: number;
+    final: boolean;
 }
 
 export interface TalkHandlers {
-    /** A spoken turn reached the agent: show it, and follow its run. */
+    /** A spoken request reached the agent: show it, and follow its run. */
     onTurn?: (event: TalkTurnEvent) => void;
-    /** A local command ("stop", "say that again") was handled without the agent. */
+    /** A local command ("stop", "say that again") was handled without a new agent turn. */
     onCommand?: (command: string, text: string) => void;
 }
 
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 5000, 10000];
-const FILLER_AFTER_MS = 1200;
+const ICE_GATHER_MS = 3000;
+const NEW_UTTERANCE_AFTER_MS = 1200;
+const SPEAKING_HOLD_MS = 600;
 
 export function useTalkMode(handlers: TalkHandlers = {}) {
     const prefs = reactive<TalkPrefs>({ ...DEFAULT_TALK_PREFS });
@@ -56,46 +65,50 @@ export function useTalkMode(handlers: TalkHandlers = {}) {
     const voiceLevel = ref(0);
     const error = ref('');
     const muted = ref(false);
-    const pttHeld = ref(false);
     const voices = ref<{ id: string; name: string }[]>([]);
-    const serverSettings = ref<Record<string, unknown> | null>(null);
-    const detectorKind = ref<'' | 'silero' | 'energy'>('');
+    const serverSettings = ref<Record<string, any> | null>(null);
     const timing = ref<TalkTiming | null>(null);
+    const usage = ref<TalkUsage | null>(null);
+    const model = ref('');
 
-    const endpointer = new Endpointer();
     let ctx: AudioContext | null = null;
-    let player: TalkPlayer | null = null;
     let stream: MediaStream | null = null;
-    let detector: Detector | null = null;
+    let pc: RTCPeerConnection | null = null;
+    let channel: RTCDataChannel | null = null;
+    let output: HTMLAudioElement | null = null;
+    let micAnalyser: AnalyserNode | null = null;
+    let voiceAnalyser: AnalyserNode | null = null;
     let socket: WebSocket | null = null;
     let conversationId = '';
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let reconnectAttempt = 0;
     let uiTimer: ReturnType<typeof setInterval> | null = null;
-    let bufferTimer: ReturnType<typeof setInterval> | null = null;
-    let fillerTimer: ReturnType<typeof setTimeout> | null = null;
+    let hushTimer: ReturnType<typeof setTimeout> | null = null;
     let takenOver = false;
-    const segmentMeta = new Map<string, string>();
-    let currentTurn = 0;
-    let audibleTurn = 0;
-    let fillerTurn = 0;
-    let lastCommitAt = 0;
-    let awaitingFirstAudio = false;
+    let generation = 0;
+    let lastHeardAt = 0;
+    let lastVoiceAt = 0;
+    let awaitingVoice = false;
+    let delegatedAt = 0;
+    let awaitingAgent = false;
+    let toolState: 'thinking' | 'tool' | null = null;
+    let standby = false;
+    let heardText = '';
+    let voiceText = '';
 
     onMounted(() => Object.assign(prefs, loadTalkPrefs()));
     onBeforeUnmount(() => {
         void stop();
         try { void ctx?.close(); } catch { /* closed */ }
         ctx = null;
-        player = null;
     });
 
     // ── Lifecycle ──
 
-    /** Must be called from a click or key press: that gesture is what lets audio play. */
+    /** Must be called from a click or key press: that gesture is what lets the voice play. */
     async function start(forConversation: string) {
         if (active.value) {
-            if (forConversation !== conversationId) switchConversation(forConversation);
+            if (forConversation !== conversationId) { conversationId = forConversation; restart(); }
             return;
         }
         error.value = '';
@@ -106,24 +119,16 @@ export function useTalkMode(handlers: TalkHandlers = {}) {
         try {
             ctx ??= new AudioContext();
             const resumed = ctx.resume();
-            if (!player) {
-                player = new TalkPlayer(ctx);
-                player.onTurnAudible = onTurnAudible;
-                player.onIdle = onPlaybackIdle;
-            }
+            output ??= createOutput();
+            // Unlock playback inside the gesture; the voice's stream is attached once WebRTC connects.
+            void output.play().catch(() => { /* nothing to play yet */ });
             await resumed;
             stream = await acquireMic();
             if (!active.value) { releaseMic(); return; }
-            const prefer = (window as unknown as { __kliveTalkVad?: 'silero' | 'energy' }).__kliveTalkVad;
-            detector = await startDetector({ ctx, stream, onFrame, prefer });
-            detectorKind.value = detector.kind;
-            if (!active.value) { await detector.stop(); detector = null; releaseMic(); return; }
-            applyEndpointerPrefs();
+            micAnalyser = analyse(stream);
+            if (muted.value) stream.getAudioTracks().forEach(track => { track.enabled = false; });
             connect();
-            uiTimer = setInterval(() => { voiceLevel.value = player?.level() ?? 0; }, 60);
-            bufferTimer = setInterval(() => {
-                if (player?.playing) send({ t: 'buffer', aheadMs: Math.round(player.aheadMs) });
-            }, 250);
+            uiTimer = setInterval(tick, 60);
         } catch (e) {
             error.value = e instanceof Error ? e.message : String(e);
             await stop();
@@ -138,17 +143,32 @@ export function useTalkMode(handlers: TalkHandlers = {}) {
         caption.value = '';
         if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
         if (uiTimer) { clearInterval(uiTimer); uiTimer = null; }
-        if (bufferTimer) { clearInterval(bufferTimer); bufferTimer = null; }
-        if (fillerTimer) { clearTimeout(fillerTimer); fillerTimer = null; }
-        player?.stop();
-        endpointer.reset();
+        if (hushTimer) { clearTimeout(hushTimer); hushTimer = null; }
+        teardownCall(true);
         const closing = socket;
         socket = null;
         try { closing?.close(1000, 'talk mode off'); } catch { /* closed */ }
-        if (detector) { await detector.stop(); detector = null; }
         releaseMic();
+        micAnalyser = null;
         micLevel.value = 0;
         voiceLevel.value = 0;
+    }
+
+    /** A new GPT-Live session for the same conversation (a new voice, a lost or expired session). */
+    function restart() {
+        teardownCall(true);
+        const old = socket;
+        socket = null;
+        connected.value = false;
+        try { old?.close(1000, 'restarting'); } catch { /* closed */ }
+        connect();
+    }
+
+    function createOutput(): HTMLAudioElement {
+        const el = new Audio();
+        el.autoplay = true;
+        (el as any).playsInline = true;
+        return el;
     }
 
     async function acquireMic(): Promise<MediaStream> {
@@ -177,293 +197,318 @@ export function useTalkMode(handlers: TalkHandlers = {}) {
         stream = null;
     }
 
-    // ── Socket ──
+    function analyse(source: MediaStream): AnalyserNode | null {
+        if (!ctx) return null;
+        try {
+            const node = ctx.createAnalyser();
+            node.fftSize = 512;
+            ctx.createMediaStreamSource(source).connect(node);
+            return node;
+        } catch { return null; }
+    }
+
+    const buffer = new Float32Array(512);
+    function levelOf(node: AnalyserNode | null): number {
+        if (!node) return 0;
+        node.getFloatTimeDomainData(buffer);
+        let sum = 0;
+        for (let i = 0; i < buffer.length; i++) sum += buffer[i] * buffer[i];
+        return Math.min(1, Math.sqrt(sum / buffer.length) * 6);
+    }
+
+    function tick() {
+        micLevel.value = muted.value ? 0 : levelOf(micAnalyser);
+        const level = levelOf(voiceAnalyser);
+        voiceLevel.value = level;
+        const now = performance.now();
+        if (level > 0.04) {
+            lastVoiceAt = now;
+            noteVoiceStarted(now);
+        }
+        refreshState(now);
+    }
+
+    function refreshState(now = performance.now()) {
+        if (!active.value || !connected.value || state.value === 'error') return;
+        let next: TalkState;
+        if (now - lastVoiceAt < SPEAKING_HOLD_MS) next = 'speaking';
+        else if (now - lastHeardAt < SPEAKING_HOLD_MS) next = 'hearing';
+        else if (toolState) next = toolState;
+        else if (standby) next = 'standby';
+        else next = 'listening';
+        if (state.value !== next) state.value = next;
+    }
+
+    // ── KliveAgent's socket ──
 
     function connect() {
         if (!active.value) return;
-        state.value = connected.value ? state.value : 'connecting';
-        const url = BuildKliveWsUrl('/kliveagent/talk', {
-            conversationId,
-            voice: prefs.voice,
-            speed: prefs.speed,
-            format: 'wav',
-        });
-        const ws = new WebSocket(url);
-        ws.binaryType = 'arraybuffer';
+        const mine = ++generation;
+        state.value = 'connecting';
+        const ws = new WebSocket(BuildKliveWsUrl('/kliveagent/voice', { conversationId }));
         socket = ws;
         ws.onmessage = event => {
-            if (socket !== ws) return;
-            if (typeof event.data === 'string') onMessage(event.data);
-            else onBinary(event.data as ArrayBuffer);
+            if (socket !== ws || typeof event.data !== 'string') return;
+            void onServerMessage(event.data, mine);
         };
         ws.onclose = event => {
             if (socket !== ws) return;
             socket = null;
             connected.value = false;
-            endpointer.reset();
+            teardownCall(false);
             if (!active.value || takenOver) return;
             if (event.code === 4003 || event.code === 4403 || event.code === 4400) {
                 error.value = event.reason || 'Talk mode is not available.';
                 void stop().then(() => { state.value = 'error'; });
                 return;
             }
-            state.value = 'connecting';
-            const delay = RECONNECT_DELAYS_MS[Math.min(reconnectAttempt, RECONNECT_DELAYS_MS.length - 1)];
-            reconnectAttempt += 1;
-            reconnectTimer = setTimeout(connect, delay);
+            scheduleReconnect();
         };
     }
 
-    function switchConversation(next: string) {
-        conversationId = next;
-        player?.stop();
-        endpointer.reset();
-        const old = socket;
-        socket = null;
-        connected.value = false;
-        try { old?.close(1000, 'conversation changed'); } catch { /* closed */ }
-        connect();
+    function scheduleReconnect() {
+        if (!active.value || reconnectTimer) return;
+        state.value = 'connecting';
+        const delay = RECONNECT_DELAYS_MS[Math.min(reconnectAttempt, RECONNECT_DELAYS_MS.length - 1)];
+        reconnectAttempt += 1;
+        reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            restart();
+        }, delay);
     }
 
     function send(payload: Record<string, unknown>) {
         if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
     }
 
-    function sendAudio(utt: number, frame: Float32Array) {
-        if (socket?.readyState !== WebSocket.OPEN) return;
-        const pcm = toPcm16(frame);
-        const message = new Uint8Array(3 + pcm.byteLength);
-        message[0] = 0x02;
-        message[1] = (utt >> 8) & 0xff;
-        message[2] = utt & 0xff;
-        message.set(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength), 3);
-        socket.send(message);
-    }
-
-    function onMessage(raw: string) {
+    async function onServerMessage(raw: string, mine: number) {
         let m: any;
         try { m = JSON.parse(raw); } catch { return; }
         switch (m.t) {
             case 'ready':
-                connected.value = true;
-                reconnectAttempt = 0;
                 serverSettings.value = m.settings ?? null;
-                player?.resetTurns();
-                currentTurn = audibleTurn = fillerTurn = 0;
-                segmentMeta.clear();
-                state.value = 'listening';
+                model.value = m.settings?.model ?? '';
+                voices.value = Array.isArray(m.settings?.voices) ? m.settings.voices.map((id: string) => ({ id, name: id })) : [];
+                if (m.unavailable) {
+                    error.value = m.unavailable;
+                    await stop();
+                    state.value = 'error';
+                    return;
+                }
+                await call(mine);
                 break;
-            case 'voices':
-                voices.value = Array.isArray(m.voices) ? m.voices : [];
-                break;
-            case 'partial':
-                if (m.utt === endpointer.utterance && endpointer.speaking) {
-                    caption.value = m.text;
-                    captionFinal.value = false;
-                    endpointer.setHint(m.utt, m.hint);
+            case 'answer':
+                if (mine !== generation || !pc) return;
+                try {
+                    await pc.setRemoteDescription({ type: 'answer', sdp: m.sdp });
+                    model.value = m.model ?? model.value;
+                } catch (e) {
+                    error.value = 'The voice could not connect: ' + (e instanceof Error ? e.message : String(e));
+                    scheduleReconnect();
                 }
                 break;
-            case 'turn':
-                caption.value = m.text;
+            case 'live':
+                connected.value = true;
+                reconnectAttempt = 0;
+                refreshState();
+                break;
+            case 'delegation':
+                delegatedAt = performance.now();
+                awaitingAgent = true;
+                toolState = 'thinking';
+                break;
+            case 'heard':
+                caption.value = m.text ?? '';
                 captionFinal.value = true;
+                break;
+            case 'turn':
                 handlers.onTurn?.(m as TalkTurnEvent);
                 break;
+            case 'said':
+                if (awaitingAgent) {
+                    awaitingAgent = false;
+                    timing.value = { ...(timing.value ?? {}), agentMs: Math.round(performance.now() - delegatedAt) };
+                }
+                break;
             case 'state':
-                applyServerState(m.state, m.detail);
-                break;
-            case 'tool':
-                if (m.phase === 'start') scheduleFiller();
-                break;
-            case 'turn_start':
-                currentTurn = m.turn;
-                player?.beginTurn(m.turn);
-                break;
-            case 'segment':
-                if (m.skipped) void player?.enqueue(m.turn, m.seq, m.text ?? '', null);
-                else segmentMeta.set(`${m.turn}:${m.seq}`, m.text ?? '');
-                break;
-            case 'turn_end':
-                if (!player?.playing && state.value !== 'hearing') state.value = 'listening';
-                break;
-            case 'timing':
-                timing.value = { ...(timing.value ?? {}), endpointMs: m.endpointMs, sttMs: m.sttMs, sttReused: m.sttReused, firstAudioMs: undefined };
-                break;
-            case 'discarded':
-                caption.value = '';
-                if (state.value === 'transcribing') state.value = 'listening';
+                detail.value = m.detail ?? '';
+                toolState = m.state === 'thinking' || m.state === 'tool' ? m.state : null;
+                refreshState();
                 break;
             case 'command':
-                handlers.onCommand?.(m.command, m.text);
+                handlers.onCommand?.(m.command, m.text ?? '');
                 break;
-            case 'stop_audio':
-                player?.stop();
-                endpointer.setPlaying(false);
+            case 'usage':
+                usage.value = { seconds: Number(m.seconds ?? 0), costUsd: Number(m.costUsd ?? 0), final: !!m.final };
+                break;
+            case 'standby':
+                standby = !!m.paused;
+                refreshState();
                 break;
             case 'error':
                 error.value = m.message || 'Something went wrong.';
+                if (m.fatal) {
+                    teardownCall(true);
+                    if (m.code === 'openai') { await stop(); state.value = 'error'; }
+                    else scheduleReconnect();
+                }
                 break;
             case 'closed':
-                takenOver = true;
-                error.value = m.reason || 'Talk mode moved to another tab.';
-                void stop();
+                if (m.takenOver) {
+                    takenOver = true;
+                    error.value = m.reason || 'Talk mode moved to another tab.';
+                    void stop();
+                    return;
+                }
+                // GPT-Live ended the session (its time limit, or a lost connection): start a fresh one.
+                if (active.value && m.reason !== 'close_requested') scheduleReconnect();
                 break;
         }
     }
 
-    function onBinary(data: ArrayBuffer) {
-        const bytes = new Uint8Array(data);
-        if (bytes.length < 3 || !player) return;
-        const view = new DataView(data);
-        if (bytes[0] === 0x01 && bytes.length > 5) {
-            const turn = view.getUint16(1);
-            const seq = view.getUint16(3);
-            const key = `${turn}:${seq}`;
-            const text = segmentMeta.get(key) ?? '';
-            segmentMeta.delete(key);
-            void player.enqueue(turn, seq, text, data.slice(5));
-        } else if (bytes[0] === 0x03) {
-            void player.setFiller(view.getUint16(1), data.slice(3));
-        }
-    }
+    // ── The WebRTC call with GPT-Live ──
 
-    function applyServerState(next: TalkState, nextDetail?: string) {
-        detail.value = nextDetail ?? '';
-        // While audio plays the face of the conversation is "speaking", whatever the run is doing.
-        if (player?.playing && next !== 'hearing') return;
-        if (endpointer.speaking && next !== 'transcribing') return;
-        state.value = next;
-    }
-
-    // ── Audio in ──
-
-    function onFrame(probability: number, frame: Float32Array) {
-        let sum = 0;
-        for (let i = 0; i < frame.length; i++) sum += frame[i] * frame[i];
-        micLevel.value = Math.min(1, Math.sqrt(sum / frame.length) * 6);
-        if (!connected.value || muted.value) return;
-        endpointer.setPlaying(!!player?.playing);
-        handle(endpointer.process(probability, frame));
-    }
-
-    function handle(events: EndpointerEvent[]) {
-        for (const event of events) {
-            switch (event.type) {
-                case 'bargeIn':
-                    interrupt();
-                    break;
-                case 'start':
-                    send({ t: 'speech_start', utt: event.utt });
-                    caption.value = '';
-                    captionFinal.value = false;
-                    state.value = 'hearing';
-                    break;
-                case 'audio':
-                    sendAudio(event.utt, event.frame);
-                    break;
-                case 'pause':
-                    send({ t: 'pause', utt: event.utt });
-                    break;
-                case 'resume':
-                    send({ t: 'resume', utt: event.utt });
-                    break;
-                case 'commit':
-                    send({ t: 'commit', utt: event.utt, endpointMs: event.endpointMs });
-                    lastCommitAt = performance.now();
-                    awaitingFirstAudio = true;
-                    player?.earcon();
-                    state.value = 'transcribing';
-                    break;
-                case 'cancel':
-                    send({ t: 'cancel_utt', utt: event.utt });
-                    state.value = 'listening';
-                    break;
+    async function call(mine: number) {
+        if (!stream || !active.value) return;
+        teardownCall(false);
+        const peer = new RTCPeerConnection();
+        pc = peer;
+        peer.ontrack = event => {
+            if (pc !== peer || !output) return;
+            const remote = event.streams[0] ?? new MediaStream([event.track]);
+            output.srcObject = remote;
+            void output.play().catch(() => { /* a later gesture plays it */ });
+            voiceAnalyser = analyse(remote);
+        };
+        peer.onconnectionstatechange = () => {
+            if (pc !== peer) return;
+            if (peer.connectionState === 'failed') {
+                error.value = 'The voice connection failed.';
+                scheduleReconnect();
             }
+        };
+        stream.getTracks().forEach(track => peer.addTrack(track, stream!));
+        const events = peer.createDataChannel('oai-events');
+        channel = events;
+        events.onmessage = event => { if (channel === events) onLiveEvent(event.data); };
+        events.onopen = () => { if (muted.value) sendLive({ type: 'session.input_audio.mute' }); };
+
+        await peer.setLocalDescription(await peer.createOffer());
+        await iceGathered(peer);
+        if (pc !== peer || mine !== generation) return;
+        send({ t: 'offer', sdp: peer.localDescription?.sdp ?? '', voice: prefs.voice });
+    }
+
+    function iceGathered(peer: RTCPeerConnection): Promise<void> {
+        if (peer.iceGatheringState === 'complete') return Promise.resolve();
+        return new Promise(resolve => {
+            const done = () => { peer.removeEventListener('icegatheringstatechange', check); clearTimeout(timer); resolve(); };
+            const check = () => { if (peer.iceGatheringState === 'complete') done(); };
+            const timer = setTimeout(done, ICE_GATHER_MS);
+            peer.addEventListener('icegatheringstatechange', check);
+        });
+    }
+
+    function sendLive(event: Record<string, unknown>) {
+        if (channel?.readyState === 'open') channel.send(JSON.stringify(event));
+    }
+
+    function teardownCall(hangUp: boolean) {
+        if (hangUp) sendLive({ type: 'session.close' });
+        const peer = pc;
+        pc = null;
+        channel = null;
+        voiceAnalyser = null;
+        if (output) output.srcObject = null;
+        try { peer?.close(); } catch { /* closed */ }
+        toolState = null;
+        standby = false;
+    }
+
+    function onLiveEvent(raw: string) {
+        let e: any;
+        try { e = JSON.parse(raw); } catch { return; }
+        const now = performance.now();
+        switch (e.type) {
+            case 'session.started':
+                connected.value = true;
+                reconnectAttempt = 0;
+                break;
+            case 'session.input_transcript.delta':
+                if (now - lastHeardAt > NEW_UTTERANCE_AFTER_MS) heardText = '';
+                heardText += e.delta ?? '';
+                lastHeardAt = now;
+                awaitingVoice = true;
+                caption.value = heardText.trim();
+                captionFinal.value = false;
+                break;
+            case 'session.output_transcript.delta':
+                if (now - lastVoiceAt > NEW_UTTERANCE_AFTER_MS) voiceText = '';
+                voiceText += e.delta ?? '';
+                lastVoiceAt = now;
+                noteVoiceStarted(now);
+                if (now - lastHeardAt > SPEAKING_HOLD_MS) { caption.value = voiceText.trim(); captionFinal.value = true; }
+                break;
+            case 'session.input_audio.muted':
+                muted.value = true;
+                break;
+            case 'session.input_audio.unmuted':
+                muted.value = false;
+                break;
+            case 'session.paused':
+                standby = true;
+                break;
+            case 'session.resumed':
+                standby = false;
+                break;
+            case 'error':
+                if (e.error?.message) error.value = e.error.message;
+                break;
         }
+        refreshState(now);
     }
 
-    /** Stop the agent's voice now (barge-in, the interrupt button, or Escape). */
+    function noteVoiceStarted(now: number) {
+        if (!awaitingVoice || lastHeardAt === 0) return;
+        awaitingVoice = false;
+        const ms = Math.round(now - lastHeardAt);
+        timing.value = { ...(timing.value ?? {}), voiceMs: ms };
+        send({ t: 'first_audio', ms });
+    }
+
+    // ── Controls ──
+
+    /** Stop the voice now (the button, or Escape): the rest of the current answer stays unsaid. */
     function interrupt() {
-        const heard = player?.stop();
-        endpointer.setPlaying(false);
-        if (heard) send({ t: 'interrupt', turn: heard.turn, heardText: heard.heardText });
+        send({ t: 'hush' });
+        if (!output) return;
+        output.muted = true;
+        if (hushTimer) clearTimeout(hushTimer);
+        hushTimer = setTimeout(() => { hushTimer = null; if (output) output.muted = false; }, 1500);
     }
 
-    function pttDown() {
-        if (!connected.value || muted.value) return;
-        pttHeld.value = true;
-        handle(endpointer.pttDown());
-    }
-
-    function pttUp() {
-        if (!pttHeld.value) return;
-        pttHeld.value = false;
-        handle(endpointer.pttUp());
+    /** Cancel what KliveAgent is doing for the conversation. */
+    function stopRun() {
+        send({ t: 'stop_run' });
     }
 
     function setMuted(value: boolean) {
         muted.value = value;
         stream?.getAudioTracks().forEach(track => { track.enabled = !value; });
-        if (value && endpointer.speaking) {
-            send({ t: 'cancel_utt', utt: endpointer.utterance });
-            endpointer.reset();
-            state.value = 'listening';
-        }
-    }
-
-    // ── Audio out ──
-
-    function onTurnAudible(turn: number) {
-        audibleTurn = turn;
-        state.value = 'speaking';
-        endpointer.setPlaying(true);
-        if (awaitingFirstAudio) {
-            awaitingFirstAudio = false;
-            const ms = Math.round(performance.now() - lastCommitAt);
-            timing.value = { ...(timing.value ?? {}), firstAudioMs: ms };
-            send({ t: 'first_audio', turn, ms });
-        }
-    }
-
-    function onPlaybackIdle() {
-        endpointer.setPlaying(false);
-        if (state.value === 'speaking') state.value = 'listening';
-    }
-
-    /** A tool that runs a while with nothing said yet gets a short "one sec". */
-    function scheduleFiller() {
-        if (fillerTimer) clearTimeout(fillerTimer);
-        const turn = currentTurn;
-        fillerTimer = setTimeout(() => {
-            fillerTimer = null;
-            if (state.value !== 'tool' || audibleTurn === turn || fillerTurn === turn) return;
-            if (performance.now() - lastCommitAt < FILLER_AFTER_MS) return;
-            if (player?.playFiller()) fillerTurn = turn;
-        }, FILLER_AFTER_MS);
-    }
-
-    // ── Preferences ──
-
-    function applyEndpointerPrefs() {
-        endpointer.configure({
-            sensitivity: prefs.sensitivity,
-            ...(prefs.headphones
-                ? HEADPHONE_BARGE_IN
-                : { bargeInProb: DEFAULT_ENDPOINTER.bargeInProb, bargeInMs: DEFAULT_ENDPOINTER.bargeInMs }),
-        });
-        endpointer.setHandsFree(prefs.handsFree);
+        sendLive({ type: value ? 'session.input_audio.mute' : 'session.input_audio.unmute' });
     }
 
     function updatePrefs(update: Partial<TalkPrefs>) {
-        const voiceChanged = ('voice' in update && update.voice !== prefs.voice) || ('speed' in update && update.speed !== prefs.speed);
+        const voiceChanged = 'voice' in update && update.voice !== prefs.voice;
         Object.assign(prefs, update);
         saveTalkPrefs({ ...prefs });
-        applyEndpointerPrefs();
-        if (voiceChanged) send({ t: 'config', voice: prefs.voice, speed: prefs.speed });
+        // GPT-Live fixes the voice when a session starts: a new voice is a new session.
+        if (voiceChanged && active.value) restart();
     }
 
     return {
-        prefs, active, connected, state, detail, caption, captionFinal, micLevel, voiceLevel, error, muted, pttHeld,
-        voices, serverSettings, detectorKind, timing,
-        start, stop, interrupt, pttDown, pttUp, setMuted, updatePrefs,
+        prefs, active, connected, state, detail, caption, captionFinal, micLevel, voiceLevel, error, muted,
+        voices, serverSettings, timing, usage, model,
+        start, stop, interrupt, stopRun, setMuted, updatePrefs,
     };
 }

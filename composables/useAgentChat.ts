@@ -632,19 +632,10 @@ export function useAgentChat(options: { agentReady: Ref<boolean>; threadEl: Ref<
     void talk.start(id);
   });
 
-  const isTypingTarget = (target: EventTarget | null) => {
-    const el = target as HTMLElement | null;
-    return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable || !!el.closest?.('.crd'));
-  };
-
+  // GPT-Live listens while it speaks, so there is no hold-to-talk: Escape is the one talk key besides Ctrl+.
   function onTalkKeyDown(event: KeyboardEvent) {
     if (event.ctrlKey && event.key === '.') { event.preventDefault(); toggleTalkMode(); return; }
-    if (!talk.active) return;
-    if (event.key === 'Escape') { talk.interrupt(); return; }
-    if (event.code === 'Space' && !talk.prefs.handsFree && !event.repeat && !isTypingTarget(event.target)) { event.preventDefault(); talk.pttDown(); }
-  }
-  function onTalkKeyUp(event: KeyboardEvent) {
-    if (talk.active && event.code === 'Space' && !talk.prefs.handsFree && !isTypingTarget(event.target)) { event.preventDefault(); talk.pttUp(); }
+    if (talk.active && event.key === 'Escape') talk.interrupt();
   }
 
   function dismissLive() { liveOpen.value = false; liveDismissed.value = true; }
@@ -686,7 +677,6 @@ export function useAgentChat(options: { agentReady: Ref<boolean>; threadEl: Ref<
   function start() {
     active = true;
     window.addEventListener('keydown', onTalkKeyDown);
-    window.addEventListener('keyup', onTalkKeyUp);
     const ask = takeAskFromUrl();
     if (ask) {
       void startFromAsk(ask);
@@ -697,7 +687,6 @@ export function useAgentChat(options: { agentReady: Ref<boolean>; threadEl: Ref<
   function stop() {
     active = false;
     window.removeEventListener('keydown', onTalkKeyDown);
-    window.removeEventListener('keyup', onTalkKeyUp);
     void talk.stop();
     detachLocalRun();
   }

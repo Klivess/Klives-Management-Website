@@ -1,56 +1,21 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
 import { expect, test, type Page, type WebSocketRoute } from '@playwright/test';
 import { openDashboard } from './fixtures/dashboard-api';
 
 /**
- * Talk mode end to end in a real Chromium: a fake microphone "speaks" (a 1.2 s chord, then silence,
- * looped), the page detects the turn, streams it, and commits it; a mocked talk socket plays the
- * server's part (provisional transcript, accepted turn, a spoken reply). Checks the protocol the page
- * speaks, that the turn and its reply land in the conversation, that the reply is played (first-audio
- * report) and cut off when Klives talks over it, and that the mode survives a reload.
+ * Talk mode on GPT-Live, end to end in a real Chromium with a real WebRTC call.
  *
- * The loudness detector is forced for the conversation tests (a chord is not speech to Silero); a
- * separate test checks that the Silero model and its runtime load from /talk/.
+ * OpenAI is played by a second RTCPeerConnection inside the page (window.__fakeLive): it answers the
+ * page's offer, sends a tone as "the voice", and speaks GPT-Live's data-channel events (session.started,
+ * transcripts). KliveAgent's /kliveagent/voice socket is mocked: it relays the offer to the fake peer
+ * and answers with what the server sends (the answer, the delegated turn, state, usage).
+ *
+ * Checks: the page sends a real SDP offer and applies the answer; transcripts become captions; a
+ * delegated turn lands in the conversation as a spoken message and its run's reply follows; the voice
+ * speaking is noticed and the latency reported; Escape asks the server to hush the voice; mute and
+ * hang-up reach GPT-Live over the data channel; a new voice starts a new call; the mode survives a reload.
  */
 
 const API = 'https://klive.dev';
-
-function wav(samples: Float32Array, rate: number): Buffer {
-    const data = Buffer.alloc(samples.length * 2);
-    for (let i = 0; i < samples.length; i++) data.writeInt16LE(Math.round(Math.max(-1, Math.min(1, samples[i])) * 32767), i * 2);
-    const header = Buffer.alloc(44);
-    header.write('RIFF', 0);
-    header.writeUInt32LE(36 + data.length, 4);
-    header.write('WAVEfmt ', 8);
-    header.writeUInt32LE(16, 16);
-    header.writeUInt16LE(1, 20);
-    header.writeUInt16LE(1, 22);
-    header.writeUInt32LE(rate, 24);
-    header.writeUInt32LE(rate * 2, 28);
-    header.writeUInt16LE(2, 32);
-    header.writeUInt16LE(16, 34);
-    header.write('data', 36);
-    header.writeUInt32LE(data.length, 40);
-    return Buffer.concat([header, data]);
-}
-
-function chord(seconds: number, rate: number, silenceAfter = 0): Float32Array {
-    const out = new Float32Array(Math.round((seconds + silenceAfter) * rate));
-    for (let i = 0; i < Math.round(seconds * rate); i++) {
-        const t = i / rate;
-        out[i] = 0.18 * Math.sin(2 * Math.PI * 220 * t) + 0.12 * Math.sin(2 * Math.PI * 330 * t);
-    }
-    return out;
-}
-
-const VOICE = resolve(tmpdir(), 'kliveagent-talk-e2e-voice.wav');
-mkdirSync(resolve(VOICE, '..'), { recursive: true });
-writeFileSync(VOICE, wav(chord(1.2, 48_000, 2.8), 48_000));
-
-// A five-second "reply", long enough to still be playing when the microphone loop speaks again.
-const REPLY = wav(chord(5, 24_000), 24_000);
 
 test.describe.configure({ timeout: 120_000 });
 test.use({
@@ -58,51 +23,91 @@ test.use({
         args: [
             '--use-fake-device-for-media-stream',
             '--use-fake-ui-for-media-stream',
-            `--use-file-for-fake-audio-capture=${VOICE}`,
             '--autoplay-policy=no-user-gesture-required',
+            // Two peers in one page find each other by their real local addresses, not mDNS names.
+            '--disable-features=WebRtcHideLocalIpsWithMdns',
         ],
     },
     permissions: ['microphone'],
 });
 
-interface FakeTalkServer {
-    messages: any[];
-    audioFrames: number;
-    urls: string[];
+/** OpenAI's side of the call, inside the page. */
+async function installFakeLive(page: Page) {
+    await page.addInitScript(() => {
+        const live: any = { received: [] as any[], channel: null as RTCDataChannel | null, peers: 0 };
+        live.answer = async (offer: string) => {
+            const peer = new RTCPeerConnection();
+            live.peers += 1;
+            const ctx = new AudioContext();
+            const tone = ctx.createOscillator();
+            const gain = ctx.createGain();
+            gain.gain.value = 0;
+            const out = ctx.createMediaStreamDestination();
+            tone.connect(gain).connect(out);
+            tone.start();
+            live.speak = (on: boolean) => { gain.gain.value = on ? 0.5 : 0; };
+            out.stream.getTracks().forEach(track => peer.addTrack(track, out.stream));
+            peer.ondatachannel = event => {
+                live.channel = event.channel;
+                event.channel.onmessage = e => live.received.push(JSON.parse(e.data));
+                event.channel.onopen = () => live.send({ type: 'session.started', event_id: 'e0', session: { id: 'live_e2e', status: 'active' } });
+            };
+            await peer.setRemoteDescription({ type: 'offer', sdp: offer });
+            await peer.setLocalDescription(await peer.createAnswer());
+            await new Promise<void>(resolve => {
+                if (peer.iceGatheringState === 'complete') return resolve();
+                const timer = setTimeout(resolve, 3000);
+                peer.addEventListener('icegatheringstatechange', () => {
+                    if (peer.iceGatheringState === 'complete') { clearTimeout(timer); resolve(); }
+                });
+            });
+            return peer.localDescription!.sdp;
+        };
+        live.send = (event: any) => { if (live.channel?.readyState === 'open') live.channel.send(JSON.stringify(event)); };
+        (window as any).__fakeLive = live;
+    });
 }
 
-async function mockTalkSocket(page: Page): Promise<FakeTalkServer> {
-    const server: FakeTalkServer = { messages: [], audioFrames: 0, urls: [] };
-    await page.routeWebSocket(/\/kliveagent\/talk/, (ws: WebSocketRoute) => {
+interface FakeVoiceServer {
+    messages: any[];
+    urls: string[];
+    offers: any[];
+    socket: WebSocketRoute | null;
+}
+
+async function mockVoiceSocket(page: Page): Promise<FakeVoiceServer> {
+    const server: FakeVoiceServer = { messages: [], urls: [], offers: [], socket: null };
+    await page.routeWebSocket(/\/kliveagent\/(voice|talk)/, (ws: WebSocketRoute) => {
         server.urls.push(ws.url());
-        let turns = 0;
-        ws.send(JSON.stringify({ t: 'ready', conversationId: 'conv', settings: { voice: 'bm_george', speed: 1, format: 'wav' } }));
-        ws.send(JSON.stringify({ t: 'voices', voices: [{ id: 'bm_george', name: 'George' }, { id: 'af_heart', name: 'Heart' }] }));
-        ws.onMessage(message => {
-            if (typeof message !== 'string') {
-                server.audioFrames += 1;
-                return;
-            }
+        server.socket = ws;
+        ws.send(JSON.stringify({
+            t: 'ready', conversationId: 'conv',
+            settings: { model: 'gpt-live-1.1', voice: 'marin', voices: ['marin', 'cedar', 'sage'], idleSeconds: 20, thinking: 'low' },
+        }));
+        ws.onMessage(async message => {
+            if (typeof message !== 'string') return;
             const m = JSON.parse(message);
             server.messages.push(m);
-            if (m.t === 'pause') ws.send(JSON.stringify({ t: 'partial', utt: m.utt, text: 'Check the trader.', hint: 'complete' }));
-            if (m.t === 'commit' && turns === 0) {
-                turns += 1;
-                ws.send(JSON.stringify({ t: 'timing', utt: m.utt, endpointMs: m.endpointMs, sttMs: 0, sttReused: true }));
-                ws.send(JSON.stringify({ t: 'turn', utt: m.utt, text: 'Check the trader.', clientMessageId: 'spk_e2e_turn_one', requestId: 'talk-run', steering: false, accepted: true }));
-                ws.send(JSON.stringify({ t: 'turn_start', turn: 1 }));
-                ws.send(JSON.stringify({ t: 'segment', turn: 1, seq: 1, text: 'The trader is up and trading normally.', format: 'wav', ms: 5000 }));
-                const frame = Buffer.alloc(5 + REPLY.length);
-                frame[0] = 0x01;
-                frame.writeUInt16BE(1, 1);
-                frame.writeUInt16BE(1, 3);
-                REPLY.copy(frame, 5);
-                ws.send(frame);
-                ws.send(JSON.stringify({ t: 'turn_end', turn: 1, spoken: 'The trader is up and trading normally.' }));
+            if (m.t === 'offer') {
+                server.offers.push(m);
+                const sdp = await page.evaluate(offer => (window as any).__fakeLive.answer(offer), m.sdp as string);
+                ws.send(JSON.stringify({ t: 'answer', sdp, sessionId: 'live_e2e', model: 'gpt-live-1.1', voice: m.voice ?? 'marin' }));
             }
         });
     });
     return server;
+}
+
+/** What the server says once GPT-Live has delegated "Check the trader." to KliveAgent. */
+function delegate(server: FakeVoiceServer) {
+    const ws = server.socket!;
+    ws.send(JSON.stringify({ t: 'delegation', id: 'item_1' }));
+    ws.send(JSON.stringify({ t: 'heard', text: 'Check the trader.' }));
+    ws.send(JSON.stringify({ t: 'turn', text: 'Check the trader.', clientMessageId: 'spk_e2e_turn_one', requestId: 'talk-run', steering: false, accepted: true }));
+    ws.send(JSON.stringify({ t: 'state', state: 'tool', detail: 'running read_trader' }));
+    ws.send(JSON.stringify({ t: 'said', text: 'The trader is up and trading normally.' }));
+    ws.send(JSON.stringify({ t: 'state', state: 'listening' }));
+    ws.send(JSON.stringify({ t: 'usage', seconds: 30, costUsd: 0.025, final: false }));
 }
 
 /** The dev server occasionally aborts the first navigation to a cold page; one retry tells that
@@ -129,10 +134,12 @@ async function mockRun(page: Page) {
     }));
 }
 
-test('a spoken turn is detected, streamed, answered aloud and can be talked over', async ({ page }) => {
+const liveReceived = (page: Page) => page.evaluate(() => (window as any).__fakeLive.received.map((e: any) => e.type) as string[]);
+
+test('a spoken conversation runs over WebRTC with GPT-Live, and KliveAgent answers through it', async ({ page }) => {
     await openDashboard(page, 'Klives');
-    await page.addInitScript(() => { (window as any).__kliveTalkVad = 'energy'; });
-    const server = await mockTalkSocket(page);
+    await installFakeLive(page);
+    const server = await mockVoiceSocket(page);
     await mockRun(page);
     await openKliveAgent(page);
 
@@ -141,39 +148,68 @@ test('a spoken turn is detected, streamed, answered aloud and can be talked over
     await toggle.click();
     await expect(page.getByTestId('talk-bar')).toBeVisible();
 
-    // The socket names the conversation and carries the credential the way every KliveAPI socket does.
+    // The voice socket names the conversation; the old Whisper/Kokoro socket is never opened.
     await expect.poll(() => server.urls.length).toBeGreaterThan(0);
     const url = new URL(server.urls[0]);
+    expect(url.pathname).toBe('/kliveagent/voice');
     expect(url.searchParams.get('conversationId')).toMatch(/^conv_/);
-    expect(url.searchParams.get('format')).toBe('wav');
 
-    // Turn-taking: start, audio while speaking, a pause (answered with a provisional transcript), a commit.
-    await expect.poll(() => server.messages.map(m => m.t), { timeout: 20_000 })
-        .toEqual(expect.arrayContaining(['speech_start', 'pause', 'commit']));
-    expect(server.audioFrames).toBeGreaterThan(20); // ~32 ms frames for over a second of "speech"
-    const commit = server.messages.find(m => m.t === 'commit');
-    expect(commit.endpointMs).toBeGreaterThanOrEqual(256);
-    expect(commit.endpointMs).toBeLessThan(1200);
+    // A real SDP offer goes up (microphone and the oai-events data channel), and the answer connects.
+    await expect.poll(() => server.offers.length, { timeout: 20_000 }).toBe(1);
+    expect(server.offers[0].sdp).toMatch(/^v=0\r\n/);
+    expect(server.offers[0].sdp).toContain('m=audio');
+    expect(server.offers[0].sdp).toContain('m=application');
+    await expect(page.getByTestId('talk-state')).toContainText('Listening', { timeout: 20_000 });
 
-    // The turn lands in the conversation as a spoken message, and its run's reply follows.
+    // GPT-Live hears him: the transcript is the caption.
+    await page.evaluate(() => {
+        const live = (window as any).__fakeLive;
+        live.send({ type: 'session.input_transcript.delta', event_id: 'e1', delta: 'Check', start_ms: 0, end_ms: 300 });
+        live.send({ type: 'session.input_transcript.delta', event_id: 'e2', delta: ' the trader.', start_ms: 300, end_ms: 900 });
+    });
+    await expect(page.getByTestId('talk-caption')).toContainText('Check the trader.');
+
+    // The delegated turn lands in the conversation as a spoken message, and its run's reply follows.
+    delegate(server);
     const chat = page.getByTestId('kax-thread');
     await expect(chat).toContainText('Check the trader.');
     await expect(chat.locator('[data-testid="msg-user"] [data-testid="msg-spoken"]')).toHaveCount(1);
     await expect(chat).toContainText('The trader is up and trading normally.');
+    await expect(page.getByTestId('talk-usage')).toContainText('0.5 min · $0.03');
 
-    // The reply is played (the page reports when its first audio started)...
+    // The voice answers (audio and its transcript): the page notices and reports the latency.
+    await page.evaluate(() => {
+        const live = (window as any).__fakeLive;
+        live.speak(true);
+        live.send({ type: 'session.output_transcript.delta', event_id: 'e3', delta: 'The trader is up.', start_ms: 1500, end_ms: 2600 });
+    });
     await expect.poll(() => server.messages.find(m => m.t === 'first_audio'), { timeout: 15_000 }).toBeTruthy();
-    // ...and when the microphone "speaks" again over it, the reply is cut off and reported.
-    await expect.poll(() => server.messages.find(m => m.t === 'interrupt'), { timeout: 15_000 })
-        .toMatchObject({ t: 'interrupt', turn: 1 });
+    await expect(page.getByTestId('talk-state')).toContainText('Speaking');
+    await expect(page.getByTestId('talk-caption')).toContainText('The trader is up.'); // the voice's words while it speaks
 
-    // Settings show the voices the server offered.
+    // Escape asks the server to hush the voice.
+    await page.keyboard.press('Escape');
+    await expect.poll(() => server.messages.some(m => m.t === 'hush')).toBe(true);
+    await page.evaluate(() => (window as any).__fakeLive.speak(false));
+
+    // Mute reaches GPT-Live over the data channel.
+    await page.getByTestId('talk-mute').click();
+    await expect.poll(() => liveReceived(page)).toContain('session.input_audio.mute');
+    await page.getByTestId('talk-mute').click();
+    await expect.poll(() => liveReceived(page)).toContain('session.input_audio.unmute');
+
+    // Settings list GPT-Live's voices; a new voice is a new call with that voice.
     await page.getByTestId('talk-settings').click();
-    await expect(page.getByTestId('talk-settings-panel')).toContainText('George');
-    await expect(page.getByTestId('talk-settings-panel')).toContainText('loudness');
+    await expect(page.getByTestId('talk-settings-panel')).toContainText('cedar');
+    await expect(page.getByTestId('talk-settings-panel')).toContainText('gpt-live-1.1');
+    await page.getByTestId('talk-voice').selectOption('cedar');
+    await expect.poll(() => server.offers.length, { timeout: 20_000 }).toBe(2);
+    expect(server.offers[1].voice).toBe('cedar');
 
-    // Back to typing, and the remembered mode survives a reload (waiting for a tap, as audio needs one).
+    // Back to typing hangs up; the remembered mode survives a reload (waiting for a tap, as audio needs one).
+    await expect(page.getByTestId('talk-state')).toContainText('Listening', { timeout: 20_000 });
     await page.getByTestId('talk-exit').click();
+    await expect.poll(() => liveReceived(page)).toContain('session.close');
     await expect(chat.locator('textarea')).toBeVisible();
     await page.keyboard.press('Control+.');
     await expect(page.getByTestId('talk-bar')).toBeVisible();
@@ -181,40 +217,16 @@ test('a spoken turn is detected, streamed, answered aloud and can be talked over
     await expect(page.getByTestId('talk-toggle')).toHaveClass(/is-resumable/, { timeout: 30_000 });
 });
 
-test('hold-to-talk commits the moment the key is released', async ({ page }) => {
+test('a voice the server cannot start is reported, not retried forever', async ({ page }) => {
     await openDashboard(page, 'Klives');
-    await page.addInitScript(() => {
-        (window as any).__kliveTalkVad = 'energy';
-        localStorage.setItem('kliveagent.talk:v1', JSON.stringify({ handsFree: false }));
-    });
-    const server = await mockTalkSocket(page);
-    await mockRun(page);
-    await openKliveAgent(page);
-    await expect(page.getByTestId('talk-toggle')).toBeEnabled({ timeout: 30_000 });
-    await page.getByTestId('talk-toggle').click();
-    await expect(page.getByTestId('talk-state')).toContainText('Hold Space', { timeout: 15_000 });
-
-    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); // Space is not typing
-    await page.keyboard.down('Space');
-    await page.waitForTimeout(900);
-    await page.keyboard.up('Space');
-
-    await expect.poll(() => server.messages.find(m => m.t === 'commit'), { timeout: 10_000 }).toMatchObject({ endpointMs: 0 });
-    expect(server.messages.filter(m => m.t === 'speech_start')).toHaveLength(1);
-});
-
-test('the Silero speech detector loads from this site', async ({ page }) => {
-    await openDashboard(page, 'Klives');
-    await mockTalkSocket(page);
-    const assets: string[] = [];
-    page.on('request', request => {
-        const url = new URL(request.url());
-        if (url.pathname.startsWith('/talk/')) assets.push(url.pathname);
+    await page.routeWebSocket(/\/kliveagent\/voice/, ws => {
+        ws.send(JSON.stringify({
+            t: 'ready', conversationId: 'conv', settings: { model: 'gpt-live-1.1', voice: 'marin', voices: ['marin'] },
+            unavailable: 'The OpenAI router is switched off on the KliveLLM page.',
+        }));
     });
     await openKliveAgent(page);
     await expect(page.getByTestId('talk-toggle')).toBeEnabled({ timeout: 30_000 });
     await page.getByTestId('talk-toggle').click();
-    await page.getByTestId('talk-settings').click();
-    await expect(page.getByTestId('talk-settings-panel')).toContainText('Silero VAD', { timeout: 45_000 });
-    expect(assets).toEqual(expect.arrayContaining(['/talk/ort.wasm.min.js', '/talk/vad.bundle.min.js', '/talk/silero_vad_v5.onnx']));
+    await expect(page.getByText('The OpenAI router is switched off')).toBeVisible({ timeout: 15_000 });
 });

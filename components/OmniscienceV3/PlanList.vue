@@ -6,7 +6,11 @@
                     <OmniscienceV3Time :ms="when(p)" mode="absolute" /><span v-if="p.allDay" class="omni-muted"> · all day</span>
                     <span class="omni-muted rel"> · {{ age(when(p)) }}</span>
                 </template>
-                <span v-else class="omni-muted">no date</span>
+                <!-- Most plans in chat name no date: when they were said is then the one time there is to show. -->
+                <span v-else class="omni-muted" data-testid="plan-undated">
+                    no date
+                    <span v-if="p.saidAtMs" class="said">said <OmniscienceV3Time :ms="p.saidAtMs" mode="both" /></span>
+                </span>
             </span>
             <span class="what">
                 <strong>{{ p.title }}</strong>
@@ -47,6 +51,7 @@ function personLink(id: string): string { return `${OMNI_BASE}/people/${encodeUR
 .plans li.bad { box-shadow: inset 2px 0 0 var(--omni-negative); }
 .plans li.warn { box-shadow: inset 2px 0 0 var(--omni-warning); }
 .when { flex: 0 0 230px; font-variant-numeric: tabular-nums; }
+.said { display: block; font-size: 11.5px; }
 .what { flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; }
 .sub { font-size: 11.5px; color: var(--omni-muted); }
 @media (max-width: 768px) { .when { flex-basis: 100%; } }

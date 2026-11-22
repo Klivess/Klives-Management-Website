@@ -266,7 +266,14 @@ test('agenda and quality lab: what is coming, what slipped, and whether the fact
     await expect(page.getByTestId('agenda-promises')).toContainText('your promise');
     await expect(page.getByTestId('agenda-promises')).toContainText('Klives with Synthetic Ada');
     await expect(page.getByTestId('agenda-upcoming')).toContainText("Synthetic Bo's birthday");
-    await expect(page.getByTestId('agenda-all').locator('li')).toHaveCount(4);
+    await expect(page.getByTestId('agenda-all').locator('li')).toHaveCount(5);
+    // A plan that names no day says so, and when it was said (it used to read 1 January 1970, 20779 days ago, and "past").
+    const undated = page.getByTestId('agenda-all').locator('li', { hasText: 'Play the new co-op game some time' });
+    await expect(undated.getByTestId('plan-undated')).toContainText('no date');
+    await expect(undated.getByTestId('plan-undated').locator('.said')).toContainText('said');
+    await expect(undated.getByTestId('plan-undated')).toContainText('40 d ago');
+    await expect(undated).not.toContainText('1970');
+    await shot(page, 'agenda-plans');
     await page.getByLabel('Status').selectOption('overdue');
     await expect(page.getByTestId('agenda-all').locator('li')).toHaveCount(1);
     expect(state.requests.some(r => r.startsWith(`GET ${V3}/knowledge/plans?`) && r.includes('status=overdue'))).toBe(true);

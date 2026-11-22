@@ -2064,6 +2064,7 @@ export interface PlanItemDto {
   evidenceCount: number;
   evidenceMessageIds: string[];
   conversationId?: string | null;
+  saidAtMs?: number | null;
 }
 
 export interface PlanPageDto {

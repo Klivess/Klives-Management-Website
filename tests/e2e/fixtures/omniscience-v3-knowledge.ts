@@ -73,6 +73,8 @@ const PLANS: PlanItemDto[] = [
     plan('pl-2', 'Send the hiking photos', { klivesPromised: true, kind: 'promise', ownerPersonId: 'person-self', counterpartyPersonId: 'person-a', status: 'due', firmness: 'firm' }),
     plan('pl-3', "Synthetic Bo's birthday", { kind: 'birthday', ownerPersonId: 'person-b', counterpartyPersonId: null, involvesKlives: false, allDay: true, nextOccurrenceMs: NOW + 5 * DAY, recurrence: 'yearly', status: 'recurring' }),
     plan('pl-4', 'Return the board game', { status: 'overdue', nextOccurrenceMs: NOW - 2 * DAY, scheduledEarliestMs: NOW - 2 * DAY, scheduledLatestMs: NOW - 2 * DAY, firmness: 'tentative' }),
+    // Said in passing, with no day named: what most plans in chat are.
+    plan('pl-5', 'Play the new co-op game some time', { status: 'undated', scheduledEarliestMs: null, scheduledLatestMs: null, nextOccurrenceMs: null, saidAtMs: NOW - 40 * DAY, firmness: 'tentative' }),
 ];
 
 const review = (itemId: string, kind: string, title: string, over: Partial<KnowledgeReviewItemDto> = {}): KnowledgeReviewItemDto => ({

@@ -616,6 +616,117 @@ export function scriptHealthVerdict(health: ScriptHealth): { tone: AgentTone; te
   return { tone: scriptTone((ran / counted) * 100), text };
 }
 
+/** How a tool compares with the others on this server (KliveAgentToolSpeed.ToolSpeedTier). */
+export type ToolTier = 'Instant' | 'Fast' | 'Moderate' | 'Slow' | 'HangProne' | 'Waits';
+const TOOL_TIERS: ToolTier[] = ['Instant', 'Fast', 'Moderate', 'Slow', 'HangProne', 'Waits'];
+
+export const TOOL_TIER_LABELS: Record<ToolTier, { label: string; tone: AgentTone; title: string }> = {
+  Instant: { label: 'instant', tone: 'ok', title: 'Usually under 300 ms' },
+  Fast: { label: 'fast', tone: 'ok', title: 'Usually under 2 s' },
+  Moderate: { label: 'moderate', tone: 'info', title: 'Usually under 10 s' },
+  Slow: { label: 'slow', tone: 'warn', title: 'Usually 10 s or more, or one call in ten over 30 s' },
+  HangProne: { label: 'hang-prone', tone: 'crit', title: 'One call in ten takes two minutes or more, or it often runs past the time it was given' },
+  Waits: { label: 'waits on purpose', tone: 'neutral', title: 'Waits for an email, a person or a change, and bounds itself' },
+};
+
+/** The pseudo-tool every dedicated service tool is also recorded under. */
+export const SERVICE_TOOLS_KEY = '[service tools]';
+
+/** One tool, or one operation of a tool, over its recent calls (KliveAgentToolSpeed.ToolSpeedRow). */
+export interface ToolSpeedRow {
+  key: string;
+  tool: string;
+  operation: string | null;
+  samples: number;
+  totalCalls: number;
+  typicalMs: number;
+  slowMs: number;
+  worstMs: number;
+  overruns: number;
+  errors: number;
+  tier: ToolTier;
+  /** Enough calls to replace the built-in expectation. */
+  trusted: boolean;
+  lastAt: string;
+}
+
+export interface ToolSpeed {
+  samplesKept: number;
+  minSamplesToTrust: number;
+  tools: ToolSpeedRow[];
+  /** For each goal, its tools fastest first: the order the [Tool speed] prompt block gives the model. */
+  families: Array<{ goal: string; fastest: string[]; note: string | null }>;
+}
+
+/** A family member as the model is told it (KliveAgentToolSpeed.DisplayName). */
+export function toolMemberLabel(member: string): string {
+  return ({
+    [SERVICE_TOOLS_KEY]: 'its own service tool',
+    'web_search snippets': 'web_search fetchTop:0',
+    'web_search fetch': 'web_search fetching pages',
+    'search_knowledge noMessages': 'search_knowledge includeMessages:false',
+  } as Record<string, string>)[member] ?? member;
+}
+
+function readTier(value: unknown): ToolTier {
+  if (typeof value === 'number') return TOOL_TIERS[value] ?? 'Fast';
+  const text = String(value ?? '').toLowerCase();
+  return TOOL_TIERS.find(t => t.toLowerCase() === text) ?? 'Fast';
+}
+
+/** GET /kliveagent/stats/tools, or null when the answer is not a tool-speed report. */
+export function readToolSpeed(raw: any): ToolSpeed | null {
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.tools)) return null;
+  const list = (value: unknown) => (Array.isArray(value) ? value : []);
+  return {
+    samplesKept: num(raw.samplesKept, 64),
+    minSamplesToTrust: num(raw.minSamplesToTrust, 8),
+    tools: list(raw.tools).map((t: any) => ({
+      key: String(t?.key ?? ''),
+      tool: String(t?.tool ?? ''),
+      operation: t?.operation ? String(t.operation) : null,
+      samples: num(t?.samples),
+      totalCalls: num(t?.totalCalls),
+      typicalMs: num(t?.typicalMs),
+      slowMs: num(t?.slowMs),
+      worstMs: num(t?.worstMs),
+      overruns: num(t?.overruns),
+      errors: num(t?.errors),
+      tier: readTier(t?.tier),
+      trusted: t?.trusted === true,
+      lastAt: String(t?.lastUtc ?? ''),
+    })).filter(t => t.key && t.tool),
+    families: list(raw.families).map((f: any) => ({
+      goal: String(f?.goal ?? ''),
+      fastest: list(f?.fastest).map(String).filter(Boolean),
+      note: f?.note ? String(f.note) : null,
+    })).filter(f => f.goal && f.fastest.length),
+  };
+}
+
+function nameList(rows: ToolSpeedRow[]): string {
+  const names = rows.map(r => (r.operation ? `${r.tool} ${r.operation}` : r.tool));
+  return names.length <= 3 ? names.join(', ') : `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`;
+}
+
+/** The sentence over the tool table: what is hang-prone or slow right now, and how much answers quickly. */
+export function toolSpeedVerdict(speed: ToolSpeed): { tone: AgentTone; text: string } {
+  const measured = speed.tools.filter(t => t.trusted && t.tier !== 'Waits' && t.tool !== SERVICE_TOOLS_KEY);
+  const tools = measured.filter(t => !t.operation);
+  if (!tools.length) {
+    return { tone: 'neutral', text: `No tool has been called ${speed.minSamplesToTrust} times yet, so KliveAgent ranks them by expected speed for now.` };
+  }
+  const quick = tools.filter(t => t.tier === 'Instant' || t.tier === 'Fast').length;
+  const base = `${fmtInt(quick)} of ${fmtInt(tools.length)} measured tools typically answer in under 2 s.`;
+  const hang = measured.filter(t => t.tier === 'HangProne');
+  if (hang.length) {
+    return { tone: 'crit', text: `${nameList(hang)} ${hang.length === 1 ? 'is' : 'are'} hang-prone right now: a call is turned down once when a faster tool does the job, and one that runs far past its usual time carries on in the background. ${base}` };
+  }
+  const slow = measured.filter(t => t.tier === 'Slow');
+  if (slow.length) return { tone: 'warn', text: `${nameList(slow)} ${slow.length === 1 ? 'is' : 'are'} slow. ${base}` };
+  return { tone: 'ok', text: base };
+}
+
 export interface ModelCallSplit {
   /** Where the time inside model calls went, largest first. */
   states: Array<{ name: string; label: string; totalMs: number; calls: number; avgMs: number; sharePct: number }>;

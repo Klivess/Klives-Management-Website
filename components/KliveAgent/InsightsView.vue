@@ -10,7 +10,7 @@
           <div class="kax-seg" role="group" aria-label="Range">
             <button v-for="r in USAGE_RANGES" :key="r.id" class="kax-seg__opt" type="button" :aria-pressed="range === r.id" :data-testid="`range-${r.id}`" @click="range = r.id">{{ r.label }}</button>
           </div>
-          <button class="kax-btn kax-btn--sm" type="button" :disabled="loading" @click="refresh"><KliveAgentIcon name="refresh" :class="{ 'kax-spin': loading || cacheLoading || scriptsLoading }" />Refresh</button>
+          <button class="kax-btn kax-btn--sm" type="button" :disabled="loading" @click="refresh"><KliveAgentIcon name="refresh" :class="{ 'kax-spin': loading || cacheLoading || scriptsLoading || toolSpeedLoading }" />Refresh</button>
         </div>
       </div>
 
@@ -289,6 +289,52 @@
         </div>
 
         <div class="kax-grid-3">
+          <section class="kax-card" data-testid="kax-tool-speed">
+            <header class="kax-card__head">
+              <h3 class="kax-card__title"><KliveAgentIcon name="gauge" />Tool speed</h3>
+              <span class="kax-card__meta">{{ toolSpeed ? `each over its last ${toolSpeed.samplesKept} calls` : '' }}</span>
+            </header>
+            <div v-if="!toolSpeed" class="kax-card__empty">{{ toolSpeedEmpty }}</div>
+            <template v-else>
+              <div class="kax-card__body">
+                <p class="kax-verdict-line" :data-tone="toolVerdict.tone" data-testid="tool-speed-verdict"><KliveAgentIcon :name="toolVerdict.tone === 'ok' ? 'check-circle' : toolVerdict.tone === 'neutral' ? 'info' : 'alert'" /><span>{{ toolVerdict.text }}</span></p>
+              </div>
+              <div v-if="toolRows.length" class="kax-tablewrap" style="padding: 0 6px 8px">
+                <table class="kax-table" data-testid="tool-speed-table">
+                  <thead><tr><th>Tool</th><th>Typical</th><th class="kax-num kax-col-detail" title="Nine calls in ten finish within this">1 in 10 over</th><th class="kax-num kax-col-detail">Worst</th><th class="kax-num">Calls</th><th>Kind</th></tr></thead>
+                  <tbody>
+                    <tr v-for="row in toolRows" :key="row.key" :data-tier="row.tier">
+                      <td class="kax-truncate" style="max-width: 260px" :title="row.key"><span class="kax-mono">{{ row.tool === SERVICE_TOOLS_KEY ? 'service tools (all)' : row.tool }}</span><span v-if="row.operation" class="kax-dim"> · {{ row.operation }}</span></td>
+                      <td class="kax-bar-cell" :data-tone="TOOL_TIER_LABELS[row.tier].tone"><span class="kax-bar-cell__fill" :style="{ width: `${toolBarPct(row)}%` }"></span><span class="kax-bar-cell__text kax-num">{{ fmtMs(row.typicalMs) }}</span></td>
+                      <td class="kax-num kax-col-detail">{{ fmtMs(row.slowMs) }}</td>
+                      <td class="kax-num kax-dim kax-col-detail">{{ fmtMs(row.worstMs) }}</td>
+                      <td class="kax-num" style="white-space: nowrap">{{ fmtInt(row.samples) }}<span v-if="row.overruns" class="kax-dim" title="Calls that ran past the time they were given and went on in the background"> · {{ fmtInt(row.overruns) }} overran</span></td>
+                      <td style="white-space: nowrap"><span class="kax-chip" :data-tone="TOOL_TIER_LABELS[row.tier].tone" :title="TOOL_TIER_LABELS[row.tier].title">{{ TOOL_TIER_LABELS[row.tier].label }}</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p v-if="toolUntrusted" class="kax-card__empty">{{ toolUntrusted }}</p>
+            </template>
+          </section>
+
+          <section class="kax-card" data-testid="kax-tool-ranking">
+            <header class="kax-card__head">
+              <h3 class="kax-card__title"><KliveAgentIcon name="bolt" />Fastest tool per goal</h3>
+              <span class="kax-card__meta">the order the model is given</span>
+            </header>
+            <div v-if="!toolSpeed" class="kax-card__empty">{{ toolSpeedEmpty }}</div>
+            <ol v-else class="kax-rank">
+              <li v-for="family in toolSpeed.families" :key="family.goal" class="kax-rank__item">
+                <span class="kax-rank__goal">{{ family.goal }}</span>
+                <span class="kax-rank__chain"><template v-for="(member, i) in family.fastest" :key="member"><span v-if="i" class="kax-rank__arrow" aria-hidden="true">→</span><span class="kax-mono" :data-tier="toolTierOf(member)" :title="toolMemberTitle(member)">{{ toolMemberLabel(member) }}</span></template></span>
+                <span v-if="family.note" class="kax-rank__note">{{ family.note }}</span>
+              </li>
+            </ol>
+          </section>
+        </div>
+
+        <div class="kax-grid-3">
           <section class="kax-card" data-testid="kax-cache">
             <header class="kax-card__head">
               <h3 class="kax-card__title"><KliveAgentIcon name="bolt" />Prompt cache</h3>
@@ -346,9 +392,10 @@
 import { computed, ref, watch } from 'vue';
 import { RequestGETFromKliveAPI } from '~/scripts/APIInterface';
 import {
-  FAILURE_KIND_LABELS, USAGE_RANGES, bucketsFor, costLabel, fmtInt, fmtMs, fmtPct, fmtTokens, fmtUnder, isSubStage, modelCallSplit,
-  readScriptHealth, scriptHealthVerdict, scriptTone, shortWhen, stageLabel, summarise, watchLines,
-  type AgentTone, type ScriptHealth, type UsageRangeId, type UsageStats,
+  FAILURE_KIND_LABELS, SERVICE_TOOLS_KEY, TOOL_TIER_LABELS, USAGE_RANGES, bucketsFor, costLabel, fmtInt, fmtMs, fmtPct, fmtTokens, fmtUnder,
+  isSubStage, modelCallSplit, readScriptHealth, readToolSpeed, scriptHealthVerdict, scriptTone, shortWhen, stageLabel, summarise,
+  toolMemberLabel, toolSpeedVerdict, watchLines,
+  type AgentTone, type ScriptHealth, type ToolSpeed, type ToolSpeedRow, type ToolTier, type UsageRangeId, type UsageStats,
 } from '~/scripts/agentConsole';
 import KliveAgentIcon from '~/components/KliveAgent/Icon.vue';
 import KliveAgentSpark from '~/components/KliveAgent/Spark.vue';
@@ -490,6 +537,71 @@ async function loadScripts(force = false) {
 }
 watch(scriptDays, () => void loadScripts(), { immediate: true });
 
+// ── tool speed: one record for the whole server, not per range, so it is read once and on Refresh ──
+const toolSpeed = ref<ToolSpeed | null>(null);
+const toolSpeedLoading = ref(false);
+const toolSpeedError = ref('');
+/** False on a server from before /kliveagent/stats/tools (404). */
+const toolSpeedSupported = ref(true);
+const toolSpeedStarting = ref(false);
+const TOOL_ROWS_SHOWN = 14;
+const toolVerdict = computed(() => (toolSpeed.value ? toolSpeedVerdict(toolSpeed.value) : { tone: 'neutral' as AgentTone, text: '' }));
+const trustedTools = computed<ToolSpeedRow[]>(() => (toolSpeed.value?.tools ?? []).filter(t => t.trusted));
+const toolRows = computed(() => trustedTools.value.slice(0, TOOL_ROWS_SHOWN));
+const toolUntrusted = computed(() => {
+  const speed = toolSpeed.value;
+  if (!speed) return '';
+  const hidden = trustedTools.value.length - toolRows.value.length;
+  const thin = speed.tools.length - trustedTools.value.length;
+  const parts: string[] = [];
+  if (hidden > 0) parts.push(`${fmtInt(hidden)} more measured (tool_speed lists them all)`);
+  if (thin > 0) parts.push(`${fmtInt(thin)} with fewer than ${speed.minSamplesToTrust} calls, ranked by expected speed for now`);
+  return parts.length ? `${parts.join(' · ')}.` : '';
+});
+const toolSpeedEmpty = computed(() => {
+  if (toolSpeedLoading.value) return 'Reading the tool record…';
+  if (toolSpeedError.value) return toolSpeedError.value;
+  if (!toolSpeedSupported.value) return 'Not reported by this server yet.';
+  if (toolSpeedStarting.value) return 'KliveAgent is still starting; the record loads with it.';
+  return '—';
+});
+/** Bars on a log scale: tool times run from milliseconds to minutes, and a linear bar would show only the slowest. */
+const toolLogMax = computed(() => Math.log10(1 + Math.max(1, ...toolRows.value.filter(r => r.tier !== 'Waits').map(r => r.typicalMs))));
+function toolBarPct(row: ToolSpeedRow): number {
+  return Math.min(100, Math.max(2, (Math.log10(1 + row.typicalMs) / toolLogMax.value) * 100));
+}
+function toolRowFor(member: string): ToolSpeedRow | undefined {
+  return trustedTools.value.find(t => t.key === member);
+}
+function toolTierOf(member: string): ToolTier | undefined {
+  return toolRowFor(member)?.tier;
+}
+function toolMemberTitle(member: string): string {
+  const row = toolRowFor(member);
+  return row ? `Typically ${fmtMs(row.typicalMs)} over its last ${fmtInt(row.samples)} calls (${TOOL_TIER_LABELS[row.tier].label})` : 'Not measured yet: placed by its expected speed';
+}
+
+async function loadToolSpeed() {
+  toolSpeedLoading.value = true;
+  toolSpeedError.value = '';
+  try {
+    const response = await RequestGETFromKliveAPI('/kliveagent/stats/tools', false, false);
+    if (response.status === 404) { toolSpeedSupported.value = false; toolSpeed.value = null; return; }
+    const data = await response.json().catch(() => null);
+    toolSpeedSupported.value = true;
+    if (response.ok && data?.ready === false) { toolSpeedStarting.value = true; toolSpeed.value = null; return; }
+    const parsed = readToolSpeed(data);
+    if (!response.ok || !parsed) throw new Error(data?.error || `HTTP ${response.status}`);
+    toolSpeedStarting.value = false;
+    toolSpeed.value = parsed;
+  } catch (error: any) {
+    toolSpeedError.value = `Could not read the tool record: ${error?.message ?? error}`;
+  } finally {
+    toolSpeedLoading.value = false;
+  }
+}
+void loadToolSpeed();
+
 // ── inside a model call ──
 const split = computed(() => modelCallSplit(perf.value?.stages));
 const providerLines = computed(() => watchLines(scripts.value?.watch ?? null).filter(line => line.id === 'provider'));
@@ -503,5 +615,6 @@ function refresh() {
   emit('refresh');
   void loadCache(true);
   void loadScripts(true);
+  void loadToolSpeed();
 }
 </script>

@@ -639,6 +639,18 @@
 .kax-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 7px; vertical-align: -0.02em; background: var(--tone, var(--kax-ink-3)); }
 /* Written with the .kax prefix throughout: the page's resets (.kax h4, .kax button, .kax ol) are one
    class and one element, so a bare class loses to them. */
+/* Fastest tool per goal (Insights): each goal, then its tools fastest first, the first one in green. */
+.kax .kax-rank { list-style: none; margin: 0; padding: 2px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.kax .kax-rank__item { display: flex; flex-direction: column; gap: 3px; padding-bottom: 8px; border-bottom: 1px solid var(--kax-line); }
+.kax .kax-rank__item:last-child { border-bottom: 0; padding-bottom: 0; }
+.kax .kax-rank__goal { font-size: 11px; color: var(--kax-ink-3); }
+.kax .kax-rank__chain { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; font-size: 12.5px; min-width: 0; }
+.kax .kax-rank__chain > :first-child { color: var(--kax-ok); font-weight: 600; }
+.kax .kax-rank__chain [data-tier='Slow'] { color: var(--kax-warn); }
+.kax .kax-rank__chain [data-tier='HangProne'] { color: var(--kax-crit); }
+.kax .kax-rank__arrow { color: var(--kax-ink-4); }
+.kax .kax-rank__note { font-size: 11px; color: var(--kax-ink-4); }
+
 .kax .kax-subhead { font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--kax-ink-4); margin: 14px 0 4px; }
 
 /* Latest script failures: what it was, its code and when, then the compiler's own sentence on a full line. */
@@ -798,4 +810,6 @@
   .kax-composer__hint { display: none; }
   .kax-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .kax-page__inner { padding: 12px 12px 40px; }
+  /* Tool speed: the typical time and the kind are the reading; the spread is for a wider screen. */
+  .kax .kax-col-detail { display: none; }
 }

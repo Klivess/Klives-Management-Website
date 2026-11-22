@@ -113,6 +113,36 @@ function scriptHealthPayload(days: number, providerSlow: boolean) {
   };
 }
 
+/** GET /kliveagent/stats/tools, in the shape KliveAgentToolSpeed.BuildReport produces (camelCase, tiers as names). */
+function toolSpeedPayload() {
+  const row = (key: string, tool: string, operation: string | null, samples: number, typicalMs: number, slowMs: number, worstMs: number,
+    tier: string, extra: Record<string, unknown> = {}) => ({
+    key, tool, operation, samples, totalCalls: samples * 3, typicalMs, slowMs, worstMs, overruns: 0, errors: 0, tier,
+    trusted: samples >= 8, lastUtc: iso(10 * MIN), ...extra,
+  });
+  return {
+    samplesKept: 64,
+    minSamplesToTrust: 8,
+    // Slowest kind first, as the server orders them; waiting tools last.
+    tools: [
+      row('web_fetch', 'web_fetch', null, 14, 41_000, 600_000, 600_000, 'HangProne', { overruns: 4 }),
+      row('web_search fetch', 'web_search', 'fetch', 20, 11_800, 24_000, 31_000, 'Slow'),
+      row('execute_csharp', 'execute_csharp', null, 64, 1_400, 4_200, 30_000, 'Fast', { errors: 9 }),
+      row('web_search snippets', 'web_search', 'snippets', 12, 900, 1_600, 2_100, 'Fast'),
+      row('grep', 'grep', null, 40, 380, 900, 2_400, 'Fast'),
+      row('read_file', 'read_file', null, 64, 20, 45, 120, 'Instant'),
+      row('find_files', 'find_files', null, 3, 150, 150, 150, 'Instant'),
+      row('klivemail_wait_for_email', 'klivemail_wait_for_email', null, 9, 62_000, 240_000, 300_000, 'Waits'),
+    ],
+    families: [
+      { goal: 'search code by content', fastest: ['grep', 'execute_csharp'], note: 'grep outputMode:"files" when you only need where' },
+      { goal: 'read a web page', fastest: ['read_knowledge_doc', 'web_fetch'], note: 'read_knowledge_doc only for a page already fetched or found by search' },
+      { goal: 'get current facts from the web', fastest: ['web_search snippets', 'web_search fetch'], note: 'then web_fetch only the page you need' },
+      { goal: 'read or drive a live service', fastest: ['[service tools]', 'omniservice', 'omni_api', 'execute_csharp'], note: null },
+    ],
+  };
+}
+
 /** The server's two rolling checks, as /kliveagent/status and the script-health route carry them. */
 function healthPayload(providerSlow: boolean) {
   return {
@@ -260,6 +290,9 @@ export async function installAgentApiMock(page: Page, options: AgentMockOptions 
       case '/kliveagent/stats/scripts': return options.legacyServer
         ? { status: 404, body: { error: 'Route not found' } }
         : { status: 200, body: scriptHealthPayload(Number(url.searchParams.get('days')) || 30, !!options.providerSlow) };
+      case '/kliveagent/stats/tools': return options.legacyServer
+        ? { status: 404, body: { error: 'Route not found' } }
+        : { status: 200, body: toolSpeedPayload() };
       case '/kliveagent/memories': return { status: 200, body: url.searchParams.get('query') ? MEMORIES.filter(m => m.content.toLowerCase().includes(url.searchParams.get('query')!.toLowerCase())) : MEMORIES };
       case '/kliveagent/shortcuts': return { status: 200, body: [{ id: 'sc-1', title: 'Restart a service', content: 'await RestartService("X");', memoryType: 'Shortcut', tags: ['ops'], createdAt: iso(DAY) }] };
       case '/kliveagent/capabilities': return { status: 200, body: [

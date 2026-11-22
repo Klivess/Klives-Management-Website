@@ -168,6 +168,39 @@ test('Insights says how scripts are doing and where a model call spends its time
   expect(api.directGets.filter(p => p.startsWith('/kliveagent/stats/scripts')).length).toBe(2);
 });
 
+test('Insights shows what each tool really takes and the fastest tool per goal', async ({ page }) => {
+  const api = await openKliveAgent(page);
+  await page.getByTestId('view-insights').click();
+
+  const speed = page.getByTestId('kax-tool-speed');
+  // The hang-prone tool is named first; three of the four measured tools (operations aside) answer in under 2 s.
+  const verdict = speed.getByTestId('tool-speed-verdict');
+  await expect(verdict).toContainText('web_fetch is hang-prone right now');
+  await expect(verdict).toContainText('3 of 4 measured tools typically answer in under 2 s');
+  await expect(verdict).toHaveAttribute('data-tone', 'crit');
+
+  const table = speed.getByTestId('tool-speed-table');
+  await expect(table.locator('tr[data-tier="HangProne"]')).toContainText('web_fetch');
+  await expect(table.locator('tr[data-tier="HangProne"]')).toContainText('4 overran');
+  await expect(table).toContainText('web_search · snippets');
+  await expect(table.locator('tr[data-tier="Waits"]')).toContainText('waits on purpose');
+  // A tool with three calls is not ranked by them yet.
+  await expect(table).not.toContainText('find_files');
+  await expect(speed).toContainText('1 with fewer than 8 calls');
+
+  const ranking = page.getByTestId('kax-tool-ranking');
+  await expect(ranking).toContainText('search code by content');
+  await expect(ranking).toContainText('grep→execute_csharp');
+  await expect(ranking).toContainText('web_search fetchTop:0');
+  await expect(ranking).toContainText('its own service tool');
+  await expect(ranking.locator('[data-tier="HangProne"]')).toHaveText('web_fetch');
+
+  // One record for the whole server: changing the range does not read it again.
+  await page.getByTestId('range-7D').click();
+  await expect.poll(() => api.directGets.filter(p => p.startsWith('/kliveagent/stats/scripts')).length).toBe(2);
+  expect(api.directGets.filter(p => p === '/kliveagent/stats/tools').length).toBe(1);
+});
+
 test('a server without script health says so instead of showing zeros', async ({ page }) => {
   await openKliveAgent(page, { legacyServer: true });
   await expect(page.getByTestId('kax-vitals').getByTestId('vitals-provider')).toHaveCount(0);
@@ -175,6 +208,8 @@ test('a server without script health says so instead of showing zeros', async ({
   await expect(page.getByTestId('kax-script-health')).toContainText('does not report script health yet');
   await expect(page.getByTestId('kax-script-causes')).toContainText('Not reported by this server yet');
   await expect(page.getByTestId('kax-slow-tools')).toContainText('Not reported by this server yet');
+  await expect(page.getByTestId('kax-tool-speed')).toContainText('Not reported by this server yet');
+  await expect(page.getByTestId('kax-tool-ranking')).toContainText('Not reported by this server yet');
 });
 
 test('a slow provider is said beside the chat, where the waiting happens', async ({ page }) => {
